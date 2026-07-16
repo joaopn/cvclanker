@@ -5,21 +5,15 @@ import { SignInPage } from "./SignInPage";
 
 vi.mock("@client/api", () => ({
   hasAuthenticatedSession: vi.fn(() => false),
-  restoreAuthSessionFromLegacyCredentials: vi.fn(async () => false),
   signInWithCredentials: vi.fn(async () => undefined),
 }));
 
-import {
-  hasAuthenticatedSession,
-  restoreAuthSessionFromLegacyCredentials,
-  signInWithCredentials,
-} from "@client/api";
+import { hasAuthenticatedSession, signInWithCredentials } from "@client/api";
 
 describe("SignInPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(hasAuthenticatedSession).mockReturnValue(false);
-    vi.mocked(restoreAuthSessionFromLegacyCredentials).mockResolvedValue(false);
     vi.mocked(signInWithCredentials).mockResolvedValue(undefined);
   });
 
@@ -34,7 +28,7 @@ describe("SignInPage", () => {
     );
 
     await waitFor(() => {
-      expect(restoreAuthSessionFromLegacyCredentials).toHaveBeenCalledTimes(1);
+      expect(screen.getByLabelText("Username")).toBeEnabled();
     });
 
     fireEvent.change(screen.getByLabelText("Username"), {

@@ -1,8 +1,4 @@
-import {
-  hasAuthenticatedSession,
-  restoreAuthSessionFromLegacyCredentials,
-  signInWithCredentials,
-} from "@client/api";
+import { hasAuthenticatedSession, signInWithCredentials } from "@client/api";
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -38,26 +34,11 @@ export function SignInPage() {
   }, [location.search]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        const restored = await restoreAuthSessionFromLegacyCredentials();
-        if (cancelled) return;
-        if (restored || hasAuthenticatedSession()) {
-          navigate(nextPath, { replace: true });
-          return;
-        }
-      } finally {
-        if (!cancelled) {
-          setIsBusy(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    if (hasAuthenticatedSession()) {
+      navigate(nextPath, { replace: true });
+      return;
+    }
+    setIsBusy(false);
   }, [navigate, nextPath]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {

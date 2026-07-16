@@ -50,8 +50,7 @@ export function subscribeToEventSource<T>(
   let isClosed = false;
 
   void (async () => {
-    let authHeader = getCachedAuthHeader();
-    let authAttempt = 0;
+    const authHeader = getCachedAuthHeader();
     let reconnectDelay = RECONNECT_BASE_DELAY_MS;
 
     // Reconnect indefinitely until the caller unsubscribes. The progress route
@@ -65,17 +64,10 @@ export function subscribeToEventSource<T>(
           signal: controller.signal,
         });
 
-        if (response.status === 401 && authAttempt < 1) {
-          const recoveredAuthHeader =
-            await recoverAuthHeaderAfterUnauthorized();
-          if (!recoveredAuthHeader) {
-            handlers.onError?.();
-            return;
-          }
-
-          authHeader = recoveredAuthHeader;
-          authAttempt += 1;
-          continue;
+        if (response.status === 401) {
+          await recoverAuthHeaderAfterUnauthorized();
+          handlers.onError?.();
+          return;
         }
 
         if (!response.ok || !response.body) {
@@ -85,8 +77,7 @@ export function subscribeToEventSource<T>(
           continue;
         }
 
-        // Connection is live again — reset auth + backoff for the next drop.
-        authAttempt = 0;
+        // Connection is live again — reset backoff for the next drop.
         reconnectDelay = RECONNECT_BASE_DELAY_MS;
         handlers.onOpen?.();
 

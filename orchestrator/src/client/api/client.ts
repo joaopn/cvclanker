@@ -109,78 +109,11 @@ export type CodexAuthStatusResponse = {
   flowMessage: string | null;
 };
 
-export type AuthCredentials = {
-  username: string;
-  password: string;
-};
-
-type StoredLegacyAuthCredentials = AuthCredentials & {
-  storedAt?: number;
-};
-
-const LEGACY_SESSION_AUTH_KEY = "jobops.basicAuthCredentials";
-const LEGACY_SESSION_JWT_KEY = "jobops.jwtToken";
 const SESSION_AUTH_TOKEN_KEY = "jobops.authToken";
-const LEGACY_SESSION_AUTH_TTL_MS = 5 * 60 * 1000;
-
-function loadStoredLegacyCredentials(): AuthCredentials | null {
-  try {
-    const stored = sessionStorage.getItem(LEGACY_SESSION_AUTH_KEY);
-    if (!stored) return null;
-    // Migration credentials are one-shot: remove them from storage as soon as
-    // we read them, then keep them only in memory for the upgrade attempt.
-    sessionStorage.removeItem(LEGACY_SESSION_AUTH_KEY);
-
-    const parsed = JSON.parse(stored) as StoredLegacyAuthCredentials;
-    if (
-      !parsed ||
-      typeof parsed !== "object" ||
-      typeof parsed.username !== "string" ||
-      typeof parsed.password !== "string"
-    ) {
-      return null;
-    }
-
-    if (
-      typeof parsed.storedAt === "number" &&
-      Date.now() - parsed.storedAt > LEGACY_SESSION_AUTH_TTL_MS
-    ) {
-      return null;
-    }
-
-    return {
-      username: parsed.username,
-      password: parsed.password,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function storeLegacyCredentials(credentials: AuthCredentials | null): void {
-  try {
-    if (credentials) {
-      sessionStorage.setItem(
-        LEGACY_SESSION_AUTH_KEY,
-        JSON.stringify({
-          ...credentials,
-          storedAt: Date.now(),
-        } satisfies StoredLegacyAuthCredentials),
-      );
-    } else {
-      sessionStorage.removeItem(LEGACY_SESSION_AUTH_KEY);
-    }
-  } catch {
-    // Ignore storage errors in restricted browser contexts.
-  }
-}
 
 function loadStoredAuthToken(): string | null {
   try {
-    return (
-      sessionStorage.getItem(SESSION_AUTH_TOKEN_KEY) ??
-      sessionStorage.getItem(LEGACY_SESSION_JWT_KEY)
-    );
+    return sessionStorage.getItem(SESSION_AUTH_TOKEN_KEY);
   } catch {
     return null;
   }
@@ -190,33 +123,24 @@ function storeAuthToken(token: string | null): void {
   try {
     if (token) {
       sessionStorage.setItem(SESSION_AUTH_TOKEN_KEY, token);
-      sessionStorage.removeItem(LEGACY_SESSION_JWT_KEY);
     } else {
       sessionStorage.removeItem(SESSION_AUTH_TOKEN_KEY);
-      sessionStorage.removeItem(LEGACY_SESSION_JWT_KEY);
     }
   } catch {
     // Ignore storage errors in restricted browser contexts.
   }
 }
 
-let cachedLegacyCredentials: AuthCredentials | null =
-  loadStoredLegacyCredentials();
 let cachedAuthToken: string | null = loadStoredAuthToken();
-let authMigrationInFlight: Promise<boolean> | null = null;
 
 export function clearAuthSession(): void {
-  cachedLegacyCredentials = null;
   cachedAuthToken = null;
-  storeLegacyCredentials(null);
   storeAuthToken(null);
 }
 
 function setAuthenticatedSession(token: string): void {
   cachedAuthToken = token;
   storeAuthToken(token);
-  cachedLegacyCredentials = null;
-  storeLegacyCredentials(null);
 }
 
 async function readAuthResponse<T>(
@@ -265,45 +189,9 @@ export async function signInWithCredentials(
   setAuthenticatedSession(token);
 }
 
-export async function restoreAuthSessionFromLegacyCredentials(): Promise<boolean> {
-  if (cachedAuthToken) return true;
-  if (!cachedLegacyCredentials) return false;
-  if (!authMigrationInFlight) {
-    const credentials = cachedLegacyCredentials;
-    cachedLegacyCredentials = null;
-    storeLegacyCredentials(null);
-    authMigrationInFlight = (async () => {
-      try {
-        await signInWithCredentials(credentials.username, credentials.password);
-        return true;
-      } catch {
-        return false;
-      } finally {
-        authMigrationInFlight = null;
-      }
-    })();
-  }
-  return authMigrationInFlight;
-}
-
-async function recoverAuthSessionFromUnauthorized(): Promise<string | null> {
-  cachedAuthToken = null;
-  storeAuthToken(null);
-
-  const restored = await restoreAuthSessionFromLegacyCredentials();
-  if (restored && cachedAuthToken) {
-    return `Bearer ${cachedAuthToken}`;
-  }
-
+export async function recoverAuthHeaderAfterUnauthorized(): Promise<void> {
   clearAuthSession();
   redirectToSignIn();
-  return null;
-}
-
-export async function recoverAuthHeaderAfterUnauthorized(): Promise<
-  string | null
-> {
-  return recoverAuthSessionFromUnauthorized();
 }
 
 export async function logout(): Promise<void> {
@@ -330,18 +218,8 @@ export function hasAuthenticatedSession(): boolean {
 }
 
 export function __resetApiClientAuthForTests(): void {
-  cachedLegacyCredentials = null;
   cachedAuthToken = null;
-  authMigrationInFlight = null;
-  storeLegacyCredentials(null);
   storeAuthToken(null);
-}
-
-export function __setLegacyAuthCredentialsForTests(
-  credentials: AuthCredentials | null,
-): void {
-  cachedLegacyCredentials = credentials;
-  storeLegacyCredentials(credentials);
 }
 
 export function __setAuthTokenForTests(token: string | null): void {
@@ -378,17 +256,6 @@ function normalizeHeaders(headers?: HeadersInit): Record<string, string> {
     return Object.fromEntries(headers);
   }
   return { ...headers };
-}
-
-function isUnauthorizedResponse<T>(
-  response: Response,
-  parsed: ApiResponse<T> | LegacyApiResponse<T>,
-): boolean {
-  if (response.status !== 401) return false;
-  if ("ok" in parsed) {
-    return parsed.ok ? false : parsed.error.code === "UNAUTHORIZED";
-  }
-  return !parsed.success;
 }
 
 function toApiError<T>(
@@ -467,50 +334,36 @@ async function fetchApi<T>(
   endpoint: string,
   options?: RequestInit,
 ): Promise<T> {
-  let authHeader = getAuthHeader();
-  let authAttempt = 0;
+  const authHeader = getAuthHeader();
+  const { response, parsed } = await fetchAndParse(
+    endpoint,
+    options,
+    authHeader,
+  );
 
-  while (true) {
-    const { response, parsed } = await fetchAndParse(
-      endpoint,
-      options,
-      authHeader,
-    );
-
-    if (isUnauthorizedResponse(response, parsed) && authAttempt < 1) {
-      const recoveredAuthHeader = await recoverAuthSessionFromUnauthorized();
-      if (!recoveredAuthHeader) {
-        throw toApiError(response, parsed);
-      }
-      authHeader = recoveredAuthHeader;
-      authAttempt += 1;
-      continue;
-    }
-
-    if ("ok" in parsed) {
-      if (!parsed.ok) {
-        if (parsed.error.code === "UNAUTHORIZED") {
-          clearAuthSession();
-          redirectToSignIn();
-        }
-        throw toApiError(response, parsed);
-      }
-      return parsed.data as T;
-    }
-
-    if (!parsed.success) {
-      if (response.status === 401) {
+  if ("ok" in parsed) {
+    if (!parsed.ok) {
+      if (parsed.error.code === "UNAUTHORIZED") {
         clearAuthSession();
         redirectToSignIn();
       }
       throw toApiError(response, parsed);
     }
-
-    const data = parsed.data;
-    if (data !== undefined) return data as T;
-    if (parsed.message !== undefined) return { message: parsed.message } as T;
-    return null as T;
+    return parsed.data as T;
   }
+
+  if (!parsed.success) {
+    if (response.status === 401) {
+      clearAuthSession();
+      redirectToSignIn();
+    }
+    throw toApiError(response, parsed);
+  }
+
+  const data = parsed.data;
+  if (data !== undefined) return data as T;
+  if (parsed.message !== undefined) return { message: parsed.message } as T;
+  return null as T;
 }
 
 // Jobs API
@@ -620,27 +473,12 @@ async function streamSseEvents<TEvent>(
     headers.Authorization = streamAuth;
   }
 
-  let response = await fetch(`${API_BASE}${endpoint}`, {
+  const response = await fetch(`${API_BASE}${endpoint}`, {
     method: "POST",
     headers,
     body: JSON.stringify(input),
     signal: handlers.signal,
   });
-
-  if (response.status === 401) {
-    const recoveredAuthHeader = await recoverAuthSessionFromUnauthorized();
-    if (recoveredAuthHeader) {
-      response = await fetch(`${API_BASE}${endpoint}`, {
-        method: "POST",
-        headers: {
-          ...headers,
-          Authorization: recoveredAuthHeader,
-        },
-        body: JSON.stringify(input),
-        signal: handlers.signal,
-      });
-    }
-  }
 
   if (!response.ok) {
     let errorMessage = `Stream request failed with status ${response.status}`;

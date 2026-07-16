@@ -36,100 +36,8 @@ describe("API client auth flow", () => {
     api.__resetApiClientAuthForTests();
   });
 
-  it("silently upgrades legacy stored credentials after an unauthorized response", async () => {
-    api.__setLegacyAuthCredentialsForTests({
-      username: "user",
-      password: "pass",
-    });
-
-    const fetchSpy = vi.spyOn(global, "fetch");
-    fetchSpy
-      .mockResolvedValueOnce(
-        createJsonResponse(401, {
-          ok: false,
-          error: { code: "UNAUTHORIZED", message: "Authentication required" },
-          meta: { requestId: "req-1" },
-        }),
-      )
-      .mockResolvedValueOnce(jwtLoginSuccess())
-      .mockResolvedValueOnce(
-        createJsonResponse(200, {
-          ok: true,
-          data: { message: "ok" },
-          meta: { requestId: "req-2" },
-        }),
-      );
-
-    await expect(api.runPipeline()).resolves.toEqual({ message: "ok" });
-    expect(fetchSpy).toHaveBeenCalledTimes(3);
-    expect(fetchSpy.mock.calls[2]?.[1]).toMatchObject({
-      headers: expect.objectContaining({
-        Authorization: "Bearer mock-jwt-token",
-      }),
-    });
-    expect(redirectToSignIn).not.toHaveBeenCalled();
-  });
-
-  it("clears legacy stored credentials before attempting migration", async () => {
-    api.__setLegacyAuthCredentialsForTests({
-      username: "user",
-      password: "pass",
-    });
-
-    vi.spyOn(global, "fetch").mockResolvedValueOnce(jwtLoginSuccess());
-
-    const storedBefore = sessionStorage.getItem("jobops.basicAuthCredentials");
-    expect(storedBefore).toContain('"password"');
-
-    const promise = api.restoreAuthSessionFromLegacyCredentials();
-    expect(sessionStorage.getItem("jobops.basicAuthCredentials")).toBeNull();
-    await expect(promise).resolves.toBe(true);
-  });
-
-  it("reuses the upgraded bearer token on later requests", async () => {
-    api.__setLegacyAuthCredentialsForTests({
-      username: "user",
-      password: "pass",
-    });
-
-    const fetchSpy = vi.spyOn(global, "fetch");
-    fetchSpy
-      .mockResolvedValueOnce(
-        createJsonResponse(401, {
-          ok: false,
-          error: { code: "UNAUTHORIZED", message: "Authentication required" },
-          meta: { requestId: "req-1" },
-        }),
-      )
-      .mockResolvedValueOnce(jwtLoginSuccess("reused-token"))
-      .mockResolvedValueOnce(
-        createJsonResponse(200, {
-          ok: true,
-          data: { message: "first" },
-          meta: { requestId: "req-2" },
-        }),
-      )
-      .mockResolvedValueOnce(
-        createJsonResponse(200, {
-          ok: true,
-          data: { message: "second" },
-          meta: { requestId: "req-3" },
-        }),
-      );
-
-    await expect(api.runPipeline()).resolves.toEqual({ message: "first" });
-    await expect(api.runPipeline()).resolves.toEqual({ message: "second" });
-
-    expect(fetchSpy.mock.calls[3]?.[1]).toMatchObject({
-      headers: expect.objectContaining({
-        Authorization: "Bearer reused-token",
-      }),
-    });
-    expect(redirectToSignIn).not.toHaveBeenCalled();
-  });
-
-  it("redirects to sign-in when unauthorized and no recoverable credentials exist", async () => {
-    vi.spyOn(global, "fetch").mockResolvedValueOnce(
+  it("redirects to sign-in on an unauthorized response without retrying", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValueOnce(
       createJsonResponse(401, {
         ok: false,
         error: { code: "UNAUTHORIZED", message: "Authentication required" },
@@ -138,21 +46,17 @@ describe("API client auth flow", () => {
     );
 
     await expect(api.runPipeline()).rejects.toThrow("Authentication required");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(redirectToSignIn).toHaveBeenCalledTimes(1);
   });
 
   it("stores a bearer token when signing in directly", async () => {
-    api.__setLegacyAuthCredentialsForTests({
-      username: "legacy-user",
-      password: "legacy-pass",
-    });
-
     vi.spyOn(global, "fetch").mockResolvedValueOnce(
       jwtLoginSuccess("fresh-token"),
     );
 
     await expect(
-      api.signInWithCredentials("legacy-user", "legacy-pass"),
+      api.signInWithCredentials("admin", "secret"),
     ).resolves.toBeUndefined();
     expect(api.getCachedAuthHeader()).toBe("Bearer fresh-token");
   });
