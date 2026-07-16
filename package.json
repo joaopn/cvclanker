@@ -12,7 +12,6 @@
     "check:types": "npm --workspace shared run check:types && npm --workspace orchestrator run check:types",
     "check:all": "./orchestrator/node_modules/.bin/biome ci .",
     "format:all": "./orchestrator/node_modules/.bin/biome format . --write",
-    "release:set-version": "node ./scripts/set-orchestrator-version.mjs",
     "knip": "knip"
   },
   "devDependencies": {
