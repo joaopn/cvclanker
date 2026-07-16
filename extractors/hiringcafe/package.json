@@ -6,7 +6,7 @@
   "main": "src/main.ts",
   "dependencies": {
     "camoufox-js": "^0.8.0",
-    "job-ops-shared": "^1.0.0",
+    "cvclanker-shared": "^1.0.0",
     "playwright": "^1.57.0",
     "tsx": "^4.4.0"
   },

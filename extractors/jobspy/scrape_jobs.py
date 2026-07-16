@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 from jobspy import scrape_jobs
 
-PROGRESS_PREFIX = "JOBOPS_PROGRESS "
+PROGRESS_PREFIX = "CVCLANKER_PROGRESS "
 COUNTRY_ALIASES = {
     "uk": "united kingdom",
     "united kingdom": "united kingdom",

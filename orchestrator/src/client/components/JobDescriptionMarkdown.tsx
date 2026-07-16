@@ -13,9 +13,9 @@ const getSafeHref = (href?: string) => {
   if (!href) return undefined;
 
   try {
-    const url = new URL(href, "https://job-ops.local");
+    const url = new URL(href, "https://cvclanker.local");
     if (
-      url.origin === "https://job-ops.local" &&
+      url.origin === "https://cvclanker.local" &&
       !href.startsWith("http://") &&
       !href.startsWith("https://") &&
       !href.startsWith("mailto:")

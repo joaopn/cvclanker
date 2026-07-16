@@ -11,7 +11,7 @@ describe.sequential("envSettings overrides", () => {
 
   beforeEach(async () => {
     vi.resetModules();
-    tempDir = await mkdtemp(join(tmpdir(), "job-ops-env-migration-test-"));
+    tempDir = await mkdtemp(join(tmpdir(), "cvclanker-env-migration-test-"));
     process.env = {
       ...originalEnv,
       DATA_DIR: tempDir,

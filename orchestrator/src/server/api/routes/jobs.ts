@@ -228,7 +228,7 @@ function parseStatusFilter(statusFilter?: string): JobStatus[] | undefined {
 }
 
 function resolveRequestOrigin(req: Request): string | null {
-  const configuredBaseUrl = process.env.JOBOPS_PUBLIC_BASE_URL?.trim();
+  const configuredBaseUrl = process.env.CVCLANKER_PUBLIC_BASE_URL?.trim();
   if (configuredBaseUrl) {
     try {
       const parsed = new URL(configuredBaseUrl);

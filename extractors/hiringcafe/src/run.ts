@@ -19,7 +19,7 @@ const srcDir = dirname(fileURLToPath(import.meta.url));
 const EXTRACTOR_DIR = join(srcDir, "..");
 const DATASET_PATH = join(EXTRACTOR_DIR, "storage/datasets/default/jobs.json");
 const STORAGE_DATASET_DIR = join(EXTRACTOR_DIR, "storage/datasets/default");
-const JOBOPS_PROGRESS_PREFIX = "JOBOPS_PROGRESS ";
+const CVCLANKER_PROGRESS_PREFIX = "CVCLANKER_PROGRESS ";
 const require = createRequire(import.meta.url);
 const TSX_CLI_PATH = resolveTsxCliPath();
 
@@ -83,8 +83,8 @@ function canRunNpmCommand(): boolean {
 }
 
 function parseProgressLine(line: string): HiringCafeProgressEvent | null {
-  if (!line.startsWith(JOBOPS_PROGRESS_PREFIX)) return null;
-  const raw = line.slice(JOBOPS_PROGRESS_PREFIX.length).trim();
+  if (!line.startsWith(CVCLANKER_PROGRESS_PREFIX)) return null;
+  const raw = line.slice(CVCLANKER_PROGRESS_PREFIX.length).trim();
 
   let parsed: Record<string, unknown>;
   try {
@@ -219,7 +219,7 @@ export async function runHiringCafe(
       await new Promise<void>((resolve, reject) => {
         const extractorEnv = {
           ...process.env,
-          JOBOPS_EMIT_PROGRESS: "1",
+          CVCLANKER_EMIT_PROGRESS: "1",
           HIRING_CAFE_SEARCH_TERMS: JSON.stringify(searchTerms),
           HIRING_CAFE_COUNTRY: country,
           HIRING_CAFE_WORKPLACE_TYPES: JSON.stringify(

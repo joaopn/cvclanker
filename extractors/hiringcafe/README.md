@@ -13,7 +13,7 @@ Special thanks: initial implementation inspiration came from [umur957/hiring-caf
 - `HIRING_CAFE_LOCATION_QUERY` (optional city, e.g. `Leeds`)
 - `HIRING_CAFE_LOCATION_RADIUS_MILES` (default: `1` when city is set)
 - `HIRING_CAFE_OUTPUT_JSON` (default: `storage/datasets/default/jobs.json`)
-- `JOBOPS_EMIT_PROGRESS=1` to emit `JOBOPS_PROGRESS` events
+- `CVCLANKER_EMIT_PROGRESS=1` to emit `CVCLANKER_PROGRESS` events
 - `HIRING_CAFE_HEADLESS=false` to run headed
 
 ## Notes

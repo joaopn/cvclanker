@@ -134,7 +134,7 @@ describe("validateSnapshot", () => {
     expect(verdict.ok).toBe(false);
   });
 
-  it("rejects a valid SQLite db missing job-ops tables", () => {
+  it("rejects a valid SQLite db missing CV Clanker tables", () => {
     const stranger = join(workDir, "stranger.db");
     const d = new Database(stranger);
     d.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)");

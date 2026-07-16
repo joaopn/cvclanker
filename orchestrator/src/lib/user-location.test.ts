@@ -29,7 +29,7 @@ describe("user-location", () => {
 
   it("returns cached country without re-detecting", () => {
     localStorage.setItem(
-      "jobops.user-country-cache.v1",
+      "cvclanker.user-country-cache.v1",
       JSON.stringify({
         country: "united kingdom",
         detectedAt: Date.now(),
@@ -51,7 +51,7 @@ describe("user-location", () => {
       value: "en-US",
     });
     const result = getDetectedCountryKey();
-    const cached = localStorage.getItem("jobops.user-country-cache.v1");
+    const cached = localStorage.getItem("cvclanker.user-country-cache.v1");
 
     expect(result).toBe("united states");
     expect(cached).toContain("united states");

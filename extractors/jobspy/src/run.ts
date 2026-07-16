@@ -19,7 +19,7 @@ const srcDir = dirname(fileURLToPath(import.meta.url));
 const EXTRACTOR_DIR = join(srcDir, "..");
 const JOBSPY_SCRIPT = join(EXTRACTOR_DIR, "scrape_jobs.py");
 const OUTPUT_DIR = join(EXTRACTOR_DIR, "storage/imports");
-const JOBOPS_PROGRESS_PREFIX = "JOBOPS_PROGRESS ";
+const CVCLANKER_PROGRESS_PREFIX = "CVCLANKER_PROGRESS ";
 
 export type JobSpyProgressEvent =
   | {
@@ -39,8 +39,8 @@ export type JobSpyProgressEvent =
 export function parseJobSpyProgressLine(
   line: string,
 ): JobSpyProgressEvent | null {
-  if (!line.startsWith(JOBOPS_PROGRESS_PREFIX)) return null;
-  const raw = line.slice(JOBOPS_PROGRESS_PREFIX.length).trim();
+  if (!line.startsWith(CVCLANKER_PROGRESS_PREFIX)) return null;
+  const raw = line.slice(CVCLANKER_PROGRESS_PREFIX.length).trim();
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(raw) as Record<string, unknown>;

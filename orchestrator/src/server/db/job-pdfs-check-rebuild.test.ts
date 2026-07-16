@@ -35,7 +35,7 @@ describe.sequential("job_pdfs kind-constraint rebuild", () => {
   }
 
   beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "job-ops-job-pdfs-rebuild-"));
+    tempDir = await mkdtemp(join(tmpdir(), "cvclanker-job-pdfs-rebuild-"));
     process.env.DATA_DIR = tempDir;
     process.env.NODE_ENV = "test";
   });

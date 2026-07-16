@@ -20,7 +20,7 @@ describe.sequential("getJobListItems employer filter", () => {
 
   beforeEach(async () => {
     vi.resetModules();
-    tempDir = await mkdtemp(join(tmpdir(), "job-ops-jobs-company-"));
+    tempDir = await mkdtemp(join(tmpdir(), "cvclanker-jobs-company-"));
     process.env.DATA_DIR = tempDir;
     process.env.NODE_ENV = "test";
 

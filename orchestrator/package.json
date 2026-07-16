@@ -1,5 +1,5 @@
 {
-  "name": "job-ops-orchestrator",
+  "name": "cvclanker-orchestrator",
   "version": "0.3.2",
   "type": "module",
   "description": "Unified orchestrator for job application pipeline",

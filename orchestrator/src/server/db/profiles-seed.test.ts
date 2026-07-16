@@ -20,7 +20,7 @@ describe.sequential("profiles first-boot seed", () => {
   }
 
   beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "job-ops-profiles-seed-"));
+    tempDir = await mkdtemp(join(tmpdir(), "cvclanker-profiles-seed-"));
     process.env.DATA_DIR = tempDir;
     process.env.NODE_ENV = "test";
     await boot();

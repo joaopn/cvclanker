@@ -12,7 +12,7 @@ describe.sequential("profiles repository CRUD", () => {
 
   beforeEach(async () => {
     vi.resetModules();
-    tempDir = await mkdtemp(join(tmpdir(), "job-ops-profiles-repo-"));
+    tempDir = await mkdtemp(join(tmpdir(), "cvclanker-profiles-repo-"));
     process.env.DATA_DIR = tempDir;
     process.env.NODE_ENV = "test";
 

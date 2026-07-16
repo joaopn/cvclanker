@@ -23,7 +23,7 @@ describe.sequential("enabledSourceIds backfill", () => {
   }
 
   beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "job-ops-sources-backfill-"));
+    tempDir = await mkdtemp(join(tmpdir(), "cvclanker-sources-backfill-"));
     process.env.DATA_DIR = tempDir;
     process.env.NODE_ENV = "test";
     await boot();

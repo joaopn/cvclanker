@@ -22,7 +22,7 @@ describe.sequential("jobs repository duplicate groups", () => {
 
   beforeEach(async () => {
     vi.resetModules();
-    tempDir = await mkdtemp(join(tmpdir(), "job-ops-jobs-dups-"));
+    tempDir = await mkdtemp(join(tmpdir(), "cvclanker-jobs-dups-"));
     process.env.DATA_DIR = tempDir;
     process.env.NODE_ENV = "test";
 

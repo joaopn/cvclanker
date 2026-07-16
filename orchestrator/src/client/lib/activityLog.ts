@@ -13,8 +13,8 @@ export interface ActivityLogEntry {
   timestamp: number;
 }
 
-const STORAGE_KEY = "jobops.activityLog.v1";
-const READ_AT_STORAGE_KEY = "jobops.activityLog.readAt.v1";
+const STORAGE_KEY = "cvclanker.activityLog.v1";
+const READ_AT_STORAGE_KEY = "cvclanker.activityLog.readAt.v1";
 const RING_CAP = 100;
 
 type Subscriber = () => void;

@@ -34,7 +34,7 @@ export const BACKUP_FORMAT_VERSION = 2;
 
 const VERSION_SETTING_KEY = "__backup_format_version";
 
-/** Tables a genuine job-ops snapshot must contain (guards against arbitrary
+/** Tables a genuine CV Clanker snapshot must contain (guards against arbitrary
  * SQLite files being uploaded to the restore endpoint). */
 const REQUIRED_TABLES = [
   "jobs",
@@ -68,7 +68,7 @@ export function exportSnapshot(opts: {
   sourcePath?: string;
 }): ExportResult {
   const source = opts.sourcePath ?? liveDbPath();
-  const dir = mkdtempSync(join(tmpdir(), "jobops-export-"));
+  const dir = mkdtempSync(join(tmpdir(), "cvclanker-export-"));
   const out = join(dir, "snapshot.db");
 
   // VACUUM INTO reads the source and writes a compacted, consistent copy to
@@ -126,7 +126,7 @@ export type ValidateResult =
   | { ok: false; reason: string };
 
 /**
- * Validate an uploaded file is a restorable job-ops snapshot: opens cleanly,
+ * Validate an uploaded file is a restorable CV Clanker snapshot: opens cleanly,
  * passes `integrity_check`, contains the core tables, and is not stamped
  * with a newer format version than this binary understands.
  */
@@ -158,7 +158,7 @@ export function validateSnapshot(path: string): ValidateResult {
     if (missing.length > 0) {
       return {
         ok: false,
-        reason: `Not a job-ops backup — missing tables: ${missing.join(", ")}`,
+        reason: `Not a CV Clanker backup — missing tables: ${missing.join(", ")}`,
       };
     }
 

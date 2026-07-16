@@ -123,7 +123,7 @@ export async function startServer(options?: {
   vi.unstubAllGlobals();
   restoreNativeFetch();
   vi.resetModules();
-  const tempDir = await mkdtemp(join(tmpdir(), "job-ops-api-test-"));
+  const tempDir = await mkdtemp(join(tmpdir(), "cvclanker-api-test-"));
   const envOverrides = options?.env ?? {};
   const nextEnv = { ...originalEnv };
   for (const key of isolatedEnvKeys) {

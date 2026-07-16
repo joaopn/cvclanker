@@ -47,7 +47,7 @@ describe.sequential("prompts seed", () => {
   }
 
   beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "job-ops-prompts-seed-"));
+    tempDir = await mkdtemp(join(tmpdir(), "cvclanker-prompts-seed-"));
     promptsDir = join(tempDir, "prompts");
     await mkdir(join(promptsDir, "fragments"), { recursive: true });
     process.env.DATA_DIR = tempDir;

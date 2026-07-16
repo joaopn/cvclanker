@@ -12,7 +12,7 @@ describe.sequential("jobs repository job notes", () => {
 
   beforeEach(async () => {
     vi.resetModules();
-    tempDir = await mkdtemp(join(tmpdir(), "job-ops-job-notes-repo-"));
+    tempDir = await mkdtemp(join(tmpdir(), "cvclanker-job-notes-repo-"));
     process.env.DATA_DIR = tempDir;
     process.env.NODE_ENV = "test";
 

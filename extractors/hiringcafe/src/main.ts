@@ -3,11 +3,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { JobLocationEvidence } from "@shared/types/jobs";
 import { launchOptions } from "camoufox-js";
-import { parseSearchTerms } from "job-ops-shared/utils/search-terms";
+import { parseSearchTerms } from "cvclanker-shared/utils/search-terms";
 import {
   toNumberOrNull,
   toStringOrNull,
-} from "job-ops-shared/utils/type-conversion";
+} from "cvclanker-shared/utils/type-conversion";
 import { type BrowserContext, firefox, type Page } from "playwright";
 import {
   normalizeCountryKey,
@@ -17,7 +17,7 @@ import { createDefaultSearchState } from "./default-search-state.js";
 import { asRecord, BASE_URL, fetchJobDescription } from "./detail.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const JOBOPS_PROGRESS_PREFIX = "JOBOPS_PROGRESS ";
+const CVCLANKER_PROGRESS_PREFIX = "CVCLANKER_PROGRESS ";
 const DEFAULT_MAX_JOBS_PER_TERM = 200;
 const DEFAULT_SEARCH_TERM = "web developer";
 const DEFAULT_DATE_FETCHED_PAST_N_DAYS = 30;
@@ -82,8 +82,8 @@ interface NominatimResult {
 type HiringCafeWorkplaceType = "Remote" | "Hybrid" | "Onsite";
 
 function emitProgress(payload: Record<string, unknown>): void {
-  if (process.env.JOBOPS_EMIT_PROGRESS !== "1") return;
-  console.log(`${JOBOPS_PROGRESS_PREFIX}${JSON.stringify(payload)}`);
+  if (process.env.CVCLANKER_EMIT_PROGRESS !== "1") return;
+  console.log(`${CVCLANKER_PROGRESS_PREFIX}${JSON.stringify(payload)}`);
 }
 
 function parsePositiveInt(input: string | undefined, fallback: number): number {
@@ -298,7 +298,7 @@ async function resolveCityLocationContext(args: {
     const response = await fetch(url, {
       headers: {
         Accept: "application/json",
-        "User-Agent": "job-ops-hiringcafe-extractor/1.0",
+        "User-Agent": "cvclanker-hiringcafe-extractor/1.0",
       },
       signal: AbortSignal.timeout(8_000),
     });

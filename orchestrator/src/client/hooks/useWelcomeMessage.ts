@@ -21,10 +21,10 @@ export function useWelcomeMessage(): string {
 
     let isFirstDay = true;
     try {
-      let firstSeenDate = localStorage.getItem("jobOps_firstWelcomeDate");
+      let firstSeenDate = localStorage.getItem("cvclanker_firstWelcomeDate");
       if (!firstSeenDate) {
         firstSeenDate = today;
-        localStorage.setItem("jobOps_firstWelcomeDate", today);
+        localStorage.setItem("cvclanker_firstWelcomeDate", today);
       }
       isFirstDay = firstSeenDate === today;
     } catch (_e) {

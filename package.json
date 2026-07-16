@@ -1,5 +1,5 @@
 {
-  "name": "job-ops",
+  "name": "cv-clanker",
   "private": true,
   "workspaces": [
     "orchestrator",

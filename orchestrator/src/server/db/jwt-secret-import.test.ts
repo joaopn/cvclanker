@@ -22,7 +22,7 @@ describe.sequential("legacy jwt-secret file import", () => {
   }
 
   beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "job-ops-jwt-import-"));
+    tempDir = await mkdtemp(join(tmpdir(), "cvclanker-jwt-import-"));
     process.env.DATA_DIR = tempDir;
     process.env.NODE_ENV = "test";
   });

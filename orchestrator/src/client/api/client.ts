@@ -109,7 +109,7 @@ export type CodexAuthStatusResponse = {
   flowMessage: string | null;
 };
 
-const SESSION_AUTH_TOKEN_KEY = "jobops.authToken";
+const SESSION_AUTH_TOKEN_KEY = "cvclanker.authToken";
 
 function loadStoredAuthToken(): string | null {
   try {
@@ -1616,7 +1616,7 @@ export async function exportUserProfile(opts: {
   const blob = await response.blob();
   const disposition = response.headers.get("Content-Disposition") ?? "";
   const filename =
-    disposition.match(/filename="?([^"]+)"?/)?.[1] ?? "jobops-profile.db";
+    disposition.match(/filename="?([^"]+)"?/)?.[1] ?? "cvclanker-profile.db";
 
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");

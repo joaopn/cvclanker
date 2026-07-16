@@ -56,7 +56,7 @@ describe.sequential("pipeline cancellation", () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
-    tempDir = await mkdtemp(join(tmpdir(), "job-ops-pipeline-cancel-"));
+    tempDir = await mkdtemp(join(tmpdir(), "cvclanker-pipeline-cancel-"));
     process.env.DATA_DIR = tempDir;
     process.env.NODE_ENV = "test";
 

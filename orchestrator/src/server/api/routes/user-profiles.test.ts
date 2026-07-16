@@ -158,7 +158,7 @@ describe.sequential("User profiles API routes", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get("content-disposition")).toMatch(
-      /jobops-default-\d{4}-\d{2}-\d{2}\.db/,
+      /cvclanker-default-\d{4}-\d{2}-\d{2}\.db/,
     );
     const bytes = Buffer.from(await res.arrayBuffer());
     expect(bytes.toString("utf8", 0, 15)).toBe("SQLite format 3");
@@ -171,7 +171,7 @@ describe.sequential("User profiles API routes", () => {
     const res = await fetch(`${baseUrl}/api/user-profiles/${id}/export`);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-disposition")).toMatch(
-      /jobops-stored-copy-/,
+      /cvclanker-stored-copy-/,
     );
     await res.arrayBuffer();
 
@@ -332,7 +332,7 @@ describe.sequential("User profiles API routes", () => {
     expect(again.status).toBe(404);
   });
 
-  it("rejects renaming a stored file that is not a job-ops database", async () => {
+  it("rejects renaming a stored file that is not a CV Clanker database", async () => {
     const id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
     writeFileSync(join(storeDir(tempDir), `${id}.db`), "garbage");
 

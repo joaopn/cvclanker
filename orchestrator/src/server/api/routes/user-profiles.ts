@@ -78,7 +78,7 @@ function sendSnapshotDownload(
   }
 
   const stamp = new Date().toISOString().slice(0, 10);
-  const filename = `jobops-${slugifyName(opts.name)}-${stamp}.db`;
+  const filename = `cvclanker-${slugifyName(opts.name)}-${stamp}.db`;
   logger.info("user profile exported", {
     includeSecrets: opts.includeSecrets,
     stored: Boolean(opts.sourcePath),
@@ -314,7 +314,7 @@ userProfilesRouter.patch("/:id", (req: Request, res: Response) => {
     } catch {
       return fail(
         res,
-        unprocessableEntity("Profile file is not a valid job-ops database."),
+        unprocessableEntity("Profile file is not a valid CV Clanker database."),
       );
     }
     ok(res, { id, name });

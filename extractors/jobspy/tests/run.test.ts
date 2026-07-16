@@ -10,7 +10,7 @@ import {
 describe("parseJobSpyProgressLine", () => {
   it("parses term_start progress lines", () => {
     const event = parseJobSpyProgressLine(
-      'JOBOPS_PROGRESS {"event":"term_start","termIndex":1,"termTotal":3,"searchTerm":"engineer"}',
+      'CVCLANKER_PROGRESS {"event":"term_start","termIndex":1,"termTotal":3,"searchTerm":"engineer"}',
     );
 
     expect(event).toEqual({
@@ -23,7 +23,7 @@ describe("parseJobSpyProgressLine", () => {
 
   it("parses term_complete progress lines", () => {
     const event = parseJobSpyProgressLine(
-      'JOBOPS_PROGRESS {"event":"term_complete","termIndex":2,"termTotal":3,"searchTerm":"frontend","jobsFoundTerm":17}',
+      'CVCLANKER_PROGRESS {"event":"term_complete","termIndex":2,"termTotal":3,"searchTerm":"frontend","jobsFoundTerm":17}',
     );
 
     expect(event).toEqual({
@@ -36,8 +36,8 @@ describe("parseJobSpyProgressLine", () => {
   });
 
   it("returns null for malformed payloads", () => {
-    expect(parseJobSpyProgressLine("JOBOPS_PROGRESS {bad json")).toBeNull();
-    expect(parseJobSpyProgressLine("JOBOPS_PROGRESS {}")).toBeNull();
+    expect(parseJobSpyProgressLine("CVCLANKER_PROGRESS {bad json")).toBeNull();
+    expect(parseJobSpyProgressLine("CVCLANKER_PROGRESS {}")).toBeNull();
   });
 
   it("returns null for non-progress lines", () => {

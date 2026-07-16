@@ -14,7 +14,7 @@ describe.sequential("profiles service", () => {
 
   beforeEach(async () => {
     vi.resetModules();
-    tempDir = await mkdtemp(join(tmpdir(), "job-ops-profiles-svc-"));
+    tempDir = await mkdtemp(join(tmpdir(), "cvclanker-profiles-svc-"));
     process.env.DATA_DIR = tempDir;
     process.env.NODE_ENV = "test";
 

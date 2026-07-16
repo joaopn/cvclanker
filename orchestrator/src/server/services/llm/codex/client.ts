@@ -162,7 +162,7 @@ function resolveClientVersion(): string {
   }
 
   const envVersion =
-    toNonEmptyString(process.env.JOBOPS_VERSION) ||
+    toNonEmptyString(process.env.CVCLANKER_VERSION) ||
     toNonEmptyString(process.env.npm_package_version);
   if (envVersion) {
     cachedClientVersion = envVersion;
@@ -193,7 +193,7 @@ function formatPrompt(args: {
     .join("\n\n");
 
   return [
-    "You are generating a structured JSON response for JobOps.",
+    "You are generating a structured JSON response for CV Clanker.",
     "Do not run commands or tools. Answer directly.",
     "Return only valid JSON with no markdown fences or extra text.",
     "The response must follow this schema exactly:",
@@ -323,8 +323,8 @@ class CodexAppServerSession {
         "initialize",
         {
           clientInfo: {
-            name: "job-ops",
-            title: "JobOps",
+            name: "cvclanker",
+            title: "CV Clanker",
             version: resolveClientVersion(),
           },
           capabilities: {

@@ -3,8 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const CLICK_DRAG_THRESHOLD_PX = 3;
 
-export const LIST_PANEL_STORAGE_WIDTH_KEY = "jobops:listPanel:width";
-export const LIST_PANEL_STORAGE_VISIBLE_KEY = "jobops:listPanel:visible";
+export const LIST_PANEL_STORAGE_WIDTH_KEY = "cvclanker:listPanel:width";
+export const LIST_PANEL_STORAGE_VISIBLE_KEY = "cvclanker:listPanel:visible";
 export const LIST_PANEL_MIN_WIDTH = 280;
 export const LIST_PANEL_MAX_WIDTH = 720;
 export const LIST_PANEL_DEFAULT_WIDTH = 400;

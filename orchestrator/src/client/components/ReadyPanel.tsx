@@ -59,12 +59,12 @@ import { ReadySummaryAccordion } from "./ReadySummaryAccordion";
 import { FitIndicator } from "./ScoreIndicator";
 import { buildReadyPanelGoogleDorks } from "./ready-panel-google-dorks";
 
-const TAILOR_PANEL_STORAGE_KEY = "jobops:tailorPanel:rightWidth";
+const TAILOR_PANEL_STORAGE_KEY = "cvclanker:tailorPanel:rightWidth";
 const TAILOR_PANEL_DEFAULT_WIDTH = 380;
 const TAILOR_PANEL_MIN_WIDTH = 200;
 const TAILOR_PANEL_MAX_WIDTH = 4000;
 
-const READY_TAB_STORAGE_KEY = "jobops:ready-tab";
+const READY_TAB_STORAGE_KEY = "cvclanker:ready-tab";
 type ReadyTab = "tailor-cv" | "tailor-cover" | "brief" | "details";
 
 function readInitialReadyTab(): ReadyTab {

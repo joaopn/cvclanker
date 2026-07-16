@@ -14,7 +14,7 @@ function readPackageVersion(): string {
       try {
         const raw = readFileSync(candidate, "utf8");
         const parsed = JSON.parse(raw) as { name?: string; version?: string };
-        if (parsed.name === "job-ops-orchestrator" && parsed.version) {
+        if (parsed.name === "cvclanker-orchestrator" && parsed.version) {
           return parsed.version;
         }
       } catch {

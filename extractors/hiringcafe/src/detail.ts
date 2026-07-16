@@ -1,4 +1,4 @@
-import { toStringOrNull } from "job-ops-shared/utils/type-conversion";
+import { toStringOrNull } from "cvclanker-shared/utils/type-conversion";
 import type { APIRequestContext } from "playwright";
 
 export const BASE_URL = "https://hiring.cafe";

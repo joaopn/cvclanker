@@ -168,8 +168,8 @@ describe("LlmService", () => {
     const headers = fetchCall[1]?.headers as Record<string, string>;
 
     expect(headers.Authorization).toContain("Bearer");
-    expect(headers["HTTP-Referer"]).toBe("JobOps");
-    expect(headers["X-Title"]).toBe("JobOpsOrchestrator");
+    expect(headers["HTTP-Referer"]).toBe("CV Clanker");
+    expect(headers["X-Title"]).toBe("CV Clanker Orchestrator");
   });
 
   it("retries on parsing failures when maxRetries is set", async () => {

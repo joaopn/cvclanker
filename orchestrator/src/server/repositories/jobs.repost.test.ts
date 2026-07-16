@@ -12,7 +12,7 @@ describe.sequential("jobs repository repost detection", () => {
 
   beforeEach(async () => {
     vi.resetModules();
-    tempDir = await mkdtemp(join(tmpdir(), "job-ops-jobs-repost-"));
+    tempDir = await mkdtemp(join(tmpdir(), "cvclanker-jobs-repost-"));
     process.env.DATA_DIR = tempDir;
     process.env.NODE_ENV = "test";
 

@@ -28,7 +28,7 @@ describe.sequential("Prompts API routes", () => {
   let promptsDir: string;
 
   beforeEach(async () => {
-    promptsDir = await mkdtemp(join(tmpdir(), "job-ops-prompts-fixture-"));
+    promptsDir = await mkdtemp(join(tmpdir(), "cvclanker-prompts-fixture-"));
     await mkdir(join(promptsDir, "fragments"), { recursive: true });
     await writeFile(join(promptsDir, "job-score.yaml"), SCORE_PROMPT, "utf8");
     await writeFile(

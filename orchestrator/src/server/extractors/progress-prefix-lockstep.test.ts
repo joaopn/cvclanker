@@ -27,7 +27,7 @@ import { describe, expect, it } from "vitest";
 // into the tools image, where all four still agree — a mutual-equality-only test
 // would pass vacuously. Pinning the expected value makes a forgotten mount go
 // RED once the rename lands.
-const EXPECTED_PROGRESS_PREFIX = "JOBOPS_PROGRESS ";
+const EXPECTED_PROGRESS_PREFIX = "CVCLANKER_PROGRESS ";
 
 const PREFIX_SITES = [
   "extractors/jobspy/scrape_jobs.py",

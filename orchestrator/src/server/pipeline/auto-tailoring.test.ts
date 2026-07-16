@@ -39,7 +39,7 @@ describe.sequential("pipeline auto-tailoring gate", () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
-    tempDir = await mkdtemp(join(tmpdir(), "job-ops-pipeline-tailor-"));
+    tempDir = await mkdtemp(join(tmpdir(), "cvclanker-pipeline-tailor-"));
     process.env.DATA_DIR = tempDir;
     process.env.NODE_ENV = "test";
 

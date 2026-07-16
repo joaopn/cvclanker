@@ -3,7 +3,7 @@ import {
   SUPPORTED_COUNTRY_KEYS,
 } from "@shared/location-support.js";
 
-const STORAGE_KEY = "jobops.user-country-cache.v1";
+const STORAGE_KEY = "cvclanker.user-country-cache.v1";
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 interface CachedUserCountry {

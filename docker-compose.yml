@@ -1,14 +1,14 @@
 # =============================================================================
-# Job Ops - Docker Compose Configuration
+# CV Clanker - Docker Compose Configuration
 # =============================================================================
 
 services:
-  job-ops:
+  cvclanker:
     build:
       context: .
       dockerfile: Dockerfile
-    image: job-ops:local
-    container_name: job-ops
+    image: cvclanker:local
+    container_name: cvclanker
     ports:
       - "3005:3001"
     volumes:
