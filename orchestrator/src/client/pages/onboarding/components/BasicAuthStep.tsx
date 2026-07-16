@@ -87,7 +87,7 @@ export const BasicAuthStep: React.FC<{
             onChange={(event) =>
               onBasicAuthUserChange(event.currentTarget.value)
             }
-            placeholder="jobops-admin"
+            placeholder="cvclanker-admin"
             disabled={isBusy}
           />
         </div>

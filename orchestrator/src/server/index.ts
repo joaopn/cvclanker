@@ -69,7 +69,7 @@ async function startServer() {
     console.log(`
 ╔═══════════════════════════════════════════════════════════╗
 ║                                                           ║
-║   🚀 Job Ops Orchestrator                                 ║
+║   🚀 CV Clanker                                           ║
 ║                                                           ║
 ║   Open in browser: ${accessUrl}
 ║   (container listening on :${PORT})

@@ -17,7 +17,7 @@ export const STEP_COPY: Record<
 > = {
   llm: {
     eyebrow: "Step 1",
-    title: "Choose the LLM connection Job Ops should use.",
+    title: "Choose the LLM connection CV Clanker should use.",
     description:
       "Pick the provider, confirm the endpoint, and validate the credentials this workspace will use for scoring and tailoring.",
   },
@@ -25,7 +25,7 @@ export const STEP_COPY: Record<
     eyebrow: "Step 2",
     title: "Pick the format your CV is written in.",
     description:
-      "Job Ops tailors your CV in the format you already work in — LaTeX or Word. This choice is fixed for this user profile: everything downstream (uploads, tailoring, the files you download) follows it. To work in the other format later, create a new user profile.",
+      "CV Clanker tailors your CV in the format you already work in — LaTeX or Word. This choice is fixed for this user profile: everything downstream (uploads, tailoring, the files you download) follows it. To work in the other format later, create a new user profile.",
   },
   cv: {
     eyebrow: "Step 3",
@@ -35,7 +35,7 @@ export const STEP_COPY: Record<
   },
   searchprofile: {
     eyebrow: "Step 4",
-    title: "Set up what Job Ops searches for.",
+    title: "Set up what CV Clanker searches for.",
     description:
       "The job titles to search for, and where. Titles are drafted from your CV — edit them until they describe the roles you actually want next.",
   },
@@ -49,6 +49,6 @@ export const STEP_COPY: Record<
     eyebrow: "Step 6",
     title: "Secure your workspace",
     description:
-      "Add a username and password so only signed-in users can access protected parts of Job Ops. You can always set this up later in Settings.",
+      "Add a username and password so only signed-in users can access protected parts of CV Clanker. You can always set this up later in Settings.",
   },
 };

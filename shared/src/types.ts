@@ -1,5 +1,5 @@
 /**
- * Shared types for the job-ops orchestrator.
+ * Shared types for the CV Clanker orchestrator.
  *
  * Types are organized by domain in the `./types/` subdirectory. With
  * `moduleResolution: "bundler"` tsc prefers this file over the directory

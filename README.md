@@ -1,4 +1,4 @@
-# job-ops-tex
+# CV Clanker
 
 Self-hosted job search workspace built around a LaTeX-native CV pipeline,
 with Word (`.docx`) as an alternative CV substrate. Scrapes job boards,
@@ -103,7 +103,7 @@ scoring toggle, tailoring opt-in, prompt overrides).
 
 ```bash
 # Tail logs
-docker compose logs -f --tail=200 job-ops
+docker compose logs -f --tail=200 cvclanker
 
 # Stop
 docker compose down

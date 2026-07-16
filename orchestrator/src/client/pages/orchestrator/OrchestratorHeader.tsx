@@ -132,10 +132,12 @@ export const OrchestratorHeader: React.FC<OrchestratorHeaderProps> = ({
 
   return (
     <PageHeader
-      icon={() => (
-        <img src="/favicon.png" alt="" className="size-8 rounded-lg" />
-      )}
-      title="Job Ops"
+      brand={
+        <span className="whitespace-nowrap text-lg font-semibold tracking-tight">
+          CV Clanker
+        </span>
+      }
+      title="CV Clanker"
       subtitle="Orchestrator"
       titleSlot={<ViewToggle />}
       navOpen={navOpen}

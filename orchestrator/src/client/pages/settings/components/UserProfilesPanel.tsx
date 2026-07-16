@@ -364,7 +364,7 @@ export const UserProfilesPanel: React.FC<UserProfilesPanelProps> = ({
                     <p className="text-sm text-muted-foreground">
                       {profile.invalid
                         ? (profile.invalidReason ??
-                          "Not a readable job-ops database.")
+                          "Not a readable CV Clanker database.")
                         : formatStatsLine(profile.stats, profile.sizeBytes)}
                     </p>
                   </div>

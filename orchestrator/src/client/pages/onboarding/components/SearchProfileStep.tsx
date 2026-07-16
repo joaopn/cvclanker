@@ -73,7 +73,7 @@ export const SearchProfileStep: React.FC<{
         <AlertDescription>
           {searchTermsSource === "ai"
             ? "These titles were generated from your current resume. Adjust anything that feels off before saving."
-            : "Job Ops used a simpler resume-based fallback list. You can edit or regenerate it before saving."}
+            : "CV Clanker used a simpler resume-based fallback list. You can edit or regenerate it before saving."}
         </AlertDescription>
       </Alert>
     ) : null}

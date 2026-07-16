@@ -70,7 +70,7 @@ export function SignInPage() {
           <CardHeader className="space-y-2">
             <CardTitle className="text-2xl tracking-tight">Sign in</CardTitle>
             <CardDescription>
-              Enter the application credentials configured for this JobOps
+              Enter the application credentials configured for this CV Clanker
               instance.
             </CardDescription>
           </CardHeader>

@@ -242,7 +242,7 @@ export const CodexAuthPanel: React.FC<CodexAuthPanelProps> = ({ isBusy }) => {
               3
             </span>
           )}
-          <span>Approve and return to JobOps</span>
+          <span>Approve and return to CV Clanker</span>
         </div>
       </div>
 

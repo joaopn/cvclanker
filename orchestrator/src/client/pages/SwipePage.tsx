@@ -76,10 +76,12 @@ export const SwipePage: React.FC = () => {
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden">
       <PageHeader
-        icon={() => (
-          <img src="/favicon.png" alt="" className="size-8 rounded-lg" />
-        )}
-        title="Job Ops"
+        brand={
+          <span className="whitespace-nowrap text-lg font-semibold tracking-tight">
+            CV Clanker
+          </span>
+        }
+        title="CV Clanker"
         subtitle="Swipe"
         titleSlot={<ViewToggle />}
         actions={actions}

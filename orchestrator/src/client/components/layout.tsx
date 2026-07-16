@@ -29,7 +29,13 @@ import { UserProfileSwitcher } from "./UserProfileSwitcher";
 // ============================================================================
 
 interface PageHeaderProps {
-  icon: LucideIcon | React.FC<{ className?: string }>;
+  /** Boxed section glyph. Omit when `brand` is provided. */
+  icon?: LucideIcon | React.FC<{ className?: string }>;
+  /**
+   * Brand slot rendered in place of the boxed icon (e.g. the CV Clanker text
+   * wordmark). When set, the icon box is not rendered.
+   */
+  brand?: React.ReactNode;
   title: string;
   subtitle: string;
   /**
@@ -60,6 +66,7 @@ interface PageHeaderProps {
 
 export const PageHeader: React.FC<PageHeaderProps> = ({
   icon: Icon,
+  brand,
   title,
   subtitle,
   titleSlot,
@@ -114,7 +121,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
             </SheetTrigger>
             <SheetContent side="left" className="w-64 flex flex-col">
               <SheetHeader>
-                <SheetTitle>JobOps</SheetTitle>
+                <SheetTitle>CV Clanker</SheetTitle>
                 <UserProfileSwitcher
                   activateProfile={activateProfile}
                   isPending={isPending}
@@ -164,9 +171,13 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
             </SheetContent>
           </Sheet>
 
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-muted/30">
-            <Icon className="h-4 w-4 text-muted-foreground" />
-          </div>
+          {brand ? (
+            brand
+          ) : Icon ? (
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-muted/30">
+              <Icon className="h-4 w-4 text-muted-foreground" />
+            </div>
+          ) : null}
           {titleSlot ?? (
             <div className="min-w-0 leading-tight">
               <div className="text-sm font-semibold tracking-tight">
