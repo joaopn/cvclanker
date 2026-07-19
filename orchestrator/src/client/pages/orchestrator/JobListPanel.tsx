@@ -367,7 +367,7 @@ export const JobListPanel = forwardRef<VirtualListHandle, JobListPanelProps>(
                         className={cn(
                           "absolute inset-0 m-0 border-border/80 cursor-pointer text-muted-foreground/70 transition-opacity duration-150 ease-out",
                           "data-[state=checked]:border-primary data-[state=checked]:bg-primary/20 data-[state=checked]:text-primary",
-                          "data-[state=checked]:shadow-[0_0_0_1px_hsl(var(--primary)/0.35)]",
+                          "data-[state=checked]:shadow-[0_0_0_1px_color-mix(in_oklab,var(--primary)_35%,transparent)]",
                           isChecked || isSelected
                             ? "opacity-100 pointer-events-auto"
                             : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto",
