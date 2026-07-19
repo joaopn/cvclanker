@@ -4,7 +4,15 @@ import type { UpdateSettingsInput } from "@shared/settings-schema.js";
 import type React from "react";
 import { Controller, useFormContext } from "react-hook-form";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
+import { type ThemePreference, useTheme } from "@/lib/theme";
+
+const THEME_OPTIONS: Array<{ value: ThemePreference; label: string }> = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+];
 
 type DisplaySettingsSectionProps = {
   values: DisplayValues;
@@ -21,6 +29,7 @@ export const DisplaySettingsSection: React.FC<DisplaySettingsSectionProps> = ({
 }) => {
   const { showSponsorInfo, renderMarkdownInJobDescriptions } = values;
   const { control } = useFormContext<UpdateSettingsInput>();
+  const { preference, setPreference } = useTheme();
 
   return (
     <SettingsSectionFrame
@@ -29,6 +38,37 @@ export const DisplaySettingsSection: React.FC<DisplaySettingsSectionProps> = ({
       value="display"
     >
       <div className="space-y-4">
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium leading-none">Theme</span>
+          <p className="text-xs text-muted-foreground">
+            How CV Clanker looks in this browser. System follows your OS
+            setting. The choice is stored on this device, not in your profile.
+          </p>
+          <RadioGroup
+            aria-label="Theme"
+            value={preference}
+            onValueChange={(value) => setPreference(value as ThemePreference)}
+            className="flex flex-wrap gap-x-6 gap-y-2 pt-1"
+          >
+            {THEME_OPTIONS.map((option) => (
+              <div key={option.value} className="flex items-center space-x-2">
+                <RadioGroupItem
+                  value={option.value}
+                  id={`theme-${option.value}`}
+                />
+                <label
+                  htmlFor={`theme-${option.value}`}
+                  className="text-sm font-medium leading-none cursor-pointer"
+                >
+                  {option.label}
+                </label>
+              </div>
+            ))}
+          </RadioGroup>
+        </div>
+
+        <Separator />
+
         <div className="flex items-start space-x-3">
           <Controller
             name="showSponsorInfo"
