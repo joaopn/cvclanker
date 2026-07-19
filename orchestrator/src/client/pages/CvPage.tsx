@@ -1,6 +1,9 @@
 import * as api from "@client/api";
 import { ApiClientError } from "@client/api";
-import { CompileLogViewer, AttemptLogViewer } from "@client/components/cv/CompileLogViewer";
+import {
+  CompileLogViewer,
+  AttemptLogViewer,
+} from "@client/components/cv/CompileLogViewer";
 import { PageHeader } from "@client/components/layout";
 import { ActivityLogButton } from "@client/components/ActivityLogButton";
 import { LlmStatusButton } from "@client/components/LlmStatusButton";
@@ -169,13 +172,13 @@ function UploadCard({ onUploaded }: { onUploaded: () => Promise<void> }) {
   const acceptedExtensions = copy.acceptedExtensions;
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [errorDetails, setErrorDetails] =
-    useState<UploadFailureDetails | null>(null);
-  const [latestAttempts, setLatestAttempts] =
-    useState<CvUploadPipelineAttempt[] | null>(null);
-  const [extractionPrompt, setExtractionPrompt] = useState<string | null>(
+  const [errorDetails, setErrorDetails] = useState<UploadFailureDetails | null>(
     null,
   );
+  const [latestAttempts, setLatestAttempts] = useState<
+    CvUploadPipelineAttempt[] | null
+  >(null);
+  const [extractionPrompt, setExtractionPrompt] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -400,8 +403,9 @@ function CvEditor({ cv }: { cv: CvDocument }) {
   const copy = getCvFormatCopy(cvSourceFormat);
   const [name, setName] = useState(cv.name);
   const [personalBrief, setPersonalBrief] = useState(cv.personalBrief);
-  const [reExtractAttempts, setReExtractAttempts] =
-    useState<CvUploadPipelineAttempt[] | null>(null);
+  const [reExtractAttempts, setReExtractAttempts] = useState<
+    CvUploadPipelineAttempt[] | null
+  >(null);
   const [reExtractError, setReExtractError] = useState<string | null>(null);
   const [reExtractDetails, setReExtractDetails] =
     useState<UploadFailureDetails | null>(null);
@@ -414,8 +418,7 @@ function CvEditor({ cv }: { cv: CvDocument }) {
   // Initial textarea value: stored prompt if user has customized,
   // otherwise the server default (so the user always sees the actual
   // prompt that will run).
-  const initialPrompt =
-    cv.extractionPrompt || defaultPromptQuery.data || "";
+  const initialPrompt = cv.extractionPrompt || defaultPromptQuery.data || "";
   const [extractionPrompt, setExtractionPrompt] = useState(initialPrompt);
 
   useEffect(() => {
@@ -437,7 +440,8 @@ function CvEditor({ cv }: { cv: CvDocument }) {
   // textarea; if it equals the default we still record it so the prompt
   // is locked at this snapshot — explicit Reset clears back to "use
   // current server default".
-  const promptDirty = extractionPrompt !== (cv.extractionPrompt || defaultPromptQuery.data || "");
+  const promptDirty =
+    extractionPrompt !== (cv.extractionPrompt || defaultPromptQuery.data || "");
 
   const invalidateAll = useCallback(async () => {
     await queryClient.invalidateQueries({
@@ -476,8 +480,7 @@ function CvEditor({ cv }: { cv: CvDocument }) {
       await invalidateAll();
     },
     onError: (err: unknown) => {
-      const message =
-        err instanceof Error ? err.message : "Re-extract failed";
+      const message = err instanceof Error ? err.message : "Re-extract failed";
       setReExtractError(message);
       setReExtractDetails(extractFailureDetails(err));
       setReExtractAttempts(null);
@@ -498,8 +501,7 @@ function CvEditor({ cv }: { cv: CvDocument }) {
     reExtractMutation.isPending || pendingReExtractsFromCache.length > 0;
 
   const savePromptMutation = useMutation({
-    mutationFn: async () =>
-      api.updateCvDocument(cv.id, { extractionPrompt }),
+    mutationFn: async () => api.updateCvDocument(cv.id, { extractionPrompt }),
     onSuccess: async () => {
       toast.success("Prompt saved");
       await invalidateAll();
@@ -510,7 +512,8 @@ function CvEditor({ cv }: { cv: CvDocument }) {
   });
 
   const resetPromptMutation = useMutation({
-    mutationFn: async () => api.updateCvDocument(cv.id, { extractionPrompt: "" }),
+    mutationFn: async () =>
+      api.updateCvDocument(cv.id, { extractionPrompt: "" }),
     onSuccess: async () => {
       toast.success("Reset to server default");
       await invalidateAll();
@@ -689,12 +692,12 @@ function CvEditor({ cv }: { cv: CvDocument }) {
         <CardHeader>
           <CardTitle>Extraction prompt</CardTitle>
           <CardDescription>
-            The full LLM system prompt used to extract this CV — pre-filled
-            with the server default, edit any of it. The user message
-            (asset list, source, retry context) is server-controlled. Save
-            persists; Re-extract saves and re-runs the pipeline. Reset to
-            default clears your override so future re-extracts use whatever
-            the server's current default is.
+            The full LLM system prompt used to extract this CV — pre-filled with
+            the server default, edit any of it. The user message (asset list,
+            source, retry context) is server-controlled. Save persists;
+            Re-extract saves and re-runs the pipeline. Reset to default clears
+            your override so future re-extracts use whatever the server's
+            current default is.
             {cv.extractionPrompt ? (
               <span className="ml-1 text-status-warn-text">
                 (using a custom override; reset to track server updates.)
@@ -748,9 +751,7 @@ function CvEditor({ cv }: { cv: CvDocument }) {
               size="sm"
               onClick={() => savePromptMutation.mutate()}
               disabled={
-                !promptDirty ||
-                savePromptMutation.isPending ||
-                isReExtracting
+                !promptDirty || savePromptMutation.isPending || isReExtracting
               }
             >
               {savePromptMutation.isPending ? (
@@ -783,11 +784,11 @@ function CvEditor({ cv }: { cv: CvDocument }) {
             <CardTitle>Personal brief</CardTitle>
             <CardDescription>
               Long-form, first-person background that powers per-job tailoring.
-              Paste in extra context the CV doesn't carry — side projects,
-              tools you've used in passing, transcripts of long-running chats.
-              The brief is the source of truth for tailoring; the CV's
-              templated tex is the render target. Re-extract preserves what
-              you've written here.
+              Paste in extra context the CV doesn't carry — side projects, tools
+              you've used in passing, transcripts of long-running chats. The
+              brief is the source of truth for tailoring; the CV's templated tex
+              is the render target. Re-extract preserves what you've written
+              here.
             </CardDescription>
           </div>
           <AlertDialog>
@@ -811,8 +812,8 @@ function CvEditor({ cv }: { cv: CvDocument }) {
                 <AlertDialogTitle>Regenerate personal brief?</AlertDialogTitle>
                 <AlertDialogDescription>
                   This replaces the current brief with a fresh LLM summary of
-                  the CV's prose. Anything you've written or pasted in here
-                  will be lost.
+                  the CV's prose. Anything you've written or pasted in here will
+                  be lost.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -943,9 +944,9 @@ function DeleteCvButton({
         <AlertDialogHeader>
           <AlertDialogTitle>Delete this CV?</AlertDialogTitle>
           <AlertDialogDescription>
-            The original archive, extracted fields, and personal brief will
-            be removed. Jobs that already reference this CV keep their
-            tailored field overrides but cannot be re-rendered.
+            The original archive, extracted fields, and personal brief will be
+            removed. Jobs that already reference this CV keep their tailored
+            field overrides but cannot be re-rendered.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

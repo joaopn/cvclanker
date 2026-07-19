@@ -295,121 +295,121 @@ export const JobListPanel = forwardRef<VirtualListHandle, JobListPanelProps>(
               className="relative"
               style={{ height: `${virtualizer.getTotalSize()}px` }}
             >
-            {virtualItems.map((virtualRow) => {
-              const job = activeJobs[virtualRow.index];
-              if (!job) return null;
+              {virtualItems.map((virtualRow) => {
+                const job = activeJobs[virtualRow.index];
+                if (!job) return null;
 
-              const isSelected = job.id === selectedJobId;
-              const isChecked = selectedJobIds.has(job.id);
-              const statusToken =
-                statusTokens[job.status] ?? defaultStatusToken;
-              const statusDotClassName = job.appliedDuplicateMatch
-                ? appliedDuplicateIndicator.dot
-                : statusToken.dot;
-              const statusDotTitle = job.appliedDuplicateMatch
-                ? appliedDuplicateIndicator.label
-                : statusToken.label;
+                const isSelected = job.id === selectedJobId;
+                const isChecked = selectedJobIds.has(job.id);
+                const statusToken =
+                  statusTokens[job.status] ?? defaultStatusToken;
+                const statusDotClassName = job.appliedDuplicateMatch
+                  ? appliedDuplicateIndicator.dot
+                  : statusToken.dot;
+                const statusDotTitle = job.appliedDuplicateMatch
+                  ? appliedDuplicateIndicator.label
+                  : statusToken.label;
 
-              return (
-                <div
-                  key={virtualRow.key}
-                  ref={virtualizer.measureElement}
-                  data-index={virtualRow.index}
-                  data-job-id={job.id}
-                  data-virtual-row="true"
-                  className={cn(
-                    "group absolute left-0 top-0 flex w-full items-center gap-3 border-l-2 border-b px-4 py-3 transition-colors cursor-pointer",
-                    isChecked
-                      ? "!border-l !border-l-primary !bg-muted/40"
-                      : "border-l border-l-border/40",
-                    isSelected
-                      ? "bg-primary/15"
-                      : "border-b-border/40 hover:bg-muted/20",
-                    isChecked && isSelected && "outline-2 outline-primary/30",
-                  )}
-                  style={{
-                    transform: `translateY(${virtualRow.start}px)`,
-                  }}
-                >
-                  <div className="relative h-4 w-4 shrink-0">
-                    <span
-                      className={cn(
-                        "absolute inset-0 m-auto h-2 w-2 rounded-full transition-opacity duration-150 ease-out",
-                        statusDotClassName,
-                        isChecked || isSelected
-                          ? "opacity-0"
-                          : "opacity-100 group-hover:opacity-0",
-                      )}
-                      title={statusDotTitle}
-                    />
-                    <Checkbox
-                      checked={isChecked}
-                      onCheckedChange={() => {
-                        // Consume + reset the shift flag so a keyboard-space
-                        // toggle (which doesn't fire onClick) can't inherit a
-                        // stale shiftKey from an earlier mouse click. Only
-                        // pass options when shift is actually held so plain
-                        // clicks satisfy `toHaveBeenCalledWith(id)` matchers
-                        // and avoid the extra-arg footgun.
-                        const range = lastCheckboxShiftRef.current;
-                        lastCheckboxShiftRef.current = false;
-                        if (range) {
-                          onToggleSelectJob(job.id, { range: true });
-                        } else {
-                          onToggleSelectJob(job.id);
-                        }
-                      }}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        lastCheckboxShiftRef.current = event.shiftKey;
-                      }}
-                      aria-label={`Select ${job.title}`}
-                      className={cn(
-                        "absolute inset-0 m-0 border-border/80 cursor-pointer text-muted-foreground/70 transition-opacity duration-150 ease-out",
-                        "data-[state=checked]:border-primary data-[state=checked]:bg-primary/20 data-[state=checked]:text-primary",
-                        "data-[state=checked]:shadow-[0_0_0_1px_hsl(var(--primary)/0.35)]",
-                        isChecked || isSelected
-                          ? "opacity-100 pointer-events-auto"
-                          : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto",
-                      )}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      if (event.shiftKey) {
-                        // Shift-click anywhere on the row extends the range
-                        // selection (or single-toggles when no anchor is
-                        // set). preventDefault to avoid accidental text
-                        // selection from the shift modifier.
-                        event.preventDefault();
-                        onToggleSelectJob(job.id, { range: true });
-                        return;
-                      }
-                      if (event.ctrlKey || event.metaKey) {
-                        // Ctrl/Cmd-click toggles this row in the checkbox
-                        // selection without opening detail. Anchor moves to
-                        // this row so a following shift-click extends from
-                        // here. Matches Gmail / Finder UX.
-                        onToggleSelectJob(job.id);
-                        return;
-                      }
-                      onSelectJob(job.id);
+                return (
+                  <div
+                    key={virtualRow.key}
+                    ref={virtualizer.measureElement}
+                    data-index={virtualRow.index}
+                    data-job-id={job.id}
+                    data-virtual-row="true"
+                    className={cn(
+                      "group absolute left-0 top-0 flex w-full items-center gap-3 border-l-2 border-b px-4 py-3 transition-colors cursor-pointer",
+                      isChecked
+                        ? "!border-l !border-l-primary !bg-muted/40"
+                        : "border-l border-l-border/40",
+                      isSelected
+                        ? "bg-primary/15"
+                        : "border-b-border/40 hover:bg-muted/20",
+                      isChecked && isSelected && "outline-2 outline-primary/30",
+                    )}
+                    style={{
+                      transform: `translateY(${virtualRow.start}px)`,
                     }}
-                    data-testid={`select-${job.id}`}
-                    className="flex min-w-0 flex-1 cursor-pointer text-left"
-                    aria-pressed={isSelected}
                   >
-                    <JobRowContent
-                      job={job}
-                      isSelected={isSelected}
-                      showStatusDot={false}
-                      staleThresholdDays={staleThresholdDays}
-                    />
-                  </button>
-                </div>
-              );
-            })}
+                    <div className="relative h-4 w-4 shrink-0">
+                      <span
+                        className={cn(
+                          "absolute inset-0 m-auto h-2 w-2 rounded-full transition-opacity duration-150 ease-out",
+                          statusDotClassName,
+                          isChecked || isSelected
+                            ? "opacity-0"
+                            : "opacity-100 group-hover:opacity-0",
+                        )}
+                        title={statusDotTitle}
+                      />
+                      <Checkbox
+                        checked={isChecked}
+                        onCheckedChange={() => {
+                          // Consume + reset the shift flag so a keyboard-space
+                          // toggle (which doesn't fire onClick) can't inherit a
+                          // stale shiftKey from an earlier mouse click. Only
+                          // pass options when shift is actually held so plain
+                          // clicks satisfy `toHaveBeenCalledWith(id)` matchers
+                          // and avoid the extra-arg footgun.
+                          const range = lastCheckboxShiftRef.current;
+                          lastCheckboxShiftRef.current = false;
+                          if (range) {
+                            onToggleSelectJob(job.id, { range: true });
+                          } else {
+                            onToggleSelectJob(job.id);
+                          }
+                        }}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          lastCheckboxShiftRef.current = event.shiftKey;
+                        }}
+                        aria-label={`Select ${job.title}`}
+                        className={cn(
+                          "absolute inset-0 m-0 border-border/80 cursor-pointer text-muted-foreground/70 transition-opacity duration-150 ease-out",
+                          "data-[state=checked]:border-primary data-[state=checked]:bg-primary/20 data-[state=checked]:text-primary",
+                          "data-[state=checked]:shadow-[0_0_0_1px_hsl(var(--primary)/0.35)]",
+                          isChecked || isSelected
+                            ? "opacity-100 pointer-events-auto"
+                            : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto",
+                        )}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        if (event.shiftKey) {
+                          // Shift-click anywhere on the row extends the range
+                          // selection (or single-toggles when no anchor is
+                          // set). preventDefault to avoid accidental text
+                          // selection from the shift modifier.
+                          event.preventDefault();
+                          onToggleSelectJob(job.id, { range: true });
+                          return;
+                        }
+                        if (event.ctrlKey || event.metaKey) {
+                          // Ctrl/Cmd-click toggles this row in the checkbox
+                          // selection without opening detail. Anchor moves to
+                          // this row so a following shift-click extends from
+                          // here. Matches Gmail / Finder UX.
+                          onToggleSelectJob(job.id);
+                          return;
+                        }
+                        onSelectJob(job.id);
+                      }}
+                      data-testid={`select-${job.id}`}
+                      className="flex min-w-0 flex-1 cursor-pointer text-left"
+                      aria-pressed={isSelected}
+                    >
+                      <JobRowContent
+                        job={job}
+                        isSelected={isSelected}
+                        showStatusDot={false}
+                        staleThresholdDays={staleThresholdDays}
+                      />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

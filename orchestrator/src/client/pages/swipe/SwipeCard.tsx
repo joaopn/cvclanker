@@ -48,66 +48,68 @@ const parseDateMs = (value: string | null | undefined): number | null => {
 const formatAge = (job: Job): string | null => {
   const now = Date.now();
   const posted = parseDateMs(job.datePosted);
-  if (posted != null) return `Posted ${Math.max(0, Math.floor((now - posted) / DAY_MS))}d`;
+  if (posted != null)
+    return `Posted ${Math.max(0, Math.floor((now - posted) / DAY_MS))}d`;
   const found = parseDateMs(job.discoveredAt);
-  if (found != null) return `Found ${Math.max(0, Math.floor((now - found) / DAY_MS))}d`;
+  if (found != null)
+    return `Found ${Math.max(0, Math.floor((now - found) / DAY_MS))}d`;
   return null;
 };
 
 export const SwipeCardContent: React.FC<{ job: Job }> = ({ job }) => {
   const age = formatAge(job);
   return (
-  <Card className="flex h-full flex-col overflow-hidden">
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5 [touch-action:pan-y]">
-      <div className="space-y-1 text-center">
-        <h2 className="text-xl font-semibold leading-tight">{job.title}</h2>
-        <p className="flex items-center justify-center gap-1.5 text-sm text-muted-foreground">
-          <Building2 className="h-3.5 w-3.5" />
-          {job.employer}
-        </p>
-      </div>
+    <Card className="flex h-full flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5 [touch-action:pan-y]">
+        <div className="space-y-1 text-center">
+          <h2 className="text-xl font-semibold leading-tight">{job.title}</h2>
+          <p className="flex items-center justify-center gap-1.5 text-sm text-muted-foreground">
+            <Building2 className="h-3.5 w-3.5" />
+            {job.employer}
+          </p>
+        </div>
 
-      <div className="flex flex-col items-center gap-1.5 text-xs text-muted-foreground">
-        {job.location && (
-          <span className="flex items-center gap-1">
-            <MapPin className="h-3 w-3" />
-            {job.location}
-          </span>
+        <div className="flex flex-col items-center gap-1.5 text-xs text-muted-foreground">
+          {job.location && (
+            <span className="flex items-center gap-1">
+              <MapPin className="h-3 w-3" />
+              {job.location}
+            </span>
+          )}
+          {job.salary && (
+            <span className="flex items-center gap-1">
+              <Wallet className="h-3 w-3" />
+              {job.salary}
+            </span>
+          )}
+        </div>
+
+        {age && (
+          <p className="text-center text-xs tabular-nums text-muted-foreground">
+            {age}
+          </p>
         )}
-        {job.salary && (
-          <span className="flex items-center gap-1">
-            <Wallet className="h-3 w-3" />
-            {job.salary}
-          </span>
+
+        <div className="flex justify-center">
+          <FitIndicator category={job.suitabilityCategory ?? null} />
+        </div>
+
+        <FitAssessment job={job} />
+
+        {job.jobDescription && (
+          <Accordion type="single" collapsible defaultValue="description">
+            <AccordionItem value="description" className="border-b-0">
+              <AccordionTrigger className="text-sm">
+                Job description
+              </AccordionTrigger>
+              <AccordionContent>
+                <JobDescriptionMarkdown description={job.jobDescription} />
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         )}
       </div>
-
-      {age && (
-        <p className="text-center text-xs tabular-nums text-muted-foreground">
-          {age}
-        </p>
-      )}
-
-      <div className="flex justify-center">
-        <FitIndicator category={job.suitabilityCategory ?? null} />
-      </div>
-
-      <FitAssessment job={job} />
-
-      {job.jobDescription && (
-        <Accordion type="single" collapsible defaultValue="description">
-          <AccordionItem value="description" className="border-b-0">
-            <AccordionTrigger className="text-sm">
-              Job description
-            </AccordionTrigger>
-            <AccordionContent>
-              <JobDescriptionMarkdown description={job.jobDescription} />
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
-      )}
-    </div>
-  </Card>
+    </Card>
   );
 };
 

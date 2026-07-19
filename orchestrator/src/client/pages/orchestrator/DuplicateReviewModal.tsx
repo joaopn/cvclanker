@@ -94,7 +94,8 @@ function chooseKeeper(jobs: JobListItem[]): string {
     if (status !== 0) return status;
     const fit = fitRank(b) - fitRank(a);
     if (fit !== 0) return fit;
-    const posted = (parseDate(b.datePosted) ?? 0) - (parseDate(a.datePosted) ?? 0);
+    const posted =
+      (parseDate(b.datePosted) ?? 0) - (parseDate(a.datePosted) ?? 0);
     if (posted !== 0) return posted;
     return (parseDate(b.discoveredAt) ?? 0) - (parseDate(a.discoveredAt) ?? 0);
   });

@@ -71,7 +71,8 @@ export const EditDiffCard: React.FC<EditDiffCardProps> = ({
     },
   });
 
-  const isPending = message.editStatus === "pending" || message.editStatus === null;
+  const isPending =
+    message.editStatus === "pending" || message.editStatus === null;
   const isLocked =
     !isPending || acceptMutation.isPending || rejectMutation.isPending;
   const statusLabel =
@@ -103,10 +104,7 @@ export const EditDiffCard: React.FC<EditDiffCardProps> = ({
           {proposedEdit.edits.map((op, index) => {
             const role = fieldRolesById?.[op.fieldId];
             return (
-              <li
-                key={`${op.fieldId}-${index}`}
-                className="space-y-1 text-xs"
-              >
+              <li key={`${op.fieldId}-${index}`} className="space-y-1 text-xs">
                 <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                   {role ? (
                     <span className="rounded-sm bg-muted/60 px-1.5 py-0.5 font-medium uppercase tracking-wide">

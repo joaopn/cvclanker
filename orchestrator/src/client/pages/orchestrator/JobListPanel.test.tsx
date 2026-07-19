@@ -94,9 +94,7 @@ describe("JobListPanel", () => {
     );
 
     expect(screen.getByText("No jobs found")).toBeInTheDocument();
-    expect(
-      screen.getByText(/Nothing in tailoring yet/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Nothing in tailoring yet/)).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /tailor discovered jobs/i }),
     ).toBeInTheDocument();

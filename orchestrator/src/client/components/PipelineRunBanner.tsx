@@ -264,7 +264,10 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
                 {anyFailures && (step === "completed" || step === "failed") && (
                   <span className="inline-flex items-center gap-1 text-xs text-destructive">
                     <AlertTriangle className="h-3.5 w-3.5" />
-                    {sourceStats.filter((row) => row.status === "failed").length}{" "}
+                    {
+                      sourceStats.filter((row) => row.status === "failed")
+                        .length
+                    }{" "}
                     failed
                   </span>
                 )}
@@ -349,11 +352,13 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
                 </>
               )}
 
-              {step === "failed" && progress.error && sourceStats.length === 0 && (
-                <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
-                  {progress.error}
-                </div>
-              )}
+              {step === "failed" &&
+                progress.error &&
+                sourceStats.length === 0 && (
+                  <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+                    {progress.error}
+                  </div>
+                )}
             </CardContent>
           )}
         </Card>

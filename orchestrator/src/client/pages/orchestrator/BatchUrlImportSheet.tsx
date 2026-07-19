@@ -1,6 +1,12 @@
 import * as api from "@client/api";
 import type { BatchUrlImportItemResult } from "@shared/types";
-import { CheckCircle2, Copy, Link as LinkIcon, Loader2, XCircle } from "lucide-react";
+import {
+  CheckCircle2,
+  Copy,
+  Link as LinkIcon,
+  Loader2,
+  XCircle,
+} from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@client/lib/toast";
@@ -367,7 +373,8 @@ export const BatchUrlImportSheet: React.FC<BatchUrlImportSheetProps> = ({
                 </Badge>
                 {totalTokens > 0 && (
                   <Badge variant="outline" className="font-mono">
-                    {totalTokens.toLocaleString()} tokens · {totalMillions.toFixed(6)} M
+                    {totalTokens.toLocaleString()} tokens ·{" "}
+                    {totalMillions.toFixed(6)} M
                   </Badge>
                 )}
                 {isInFlight && (

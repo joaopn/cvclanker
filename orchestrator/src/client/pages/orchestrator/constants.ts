@@ -83,7 +83,8 @@ export const statusTokens: Record<
   },
   selected: {
     label: "Selected",
-    badge: "border-accent-purple/30 bg-accent-purple/10 text-accent-purple-text",
+    badge:
+      "border-accent-purple/30 bg-accent-purple/10 text-accent-purple-text",
     dot: "bg-accent-purple",
   },
   processing: {
@@ -268,9 +269,12 @@ export const emptyStateCopy: Record<FilterTab, string> = {
   live: "Applied jobs awaiting a response land here. Mark a Ready row as Applied to start tracking. Move ones you're interviewing for to Interviewing.",
   interviewing:
     "Jobs you're actively interviewing for. Move an applied job here from the Live tab to track interview notes separately.",
-  backlog: "Empty. Inbox rows that age past the threshold land here automatically; reposted listings get re-promoted.",
-  stale: "Empty. Set an age threshold above and click \"Move stale rows here\" to sweep aged Inbox and Backlog rows into this holding pen — or \"Also move aged Ready & Live here\" to include those tabs.",
-  closed: "Empty. Skipped jobs and Live rows you Mark Closed land here with an outcome chip.",
+  backlog:
+    "Empty. Inbox rows that age past the threshold land here automatically; reposted listings get re-promoted.",
+  stale:
+    'Empty. Set an age threshold above and click "Move stale rows here" to sweep aged Inbox and Backlog rows into this holding pen — or "Also move aged Ready & Live here" to include those tabs.',
+  closed:
+    "Empty. Skipped jobs and Live rows you Mark Closed land here with an outcome chip.",
   all: "No jobs in the system yet. Run the pipeline to get started.",
 };
 

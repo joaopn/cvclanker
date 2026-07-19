@@ -59,7 +59,10 @@ import { Textarea } from "@/components/ui/textarea";
 
 const ACCEPTED_EXTENSIONS = [".tex", ".zip"];
 
-const UPLOAD_MUTATION_KEY = ["cover-letter-document", "upload-template"] as const;
+const UPLOAD_MUTATION_KEY = [
+  "cover-letter-document",
+  "upload-template",
+] as const;
 const RE_EXTRACT_MUTATION_KEY = (clId: string) =>
   ["cover-letter-document", "re-extract-template", clId] as const;
 
@@ -156,13 +159,13 @@ function extractFailureDetails(error: unknown): UploadFailureDetails | null {
 function UploadCard({ onUploaded }: { onUploaded: () => Promise<void> }) {
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [errorDetails, setErrorDetails] =
-    useState<UploadFailureDetails | null>(null);
-  const [latestAttempts, setLatestAttempts] =
-    useState<CvUploadPipelineAttempt[] | null>(null);
-  const [extractionPrompt, setExtractionPrompt] = useState<string | null>(
+  const [errorDetails, setErrorDetails] = useState<UploadFailureDetails | null>(
     null,
   );
+  const [latestAttempts, setLatestAttempts] = useState<
+    CvUploadPipelineAttempt[] | null
+  >(null);
+  const [extractionPrompt, setExtractionPrompt] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -186,8 +189,7 @@ function UploadCard({ onUploaded }: { onUploaded: () => Promise<void> }) {
   const uploadMutation = useMutation({
     mutationKey: UPLOAD_MUTATION_KEY,
     mutationFn: async (file: File) => {
-      const baseName =
-        file.name.replace(/\.[^.]+$/, "") || "Cover letter";
+      const baseName = file.name.replace(/\.[^.]+$/, "") || "Cover letter";
       return api.uploadCoverLetterTemplate({
         file,
         filename: file.name,
@@ -248,13 +250,12 @@ function UploadCard({ onUploaded }: { onUploaded: () => Promise<void> }) {
         <CardDescription>
           Drop a .tex file or a .zip archive containing coverletter.tex (or
           letter.tex / cover-letter.tex / cover.tex) plus any included files,
-          fonts, and images. The server flattens it, compiles it, then asks
-          the LLM to produce a templated version. The upload is only
-          accepted if (a) your source compiles, (b) the templated version
-          compiles, (c) the substituted PDF's text matches the original,
-          and (d) the LLM marks exactly one field as the body. Up to 3 LLM
-          retries — beyond that the upload is rejected with the per-attempt
-          log.
+          fonts, and images. The server flattens it, compiles it, then asks the
+          LLM to produce a templated version. The upload is only accepted if (a)
+          your source compiles, (b) the templated version compiles, (c) the
+          substituted PDF's text matches the original, and (d) the LLM marks
+          exactly one field as the body. Up to 3 LLM retries — beyond that the
+          upload is rejected with the per-attempt log.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -391,8 +392,9 @@ function UploadCard({ onUploaded }: { onUploaded: () => Promise<void> }) {
 function CoverLetterEditor({ doc }: { doc: CoverLetterDocument }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(doc.name);
-  const [reExtractAttempts, setReExtractAttempts] =
-    useState<CvUploadPipelineAttempt[] | null>(null);
+  const [reExtractAttempts, setReExtractAttempts] = useState<
+    CvUploadPipelineAttempt[] | null
+  >(null);
   const [reExtractError, setReExtractError] = useState<string | null>(null);
   const [reExtractDetails, setReExtractDetails] =
     useState<UploadFailureDetails | null>(null);
@@ -402,8 +404,7 @@ function CoverLetterEditor({ doc }: { doc: CoverLetterDocument }) {
     queryFn: api.fetchCoverLetterExtractionPromptDefault,
   });
 
-  const initialPrompt =
-    doc.extractionPrompt || defaultPromptQuery.data || "";
+  const initialPrompt = doc.extractionPrompt || defaultPromptQuery.data || "";
   const [extractionPrompt, setExtractionPrompt] = useState(initialPrompt);
 
   useEffect(() => {
@@ -417,7 +418,8 @@ function CoverLetterEditor({ doc }: { doc: CoverLetterDocument }) {
 
   const isDirty = name !== doc.name;
   const promptDirty =
-    extractionPrompt !== (doc.extractionPrompt || defaultPromptQuery.data || "");
+    extractionPrompt !==
+    (doc.extractionPrompt || defaultPromptQuery.data || "");
 
   const invalidateAll = useCallback(async () => {
     await queryClient.invalidateQueries({
@@ -453,8 +455,7 @@ function CoverLetterEditor({ doc }: { doc: CoverLetterDocument }) {
       await invalidateAll();
     },
     onError: (err: unknown) => {
-      const message =
-        err instanceof Error ? err.message : "Re-extract failed";
+      const message = err instanceof Error ? err.message : "Re-extract failed";
       setReExtractError(message);
       setReExtractDetails(extractFailureDetails(err));
       setReExtractAttempts(null);
@@ -472,8 +473,7 @@ function CoverLetterEditor({ doc }: { doc: CoverLetterDocument }) {
     reExtractMutation.isPending || pendingReExtractsFromCache.length > 0;
 
   const savePromptMutation = useMutation({
-    mutationFn: async () =>
-      api.updateCoverLetter(doc.id, { extractionPrompt }),
+    mutationFn: async () => api.updateCoverLetter(doc.id, { extractionPrompt }),
     onSuccess: async () => {
       toast.success("Prompt saved");
       await invalidateAll();
@@ -646,11 +646,11 @@ function CoverLetterEditor({ doc }: { doc: CoverLetterDocument }) {
           <CardTitle>Extraction prompt</CardTitle>
           <CardDescription>
             The full LLM system prompt used to extract this cover letter —
-            pre-filled with the server default, edit any of it. The user
-            message (asset list, source, retry context) is server-controlled.
-            Save persists; Re-extract saves and re-runs the pipeline. Reset
-            to default clears your override so future re-extracts use
-            whatever the server's current default is.
+            pre-filled with the server default, edit any of it. The user message
+            (asset list, source, retry context) is server-controlled. Save
+            persists; Re-extract saves and re-runs the pipeline. Reset to
+            default clears your override so future re-extracts use whatever the
+            server's current default is.
             {doc.extractionPrompt ? (
               <span className="ml-1 text-status-warn-text">
                 (using a custom override; reset to track server updates.)
@@ -704,9 +704,7 @@ function CoverLetterEditor({ doc }: { doc: CoverLetterDocument }) {
               size="sm"
               onClick={() => savePromptMutation.mutate()}
               disabled={
-                !promptDirty ||
-                savePromptMutation.isPending ||
-                isReExtracting
+                !promptDirty || savePromptMutation.isPending || isReExtracting
               }
             >
               {savePromptMutation.isPending ? (
@@ -738,9 +736,8 @@ function CoverLetterEditor({ doc }: { doc: CoverLetterDocument }) {
           <CardTitle>Extracted fields ({doc.fields.length})</CardTitle>
           <CardDescription>
             Spans of the source LaTeX that per-job generation can override.
-            Exactly one field is the body — the Generate path writes it,
-            and the right-pane textarea binds to its override on the
-            tailoring panel.
+            Exactly one field is the body — the Generate path writes it, and the
+            right-pane textarea binds to its override on the tailoring panel.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -749,8 +746,8 @@ function CoverLetterEditor({ doc }: { doc: CoverLetterDocument }) {
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>No fields extracted</AlertTitle>
               <AlertDescription>
-                The cover letter is uploaded but extraction returned no
-                fields. Click "Re-extract" above to retry.
+                The cover letter is uploaded but extraction returned no fields.
+                Click "Re-extract" above to retry.
               </AlertDescription>
             </Alert>
           ) : (
@@ -786,8 +783,7 @@ function CoverLetterEditor({ doc }: { doc: CoverLetterDocument }) {
         <CardHeader>
           <CardTitle>Compile log</CardTitle>
           <CardDescription>
-            Tectonic stderr from the most recent successful template
-            compile.
+            Tectonic stderr from the most recent successful template compile.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -853,8 +849,8 @@ function DeleteCoverLetterButton({
           <AlertDialogTitle>Delete this cover letter?</AlertDialogTitle>
           <AlertDialogDescription>
             The original archive, extracted fields, and template will be
-            removed. Jobs that already reference this cover letter keep
-            their per-job overrides but cannot be re-rendered.
+            removed. Jobs that already reference this cover letter keep their
+            per-job overrides but cannot be re-rendered.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

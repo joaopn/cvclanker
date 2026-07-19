@@ -27,7 +27,12 @@ export const CompileLogViewer: React.FC<{
    * compiles). Defaults to false (neutral muted styling).
    */
   variant?: "neutral" | "warning";
-}> = ({ stderr, label = "Compile log", defaultOpen = false, variant = "neutral" }) => {
+}> = ({
+  stderr,
+  label = "Compile log",
+  defaultOpen = false,
+  variant = "neutral",
+}) => {
   const trimmed = stderr?.trim() ?? "";
   if (!trimmed) {
     return (
@@ -41,10 +46,7 @@ export const CompileLogViewer: React.FC<{
       ? "border-status-warn/30 bg-status-warn/10 text-status-warn-text"
       : "border-border/60 bg-muted/10";
   return (
-    <details
-      className={`group rounded-md border ${tone}`}
-      open={defaultOpen}
-    >
+    <details className={`group rounded-md border ${tone}`} open={defaultOpen}>
       <summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium">
         <span className="inline-flex items-center gap-2">
           <FileText className="h-3.5 w-3.5" />
@@ -87,9 +89,7 @@ export const AttemptLogViewer: React.FC<{
             <button
               key={attempt.attempt}
               type="button"
-              onClick={() =>
-                setOpenAttempt(isOpen ? null : attempt.attempt)
-              }
+              onClick={() => setOpenAttempt(isOpen ? null : attempt.attempt)}
               className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors ${
                 isOpen
                   ? "border-primary bg-primary/5"
@@ -132,7 +132,9 @@ export const AttemptLogViewer: React.FC<{
                     stderr={attempt.compileStderr}
                     label="Tectonic stderr"
                     defaultOpen
-                    variant={attempt.failureKind === "compile" ? "warning" : "neutral"}
+                    variant={
+                      attempt.failureKind === "compile" ? "warning" : "neutral"
+                    }
                   />
                 ) : null}
                 {attempt.contentDiff ? (
