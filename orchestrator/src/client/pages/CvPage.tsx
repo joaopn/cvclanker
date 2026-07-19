@@ -571,11 +571,11 @@ function CvEditor({ cv }: { cv: CvDocument }) {
             </CardDescription>
             <div className="flex flex-wrap items-center gap-2 text-xs">
               {isLegacyCv ? (
-                <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-amber-900">
+                <span className="rounded-full border border-status-warn/30 bg-status-warn/10 px-2 py-0.5 text-status-warn-text">
                   Older CV format — re-extract to enable tailoring
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-emerald-900">
+                <span className="inline-flex items-center gap-1 rounded-full border border-status-good/30 bg-status-good/10 px-2 py-0.5 text-status-good-text">
                   <CheckCircle2 className="h-3 w-3" />
                   Matches original CV
                 </span>
@@ -696,7 +696,7 @@ function CvEditor({ cv }: { cv: CvDocument }) {
             default clears your override so future re-extracts use whatever
             the server's current default is.
             {cv.extractionPrompt ? (
-              <span className="ml-1 text-amber-700">
+              <span className="ml-1 text-status-warn-text">
                 (using a custom override; reset to track server updates.)
               </span>
             ) : (

@@ -64,7 +64,7 @@ export function SignInPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(120,119,198,0.08),_transparent_45%),linear-gradient(180deg,_rgba(15,23,42,0.02),_transparent_30%)] px-4 py-16">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_color-mix(in_oklab,var(--primary)_8%,transparent),_transparent_45%),linear-gradient(180deg,_color-mix(in_oklab,var(--background)_2%,transparent),_transparent_30%)] px-4 py-16">
       <div className="mx-auto flex min-h-[70vh] max-w-md items-center">
         <Card className="w-full border-border/60 bg-background/95 shadow-xl">
           <CardHeader className="space-y-2">

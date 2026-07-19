@@ -17,8 +17,8 @@ interface FitIndicatorProps {
 
 export const PILL_CLASS: Record<SuitabilityCategory, string> = {
   very_good_fit:
-    "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
-  good_fit: "bg-sky-500/10 text-sky-300 border-sky-500/30",
+    "bg-status-good/15 text-status-good-text border-status-good/30",
+  good_fit: "bg-status-info/10 text-status-info-text border-status-info/30",
   bad_fit: "bg-muted/40 text-muted-foreground border-border/60",
 };
 

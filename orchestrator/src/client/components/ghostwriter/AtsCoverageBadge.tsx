@@ -34,10 +34,10 @@ export const AtsCoverageBadge: React.FC<AtsCoverageBadgeProps> = ({ job }) => {
   const ratio = matched.length / total;
   const dotClass =
     ratio >= 0.75
-      ? "bg-emerald-500"
+      ? "bg-status-good"
       : ratio >= 0.5
-        ? "bg-amber-400"
-        : "bg-rose-400";
+        ? "bg-status-warn"
+        : "bg-status-bad";
 
   return (
     <TooltipProvider delayDuration={120}>
@@ -53,16 +53,12 @@ export const AtsCoverageBadge: React.FC<AtsCoverageBadgeProps> = ({ job }) => {
                 · {skipped.length} skipped
               </span>
             ) : (
-              <CircleCheck className="h-3.5 w-3.5 text-emerald-500" />
+              <CircleCheck className="h-3.5 w-3.5 text-status-good-text" />
             )}
           </div>
         </TooltipTrigger>
         {skipped.length > 0 ? (
-          <TooltipContent
-            side="bottom"
-            align="start"
-            className="max-w-[320px]"
-          >
+          <TooltipContent side="bottom" align="start" className="max-w-[320px]">
             <div className="space-y-1.5">
               <p className="text-[11px] font-medium text-foreground">
                 Skipped (no evidence in personal brief)

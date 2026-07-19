@@ -163,7 +163,7 @@ export const CodexAuthPanel: React.FC<CodexAuthPanelProps> = ({ isBusy }) => {
         <div className="flex items-center justify-between gap-2">
           <div className="text-xs font-medium">Codex Sign-In</div>
           <Badge
-            className="gap-1 border-emerald-700 bg-emerald-700 text-white dark:border-emerald-300 dark:bg-emerald-300 dark:text-emerald-950"
+            className="gap-1 border-status-good/30 bg-status-good/15 text-status-good-text"
             variant="outline"
           >
             <CheckCircle2 className="h-3.5 w-3.5" />
@@ -171,7 +171,7 @@ export const CodexAuthPanel: React.FC<CodexAuthPanelProps> = ({ isBusy }) => {
           </Badge>
         </div>
 
-        <div className="flex items-center justify-between gap-3 rounded-md border border-emerald-300/60 bg-emerald-500/10 px-3 py-2">
+        <div className="flex items-center justify-between gap-3 rounded-md border border-status-good/60 bg-status-good/10 px-3 py-2">
           <p className="text-sm text-foreground">
             <span className="font-medium">Connected as </span>
             <span className="font-mono">{displayUsername}</span>
@@ -198,7 +198,7 @@ export const CodexAuthPanel: React.FC<CodexAuthPanelProps> = ({ isBusy }) => {
       <div className="flex items-center justify-between gap-2">
         <div className="text-xs font-medium">Codex Sign-In</div>
         {isWaitingForApproval ? (
-          <div className="inline-flex items-center gap-1 text-xs text-amber-700">
+          <div className="inline-flex items-center gap-1 text-xs text-status-warn-text">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             Waiting for approval
           </div>
@@ -214,7 +214,7 @@ export const CodexAuthPanel: React.FC<CodexAuthPanelProps> = ({ isBusy }) => {
       <div className="space-y-1 text-xs text-muted-foreground">
         <div className="flex items-center gap-2">
           {hasDevicePayload || isAuthenticated ? (
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+            <CheckCircle2 className="h-3.5 w-3.5 text-status-good-text" />
           ) : (
             <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border text-[10px]">
               1
@@ -224,7 +224,7 @@ export const CodexAuthPanel: React.FC<CodexAuthPanelProps> = ({ isBusy }) => {
         </div>
         <div className="flex items-center gap-2">
           {hasCopiedCode || isAuthenticated ? (
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+            <CheckCircle2 className="h-3.5 w-3.5 text-status-good-text" />
           ) : (
             <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border text-[10px]">
               2
@@ -234,9 +234,9 @@ export const CodexAuthPanel: React.FC<CodexAuthPanelProps> = ({ isBusy }) => {
         </div>
         <div className="flex items-center gap-2">
           {isAuthenticated ? (
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+            <CheckCircle2 className="h-3.5 w-3.5 text-status-good-text" />
           ) : isWaitingForApproval ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-700" />
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-status-warn-text" />
           ) : (
             <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border text-[10px]">
               3
@@ -277,7 +277,7 @@ export const CodexAuthPanel: React.FC<CodexAuthPanelProps> = ({ isBusy }) => {
             </Button>
           </div>
           {showExpiryCountdown ? (
-            <div className="text-center text-[11px] text-amber-700">
+            <div className="text-center text-[11px] text-status-warn-text">
               Code expires in {formatRemaining(remainingMs)}
             </div>
           ) : null}

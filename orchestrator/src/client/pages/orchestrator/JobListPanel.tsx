@@ -196,8 +196,8 @@ export const JobListPanel = forwardRef<VirtualListHandle, JobListPanelProps>(
                 className={cn(
                   "h-7 px-2 text-xs font-medium",
                   untailoredOnly
-                    ? "bg-amber-500/20 text-amber-200 border border-amber-500/40 hover:bg-amber-500/25"
-                    : "text-amber-300/80 hover:bg-amber-500/10 hover:text-amber-200 border border-transparent",
+                    ? "bg-status-warn/20 text-status-warn-text border border-status-warn/40 hover:bg-status-warn/25"
+                    : "text-status-warn-text/80 hover:bg-status-warn/10 hover:text-status-warn-text border border-transparent",
                 )}
                 aria-pressed={!!untailoredOnly}
                 onClick={() => onUntailoredOnlyChange(!untailoredOnly)}

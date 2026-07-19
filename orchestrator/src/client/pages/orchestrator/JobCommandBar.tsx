@@ -50,15 +50,15 @@ const RESULTS_LIST_ID = "job-command-bar-results";
 
 const lockDialogAccentClass: Record<StatusLock, string> = {
   ready:
-    "border-emerald-500/50 shadow-[0_0_0_1px_rgba(16,185,129,0.2),0_0_36px_-12px_rgba(16,185,129,0.55)]",
+    "border-status-good/50 shadow-[0_0_0_1px_color-mix(in_oklab,var(--status-good)_20%,transparent),0_0_36px_-12px_color-mix(in_oklab,var(--status-good)_55%,transparent)]",
   discovered:
-    "border-sky-500/50 shadow-[0_0_0_1px_rgba(14,165,233,0.2),0_0_36px_-12px_rgba(14,165,233,0.55)]",
+    "border-status-info/50 shadow-[0_0_0_1px_color-mix(in_oklab,var(--status-info)_20%,transparent),0_0_36px_-12px_color-mix(in_oklab,var(--status-info)_55%,transparent)]",
   applied:
-    "border-emerald-500/50 shadow-[0_0_0_1px_rgba(16,185,129,0.2),0_0_36px_-12px_rgba(16,185,129,0.55)]",
+    "border-status-good/50 shadow-[0_0_0_1px_color-mix(in_oklab,var(--status-good)_20%,transparent),0_0_36px_-12px_color-mix(in_oklab,var(--status-good)_55%,transparent)]",
   in_progress:
-    "border-cyan-500/50 shadow-[0_0_0_1px_rgba(6,182,212,0.2),0_0_36px_-12px_rgba(6,182,212,0.55)]",
+    "border-accent-cyan/50 shadow-[0_0_0_1px_color-mix(in_oklab,var(--accent-cyan)_20%,transparent),0_0_36px_-12px_color-mix(in_oklab,var(--accent-cyan)_55%,transparent)]",
   skipped:
-    "border-rose-500/50 shadow-[0_0_0_1px_rgba(244,63,94,0.2),0_0_36px_-12px_rgba(244,63,94,0.55)]",
+    "border-status-bad/50 shadow-[0_0_0_1px_color-mix(in_oklab,var(--status-bad)_20%,transparent),0_0_36px_-12px_color-mix(in_oklab,var(--status-bad)_55%,transparent)]",
 };
 
 const buildSelectableRows = (rows: CommandBarRow[]) =>
@@ -528,11 +528,11 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
                         <span
                           className={cn(
                             "h-1.5 w-1.5 rounded-full",
-                            row.lock === "ready" && "bg-emerald-400",
-                            row.lock === "discovered" && "bg-sky-400",
-                            row.lock === "applied" && "bg-emerald-400",
-                            row.lock === "in_progress" && "bg-cyan-400",
-                            row.lock === "skipped" && "bg-rose-400",
+                            row.lock === "ready" && "bg-status-good",
+                            row.lock === "discovered" && "bg-status-info",
+                            row.lock === "applied" && "bg-status-good",
+                            row.lock === "in_progress" && "bg-accent-cyan",
+                            row.lock === "skipped" && "bg-status-bad",
                           )}
                         />
                         <span className="truncate text-sm font-medium">

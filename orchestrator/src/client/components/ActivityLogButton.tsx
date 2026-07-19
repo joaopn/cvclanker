@@ -126,9 +126,7 @@ const ActivityLogSheet: React.FC<ActivityLogSheetProps> = ({
                 No activity yet. Toasts will appear here as they happen.
               </div>
             ) : (
-              reversed.map((entry) => (
-                <EntryRow key={entry.id} entry={entry} />
-              ))
+              reversed.map((entry) => <EntryRow key={entry.id} entry={entry} />)
             )}
           </div>
         </div>
@@ -141,10 +139,10 @@ const KIND_META: Record<
   ActivityLogKind,
   { Icon: React.ComponentType<{ className?: string }>; tone: string }
 > = {
-  success: { Icon: CheckCircle2, tone: "text-emerald-400" },
+  success: { Icon: CheckCircle2, tone: "text-status-good-text" },
   error: { Icon: XCircle, tone: "text-destructive" },
-  warning: { Icon: AlertTriangle, tone: "text-amber-400" },
-  info: { Icon: Info, tone: "text-sky-400" },
+  warning: { Icon: AlertTriangle, tone: "text-status-warn-text" },
+  info: { Icon: Info, tone: "text-status-info-text" },
   message: { Icon: MessageSquare, tone: "text-muted-foreground" },
 };
 

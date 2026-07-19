@@ -136,7 +136,7 @@ const CallRow: React.FC<{ call: LlmCallRecord; now: number }> = ({
         ) : call.status === "failed" ? (
           <XCircle className="h-3.5 w-3.5 text-destructive" />
         ) : (
-          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+          <CheckCircle2 className="h-3.5 w-3.5 text-status-good-text" />
         )}
       </div>
       <div className="min-w-0 flex-1 space-y-1">

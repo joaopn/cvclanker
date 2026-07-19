@@ -165,9 +165,7 @@ const FieldGroupSection: React.FC<SectionProps> = ({
           <FieldRow
             key={field.id}
             field={field}
-            value={
-              overrides[field.id] ?? defaults[field.id] ?? field.value
-            }
+            value={overrides[field.id] ?? defaults[field.id] ?? field.value}
             isEdited={isFieldEdited(field, overrides, defaults)}
             isLocked={locks.has(field.id)}
             onChange={(v) => onChange(field.id, v)}
@@ -244,7 +242,7 @@ const FieldRow: React.FC<FieldRowProps> = ({
               }
             >
               {isLocked ? (
-                <Lock className="h-3 w-3 text-amber-600" />
+                <Lock className="h-3 w-3 text-status-warn-text" />
               ) : (
                 <LockOpen className="h-3 w-3 text-muted-foreground" />
               )}

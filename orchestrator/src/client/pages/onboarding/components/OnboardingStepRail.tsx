@@ -16,7 +16,7 @@ function StepStatusBadge({
       className={cn(
         "flex h-8 w-8 items-center justify-center rounded-md border text-xs font-medium transition-colors",
         complete
-          ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-700"
+          ? "border-status-good/60 bg-status-good/15 text-status-good-text"
           : active
             ? "border-primary bg-primary text-primary-foreground"
             : "border-border/60 bg-muted/40 text-muted-foreground",

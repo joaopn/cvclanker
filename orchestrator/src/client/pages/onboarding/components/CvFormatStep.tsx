@@ -88,7 +88,7 @@ export const CvFormatStep: React.FC<CvFormatStepProps> = ({
                   {option.description}
                 </div>
                 {option.value === "docx" && wordBlockedByExistingCv ? (
-                  <div className="text-sm leading-6 text-amber-700">
+                  <div className="text-sm leading-6 text-status-warn-text">
                     This profile already has a LaTeX CV. Delete it, or start a
                     new user profile, to work in Word.
                   </div>

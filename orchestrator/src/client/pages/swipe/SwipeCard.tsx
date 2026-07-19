@@ -172,13 +172,13 @@ export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(
 
         <motion.div
           style={{ opacity: tailorOpacity }}
-          className="pointer-events-none absolute left-4 top-4 z-10 rotate-[-12deg] rounded-md border-2 border-emerald-400 px-3 py-1 text-lg font-extrabold uppercase tracking-wider text-emerald-400"
+          className="pointer-events-none absolute left-4 top-4 z-10 rotate-[-12deg] rounded-md border-2 border-status-good px-3 py-1 text-lg font-extrabold uppercase tracking-wider text-status-good-text"
         >
           Tailor
         </motion.div>
         <motion.div
           style={{ opacity: skipOpacity }}
-          className="pointer-events-none absolute right-4 top-4 z-10 rotate-[12deg] rounded-md border-2 border-rose-400 px-3 py-1 text-lg font-extrabold uppercase tracking-wider text-rose-400"
+          className="pointer-events-none absolute right-4 top-4 z-10 rotate-[12deg] rounded-md border-2 border-status-bad px-3 py-1 text-lg font-extrabold uppercase tracking-wider text-status-bad-text"
         >
           Skip
         </motion.div>

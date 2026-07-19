@@ -91,7 +91,7 @@ export const CompanyJobsDialog = ({
             </p>
           )}
           {query.isError && (
-            <p className="py-6 text-center text-sm text-rose-300">
+            <p className="py-6 text-center text-sm text-status-bad-text">
               Couldn't load jobs for this company.
             </p>
           )}
@@ -129,7 +129,7 @@ export const CompanyJobsDialog = ({
                         )}
                         {job.tailoringFailureReason && (
                           <span
-                            className="mt-0.5 block truncate text-xs text-rose-300/80"
+                            className="mt-0.5 block truncate text-xs text-status-bad-text/80"
                             title={job.tailoringFailureReason}
                           >
                             Tailor failed: {job.tailoringFailureReason}

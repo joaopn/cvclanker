@@ -44,7 +44,7 @@ export const SwipeActionBar: React.FC<SwipeActionBarProps> = ({
         disabled={disabled}
         onClick={onSkip}
         aria-label="Skip"
-        className="h-14 w-14 rounded-full border-rose-500/40 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300"
+        className="h-14 w-14 rounded-full border-status-bad/40 text-status-bad-text hover:bg-status-bad/10 hover:text-status-bad-text"
       >
         <X className="h-6 w-6" />
       </Button>
@@ -66,7 +66,7 @@ export const SwipeActionBar: React.FC<SwipeActionBarProps> = ({
         disabled={disabled}
         onClick={onTailor}
         aria-label="Tailor"
-        className="h-14 w-14 rounded-full border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
+        className="h-14 w-14 rounded-full border-status-good/40 text-status-good-text hover:bg-status-good/10 hover:text-status-good-text"
       >
         <Check className="h-6 w-6" />
       </Button>

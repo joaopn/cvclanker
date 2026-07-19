@@ -364,10 +364,13 @@ interface ScoreMeterProps {
 }
 
 const getScoreTokens = (score: number) => {
-  if (score >= 90) return { bar: "bg-emerald-500/80" };
-  if (score >= 70) return { bar: "bg-amber-500/80" };
-  if (score >= 50) return { bar: "bg-orange-500/80" };
-  return { bar: "bg-rose-500/80" };
+  if (score >= 90) return { bar: "bg-status-good/80" };
+  if (score >= 70) return { bar: "bg-status-warn/80" };
+  if (score >= 50)
+    return {
+      bar: "bg-[color-mix(in_oklab,var(--status-warn)_50%,var(--status-bad))]/80",
+    };
+  return { bar: "bg-status-bad/80" };
 };
 
 export const ScoreMeter: React.FC<ScoreMeterProps> = ({

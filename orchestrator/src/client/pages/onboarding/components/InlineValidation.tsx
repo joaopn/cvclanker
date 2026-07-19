@@ -8,7 +8,7 @@ export const InlineValidation: React.FC<{
 }> = ({ state, successMessage }) => {
   if (state.valid && state.hydrated && successMessage) {
     return (
-      <div className="flex items-start gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700">
+      <div className="flex items-start gap-3 rounded-lg border border-status-good/20 bg-status-good/10 px-4 py-3 text-sm text-status-good-text">
         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
         <div>{successMessage}</div>
       </div>

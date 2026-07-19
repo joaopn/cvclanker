@@ -460,12 +460,12 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
         <div className="flex shrink-0 items-center gap-1.5">
           <FitIndicator category={selectedJob.suitabilityCategory ?? null} />
           {selectedJob.outcome ? (
-            <span className="inline-flex items-center rounded-full border border-rose-500/40 bg-rose-500/15 px-2.5 py-0.5 text-xs font-semibold text-rose-300">
+            <span className="inline-flex items-center rounded-full border border-status-bad/40 bg-status-bad/15 px-2.5 py-0.5 text-xs font-semibold text-status-bad-text">
               {outcomeLabel[selectedJob.outcome]}
             </span>
           ) : null}
           {selectedJob.status === "skipped" ? (
-            <span className="inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/15 px-2.5 py-0.5 text-xs font-semibold text-amber-300">
+            <span className="inline-flex items-center rounded-full border border-status-warn/40 bg-status-warn/15 px-2.5 py-0.5 text-xs font-semibold text-status-warn-text">
               Skipped
             </span>
           ) : null}
@@ -542,7 +542,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
         {canApply && (
           <Button
             size="sm"
-            className="h-8 gap-1.5 text-xs bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30 border border-emerald-500/30"
+            className="h-8 gap-1.5 text-xs bg-status-good/20 text-status-good-text hover:bg-status-good/30 border border-status-good/30"
             onClick={handleApply}
           >
             <CheckCircle2 className="h-3.5 w-3.5" />
@@ -553,7 +553,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
         {canMoveToInProgress && (
           <Button
             size="sm"
-            className="h-8 gap-1.5 text-xs bg-cyan-600/20 text-cyan-300 hover:bg-cyan-600/30 border border-cyan-500/30"
+            className="h-8 gap-1.5 text-xs bg-accent-cyan/20 text-accent-cyan-text hover:bg-accent-cyan/30 border border-accent-cyan/30"
             onClick={handleMoveToInProgress}
           >
             <CheckCircle2 className="h-3.5 w-3.5" />
@@ -567,7 +567,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
             trigger={
               <Button
                 size="sm"
-                className="h-8 gap-1.5 text-xs bg-rose-600/20 text-rose-300 hover:bg-rose-600/30 border border-rose-500/30"
+                className="h-8 gap-1.5 text-xs bg-status-bad/20 text-status-bad-text hover:bg-status-bad/30 border border-status-bad/30"
               >
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Mark Closed
@@ -579,7 +579,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
         {canRowTailor && (
           <Button
             size="sm"
-            className="h-8 gap-1.5 text-xs bg-violet-600/20 text-violet-300 hover:bg-violet-600/30 border border-violet-500/30"
+            className="h-8 gap-1.5 text-xs bg-accent-purple/20 text-accent-purple-text hover:bg-accent-purple/30 border border-accent-purple/30"
             onClick={handleTailorRow}
           >
             <CheckCircle2 className="h-3.5 w-3.5" />
@@ -590,7 +590,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
         {canRowSkip && (
           <Button
             size="sm"
-            className="h-8 gap-1.5 text-xs bg-rose-600/20 text-rose-300 hover:bg-rose-600/30 border border-rose-500/30"
+            className="h-8 gap-1.5 text-xs bg-status-bad/20 text-status-bad-text hover:bg-status-bad/30 border border-status-bad/30"
             onClick={() => void handleSkip()}
           >
             <XCircle className="h-3.5 w-3.5" />
@@ -601,7 +601,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
         {canRowReopen && (
           <Button
             size="sm"
-            className="h-8 gap-1.5 text-xs bg-cyan-600/20 text-cyan-300 hover:bg-cyan-600/30 border border-cyan-500/30"
+            className="h-8 gap-1.5 text-xs bg-accent-cyan/20 text-accent-cyan-text hover:bg-accent-cyan/30 border border-accent-cyan/30"
             onClick={handleReopen}
           >
             <CheckCircle2 className="h-3.5 w-3.5" />

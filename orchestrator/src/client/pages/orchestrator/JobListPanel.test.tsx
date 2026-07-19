@@ -229,7 +229,7 @@ describe("JobListPanel", () => {
 
     expect(screen.queryByText("Previously Applied")).not.toBeInTheDocument();
     expect(screen.getByTitle("Previously Applied")).toHaveClass(
-      "bg-yellow-400",
+      "bg-status-warn",
     );
   });
 

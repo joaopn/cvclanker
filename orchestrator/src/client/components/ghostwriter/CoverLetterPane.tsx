@@ -160,7 +160,7 @@ const LegacyDraftTab: React.FC<{
         </div>
       </div>
 
-      <div className="mb-2 flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-900">
+      <div className="mb-2 flex items-center gap-2 rounded-md border border-status-warn/30 bg-status-warn/10 px-2 py-1.5 text-xs text-status-warn-text">
         <Mail className="h-3.5 w-3.5" />
         No cover-letter template uploaded — upload one from the Cover Letter
         page to edit fields and Generate / Render a PDF.

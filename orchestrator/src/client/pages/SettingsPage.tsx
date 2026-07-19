@@ -1148,7 +1148,7 @@ export const SettingsPage: React.FC = () => {
                                   variant="ghost"
                                   className={`h-9 w-full justify-start rounded-md px-3 text-left text-sm font-medium ${
                                     isActive
-                                      ? "border border-orange-400/40 bg-orange-500/12 text-orange-100 hover:bg-orange-500/18 hover:text-orange-50"
+                                      ? "border border-primary/40 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
                                       : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
                                   }`}
                                   onClick={() => setActiveSection(item.id)}

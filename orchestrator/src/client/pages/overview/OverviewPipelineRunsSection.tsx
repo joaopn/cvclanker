@@ -45,11 +45,11 @@ import {
 const RECENT_RUN_LIMIT = 8;
 
 const statusBadgeClasses: Record<PipelineRunDisplayStatus, string> = {
-  running: "border-sky-500/30 bg-sky-500/10 text-sky-200",
-  completed: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
-  failed: "border-rose-500/30 bg-rose-500/10 text-rose-200",
-  cancelled: "border-amber-500/30 bg-amber-500/10 text-amber-200",
-  incomplete: "border-slate-500/30 bg-slate-500/10 text-slate-200",
+  running: "border-status-info/30 bg-status-info/10 text-status-info-text",
+  completed: "border-status-good/30 bg-status-good/10 text-status-good-text",
+  failed: "border-status-bad/30 bg-status-bad/10 text-status-bad-text",
+  cancelled: "border-status-warn/30 bg-status-warn/10 text-status-warn-text",
+  incomplete: "border-border/60 bg-muted/40 text-muted-foreground",
 };
 
 function getDurationMs(run: PipelineRun): number | null {
@@ -563,7 +563,7 @@ export const OverviewPipelineRunsSection: React.FC = () => {
                     <span>Current status</span>
                   </div>
                   {statusError ? (
-                    <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                    <div className="mt-3 rounded-lg border border-status-warn/20 bg-status-warn/10 px-3 py-2 text-sm text-status-warn-text">
                       Live status is temporarily unavailable. Showing the latest
                       persisted run history.
                     </div>
@@ -614,7 +614,7 @@ export const OverviewPipelineRunsSection: React.FC = () => {
                   <div className="font-medium">Recent runs</div>
                 </div>
                 {runsError ? (
-                  <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                  <div className="rounded-lg border border-status-warn/20 bg-status-warn/10 px-3 py-2 text-sm text-status-warn-text">
                     Recent run history could not be refreshed just now.
                   </div>
                 ) : null}

@@ -228,7 +228,7 @@ export const DuplicateReviewModal: React.FC<DuplicateReviewModalProps> = ({
                     className={cn(
                       "flex cursor-pointer items-center gap-3 rounded-md border p-2.5 text-sm transition-colors",
                       isKeeper
-                        ? "border-emerald-500/40 bg-emerald-500/5"
+                        ? "border-status-good/40 bg-status-good/5"
                         : "border-border/50 hover:bg-muted/30",
                     )}
                   >
@@ -244,7 +244,7 @@ export const DuplicateReviewModal: React.FC<DuplicateReviewModalProps> = ({
                         {isKeeper && (
                           <Badge
                             variant="outline"
-                            className="border-emerald-500/40 text-emerald-300"
+                            className="border-status-good/40 text-status-good-text"
                           >
                             Keep
                           </Badge>

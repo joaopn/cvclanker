@@ -18,16 +18,16 @@ const STATUS_INDICATOR_DOT_CLASS = "h-1.5 w-1.5 rounded-full opacity-80";
 
 const badgeVariantClasses = {
   amber: {
-    badge: "border-amber-500/30 bg-amber-500/10 text-amber-200",
-    dot: "bg-amber-400",
+    badge: "border-status-warn/30 bg-status-warn/10 text-status-warn-text",
+    dot: "bg-status-warn",
   },
   emerald: {
-    badge: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
-    dot: "bg-emerald-400",
+    badge: "border-status-good/30 bg-status-good/10 text-status-good-text",
+    dot: "bg-status-good",
   },
   sky: {
-    badge: "border-sky-500/30 bg-sky-500/10 text-sky-200",
-    dot: "bg-sky-400",
+    badge: "border-status-info/30 bg-status-info/10 text-status-info-text",
+    dot: "bg-status-info",
   },
 };
 
@@ -106,7 +106,7 @@ const getJobStatusIndicator = (status: JobStatus) => {
 
 const getTracerStatusIndicator = (enabled: boolean) => ({
   label: enabled ? "Tracer On" : "Tracer Off",
-  dotColor: enabled ? "bg-violet-500" : "bg-slate-500",
+  dotColor: enabled ? "bg-accent-purple" : "bg-muted-foreground",
 });
 
 const StatusBadgeIndicator: React.FC<

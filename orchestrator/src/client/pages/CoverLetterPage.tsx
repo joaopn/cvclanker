@@ -527,7 +527,7 @@ function CoverLetterEditor({ doc }: { doc: CoverLetterDocument }) {
               {new Date(doc.updatedAt).toLocaleString()}
             </CardDescription>
             <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-emerald-900">
+              <span className="inline-flex items-center gap-1 rounded-full border border-status-good/30 bg-status-good/10 px-2 py-0.5 text-status-good-text">
                 <CheckCircle2 className="h-3 w-3" />
                 Matches original cover letter
               </span>
@@ -543,7 +543,7 @@ function CoverLetterEditor({ doc }: { doc: CoverLetterDocument }) {
                 </span>
               ) : null}
               {bodyField ? (
-                <span className="rounded-full border border-blue-300 bg-blue-50 px-2 py-0.5 text-blue-900">
+                <span className="rounded-full border border-status-info/30 bg-status-info/10 px-2 py-0.5 text-status-info-text">
                   body: {bodyField.id}
                 </span>
               ) : null}
@@ -652,7 +652,7 @@ function CoverLetterEditor({ doc }: { doc: CoverLetterDocument }) {
             to default clears your override so future re-extracts use
             whatever the server's current default is.
             {doc.extractionPrompt ? (
-              <span className="ml-1 text-amber-700">
+              <span className="ml-1 text-status-warn-text">
                 (using a custom override; reset to track server updates.)
               </span>
             ) : (
@@ -764,7 +764,7 @@ function CoverLetterEditor({ doc }: { doc: CoverLetterDocument }) {
                     <span
                       className={
                         field.role === "body"
-                          ? "rounded-sm bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-900"
+                          ? "rounded-sm bg-status-info/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-status-info-text"
                           : "rounded-sm bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary"
                       }
                     >

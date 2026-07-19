@@ -78,12 +78,12 @@ export const DecideMode: React.FC<DecideModeProps> = ({
         <FitAssessment job={job} />
 
         {job.tailoringFailureReason ? (
-          <div className="rounded-md border border-rose-500/40 bg-rose-500/5 px-3 py-2 text-xs">
-            <div className="flex items-center gap-1.5 font-semibold text-rose-200">
+          <div className="rounded-md border border-status-bad/40 bg-status-bad/5 px-3 py-2 text-xs">
+            <div className="flex items-center gap-1.5 font-semibold text-status-bad-text">
               <AlertTriangle className="h-3.5 w-3.5" />
               Last tailoring attempt failed
             </div>
-            <p className="mt-1 whitespace-pre-wrap text-rose-200/90">
+            <p className="mt-1 whitespace-pre-wrap text-status-bad-text/90">
               {job.tailoringFailureReason}
             </p>
           </div>
@@ -116,7 +116,7 @@ export const DecideMode: React.FC<DecideModeProps> = ({
             size="default"
             onClick={onSkip}
             disabled={isSkipping}
-            className="flex-1 h-11 text-sm text-muted-foreground hover:text-rose-500 hover:border-rose-500/30 hover:bg-rose-500/5 sm:h-10 sm:text-xs"
+            className="flex-1 h-11 text-sm text-muted-foreground hover:text-status-bad-text hover:border-status-bad/30 hover:bg-status-bad/5 sm:h-10 sm:text-xs"
           >
             {isSkipping ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -115,10 +115,10 @@ export const EditDiffCard: React.FC<EditDiffCardProps> = ({
                   ) : null}
                   <span className="font-mono">{op.fieldId}</span>
                 </div>
-                <div className="rounded-sm border border-rose-200 bg-rose-50 px-2 py-1 text-rose-900 line-through">
+                <div className="rounded-sm border border-status-bad/30 bg-status-bad/10 px-2 py-1 text-status-bad-text line-through">
                   {op.from}
                 </div>
-                <div className="rounded-sm border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-900">
+                <div className="rounded-sm border border-status-good/30 bg-status-good/10 px-2 py-1 text-status-good-text">
                   {op.to}
                 </div>
               </li>
@@ -132,7 +132,7 @@ export const EditDiffCard: React.FC<EditDiffCardProps> = ({
               <div className="text-[11px] text-muted-foreground">
                 Append to brief:
               </div>
-              <div className="rounded-sm border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-900 whitespace-pre-wrap">
+              <div className="rounded-sm border border-status-good/30 bg-status-good/10 px-2 py-1 text-status-good-text whitespace-pre-wrap">
                 {proposedEdit.append}
               </div>
             </>
@@ -142,7 +142,7 @@ export const EditDiffCard: React.FC<EditDiffCardProps> = ({
               <div className="text-[11px] text-muted-foreground">
                 Replace brief with:
               </div>
-              <div className="rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-amber-900 whitespace-pre-wrap">
+              <div className="rounded-sm border border-status-warn/30 bg-status-warn/10 px-2 py-1 text-status-warn-text whitespace-pre-wrap">
                 {proposedEdit.replace}
               </div>
             </>
@@ -153,7 +153,7 @@ export const EditDiffCard: React.FC<EditDiffCardProps> = ({
           <div className="text-[11px] text-muted-foreground">
             New cover-letter draft:
           </div>
-          <div className="max-h-72 overflow-y-auto rounded-sm border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-900 whitespace-pre-wrap">
+          <div className="max-h-72 overflow-y-auto rounded-sm border border-status-good/30 bg-status-good/10 px-2 py-1 text-status-good-text whitespace-pre-wrap">
             {proposedEdit.draft}
           </div>
         </div>

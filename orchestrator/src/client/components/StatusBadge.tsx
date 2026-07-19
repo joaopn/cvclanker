@@ -38,14 +38,14 @@ const statusStyles: Record<
   ready: { variant: "default" },
   applied: {
     variant: "outline",
-    className: "text-emerald-400 border-emerald-500/30",
+    className: "text-status-good-text border-status-good/30",
   },
   in_progress: {
     variant: "outline",
-    className: "text-cyan-400 border-cyan-500/30",
+    className: "text-accent-cyan-text border-accent-cyan/30",
   },
   backlog: { variant: "outline", className: "text-muted-foreground" },
-  stale: { variant: "outline", className: "text-stone-300 border-stone-500/30" },
+  stale: { variant: "outline", className: "text-muted-foreground" },
   skipped: { variant: "destructive" },
   closed: { variant: "outline", className: "text-muted-foreground" },
 };

@@ -16,8 +16,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 const CATEGORY_PILL_CLASS: Record<SuitabilityCategory, string> = {
   very_good_fit:
-    "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30",
-  good_fit: "bg-sky-500/10 text-sky-300 border border-sky-500/30",
+    "bg-status-good/15 text-status-good-text border border-status-good/30",
+  good_fit:
+    "bg-status-info/10 text-status-info-text border border-status-info/30",
   bad_fit: "bg-muted/40 text-muted-foreground border border-border/60",
 };
 
@@ -127,7 +128,7 @@ export const JobRowContent = ({
             )}
             {repostCount > 0 && (
               <span
-                className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-px text-[10px] font-medium text-amber-200 tabular-nums"
+                className="rounded border border-status-warn/30 bg-status-warn/10 px-1.5 py-px text-[10px] font-medium text-status-warn-text tabular-nums"
                 title={`Repost #${repostCount}`}
               >
                 Reposted {repostCount > 9 ? "9+" : repostCount}×
@@ -135,7 +136,7 @@ export const JobRowContent = ({
             )}
             {job.tailoringFailureReason && (
               <span
-                className="rounded border border-rose-500/30 bg-rose-500/10 px-1.5 py-px text-[10px] font-medium text-rose-200"
+                className="rounded border border-status-bad/30 bg-status-bad/10 px-1.5 py-px text-[10px] font-medium text-status-bad-text"
                 title={job.tailoringFailureReason}
               >
                 Tailor failed
@@ -163,12 +164,12 @@ export const JobRowContent = ({
                 </span>
               )}
               {closureReason && (
-                <span className="rounded-full border border-rose-500/40 bg-rose-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-300">
+                <span className="rounded-full border border-status-bad/40 bg-status-bad/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-status-bad-text">
                   {closureReason}
                 </span>
               )}
               {isSkipped && (
-                <span className="rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+                <span className="rounded-full border border-status-warn/40 bg-status-warn/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-status-warn-text">
                   Skipped
                 </span>
               )}

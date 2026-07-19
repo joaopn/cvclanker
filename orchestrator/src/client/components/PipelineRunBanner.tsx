@@ -69,11 +69,11 @@ export const stepLabels: Record<PipelineProgressEvent["step"], string> = {
 
 const stepBadgeClasses: Record<PipelineProgressEvent["step"], string> = {
   idle: "bg-muted text-muted-foreground border-border",
-  crawling: "bg-sky-500/10 text-sky-400 border-sky-500/20",
-  importing: "bg-sky-500/10 text-sky-400 border-sky-500/20",
-  scoring: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  crawling: "bg-status-info/10 text-status-info-text border-status-info/20",
+  importing: "bg-status-info/10 text-status-info-text border-status-info/20",
+  scoring: "bg-status-warn/10 text-status-warn-text border-status-warn/20",
   processing: "bg-primary/10 text-primary border-primary/20",
-  completed: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  completed: "bg-status-good/10 text-status-good-text border-status-good/20",
   cancelled: "bg-muted text-muted-foreground border-border",
   failed: "bg-destructive/10 text-destructive border-destructive/20",
 };
@@ -160,14 +160,14 @@ const StatusCell: React.FC<{ status: PipelineSourceStats["status"] }> = ({
       );
     case "running":
       return (
-        <span className="inline-flex items-center gap-1 text-xs text-sky-400">
+        <span className="inline-flex items-center gap-1 text-xs text-status-info-text">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           Running
         </span>
       );
     case "completed":
       return (
-        <span className="inline-flex items-center gap-1 text-xs text-emerald-400">
+        <span className="inline-flex items-center gap-1 text-xs text-status-good-text">
           <CheckCircle2 className="h-3.5 w-3.5" />
           Done
         </span>

@@ -33,15 +33,15 @@ export const FIT_FILTER_CHIP_CLASS: Record<
 > = {
   very_good_fit: {
     active:
-      "bg-emerald-500/20 text-emerald-200 border border-emerald-500/40 hover:bg-emerald-500/25",
+      "bg-status-good/20 text-status-good-text border border-status-good/40 hover:bg-status-good/25",
     inactive:
-      "text-emerald-300/80 hover:bg-emerald-500/10 hover:text-emerald-200 border border-transparent",
+      "text-status-good-text/80 hover:bg-status-good/10 hover:text-status-good-text border border-transparent",
   },
   good_fit: {
     active:
-      "bg-sky-500/20 text-sky-200 border border-sky-500/40 hover:bg-sky-500/25",
+      "bg-status-info/20 text-status-info-text border border-status-info/40 hover:bg-status-info/25",
     inactive:
-      "text-sky-300/80 hover:bg-sky-500/10 hover:text-sky-200 border border-transparent",
+      "text-status-info-text/80 hover:bg-status-info/10 hover:text-status-info-text border border-transparent",
   },
   bad_fit: {
     active:
@@ -51,9 +51,9 @@ export const FIT_FILTER_CHIP_CLASS: Record<
   },
   unscored: {
     active:
-      "bg-amber-500/20 text-amber-200 border border-amber-500/40 hover:bg-amber-500/25",
+      "bg-status-warn/20 text-status-warn-text border border-status-warn/40 hover:bg-status-warn/25",
     inactive:
-      "text-amber-300/80 hover:bg-amber-500/10 hover:text-amber-200 border border-transparent",
+      "text-status-warn-text/80 hover:bg-status-warn/10 hover:text-status-warn-text border border-transparent",
   },
 };
 
@@ -78,33 +78,33 @@ export const statusTokens: Record<
 > = {
   discovered: {
     label: "Discovered",
-    badge: "border-sky-500/30 bg-sky-500/10 text-sky-200",
-    dot: "bg-sky-400",
+    badge: "border-status-info/30 bg-status-info/10 text-status-info-text",
+    dot: "bg-status-info",
   },
   selected: {
     label: "Selected",
-    badge: "border-violet-500/30 bg-violet-500/10 text-violet-200",
-    dot: "bg-violet-400",
+    badge: "border-accent-purple/30 bg-accent-purple/10 text-accent-purple-text",
+    dot: "bg-accent-purple",
   },
   processing: {
     label: "Processing",
-    badge: "border-amber-500/30 bg-amber-500/10 text-amber-200",
-    dot: "bg-amber-400",
+    badge: "border-status-warn/30 bg-status-warn/10 text-status-warn-text",
+    dot: "bg-status-warn",
   },
   ready: {
     label: "Ready",
-    badge: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
-    dot: "bg-emerald-400",
+    badge: "border-status-good/30 bg-status-good/10 text-status-good-text",
+    dot: "bg-status-good",
   },
   applied: {
     label: "Applied",
-    badge: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
-    dot: "bg-emerald-400",
+    badge: "border-status-good/30 bg-status-good/10 text-status-good-text",
+    dot: "bg-status-good",
   },
   in_progress: {
     label: "Interviewing",
-    badge: "border-cyan-500/30 bg-cyan-500/10 text-cyan-200",
-    dot: "bg-cyan-400",
+    badge: "border-accent-cyan/30 bg-accent-cyan/10 text-accent-cyan-text",
+    dot: "bg-accent-cyan",
   },
   backlog: {
     label: "Backlog",
@@ -113,13 +113,13 @@ export const statusTokens: Record<
   },
   stale: {
     label: "Stale",
-    badge: "border-stone-500/30 bg-stone-500/10 text-stone-200",
-    dot: "bg-stone-400",
+    badge: "border-muted-foreground/20 bg-muted/30 text-muted-foreground",
+    dot: "bg-muted-foreground",
   },
   skipped: {
     label: "Skipped",
-    badge: "border-rose-500/30 bg-rose-500/10 text-rose-200",
-    dot: "bg-rose-400",
+    badge: "border-status-bad/30 bg-status-bad/10 text-status-bad-text",
+    dot: "bg-status-bad",
   },
   closed: {
     label: "Closed",
@@ -144,7 +144,7 @@ export const outcomeLabel: Record<JobOutcome, string> = {
 
 export const appliedDuplicateIndicator = {
   label: "Previously Applied",
-  dot: "bg-yellow-400",
+  dot: "bg-status-warn",
 };
 
 export type FilterTab =
