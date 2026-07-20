@@ -159,6 +159,31 @@ describe("JobListPanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders the facet bar and a facet-active empty state", () => {
+    render(
+      <JobListPanel
+        isLoading={false}
+        jobs={[]}
+        activeJobs={[]}
+        selectedJobId={null}
+        selectedJobIds={new Set()}
+        activeTab="inbox"
+        onSelectJob={vi.fn()}
+        onToggleSelectJob={vi.fn()}
+        onToggleSelectAll={vi.fn()}
+        facetBar={<div>FACET_BAR_SLOT</div>}
+        facetsActive
+      />,
+    );
+
+    expect(screen.getByText("FACET_BAR_SLOT")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "No jobs match your filters. Adjust or clear the filters above.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("renders jobs and notifies when a job is selected", () => {
     const onSelectJob = vi.fn();
     const onToggleSelectJob = vi.fn();

@@ -264,6 +264,13 @@ export const tabs: Array<{
   { id: "all", label: "All Jobs", statuses: [] },
 ];
 
+// Tabs that surface the ephemeral facet-filter bar (Company / Title / Location
+// / …). These are the untailored-candidate shelves plus All — the views where
+// narrowing feeds bulk-select → Tailor. The facet filter is applied ONLY on
+// these tabs, so it can never sit hidden-and-active on a tab whose header
+// doesn't render the bar (the B2 trap).
+export const FACET_TABS: FilterTab[] = ["inbox", "backlog", "stale", "all"];
+
 export const emptyStateCopy: Record<FilterTab, string> = {
   inbox: "Run the pipeline to discover new jobs.",
   tailoring:

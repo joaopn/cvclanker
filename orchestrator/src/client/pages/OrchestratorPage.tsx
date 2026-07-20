@@ -19,9 +19,11 @@ import { BatchUrlImportSheet } from "./orchestrator/BatchUrlImportSheet";
 import { ClosedFilterChips } from "./orchestrator/ClosedFilterChips";
 import { CompanyJobsDialog } from "./orchestrator/CompanyJobsDialog";
 import { CompanyPanelProvider } from "./orchestrator/CompanyPanelContext";
-import { type FilterTab, tabs } from "./orchestrator/constants";
+import { FACET_TABS, type FilterTab, tabs } from "./orchestrator/constants";
 import { DuplicateReviewModal } from "./orchestrator/DuplicateReviewModal";
+import { FacetBar } from "./orchestrator/FacetBar";
 import { FloatingJobActionsBar } from "./orchestrator/FloatingJobActionsBar";
+import type { ActiveFacet } from "./orchestrator/facets/registry";
 import { JobCommandBar } from "./orchestrator/JobCommandBar";
 import { JobDetailPanel } from "./orchestrator/JobDetailPanel";
 import { JobListPanel } from "./orchestrator/JobListPanel";
@@ -35,6 +37,7 @@ import { OrchestratorHeader } from "./orchestrator/OrchestratorHeader";
 import { ProfileSelect } from "./orchestrator/ProfileSelect";
 import { StaleControlBar } from "./orchestrator/StaleControlBar";
 import { useDuplicateGroups } from "./orchestrator/useDuplicateGroups";
+import { useFacetFilters } from "./orchestrator/useFacetFilters";
 import { useFilteredJobs } from "./orchestrator/useFilteredJobs";
 import { useJobSelectionActions } from "./orchestrator/useJobSelectionActions";
 import { useKeyboardShortcuts } from "./orchestrator/useKeyboardShortcuts";
@@ -59,6 +62,10 @@ const TAILORING_CANDIDATE_STATUSES = new Set([
   "backlog",
   "stale",
 ]);
+
+// Stable empty reference for tabs that don't surface the facet bar, so the
+// useFilteredJobs memo isn't busted by a fresh [] each render.
+const EMPTY_ACTIVE_FACETS: ActiveFacet[] = [];
 
 // Whether a job of `status` is part of `tab`'s visible list. Mirrors
 // useFilteredJobs — needed here so a selected row isn't nulled out / dropped on
@@ -106,6 +113,7 @@ export const OrchestratorPage: React.FC = () => {
     setUntailoredOnly,
     resetFilters,
   } = useOrchestratorFilters();
+  const facetFilters = useFacetFilters();
 
   const activeTab = useMemo(() => {
     const validTabs: FilterTab[] = [
@@ -280,6 +288,17 @@ export const OrchestratorPage: React.FC = () => {
     setSelected: setSelectedProfile,
   } = useSelectedProfile();
 
+  const facetsEnabledForTab = FACET_TABS.includes(activeTab);
+  const activeFacetsForTab = facetsEnabledForTab
+    ? facetFilters.activeFacets
+    : EMPTY_ACTIVE_FACETS;
+  // Only a facet with a non-blank value actually narrows the list — that is
+  // what drives the "no jobs match your filters" empty state (an empty chip
+  // filters nothing).
+  const facetsActive =
+    facetsEnabledForTab &&
+    facetFilters.activeFacets.some((facet) => facet.value.trim().length > 0);
+
   const activeJobs = useFilteredJobs(
     jobs,
     activeTab,
@@ -291,6 +310,7 @@ export const OrchestratorPage: React.FC = () => {
     closedSubFilter,
     fitFilter,
     untailoredOnly,
+    activeFacetsForTab,
   );
   const setActiveTab = useCallback(
     (newTab: FilterTab) => {
@@ -688,6 +708,18 @@ export const OrchestratorPage: React.FC = () => {
                     onFitFilterChange={setFitFilter}
                     untailoredOnly={untailoredOnly}
                     onUntailoredOnlyChange={setUntailoredOnly}
+                    facetBar={
+                      facetsEnabledForTab ? (
+                        <FacetBar
+                          activeFacets={facetFilters.activeFacets}
+                          onAddFacet={facetFilters.addFacet}
+                          onRemoveFacet={facetFilters.removeFacet}
+                          onSetFacetValue={facetFilters.setFacetValue}
+                          onClearFacets={facetFilters.clearFacets}
+                        />
+                      ) : undefined
+                    }
+                    facetsActive={facetsActive}
                     primaryEmptyStateAction={primaryEmptyStateAction}
                     secondaryEmptyStateAction={secondaryEmptyStateAction}
                     emptyStateMessage={emptyStateMessage}

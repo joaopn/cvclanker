@@ -45,6 +45,13 @@ interface JobListPanelProps {
   onFitFilterChange?: (value: FitFilterValue[]) => void;
   untailoredOnly?: boolean;
   onUntailoredOnlyChange?: (value: boolean) => void;
+  // Ephemeral facet-filter bar, rendered under the select-all row on the tabs
+  // that support it. A plain ReactNode so this panel stays decoupled from the
+  // facet internals (same pattern as closedFilterChips / staleControlBar).
+  facetBar?: ReactNode;
+  // True when a facet with a non-blank value is narrowing the list — drives the
+  // "no jobs match your filters" empty-state copy.
+  facetsActive?: boolean;
   primaryEmptyStateAction?: EmptyStateAction;
   secondaryEmptyStateAction?: EmptyStateAction;
   emptyStateMessage?: string;
@@ -89,6 +96,8 @@ export const JobListPanel = forwardRef<VirtualListHandle, JobListPanelProps>(
       onFitFilterChange,
       untailoredOnly,
       onUntailoredOnlyChange,
+      facetBar,
+      facetsActive,
       primaryEmptyStateAction,
       secondaryEmptyStateAction,
       emptyStateMessage,
@@ -215,6 +224,12 @@ export const JobListPanel = forwardRef<VirtualListHandle, JobListPanelProps>(
       </div>
     );
 
+    const facetBarRow = facetBar ? (
+      <div className="shrink-0 border-b border-border/40 px-4 py-2">
+        {facetBar}
+      </div>
+    ) : null;
+
     if (activeJobs.length === 0) {
       const fitFilterActive = !!fitFilter && fitFilter.length > 0;
       return (
@@ -228,12 +243,15 @@ export const JobListPanel = forwardRef<VirtualListHandle, JobListPanelProps>(
             <div className="shrink-0">{staleControlBar}</div>
           ) : null}
           {listHeader}
+          {facetBarRow}
           <div className="flex flex-col items-center justify-center gap-4 px-6 py-12 text-center">
             <div className="text-base font-semibold">No jobs found</div>
             <p className="max-w-md text-sm text-muted-foreground">
               {fitFilterActive
                 ? "No jobs match the active fit filter. Click a highlighted chip above to clear it."
-                : (emptyStateMessage ?? emptyStateCopy[activeTab])}
+                : facetsActive
+                  ? "No jobs match your filters. Adjust or clear the filters above."
+                  : (emptyStateMessage ?? emptyStateCopy[activeTab])}
             </p>
             {fitFilterActive && onFitFilterChange ? (
               <Button
@@ -243,7 +261,7 @@ export const JobListPanel = forwardRef<VirtualListHandle, JobListPanelProps>(
               >
                 Clear fit filter
               </Button>
-            ) : (
+            ) : facetsActive ? null : (
               (primaryEmptyStateAction || secondaryEmptyStateAction) && (
                 <div className="flex flex-col items-center justify-center gap-2 sm:flex-row">
                   {primaryEmptyStateAction && (
@@ -282,6 +300,7 @@ export const JobListPanel = forwardRef<VirtualListHandle, JobListPanelProps>(
         ) : null}
         <div className="flex min-h-0 flex-1 flex-col">
           {listHeader}
+          {facetBarRow}
           <div
             ref={(el) => {
               scrollRef.current = el;

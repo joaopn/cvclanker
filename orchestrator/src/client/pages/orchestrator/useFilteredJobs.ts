@@ -9,6 +9,7 @@ import type {
   JobSort,
   SalaryFilter,
 } from "./constants";
+import { type ActiveFacet, buildFacetPredicates } from "./facets/registry";
 import {
   compareJobs,
   getJobDateValue,
@@ -44,6 +45,7 @@ export const useFilteredJobs = (
   closedSubFilter: ClosedSubFilter,
   fitFilter: FitFilterValue[],
   untailoredOnly: boolean,
+  activeFacets: ActiveFacet[] = [],
 ) =>
   useMemo(() => {
     let filtered = [...jobs];
@@ -118,6 +120,14 @@ export const useFilteredJobs = (
       });
     }
 
+    // Ephemeral facet filters (Company / Title / Location / …). Each active
+    // facet contributes an independent predicate, AND'd together.
+    if (activeFacets.length > 0) {
+      for (const predicate of buildFacetPredicates(activeFacets)) {
+        filtered = filtered.filter(predicate);
+      }
+    }
+
     if (maxAgeDays != null && maxAgeDays > 0) {
       const cutoff = Date.now() - maxAgeDays * DAY_MS;
       filtered = filtered.filter((job) => {
@@ -182,6 +192,7 @@ export const useFilteredJobs = (
     closedSubFilter,
     fitFilter,
     untailoredOnly,
+    activeFacets,
   ]);
 
 const matchesDateDimension = (
