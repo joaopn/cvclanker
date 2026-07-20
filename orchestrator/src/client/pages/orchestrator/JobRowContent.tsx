@@ -14,12 +14,13 @@ interface JobRowContentProps {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// Opaque, theme-independent badge colors: the dark-scheme tints (Tailwind hue
+// over the #3b4252 card) baked to fixed hex so chips render identically in both
+// themes; vivid text stays on the fixed Tailwind palette.
 const CATEGORY_PILL_CLASS: Record<SuitabilityCategory, string> = {
-  very_good_fit:
-    "bg-status-good/15 text-status-good-text border border-status-good/30",
-  good_fit:
-    "bg-status-info/10 text-status-info-text border border-status-info/30",
-  bad_fit: "bg-muted/40 text-muted-foreground border border-border/60",
+  very_good_fit: "bg-[#3b5459] text-emerald-300 border border-[#396560]",
+  good_fit: "bg-[#3b4c61] text-sky-300 border border-[#385f80]",
+  bad_fit: "bg-[#3e4657] text-[#d8dee9] border border-[#404859]",
 };
 
 const CATEGORY_PILL_LABEL: Record<SuitabilityCategory, string> = {
@@ -128,7 +129,7 @@ export const JobRowContent = ({
             )}
             {repostCount > 0 && (
               <span
-                className="rounded border border-status-warn/30 bg-status-warn/10 px-1.5 py-px text-[10px] font-medium text-status-warn-text tabular-nums"
+                className="rounded border border-[#725e4d] bg-[#4d4b51] px-1.5 py-px text-[10px] font-medium text-amber-200 tabular-nums"
                 title={`Repost #${repostCount}`}
               >
                 Reposted {repostCount > 9 ? "9+" : repostCount}×
@@ -136,7 +137,7 @@ export const JobRowContent = ({
             )}
             {job.tailoringFailureReason && (
               <span
-                className="rounded border border-status-bad/30 bg-status-bad/10 px-1.5 py-px text-[10px] font-medium text-status-bad-text"
+                className="rounded border border-[#784756] bg-[#504453] px-1.5 py-px text-[10px] font-medium text-rose-200"
                 title={job.tailoringFailureReason}
               >
                 Tailor failed
@@ -164,12 +165,12 @@ export const JobRowContent = ({
                 </span>
               )}
               {closureReason && (
-                <span className="rounded-full border border-status-bad/40 bg-status-bad/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-status-bad-text">
+                <span className="rounded-full border border-[#8b4756] bg-[#5a4554] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-300">
                   {closureReason}
                 </span>
               )}
               {isSkipped && (
-                <span className="rounded-full border border-status-warn/40 bg-status-warn/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-status-warn-text">
+                <span className="rounded-full border border-[#856648] bg-[#565050] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
                   Skipped
                 </span>
               )}

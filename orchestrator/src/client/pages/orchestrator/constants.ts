@@ -33,27 +33,27 @@ export const FIT_FILTER_CHIP_CLASS: Record<
 > = {
   very_good_fit: {
     active:
-      "bg-status-good/20 text-status-good-text border border-status-good/40 hover:bg-status-good/25",
+      "bg-[#3b595b] text-emerald-200 border border-[#367164] hover:bg-[#3a5f5e]",
     inactive:
-      "text-status-good-text/80 hover:bg-status-good/10 hover:text-status-good-text border border-transparent",
+      "text-[#5bc6a1] hover:bg-[#3b4e57] hover:text-emerald-200 border border-transparent",
   },
   good_fit: {
     active:
-      "bg-status-info/20 text-status-info-text border border-status-info/40 hover:bg-status-info/25",
+      "bg-[#3a5570] text-sky-200 border border-[#35698f] hover:bg-[#395a78]",
     inactive:
-      "text-status-info-text/80 hover:bg-status-info/10 hover:text-status-info-text border border-transparent",
+      "text-[#6ab5db] hover:bg-[#3b4c61] hover:text-sky-200 border border-transparent",
   },
   bad_fit: {
     active:
-      "bg-muted/60 text-foreground border border-border hover:bg-muted/70",
+      "bg-[#404859] text-[#eceff4] border border-[#434c5e] hover:bg-[#41495a]",
     inactive:
-      "text-muted-foreground hover:bg-muted/40 hover:text-foreground border border-transparent",
+      "text-[#d8dee9] hover:bg-[#3e4657] hover:text-[#eceff4] border border-transparent",
   },
   unscored: {
     active:
-      "bg-status-warn/20 text-status-warn-text border border-status-warn/40 hover:bg-status-warn/25",
+      "bg-[#60554f] text-amber-200 border border-[#856648] hover:bg-[#69594e]",
     inactive:
-      "text-status-warn-text/80 hover:bg-status-warn/10 hover:text-status-warn-text border border-transparent",
+      "text-[#d5b449] hover:bg-[#4d4b51] hover:text-amber-200 border border-transparent",
   },
 };
 
@@ -72,66 +72,68 @@ export const orderedFilterSources: ExtractorSourceId[] = [
     EXTRACTOR_SOURCE_METADATA[right].order,
 );
 
+// Opaque, theme-independent badge colors: the dark-scheme tints (Tailwind hue
+// over the #3b4252 card) baked to fixed hex so chips render identically in both
+// themes; vivid text stays on the fixed Tailwind palette.
 export const statusTokens: Record<
   JobStatus,
   { label: string; badge: string; dot: string }
 > = {
   discovered: {
     label: "Discovered",
-    badge: "border-status-info/30 bg-status-info/10 text-status-info-text",
-    dot: "bg-status-info",
+    badge: "border-[#385f80] bg-[#3b4c61] text-sky-200",
+    dot: "bg-sky-400",
   },
   selected: {
     label: "Selected",
-    badge:
-      "border-accent-purple/30 bg-accent-purple/10 text-accent-purple-text",
-    dot: "bg-accent-purple",
+    badge: "border-[#524b85] bg-[#424563] text-violet-200",
+    dot: "bg-violet-400",
   },
   processing: {
     label: "Processing",
-    badge: "border-status-warn/30 bg-status-warn/10 text-status-warn-text",
-    dot: "bg-status-warn",
+    badge: "border-[#725e4d] bg-[#4d4b51] text-amber-200",
+    dot: "bg-amber-400",
   },
   ready: {
     label: "Ready",
-    badge: "border-status-good/30 bg-status-good/10 text-status-good-text",
-    dot: "bg-status-good",
+    badge: "border-[#396560] bg-[#3b4e57] text-emerald-200",
+    dot: "bg-emerald-400",
   },
   applied: {
     label: "Applied",
-    badge: "border-status-good/30 bg-status-good/10 text-status-good-text",
-    dot: "bg-status-good",
+    badge: "border-[#396560] bg-[#3b4e57] text-emerald-200",
+    dot: "bg-emerald-400",
   },
   in_progress: {
     label: "Interviewing",
-    badge: "border-accent-cyan/30 bg-accent-cyan/10 text-accent-cyan-text",
-    dot: "bg-accent-cyan",
+    badge: "border-[#396478] bg-[#3c4d5f] text-cyan-200",
+    dot: "bg-cyan-400",
   },
   backlog: {
     label: "Backlog",
-    badge: "border-muted-foreground/20 bg-muted/30 text-muted-foreground",
+    badge: "border-[#575e6e] bg-[#3d4556] text-[#d8dee9]",
     dot: "bg-muted-foreground",
   },
   stale: {
     label: "Stale",
-    badge: "border-muted-foreground/20 bg-muted/30 text-muted-foreground",
-    dot: "bg-muted-foreground",
+    badge: "border-[#4d505a] bg-[#414755] text-stone-200",
+    dot: "bg-stone-400",
   },
   skipped: {
     label: "Skipped",
-    badge: "border-status-bad/30 bg-status-bad/10 text-status-bad-text",
-    dot: "bg-status-bad",
+    badge: "border-[#784756] bg-[#504453] text-rose-200",
+    dot: "bg-rose-400",
   },
   closed: {
     label: "Closed",
-    badge: "border-muted-foreground/20 bg-muted/30 text-muted-foreground",
+    badge: "border-[#575e6e] bg-[#3d4556] text-[#d8dee9]",
     dot: "bg-muted-foreground",
   },
 };
 
 export const defaultStatusToken = {
   label: "Unknown",
-  badge: "border-muted-foreground/20 bg-muted/30 text-muted-foreground",
+  badge: "border-[#575e6e] bg-[#3d4556] text-[#d8dee9]",
   dot: "bg-muted-foreground",
 };
 

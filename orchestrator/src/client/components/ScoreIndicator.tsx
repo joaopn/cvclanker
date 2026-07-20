@@ -15,11 +15,13 @@ interface FitIndicatorProps {
   className?: string;
 }
 
+// Opaque, theme-independent badge colors: the dark-scheme tints (Tailwind hue
+// over the #3b4252 card) baked to fixed hex so chips render identically in both
+// themes; vivid text stays on the fixed Tailwind palette.
 export const PILL_CLASS: Record<SuitabilityCategory, string> = {
-  very_good_fit:
-    "bg-status-good/15 text-status-good-text border-status-good/30",
-  good_fit: "bg-status-info/10 text-status-info-text border-status-info/30",
-  bad_fit: "bg-muted/40 text-muted-foreground border-border/60",
+  very_good_fit: "bg-[#3b5459] text-emerald-300 border-[#396560]",
+  good_fit: "bg-[#3b4c61] text-sky-300 border-[#385f80]",
+  bad_fit: "bg-[#3e4657] text-[#d8dee9] border-[#404859]",
 };
 
 export const FitIndicator: React.FC<FitIndicatorProps> = ({

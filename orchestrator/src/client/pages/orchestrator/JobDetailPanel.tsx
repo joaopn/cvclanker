@@ -460,12 +460,12 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
         <div className="flex shrink-0 items-center gap-1.5">
           <FitIndicator category={selectedJob.suitabilityCategory ?? null} />
           {selectedJob.outcome ? (
-            <span className="inline-flex items-center rounded-full border border-status-bad/40 bg-status-bad/15 px-2.5 py-0.5 text-xs font-semibold text-status-bad-text">
+            <span className="inline-flex items-center rounded-full border border-[#8b4756] bg-[#5a4554] px-2.5 py-0.5 text-xs font-semibold text-rose-300">
               {outcomeLabel[selectedJob.outcome]}
             </span>
           ) : null}
           {selectedJob.status === "skipped" ? (
-            <span className="inline-flex items-center rounded-full border border-status-warn/40 bg-status-warn/15 px-2.5 py-0.5 text-xs font-semibold text-status-warn-text">
+            <span className="inline-flex items-center rounded-full border border-[#856648] bg-[#565050] px-2.5 py-0.5 text-xs font-semibold text-amber-300">
               Skipped
             </span>
           ) : null}
