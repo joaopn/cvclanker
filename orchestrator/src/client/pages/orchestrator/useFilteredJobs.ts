@@ -9,6 +9,7 @@ import type {
   JobSort,
   SalaryFilter,
 } from "./constants";
+import { UNTAILORED_CHIP_TABS } from "./constants";
 import { type ActiveFacet, buildFacetPredicates } from "./facets/registry";
 import {
   compareJobs,
@@ -50,7 +51,11 @@ export const useFilteredJobs = (
   useMemo(() => {
     let filtered = [...jobs];
 
-    if (untailoredOnly) {
+    // Scope the untailored narrowing to the tabs that actually render the
+    // toggle (Tailoring/All). Applying it on other tabs — where the chip isn't
+    // shown — is B2a: a sticky `?untailored=1` from a prior tab silently empties
+    // Live/Interviewing/Closed with no visible control to clear it.
+    if (untailoredOnly && UNTAILORED_CHIP_TABS.includes(activeTab)) {
       filtered = filtered.filter((job) => UNTAILORED_STATUSES.has(job.status));
     }
 

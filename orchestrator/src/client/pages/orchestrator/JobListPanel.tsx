@@ -23,6 +23,7 @@ import {
   FIT_FILTER_LABELS,
   FIT_FILTER_VALUES,
   statusTokens,
+  UNTAILORED_CHIP_TABS,
 } from "./constants";
 import { JobRowContent } from "./JobRowContent";
 
@@ -72,13 +73,6 @@ const FIT_CHIP_TABS: FilterTab[] = [
   "interviewing",
   "backlog",
 ];
-
-// Tabs where the "Untailored" toggle does something. On Tailoring it swaps the
-// list to the candidates that still need tailoring (so you can bulk-tailor);
-// on All it narrows the mixed list to those candidates. Hidden on Inbox (all
-// untailored already) and Backlog/Stale (every row there is untailored, so the
-// toggle would be a no-op).
-const UNTAILORED_CHIP_TABS: FilterTab[] = ["tailoring", "all"];
 
 export const JobListPanel = forwardRef<VirtualListHandle, JobListPanelProps>(
   (
