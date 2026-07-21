@@ -15,13 +15,13 @@ const predicateFor = (id: string, value: string) =>
   buildFacetPredicates([{ id, value }])[0];
 
 describe("facet registry", () => {
-  it("exposes the Tier-1 facets, none needing the full payload", () => {
-    expect(FACET_DEFS.map((def) => def.id)).toEqual([
+  it("exposes the Tier-1 facets without needing the full payload", () => {
+    const tier1 = FACET_DEFS.filter((def) => !def.requiresFullView);
+    expect(tier1.map((def) => def.id)).toEqual([
       "employer",
       "title",
       "location",
     ]);
-    expect(FACET_DEFS.every((def) => !def.requiresFullView)).toBe(true);
     expect(
       facetRequiresFullView([
         { id: "employer", value: "x" },
@@ -65,5 +65,45 @@ describe("facet registry", () => {
     expect(
       buildFacetPredicates([{ id: "employer", value: "acme" }]),
     ).toHaveLength(1);
+  });
+});
+
+describe("facet registry — Tier-2 (full payload)", () => {
+  it("marks the Tier-2 facets as needing the full view", () => {
+    for (const id of ["description", "degreeRequired", "jobLevel", "remote"]) {
+      expect(facetRequiresFullView([{ id, value: "x" }])).toBe(true);
+    }
+    // A mix still needs the full payload.
+    expect(
+      facetRequiresFullView([
+        { id: "employer", value: "acme" },
+        { id: "description", value: "phd" },
+      ]),
+    ).toBe(true);
+  });
+
+  it("matches a full-only text field and stays inert on a list row", () => {
+    const predicate = predicateFor("description", "phd|doctorate");
+    expect(predicate(asJob({ jobDescription: "PhD required" }))).toBe(true);
+    expect(predicate(asJob({ jobDescription: "Doctorate preferred" }))).toBe(
+      true,
+    );
+    expect(predicate(asJob({ jobDescription: "No degree needed" }))).toBe(
+      false,
+    );
+    expect(predicate(asJob({ jobDescription: null }))).toBe(false);
+    expect(predicate(asJob({}))).toBe(true); // list row before full upgrade
+  });
+
+  it("matches remote across workFromHomeType and the isRemote boolean", () => {
+    const predicate = predicateFor("remote", "remote|hybrid");
+    expect(predicate(asJob({ workFromHomeType: "hybrid" }))).toBe(true);
+    expect(predicate(asJob({ workFromHomeType: null, isRemote: true }))).toBe(
+      true,
+    );
+    expect(
+      predicate(asJob({ workFromHomeType: "onsite", isRemote: false })),
+    ).toBe(false);
+    expect(predicate(asJob({}))).toBe(true); // both fields absent ⇒ inert
   });
 });

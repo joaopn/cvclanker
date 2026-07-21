@@ -52,6 +52,38 @@ function textContains(
   };
 }
 
+// Reads a field that only exists on the full Job (absent from JobListItem). A
+// list row lacks the key entirely (→ undefined at runtime), which textContains
+// treats as inert until the view:"full" payload lands.
+function fullField(
+  key: "jobDescription" | "degreeRequired" | "jobLevel",
+): (job: FacetJob) => string | null | undefined {
+  return (job) => (job as Job)[key];
+}
+
+// Remote is two sparse full-only fields: the `workFromHomeType` string
+// (remote/hybrid/onsite/…) and the `isRemote` boolean. Match the typed terms
+// against the string, and also treat isRemote===true as "remote" so a job that
+// only carries the boolean still matches. Both absent ⇒ inert (list row).
+function remotePredicate(value: string): ((job: FacetJob) => boolean) | null {
+  const terms = value
+    .toLowerCase()
+    .split("|")
+    .map((term) => term.trim())
+    .filter(Boolean);
+  if (terms.length === 0) return null;
+  return (job) => {
+    const full = job as Job;
+    const wfh = full.workFromHomeType as string | null | undefined;
+    const flag = full.isRemote as boolean | null | undefined;
+    if (wfh === undefined && flag === undefined) return true; // not loaded ⇒ inert
+    const haystack = (wfh ?? "").toLowerCase();
+    return terms.some(
+      (term) => haystack.includes(term) || (term === "remote" && flag === true),
+    );
+  };
+}
+
 // Tier-1 facets: every field is present on JobListItem, so these filter the
 // list payload client-side with no refetch. Tier-2 facets (jobDescription,
 // degreeRequired, …) are added in a later slice with `requiresFullView: true`.
@@ -76,6 +108,41 @@ export const FACET_DEFS: FacetDef[] = [
     type: "text",
     placeholder: "e.g. berlin | remote",
     buildPredicate: textContains((job) => job.location),
+  },
+  // Tier-2 facets: these fields are absent from JobListItem, so activating any
+  // of them flips useFacetFilters.requiresFullView, which makes the inbox
+  // refetch view:"full" before the predicate can match.
+  {
+    id: "description",
+    label: "Description",
+    type: "text",
+    requiresFullView: true,
+    placeholder: "e.g. phd|doctorate",
+    buildPredicate: textContains(fullField("jobDescription")),
+  },
+  {
+    id: "degreeRequired",
+    label: "Degree required",
+    type: "text",
+    requiresFullView: true,
+    placeholder: "e.g. phd|master",
+    buildPredicate: textContains(fullField("degreeRequired")),
+  },
+  {
+    id: "jobLevel",
+    label: "Job level",
+    type: "text",
+    requiresFullView: true,
+    placeholder: "e.g. senior|lead",
+    buildPredicate: textContains(fullField("jobLevel")),
+  },
+  {
+    id: "remote",
+    label: "Remote",
+    type: "text",
+    requiresFullView: true,
+    placeholder: "e.g. remote|hybrid",
+    buildPredicate: remotePredicate,
   },
 ];
 

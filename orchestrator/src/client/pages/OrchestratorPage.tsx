@@ -224,6 +224,10 @@ export const OrchestratorPage: React.FC = () => {
     useSettings();
   const effectiveStaleThresholdDays =
     staleThresholdDays ?? inboxStaleThresholdDays;
+  // Facets narrow (and their bar renders) only on FACET_TABS; a Tier-2 facet
+  // active there makes the inbox fetch the full job payload.
+  const facetsEnabledForTab = FACET_TABS.includes(activeTab);
+  const needsFullView = facetsEnabledForTab && facetFilters.requiresFullView;
   const {
     jobs,
     selectedJob,
@@ -233,7 +237,7 @@ export const OrchestratorPage: React.FC = () => {
     pipelineTerminalEvent,
     setIsRefreshPaused,
     loadJobs,
-  } = useOrchestratorData(selectedJobId);
+  } = useOrchestratorData(selectedJobId, needsFullView);
   const enabledSources = useMemo(
     () => getEnabledSources(settings ?? null),
     [settings],
@@ -288,7 +292,6 @@ export const OrchestratorPage: React.FC = () => {
     setSelected: setSelectedProfile,
   } = useSelectedProfile();
 
-  const facetsEnabledForTab = FACET_TABS.includes(activeTab);
   const activeFacetsForTab = facetsEnabledForTab
     ? facetFilters.activeFacets
     : EMPTY_ACTIVE_FACETS;

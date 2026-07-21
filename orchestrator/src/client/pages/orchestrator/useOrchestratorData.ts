@@ -83,7 +83,10 @@ const buildTerminalSignature = ({
   return `${status}:run:${runId ?? "unknown"}`;
 };
 
-export const useOrchestratorData = (selectedJobId: string | null) => {
+export const useOrchestratorData = (
+  selectedJobId: string | null,
+  needsFullView = false,
+) => {
   const queryClient = useQueryClient();
   const [jobListItems, setJobListItems] = useState<JobListItem[]>([]);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
@@ -95,6 +98,7 @@ export const useOrchestratorData = (selectedJobId: string | null) => {
     useState<PipelineTerminalEvent | null>(null);
   const [isRefreshPaused, setIsRefreshPaused] = useState(false);
   const requestSeqRef = useRef(0);
+  const needsFullViewRef = useRef(needsFullView);
   const latestAppliedSeqRef = useRef(0);
   const pendingLoadCountRef = useRef(0);
   const selectedJobRequestSeqRef = useRef(0);
@@ -200,7 +204,12 @@ export const useOrchestratorData = (selectedJobId: string | null) => {
     pendingLoadCountRef.current += 1;
     try {
       setIsLoading(true);
-      const data = await api.getJobs({ view: "list" });
+      // The full payload carries the Tier-2 fields (jobDescription, …) that a
+      // full-view facet filters on; fetched only while such a facet is active.
+      // Full is a superset of the list item, so the list cache stays valid.
+      const data = needsFullViewRef.current
+        ? await api.getJobs({ view: "full" })
+        : await api.getJobs({ view: "list" });
       queryClient.setQueryData(queryKeys.jobs.list({ view: "list" }), data);
       if (seq >= latestAppliedSeqRef.current) {
         latestAppliedSeqRef.current = seq;
@@ -292,6 +301,16 @@ export const useOrchestratorData = (selectedJobId: string | null) => {
     void loadJobs();
     void checkPipelineStatus();
   }, [checkPipelineStatus, loadJobs]);
+
+  // Refetch when the facet filter starts/stops needing the full payload. The
+  // ref keeps loadJobs' identity stable (so the SSE subscription and refresh
+  // intervals don't tear down on every facet toggle); this effect flips it and
+  // reloads only on an actual change (the mount run is a no-op — ref is equal).
+  useEffect(() => {
+    if (needsFullViewRef.current === needsFullView) return;
+    needsFullViewRef.current = needsFullView;
+    void loadJobs();
+  }, [needsFullView, loadJobs]);
 
   useEffect(() => {
     if (!isPipelineRunning) return;
