@@ -139,6 +139,36 @@ describe.sequential("Prompts API routes", () => {
     expect(body.data.edited).toBe(false);
   });
 
+  it("reloads a prompt with required variables without rendering it", async () => {
+    // job-score's user template references {{jobTitle}}. A render-based reload
+    // 500s on the missing variable (B1); structural revalidation must not
+    // render, so a named reload succeeds.
+    const named = await fetch(`${baseUrl}/api/prompts/reload`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "job-score" }),
+    });
+    expect(named.status).toBe(200);
+    expect((await named.json()).data.reloaded).toBe("job-score");
+
+    // Unknown name is a clean 404, not a 500.
+    const missing = await fetch(`${baseUrl}/api/prompts/reload`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "nope" }),
+    });
+    expect(missing.status).toBe(404);
+
+    // No name clears the whole cache.
+    const all = await fetch(`${baseUrl}/api/prompts/reload`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(all.status).toBe(200);
+    expect((await all.json()).data.reloaded).toBe("all");
+  });
+
   it("serves and edits fragments via the /fragments/:name routes", async () => {
     const res = await fetch(`${baseUrl}/api/prompts/fragments/style`);
     expect(res.status).toBe(200);

@@ -13,7 +13,6 @@ import {
 import {
   clearPromptCache,
   listPrompts,
-  loadPrompt,
   validatePromptContent,
 } from "@server/services/prompts";
 import { type Request, type Response, Router } from "express";
@@ -72,8 +71,10 @@ promptsRouter.get("/", async (_req: Request, res: Response) => {
  * POST /api/prompts/reload — drop the in-memory parse memo. Edits made
  * through the PUT route (or directly on the DB) already propagate on the
  * next load via updated_at, so this is a belt-and-braces revalidation: with
- * a name it re-loads once so a broken row surfaces as a 400 here instead of
- * at the next consumer. Body: { name?: string }
+ * a name it STRUCTURALLY re-validates the row (parse + schema + partials, NO
+ * variable interpolation — the same check as PUT) so a broken edit surfaces as
+ * a 422 here instead of at the next consumer. It must NOT render: a render
+ * would 500 on every prompt that has required {{vars}}. Body: { name?: string }
  */
 promptsRouter.post("/reload", async (req: Request, res: Response) => {
   try {
@@ -94,7 +95,20 @@ promptsRouter.post("/reload", async (req: Request, res: Response) => {
     }
 
     clearPromptCache(name);
-    await loadPrompt(name);
+    const row = await getPromptRow(name);
+    if (!row) return fail(res, notFound("Prompt not found."));
+    try {
+      await validatePromptContent(name, row.content);
+    } catch (validationError) {
+      return fail(
+        res,
+        unprocessableEntity(
+          validationError instanceof Error
+            ? validationError.message
+            : String(validationError),
+        ),
+      );
+    }
     ok(res, { reloaded: name });
   } catch (error) {
     fail(res, toAppError(error));
