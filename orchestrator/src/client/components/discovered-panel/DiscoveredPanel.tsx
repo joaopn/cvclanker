@@ -108,7 +108,11 @@ export const DiscoveredPanel: React.FC<DiscoveredPanelProps> = ({
     return <EmptyState />;
   }
 
-  if (job.status === "processing") {
+  // A clean `processing` row is actively running → spinner. A failed one (a
+  // reason is set) falls through to DecideMode, which shows the failure and the
+  // Retry (Start Tailoring → move_to_ready) + Skip actions in place, rather than
+  // a permanent spinner.
+  if (job.status === "processing" && !job.tailoringFailureReason) {
     return <ProcessingState />;
   }
 

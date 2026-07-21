@@ -131,8 +131,12 @@ export const DecideMode: React.FC<DecideModeProps> = ({
             onClick={onTailor}
             className="flex-1 h-11 text-sm bg-primary/90 hover:bg-primary sm:h-10 sm:text-xs shadow-sm"
           >
-            <Sparkles className="mr-2 h-4 w-4" />
-            Start Tailoring
+            {job.tailoringFailureReason ? (
+              <RefreshCcw className="mr-2 h-4 w-4" />
+            ) : (
+              <Sparkles className="mr-2 h-4 w-4" />
+            )}
+            {job.tailoringFailureReason ? "Retry tailoring" : "Start Tailoring"}
             <KbdHint shortcut="r" className="ml-1.5" />
           </Button>
         </div>
@@ -170,18 +174,22 @@ export const DecideMode: React.FC<DecideModeProps> = ({
           <Edit2 className="h-3.5 w-3.5" />
           Edit details
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onRescore}
-          disabled={isRescoring}
-          className="flex-1 h-8 gap-2 text-xs text-muted-foreground hover:text-foreground justify-center"
-        >
-          <RefreshCcw
-            className={isRescoring ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"}
-          />
-          {isRescoring ? "Recalculating..." : "Recalculate match"}
-        </Button>
+        {job.status !== "processing" ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onRescore}
+            disabled={isRescoring}
+            className="flex-1 h-8 gap-2 text-xs text-muted-foreground hover:text-foreground justify-center"
+          >
+            <RefreshCcw
+              className={
+                isRescoring ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"
+              }
+            />
+            {isRescoring ? "Recalculating..." : "Recalculate match"}
+          </Button>
+        ) : null}
       </div>
     </div>
   );
