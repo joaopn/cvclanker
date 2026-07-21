@@ -245,6 +245,8 @@ export async function runJobSpy(
     const seenJobUrls = new Set<string>();
     const totalRuns = runLocations.length;
     let runIndex = 0;
+    let succeeded = 0;
+    let lastError: string | null = null;
 
     for (const location of runLocations) {
       runIndex += 1;
@@ -257,7 +259,10 @@ export async function runJobSpy(
         countryIndeed,
       });
 
-      await new Promise<void>((resolve, reject) => {
+      const outcome = await new Promise<{
+        code: number | null;
+        error?: string;
+      }>((resolve) => {
         // Auto-detect venv if present, so contributors don't need to set
         // PYTHON_PATH manually. The venv is created once with:
         //   python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
@@ -344,28 +349,55 @@ export async function runJobSpy(
         child.on("close", (code) => {
           stdoutRl?.close();
           stderrRl?.close();
-          if (code === 0) resolve();
-          else reject(new Error(`JobSpy exited with code ${code}`));
+          resolve({ code });
         });
-        child.on("error", reject);
+        child.on("error", (spawnError) => {
+          resolve({ code: null, error: spawnError.message });
+        });
       });
 
-      const raw = await readFile(outputJson, "utf-8");
-      const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
-      const filtered = mapJobSpyRows(parsed);
-
-      for (const job of filtered) {
-        if (seenJobUrls.has(job.jobUrl)) continue;
-        seenJobUrls.add(job.jobUrl);
-        jobs.push(job);
-      }
-
       try {
-        await unlink(outputJson);
-        await unlink(outputCsv);
-      } catch {
-        // ignore cleanup errors
+        if (outcome.error) throw new Error(outcome.error);
+        if (outcome.code !== 0) {
+          throw new Error(`JobSpy exited with code ${outcome.code}`);
+        }
+
+        const raw = await readFile(outputJson, "utf-8");
+        const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
+        for (const job of mapJobSpyRows(parsed)) {
+          if (seenJobUrls.has(job.jobUrl)) continue;
+          seenJobUrls.add(job.jobUrl);
+          jobs.push(job);
+        }
+        succeeded += 1;
+      } catch (error) {
+        // One location failing (dead subprocess, unreadable output) must not
+        // discard the jobs already scraped from earlier locations — log and
+        // move on. A total failure is handled after the loop.
+        lastError = error instanceof Error ? error.message : "Unknown error";
+        console.error(
+          `jobspy: location "${locationToken}" scrape failed, skipping (${lastError})`,
+        );
+      } finally {
+        try {
+          await unlink(outputJson);
+          await unlink(outputCsv);
+        } catch {
+          // ignore cleanup errors
+        }
       }
+    }
+
+    // Mirror the per-site rule one level up: succeed if any location produced a
+    // result, fail only when every attempted location failed. `succeeded`
+    // counts a clean run (not jobs-found), so a genuinely empty location still
+    // counts as a success.
+    if (runLocations.length > 0 && succeeded === 0) {
+      return {
+        success: false,
+        jobs: [],
+        error: lastError ?? "JobSpy failed for every location",
+      };
     }
 
     return { success: true, jobs };
