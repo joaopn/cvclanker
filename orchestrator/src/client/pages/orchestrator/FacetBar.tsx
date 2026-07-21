@@ -53,14 +53,11 @@ export function FacetBar({
             <span className="text-xs font-medium text-muted-foreground">
               {def.label}
             </span>
-            <Input
+            <FacetValueInput
               value={facet.value}
-              onChange={(event) =>
-                onSetFacetValue(facet.id, event.target.value)
-              }
               placeholder={def.placeholder}
-              aria-label={`${def.label} filter`}
-              className="h-6 w-36 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0"
+              ariaLabel={`${def.label} filter`}
+              onCommit={(next) => onSetFacetValue(facet.id, next)}
             />
             <Button
               type="button"
@@ -125,5 +122,41 @@ export function FacetBar({
         </Button>
       ) : null}
     </div>
+  );
+}
+
+// Draft-local input: the committed facet value (which drives the filter) only
+// updates on Enter, so typing does NOT re-run the filter. That keeps the list
+// from re-rendering mid-word and stealing focus from the box. Resyncs the draft
+// if the committed value changes from outside.
+function FacetValueInput({
+  value,
+  placeholder,
+  ariaLabel,
+  onCommit,
+}: {
+  value: string;
+  placeholder?: string;
+  ariaLabel: string;
+  onCommit: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+  return (
+    <Input
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          onCommit(draft);
+        }
+      }}
+      placeholder={placeholder}
+      aria-label={ariaLabel}
+      className="h-6 w-36 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0"
+    />
   );
 }

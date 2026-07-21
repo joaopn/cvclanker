@@ -33,6 +33,14 @@ describe("FacetBar", () => {
 
     const input = screen.getByLabelText("Company filter");
     fireEvent.change(input, { target: { value: "acme" } });
+    // Typing updates the field but must NOT filter yet.
+    expect(input).toHaveValue("acme");
+    expect(h.onSetFacetValue).not.toHaveBeenCalled();
+    // Blur must not commit either — Enter is the only trigger.
+    fireEvent.blur(input);
+    expect(h.onSetFacetValue).not.toHaveBeenCalled();
+    // Enter commits the value → triggers the filter.
+    fireEvent.keyDown(input, { key: "Enter" });
     expect(h.onSetFacetValue).toHaveBeenCalledWith("employer", "acme");
 
     // Already-active facet is not offered again.
