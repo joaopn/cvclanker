@@ -478,12 +478,6 @@ export async function generateFinalPdf(
         originalStatus === "discovered" ||
         originalStatus === "selected" ||
         originalStatus === "processing";
-      // Where to send the row if tailoring fails. The manual path's original
-      // status is already `processing`; reverting to it would strand the row,
-      // so send it back to the Inbox instead.
-      const revertStatus =
-        originalStatus === "processing" ? "discovered" : originalStatus;
-
       if (isInitialTailoringFunnel && originalStatus !== "processing") {
         await jobsRepo.updateJob(job.id, { status: "processing" });
       }
@@ -495,9 +489,10 @@ export async function generateFinalPdf(
       });
 
       if (!pdfResult.success) {
-        if (isInitialTailoringFunnel) {
-          await jobsRepo.updateJob(job.id, { status: revertStatus });
-        }
+        // Keep the row in Tailoring (`processing`) on failure — processJob's
+        // safety net records the reason, and the Tailoring tab renders a
+        // reason-carrying `processing` row as a retryable failure instead of
+        // bouncing it back to the Inbox.
         return { success: false, error: pdfResult.error };
       }
 
@@ -532,21 +527,13 @@ export async function processJob(
   const result = await runProcessJob(jobId, options);
   if (!result.success) {
     try {
-      // Step 2 (generateFinalPdf) reverts its own funnel flip on failure, but
-      // a step-1 (summarizeJob) failure on the manual/background path — where
-      // the route pre-set `processing` before calling in — leaves the row
-      // stranded at `processing`, which renders the non-interactive
-      // "Processing job..." state forever. Centralize the safety net here: any
-      // failure that finds the row still at `processing` reverts it to the
-      // Inbox so the user can retry. Non-funnel re-tailors (ready/applied/…)
-      // never sit at `processing`, so they're untouched.
-      const current = await jobsRepo.getJobById(jobId);
-      const statusPatch =
-        current?.status === "processing"
-          ? { status: "discovered" as const }
-          : {};
+      // Record the failure reason and KEEP the row where it is. A failed tailor
+      // in the funnel stays at `processing` so it can be retried in place — the
+      // Tailoring tab renders a reason-carrying `processing` row as a retryable
+      // failure rather than the non-interactive "Processing…" spinner. (This
+      // replaced the old bounce-to-Inbox safety net.) Non-funnel re-tailors
+      // (ready/applied/…) never sit at `processing`, so they keep their status.
       await jobsRepo.updateJob(jobId, {
-        ...statusPatch,
         tailoringFailureReason: result.error ?? "Unknown error",
       });
     } catch (writeError) {

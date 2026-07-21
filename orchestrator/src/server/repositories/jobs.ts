@@ -308,10 +308,11 @@ export async function getJobById(id: string): Promise<Job | null> {
  * Reconcile transient statuses left behind by a previous process.
  *
  * `processing` rows are tailoring runs that were in flight when the server
- * stopped — the in-process runner is gone, so they're orphaned. Reset them to
- * `discovered` with a failure reason so they reappear in the Inbox instead of
- * hanging forever in the Tailoring tab. `selected` is a retired status (the
- * staging tab was removed); fold any legacy rows back into the Inbox too.
+ * stopped — the in-process runner is gone, so they're orphaned. Keep them in
+ * the Tailoring tab (they can be retried in place) and stamp an interrupt
+ * reason ONLY where none exists, so a real failure reason from a prior attempt
+ * survives the restart. `selected` is a retired status (the staging tab was
+ * removed); fold any legacy rows back into the Inbox.
  *
  * Idempotent: a clean restart has no `processing`/`selected` rows, so this is
  * a no-op. Runs once at server startup.
@@ -322,11 +323,10 @@ export async function reconcileTransientStatuses(): Promise<{
 }> {
   const processingResult = await db
     .update(jobs)
-    .set({
-      status: "discovered",
-      tailoringFailureReason: "Tailoring interrupted (server restart)",
-    })
-    .where(eq(jobs.status, "processing"));
+    .set({ tailoringFailureReason: "Tailoring interrupted (server restart)" })
+    .where(
+      and(eq(jobs.status, "processing"), isNull(jobs.tailoringFailureReason)),
+    );
   const selectedResult = await db
     .update(jobs)
     .set({ status: "discovered" })

@@ -320,9 +320,10 @@ function drainBackgroundTailorQueue(): void {
 /**
  * Run a job's tailoring (LLM cv-adjust + PDF) detached from the request that
  * triggered it. The row has already been flipped to `processing`; processJob
- * resolves it to `ready` (success) or back to `discovered` with a persisted
- * `tailoringFailureReason` (failure). Progress is visible in the live LLM
- * call queue. No request is awaiting this, so swallow + log all rejections.
+ * resolves it to `ready` (success) or keeps it at `processing` with a persisted
+ * `tailoringFailureReason` (failure) so it can be retried in place. Progress is
+ * visible in the live LLM call queue. No request is awaiting this, so swallow +
+ * log all rejections.
  */
 function scheduleBackgroundTailor(
   jobId: string,
@@ -419,7 +420,11 @@ async function executeJobActionForJob(
     }
 
     if (action === "skip") {
-      if (!SKIPPABLE_STATUSES.has(job.status)) {
+      // A failed row parked at `processing` in Tailoring is skippable (give up
+      // on it); a clean `processing` row is actively running and is not.
+      const isFailedProcessing =
+        job.status === "processing" && job.tailoringFailureReason != null;
+      if (!SKIPPABLE_STATUSES.has(job.status) && !isFailedProcessing) {
         throw badRequest(`Job is not skippable from status "${job.status}"`, {
           jobId,
           status: job.status,
@@ -444,7 +449,12 @@ async function executeJobActionForJob(
     }
 
     if (action === "move_to_ready") {
-      if (!MOVE_TO_READY_FROM_STATUSES.has(job.status)) {
+      // A failed row sits at `processing` in the Tailoring tab; re-tailoring it
+      // is a retry. A clean `processing` row (no failure reason) is actively
+      // running and must not be re-triggered.
+      const isRetry =
+        job.status === "processing" && job.tailoringFailureReason != null;
+      if (!MOVE_TO_READY_FROM_STATUSES.has(job.status) && !isRetry) {
         throw badRequest(
           `Job is not movable to Tailoring from status "${job.status}"`,
           {
@@ -456,10 +466,14 @@ async function executeJobActionForJob(
       }
 
       // Flip to `processing` synchronously so the row jumps to the Tailoring
-      // tab immediately; the actual LLM tailoring + PDF runs detached and is
-      // observable in the live LLM call queue. processJob flips processing →
-      // ready on success, or back to discovered (+ failure reason) on error.
-      const updated = await jobsRepo.updateJob(jobId, { status: "processing" });
+      // tab immediately, and clear any prior failure so a fresh attempt (or
+      // retry) starts clean — reconcile keys off a null reason to tell an active
+      // run from a failed one. The LLM tailoring + PDF runs detached; on failure
+      // processJob keeps the row at `processing` with the reason set.
+      const updated = await jobsRepo.updateJob(jobId, {
+        status: "processing",
+        tailoringFailureReason: null,
+      });
       if (!updated) {
         throw new AppError({
           status: 404,
