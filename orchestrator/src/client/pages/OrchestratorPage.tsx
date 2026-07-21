@@ -56,32 +56,19 @@ import {
   getSourcesWithJobs,
 } from "./orchestrator/utils";
 
-// Candidates the Tailoring tab surfaces when the Untailored toggle is on.
-const TAILORING_CANDIDATE_STATUSES = new Set([
-  "discovered",
-  "backlog",
-  "stale",
-]);
-
 // Stable empty reference for tabs that don't surface the facet bar, so the
 // useFilteredJobs memo isn't busted by a fresh [] each render.
 const EMPTY_ACTIVE_FACETS: ActiveFacet[] = [];
 
 // Whether a job of `status` is part of `tab`'s visible list. Mirrors
 // useFilteredJobs — needed here so a selected row isn't nulled out / dropped on
-// tab switch. The Tailoring tab is a workspace: its contents depend on the
-// Untailored toggle (candidates when on, processing + ready when off).
-function jobBelongsToTab(
-  tab: FilterTab,
-  status: string,
-  untailoredOnly: boolean,
-): boolean {
+// tab switch. The Tailoring workspace is always `processing` + `ready`; the
+// Untailored toggle only narrows within it (it doesn't change what belongs).
+function jobBelongsToTab(tab: FilterTab, status: string): boolean {
   const tabDef = tabs.find((t) => t.id === tab);
   if (!tabDef || tabDef.statuses.length === 0) return true;
   if (tab === "tailoring") {
-    return untailoredOnly
-      ? TAILORING_CANDIDATE_STATUSES.has(status)
-      : status === "processing" || status === "ready";
+    return status === "processing" || status === "ready";
   }
   return (tabDef.statuses as string[]).includes(status);
 }
@@ -323,11 +310,10 @@ export const OrchestratorPage: React.FC = () => {
         ? jobs.find((j) => j.id === selectedJobId)
         : null;
       const jobFitsTab =
-        !!selectedItem &&
-        jobBelongsToTab(newTab, selectedItem.status, untailoredOnly);
+        !!selectedItem && jobBelongsToTab(newTab, selectedItem.status);
       navigateWithContext(newTab, jobFitsTab ? selectedJobId : null);
     },
-    [navigateWithContext, selectedJobId, jobs, untailoredOnly],
+    [navigateWithContext, selectedJobId, jobs],
   );
 
   // Synchronously null-out selectedJob when it doesn't belong to the current
@@ -337,10 +323,8 @@ export const OrchestratorPage: React.FC = () => {
   // tab's action buttons.
   const visibleSelectedJob = useMemo(() => {
     if (!selectedJob) return null;
-    return jobBelongsToTab(activeTab, selectedJob.status, untailoredOnly)
-      ? selectedJob
-      : null;
-  }, [selectedJob, activeTab, untailoredOnly]);
+    return jobBelongsToTab(activeTab, selectedJob.status) ? selectedJob : null;
+  }, [selectedJob, activeTab]);
 
   const counts = useMemo(() => getJobCounts(jobs), [jobs]);
   const displayedCounts = useMemo(() => counts, [counts]);

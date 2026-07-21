@@ -9,7 +9,6 @@ import type {
   JobSort,
   SalaryFilter,
 } from "./constants";
-import { UNTAILORED_CHIP_TABS } from "./constants";
 import { type ActiveFacet, buildFacetPredicates } from "./facets/registry";
 import {
   compareJobs,
@@ -19,14 +18,6 @@ import {
 } from "./utils";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-// Statuses a job can be tailored *from* — i.e. it hasn't been through the
-// tailoring funnel yet. Mirrors the server's MOVE_TO_READY_FROM_STATUSES.
-const UNTAILORED_STATUSES = new Set<JobListItem["status"]>([
-  "discovered",
-  "backlog",
-  "stale",
-]);
 
 const dateSortPriorityOrder: DateFilterDimension[] = [
   "ready",
@@ -51,25 +42,17 @@ export const useFilteredJobs = (
   useMemo(() => {
     let filtered = [...jobs];
 
-    // Scope the untailored narrowing to the tabs that actually render the
-    // toggle (Tailoring/All). Applying it on other tabs — where the chip isn't
-    // shown — is B2a: a sticky `?untailored=1` from a prior tab silently empties
-    // Live/Interviewing/Closed with no visible control to clear it.
-    if (untailoredOnly && UNTAILORED_CHIP_TABS.includes(activeTab)) {
-      filtered = filtered.filter((job) => UNTAILORED_STATUSES.has(job.status));
-    }
-
     if (activeTab === "inbox") {
       filtered = filtered.filter((job) => job.status === "discovered");
     } else if (activeTab === "tailoring") {
-      // Workspace tab. With the Untailored toggle on, the global filter above
-      // has already narrowed to candidates that still need tailoring; leave
-      // those visible so they can be bulk-selected and tailored. Off, show the
-      // in-flight (processing) + finished (ready) rows.
-      if (!untailoredOnly) {
-        filtered = filtered.filter(
-          (job) => job.status === "processing" || job.status === "ready",
-        );
+      // The Tailoring workspace holds everything committed to tailoring:
+      // `processing` (pending / in-flight / failed-awaiting-retry) + `ready`
+      // (done). The Untailored toggle narrows to the not-yet-tailored rows.
+      filtered = filtered.filter(
+        (job) => job.status === "processing" || job.status === "ready",
+      );
+      if (untailoredOnly) {
+        filtered = filtered.filter((job) => job.status === "processing");
       }
     } else if (activeTab === "live") {
       filtered = filtered.filter((job) => job.status === "applied");

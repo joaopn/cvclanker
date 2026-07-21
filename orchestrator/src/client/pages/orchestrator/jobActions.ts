@@ -21,16 +21,29 @@ const MOVE_TO_INBOX_STATUSES = new Set(["stale"]);
 const CLOSABLE_STATUSES = new Set(["applied", "in_progress"]);
 const REOPENABLE_STATUSES = new Set(["skipped", "closed"]);
 
+// A failed tailor sits at `processing` in the Tailoring tab (reason set); it can
+// be retried (re-tailored) or skipped (given up on). Mirrors the server guards
+// in api/routes/jobs.ts.
+function isFailedProcessing(job: JobListItem): boolean {
+  return job.status === "processing" && job.tailoringFailureReason != null;
+}
+
 export function canSkip(jobs: JobListItem[]): boolean {
   return (
-    jobs.length > 0 && jobs.every((job) => SKIPPABLE_STATUSES.has(job.status))
+    jobs.length > 0 &&
+    jobs.every(
+      (job) => SKIPPABLE_STATUSES.has(job.status) || isFailedProcessing(job),
+    )
   );
 }
 
 export function canMoveToReady(jobs: JobListItem[]): boolean {
   return (
     jobs.length > 0 &&
-    jobs.every((job) => MOVE_TO_READY_STATUSES.has(job.status))
+    jobs.every(
+      (job) =>
+        MOVE_TO_READY_STATUSES.has(job.status) || isFailedProcessing(job),
+    )
   );
 }
 

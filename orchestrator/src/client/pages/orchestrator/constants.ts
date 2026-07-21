@@ -271,13 +271,11 @@ export const tabs: Array<{
 // doesn't render the bar (the B2 trap).
 export const FACET_TABS: FilterTab[] = ["inbox", "backlog", "stale", "all"];
 
-// Tabs where the "Untailored" toggle does something. On Tailoring it swaps the
-// list to the candidates that still need tailoring (so you can bulk-tailor); on
-// All it narrows the mixed list to those candidates. Hidden on Inbox (all
-// untailored already) and Backlog/Stale (every row there is untailored). The
-// filter is applied in useFilteredJobs ONLY on these tabs — the same scope as
-// the control — so a sticky `?untailored=1` can't silently empty Live/Closed.
-export const UNTAILORED_CHIP_TABS: FilterTab[] = ["tailoring", "all"];
+// The "Untailored" toggle lives on the Tailoring tab ONLY: it narrows the
+// workspace to the not-yet-tailored rows (`processing`, which includes failed
+// tailors awaiting retry), hiding the finished `ready` rows. Applied in
+// useFilteredJobs only on this tab — the same scope as the control.
+export const UNTAILORED_CHIP_TABS: FilterTab[] = ["tailoring"];
 
 export const emptyStateCopy: Record<FilterTab, string> = {
   inbox: "Run the pipeline to discover new jobs.",

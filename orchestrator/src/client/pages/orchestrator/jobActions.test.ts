@@ -46,6 +46,31 @@ describe("jobActions", () => {
     ).toBe(false);
   });
 
+  it("treats a failed processing row as retryable and skippable, not a running one", () => {
+    const failed = createJob({
+      id: "f",
+      status: "processing",
+      tailoringFailureReason: "LLM provider error",
+    });
+    const running = createJob({ id: "r", status: "processing" });
+
+    // Failed tailor (reason set) → can retry (move-to-ready) and can skip.
+    expect(canMoveToReady([failed])).toBe(true);
+    expect(canSkip([failed])).toBe(true);
+
+    // Actively running (no reason) → neither.
+    expect(canMoveToReady([running])).toBe(false);
+    expect(canSkip([running])).toBe(false);
+
+    // The per-row gate holds in a mixed selection.
+    expect(
+      canMoveToReady([createJob({ id: "d", status: "discovered" }), failed]),
+    ).toBe(true);
+    expect(
+      canMoveToReady([createJob({ id: "d", status: "discovered" }), running]),
+    ).toBe(false);
+  });
+
   it("computes rescrape eligibility: not processing AND an http(s) URL", () => {
     // Non-processing rows with real http(s) URLs are rescrapable.
     expect(

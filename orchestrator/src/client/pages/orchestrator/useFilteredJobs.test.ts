@@ -68,9 +68,11 @@ describe("useFilteredJobs facet filtering", () => {
   });
 });
 
-describe("useFilteredJobs untailored toggle scope (B2a)", () => {
+describe("useFilteredJobs untailored toggle (Tailoring-only within-tab filter)", () => {
   const mixed: JobListItem[] = [
     createJob({ id: "disc", status: "discovered", employer: "A", title: "T" }),
+    createJob({ id: "proc", status: "processing", employer: "A", title: "T" }),
+    createJob({ id: "rdy", status: "ready", employer: "A", title: "T" }),
     createJob({ id: "app", status: "applied", employer: "A", title: "T" }),
     createJob({ id: "prog", status: "in_progress", employer: "A", title: "T" }),
   ];
@@ -91,17 +93,17 @@ describe("useFilteredJobs untailored toggle scope (B2a)", () => {
       ),
     ).result.current;
 
-  it("does not empty Live/Interviewing when the untailored toggle is stuck on", () => {
-    // Untailored is a tailoring/all-only control; on a tab that doesn't render
-    // the chip it must be IGNORED, not applied globally (which first narrowed
-    // to {discovered,backlog,stale}, so Live→applied and Interviewing→
-    // in_progress both came out empty with no way to unset it).
-    expect(ids(runTab("live", true))).toEqual(["app"]);
-    expect(ids(runTab("interviewing", true))).toEqual(["prog"]);
+  it("narrows the Tailoring tab to the not-yet-tailored (processing) rows when on", () => {
+    // Off: the whole funnel (processing + ready). On: only processing (which
+    // includes failed tailors awaiting retry).
+    expect(ids(runTab("tailoring", false))).toEqual(["proc", "rdy"]);
+    expect(ids(runTab("tailoring", true))).toEqual(["proc"]);
   });
 
-  it("still narrows to untailored candidates on its own tabs (Tailoring, All)", () => {
-    expect(ids(runTab("tailoring", true))).toEqual(["disc"]);
-    expect(ids(runTab("all", true))).toEqual(["disc"]);
+  it("is inert on every other tab — it is Tailoring-only now", () => {
+    expect(ids(runTab("live", true))).toEqual(["app"]);
+    expect(ids(runTab("interviewing", true))).toEqual(["prog"]);
+    // On All the toggle no longer narrows: same set with it on or off.
+    expect(ids(runTab("all", true))).toEqual(ids(runTab("all", false)));
   });
 });
