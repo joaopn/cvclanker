@@ -143,8 +143,16 @@ describe("index.css palettes", () => {
     // .dark is only the @custom-variant hook; palettes come from data-theme.
     // A colour on .dark would beat :root but lose to every [data-theme] block,
     // which is exactly the kind of half-applied palette this split removes.
-    // Matched loosely on purpose: `html.dark {`, `.dark, :root {` and an
-    // indented `  .dark {` all reintroduce the same problem.
-    expect(css).not.toMatch(/(^|[\s,{}])\.dark\b[^{]*\{/);
+    // Checked over every SELECTOR rather than by substring, so `html.dark {`,
+    // `.dark, :root {` and an indented `  .dark {` are all caught — while the
+    // `@custom-variant dark (&:is(.dark *));` declaration, which is not a rule
+    // and must keep mentioning the class, is not.
+    const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    const selectors = [
+      ...withoutComments.matchAll(/(?:^|[;}])\s*([^;{}]*)\{/g),
+    ].map((match) => match[1]);
+    expect(selectors.filter((selector) => /\.dark\b/.test(selector))).toEqual(
+      [],
+    );
   });
 });
