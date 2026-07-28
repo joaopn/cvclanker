@@ -8,8 +8,12 @@ export const LIGHT_THEME_STORAGE_KEY = "cvclanker:theme-light";
 export const DARK_THEME_STORAGE_KEY = "cvclanker:theme-dark";
 
 export type ThemePreference = "system" | "light" | "dark";
-export type LightThemeId = "sandstone" | "ice" | "newsprint";
-export type DarkThemeId = "graphite-mono" | "slate-blue" | "forest-amber";
+export type LightThemeId = "sandstone" | "ice" | "newsprint" | "vscode-light";
+export type DarkThemeId =
+  | "graphite-mono"
+  | "slate-blue"
+  | "forest-amber"
+  | "nord";
 export type ThemeId = LightThemeId | DarkThemeId;
 
 type ThemeOption<Id extends ThemeId> = { id: Id; label: string };
@@ -21,12 +25,14 @@ export const LIGHT_THEMES: ReadonlyArray<ThemeOption<LightThemeId>> = [
   { id: "sandstone", label: "Sandstone" },
   { id: "ice", label: "Ice" },
   { id: "newsprint", label: "Newsprint" },
+  { id: "vscode-light", label: "VS Code Light" },
 ];
 
 export const DARK_THEMES: ReadonlyArray<ThemeOption<DarkThemeId>> = [
   { id: "graphite-mono", label: "Graphite Mono" },
   { id: "slate-blue", label: "Slate Blue" },
   { id: "forest-amber", label: "Forest Amber" },
+  { id: "nord", label: "Nord" },
 ];
 
 export const DEFAULT_LIGHT_THEME: LightThemeId = LIGHT_THEMES[0].id;

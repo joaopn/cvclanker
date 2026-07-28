@@ -83,7 +83,7 @@
 /* ---------------------------------------------------------------------------
    Palettes.
 
-   Six palettes are selected by data-theme on <html> (stamped by the FOUC
+   Eight palettes are selected by data-theme on <html> (stamped by the FOUC
    script in index.html and by applyThemeClass() in src/lib/theme.ts, which are
    a lockstep pinned by theme.test.ts). The .dark CLASS is stamped alongside it
    whenever the resolved palette is a dark one; .dark carries no colors of its
@@ -110,7 +110,7 @@
   --card-foreground: #3b352c;
   --popover: #fffdf8;
   --popover-foreground: #3b352c;
-  --primary: #a2612f;
+  --primary: #9a5b2b;
   --primary-foreground: #fffdf8;
   --secondary: #ece4d5;
   --secondary-foreground: #3b352c;
@@ -122,20 +122,20 @@
   --destructive-foreground: #fffdf8;
   --border: #e2d8c6;
   --input: #cfc3ac;
-  --ring: #a2612f;
-  --chart-1: #a2612f;
+  --ring: #9a5b2b;
+  --chart-1: #9a5b2b;
   --chart-2: #4a7239;
   --chart-3: #8a6417;
   --chart-4: #a13a2a;
   --chart-5: #3a6786;
   --sidebar: #ece4d5;
   --sidebar-foreground: #3b352c;
-  --sidebar-primary: #a2612f;
+  --sidebar-primary: #9a5b2b;
   --sidebar-primary-foreground: #fffdf8;
   --sidebar-accent: #e2d8c6;
   --sidebar-accent-foreground: #3b352c;
   --sidebar-border: #e2d8c6;
-  --sidebar-ring: #a2612f;
+  --sidebar-ring: #9a5b2b;
   --status-good: #4a7239;
   --status-warn: #8a6417;
   --status-bad: var(--destructive);
@@ -148,7 +148,8 @@
   /* Fixed, theme-INDEPENDENT badge hues: the Tailwind v4 -500 values that the
      badge families were baked from. Job badges deliberately keep one identity
      across every palette; only the base they are flattened over is per-theme
-     (--badge-base), which is what keeps a chip sitting flush on its card.
+     (--badge-base), which is what keeps a chip sitting flush on its card —
+     except on a restored legacy palette, which pins the original literals.
      Kept in oklch, not hex: hex quantization shifts the color-mix result by up
      to 7/255, while these reproduce the previously baked hexes byte-for-byte. */
   --badge-good: oklch(69.6% 0.17 162.48); /* emerald-500 */
@@ -314,6 +315,55 @@
   color-scheme: light;
 }
 
+/* Light — VS Code Light. Restored verbatim from the pre-selection scheme.
+   Its badge vars deliberately pin the ORIGINAL literals rather than deriving
+   from this palette's own near-white card: the chips here are being restored,
+   not re-based, so they stay the opaque dark chips this scheme always had. */
+:root[data-theme="vscode-light"] {
+  --background: #ffffff;
+  --foreground: #333333;
+  --card: #ffffff;
+  --card-foreground: #333333;
+  --popover: #ffffff;
+  --popover-foreground: #333333;
+  --primary: #007acc;
+  --primary-foreground: #ffffff;
+  --secondary: #f3f3f3;
+  --secondary-foreground: #333333;
+  --muted: #f3f3f3;
+  --muted-foreground: #616161;
+  --accent: #e8e8e8;
+  --accent-foreground: #333333;
+  --destructive: #a1260d;
+  --destructive-foreground: #ffffff;
+  --border: #e7e7e7;
+  --input: #cecece;
+  --ring: #007acc;
+  --chart-1: #007acc;
+  --chart-2: #098658;
+  --chart-3: #795e26;
+  --chart-4: #a31515;
+  --chart-5: #267f99;
+  --sidebar: #f3f3f3;
+  --sidebar-foreground: #333333;
+  --sidebar-primary: #007acc;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e8e8e8;
+  --sidebar-accent-foreground: #333333;
+  --sidebar-border: #e7e7e7;
+  --sidebar-ring: #007acc;
+  --status-good: #098658;
+  --status-warn: #bf8803;
+  --status-bad: var(--destructive);
+  --status-info: #007acc;
+  --accent-cyan: #267f99;
+  --accent-purple: #af00db;
+  --badge-base: #3b4252;
+  --badge-muted: #434c5e;
+  --badge-muted-fg: #d8dee9;
+  color-scheme: light;
+}
+
 /* Dark — Graphite Mono (default dark). Achromatic chrome; the semantic status
    colors deliberately stay colored, because the job list's fit/status
    signalling is carried by hue. --destructive likewise stays red: a
@@ -449,6 +499,55 @@
   --status-info: #6fa2a0;
   --accent-cyan: #6fa2a0;
   --accent-purple: #b09ac0;
+  --badge-base: var(--card);
+  --badge-muted: var(--muted);
+  --badge-muted-fg: var(--muted-foreground);
+  color-scheme: dark;
+}
+
+/* Dark — Nord. Restored verbatim from the pre-selection scheme. Its --card /
+   --muted / --muted-foreground are the exact surfaces the badge hexes were
+   originally flattened over, so the badges render here byte-for-byte as they
+   did before palettes were selectable. */
+:root[data-theme="nord"] {
+  --background: #2e3440;
+  --foreground: #eceff4;
+  --card: #3b4252;
+  --card-foreground: #eceff4;
+  --popover: #3b4252;
+  --popover-foreground: #eceff4;
+  --primary: #88c0d0;
+  --primary-foreground: #2e3440;
+  --secondary: #434c5e;
+  --secondary-foreground: #eceff4;
+  --muted: #434c5e;
+  --muted-foreground: #d8dee9;
+  --accent: #434c5e;
+  --accent-foreground: #eceff4;
+  --destructive: #bf616a;
+  --destructive-foreground: #eceff4;
+  --border: #434c5e;
+  --input: #4c566a;
+  --ring: #88c0d0;
+  --chart-1: #88c0d0;
+  --chart-2: #a3be8c;
+  --chart-3: #ebcb8b;
+  --chart-4: #d08770;
+  --chart-5: #b48ead;
+  --sidebar: #3b4252;
+  --sidebar-foreground: #eceff4;
+  --sidebar-primary: #88c0d0;
+  --sidebar-primary-foreground: #2e3440;
+  --sidebar-accent: #434c5e;
+  --sidebar-accent-foreground: #eceff4;
+  --sidebar-border: #434c5e;
+  --sidebar-ring: #88c0d0;
+  --status-good: #a3be8c;
+  --status-warn: #ebcb8b;
+  --status-bad: var(--destructive);
+  --status-info: #81a1c1;
+  --accent-cyan: #88c0d0;
+  --accent-purple: #b48ead;
   --badge-base: var(--card);
   --badge-muted: var(--muted);
   --badge-muted-fg: var(--muted-foreground);
