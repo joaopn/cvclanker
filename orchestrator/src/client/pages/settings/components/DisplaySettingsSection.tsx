@@ -103,7 +103,7 @@ export const DisplaySettingsSection: React.FC<DisplaySettingsSectionProps> = ({
               value={lightTheme}
               onValueChange={(value) => setLightTheme(value as LightThemeId)}
             >
-              <SelectTrigger id="theme-light-select" aria-label="Light theme">
+              <SelectTrigger id="theme-light-select">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -130,7 +130,7 @@ export const DisplaySettingsSection: React.FC<DisplaySettingsSectionProps> = ({
               value={darkTheme}
               onValueChange={(value) => setDarkTheme(value as DarkThemeId)}
             >
-              <SelectTrigger id="theme-dark-select" aria-label="Dark theme">
+              <SelectTrigger id="theme-dark-select">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

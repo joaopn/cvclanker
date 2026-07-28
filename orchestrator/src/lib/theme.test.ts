@@ -149,6 +149,10 @@ describe("theme preference store", () => {
     expect(html).toContain('classList.toggle("dark"');
     expect(html).toContain('setAttribute("data-theme"');
     expect(html).not.toContain('class="dark"');
+    // Containment alone would survive re-wrapping the stamps in `if (dark)`,
+    // which is precisely the .dark-without-data-theme state (light :root
+    // palette while every dark: utility fires) this shape exists to prevent.
+    expect(html).not.toMatch(/if\s*\(\s*dark\s*\)/);
   });
 
   it("the FOUC script lists both id sets in the same order as theme.ts", () => {
@@ -174,9 +178,12 @@ describe("palette slots", () => {
     expect(getLightTheme()).toBe(DEFAULT_LIGHT_THEME);
     expect(getDarkTheme()).toBe(DEFAULT_DARK_THEME);
 
-    // A dark id stored in the light slot is not a light id — reject it too.
+    // A dark id stored in the light slot is not a light id — reject it too,
+    // and symmetrically for a light id in the dark slot.
     window.localStorage.setItem(LIGHT_THEME_STORAGE_KEY, "forest-amber");
     expect(getLightTheme()).toBe(DEFAULT_LIGHT_THEME);
+    window.localStorage.setItem(DARK_THEME_STORAGE_KEY, "newsprint");
+    expect(getDarkTheme()).toBe(DEFAULT_DARK_THEME);
   });
 
   it("resolveActiveThemeId follows the mode, not the slot that changed", () => {

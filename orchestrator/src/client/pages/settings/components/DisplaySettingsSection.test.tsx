@@ -11,16 +11,44 @@ import {
 import { DisplaySettingsSection } from "./DisplaySettingsSection";
 
 // The real Radix Select can't open in jsdom (no pointer-capture /
-// scrollIntoView stubs). This shell differs from ProfileSelect.test.tsx's on
-// purpose: that one probes the value through a single aria-label="select-value"
-// input, which collides once a page renders TWO selects. Here the trigger
-// itself renders the current value and keeps its own aria-label, so each
-// dropdown is addressable independently.
+// scrollIntoView stubs). Two properties of the real component are load-bearing
+// and this shell reproduces both, because getting either wrong makes the tests
+// assert something production never renders:
+//   1. SelectValue renders the selected SelectItem's CHILDREN (the label), not
+//      the raw value. Items register their label into the context on render so
+//      the trigger can resolve id -> label the way Radix does.
+//   2. The trigger is a real <button> carrying the id, so the visible
+//      <label htmlFor> supplies its accessible name — no aria-label needed.
+// It also differs from ProfileSelect.test.tsx's shell, which probes through a
+// single aria-label="select-value" input; that collides once a page renders
+// TWO selects.
 vi.mock("@/components/ui/select", () => {
   const SelectContext = React.createContext<{
     value?: string;
     onValueChange?: (value: string) => void;
+    labels: Map<string, React.ReactNode>;
   } | null>(null);
+
+  // Collected from the element tree, NOT registered during render: the trigger
+  // (and its SelectValue) renders before SelectContent's items, so a
+  // render-time registry would always be empty on the first pass.
+  const collectLabels = (
+    node: React.ReactNode,
+    into: Map<string, React.ReactNode>,
+  ): Map<string, React.ReactNode> => {
+    React.Children.forEach(node, (child) => {
+      if (!React.isValidElement(child)) return;
+      const props = child.props as {
+        value?: string;
+        children?: React.ReactNode;
+      };
+      if (typeof props.value === "string" && props.children !== undefined) {
+        into.set(props.value, props.children);
+      }
+      if (props.children !== undefined) collectLabels(props.children, into);
+    });
+    return into;
+  };
 
   const Select = ({
     children,
@@ -31,7 +59,13 @@ vi.mock("@/components/ui/select", () => {
     value?: string;
     onValueChange?: (value: string) => void;
   }) => (
-    <SelectContext.Provider value={{ value, onValueChange }}>
+    <SelectContext.Provider
+      value={{
+        value,
+        onValueChange,
+        labels: collectLabels(children, new Map()),
+      }}
+    >
       <div>{children}</div>
     </SelectContext.Provider>
   );
@@ -40,7 +74,10 @@ vi.mock("@/components/ui/select", () => {
     <>{children}</>
   );
 
-  const SelectValue = () => null;
+  const SelectValue = () => {
+    const context = React.useContext(SelectContext);
+    return <>{context?.labels.get(context?.value ?? "") ?? ""}</>;
+  };
 
   const SelectItem = ({
     value,
@@ -58,16 +95,13 @@ vi.mock("@/components/ui/select", () => {
   };
 
   const SelectTrigger = ({
-    children: _children,
+    children,
     ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement>) => {
-    const context = React.useContext(SelectContext);
-    return (
-      <button type="button" role="combobox" aria-expanded="false" {...props}>
-        {context?.value ?? ""}
-      </button>
-    );
-  };
+  }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+    <button type="button" role="combobox" aria-expanded="false" {...props}>
+      {children}
+    </button>
+  );
 
   return { Select, SelectContent, SelectItem, SelectTrigger, SelectValue };
 });
@@ -139,9 +173,9 @@ describe("DisplaySettingsSection palette dropdowns", () => {
     window.localStorage.setItem(DARK_THEME_STORAGE_KEY, "forest-amber");
     renderSection();
 
-    expect(screen.getByLabelText("Light theme")).toHaveTextContent("newsprint");
+    expect(screen.getByLabelText("Light theme")).toHaveTextContent("Newsprint");
     expect(screen.getByLabelText("Dark theme")).toHaveTextContent(
-      "forest-amber",
+      "Forest Amber",
     );
   });
 
@@ -153,7 +187,7 @@ describe("DisplaySettingsSection palette dropdowns", () => {
 
     expect(window.localStorage.getItem(LIGHT_THEME_STORAGE_KEY)).toBe("ice");
     expect(document.documentElement.getAttribute("data-theme")).toBe("ice");
-    expect(screen.getByLabelText("Light theme")).toHaveTextContent("ice");
+    expect(screen.getByLabelText("Light theme")).toHaveTextContent("Ice");
   });
 
   it("picking a dark palette persists it and restamps while dark is active", () => {

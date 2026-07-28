@@ -89,6 +89,16 @@ describe("index.css palettes", () => {
     expect(css).not.toContain(`:root[data-theme="${DEFAULT_LIGHT_ID}"]`);
   });
 
+  it("has no palette block that theme.ts does not offer", () => {
+    // The reverse direction. Without it, renaming an id in theme.ts (or a typo
+    // in a selector) leaves an orphan block that matches nothing — the id then
+    // resolves to :root sandstone, under a .dark class on the dark slots.
+    const declared = [
+      ...css.matchAll(/:root\[data-theme="([a-z0-9-]+)"\]/g),
+    ].map((match) => match[1]);
+    expect([...new Set(declared)].sort()).toEqual([...EXPLICIT_THEMES].sort());
+  });
+
   it(":root carries a complete palette plus the shared badge hues", () => {
     const keys = declaredKeys(":root");
     for (const key of [...PALETTE_KEYS, ...SHARED_BADGE_HUES]) {
@@ -109,7 +119,7 @@ describe("index.css palettes", () => {
     }
   });
 
-  it("declares color-scheme on every palette", () => {
+  it("declares color-scheme on every palette, including the :root default", () => {
     const lightIds = LIGHT_THEMES.map((theme) => theme.id);
     for (const id of EXPLICIT_THEMES) {
       const escaped = `:root[data-theme="${id}"]`.replace(
@@ -122,12 +132,19 @@ describe("index.css palettes", () => {
         : "dark";
       expect(body?.[1]).toContain(`color-scheme: ${expected};`);
     }
+    // :root is a real palette too — without this its color-scheme could be
+    // dropped silently, and native controls would stop following the theme.
+    expect(css.match(/:root\s*\{([\s\S]*?)\n\}/)?.[1]).toContain(
+      "color-scheme: light;",
+    );
   });
 
   it("keeps .dark free of color declarations", () => {
     // .dark is only the @custom-variant hook; palettes come from data-theme.
     // A colour on .dark would beat :root but lose to every [data-theme] block,
     // which is exactly the kind of half-applied palette this split removes.
-    expect(css).not.toMatch(/^\.dark\s*\{/m);
+    // Matched loosely on purpose: `html.dark {`, `.dark, :root {` and an
+    // indented `  .dark {` all reintroduce the same problem.
+    expect(css).not.toMatch(/(^|[\s,{}])\.dark\b[^{]*\{/);
   });
 });
