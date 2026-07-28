@@ -14,13 +14,21 @@ interface JobRowContentProps {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Opaque, theme-independent badge colors: the dark-scheme tints (Tailwind hue
-// over the #3b4252 card) baked to fixed hex so chips render identically in both
-// themes; vivid text stays on the fixed Tailwind palette.
+// Opaque badge colors. The HUE is theme-independent (fixed Tailwind -500
+// values in --badge-* , src/index.css) so a status keeps one identity across
+// every palette; only --badge-base, the surface the tint is flattened over, is
+// per-theme, which is what keeps a chip sitting flush on its card instead of
+// floating as a differently-toned rectangle. Chips stay opaque — never swap
+// these back to translucent /NN tints or to the semantic -text tokens, both of
+// which desaturate against the card. Vivid text stays on the fixed Tailwind
+// palette and is deliberately NOT re-based.
 const CATEGORY_PILL_CLASS: Record<SuitabilityCategory, string> = {
-  very_good_fit: "bg-[#3b5459] text-emerald-300 border border-[#396560]",
-  good_fit: "bg-[#3b4c61] text-sky-300 border border-[#385f80]",
-  bad_fit: "bg-[#3e4657] text-[#d8dee9] border border-[#404859]",
+  very_good_fit:
+    "bg-[color-mix(in_oklab,var(--badge-base)_85%,var(--badge-good))] text-emerald-300 border border-[color:color-mix(in_oklab,var(--badge-base)_70%,var(--badge-good))]",
+  good_fit:
+    "bg-[color-mix(in_oklab,var(--badge-base)_90%,var(--badge-info))] text-sky-300 border border-[color:color-mix(in_oklab,var(--badge-base)_70%,var(--badge-info))]",
+  bad_fit:
+    "bg-[color-mix(in_oklab,var(--badge-base)_60%,var(--badge-muted))] text-[#d8dee9] border border-[color:color-mix(in_oklab,var(--badge-base)_40%,var(--badge-muted))]",
 };
 
 const CATEGORY_PILL_LABEL: Record<SuitabilityCategory, string> = {
@@ -129,7 +137,7 @@ export const JobRowContent = ({
             )}
             {repostCount > 0 && (
               <span
-                className="rounded border border-[#725e4d] bg-[#4d4b51] px-1.5 py-px text-[10px] font-medium text-amber-200 tabular-nums"
+                className="rounded border border-[color:color-mix(in_oklab,var(--badge-base)_70%,var(--badge-warn))] bg-[color-mix(in_oklab,var(--badge-base)_90%,var(--badge-warn))] px-1.5 py-px text-[10px] font-medium text-amber-200 tabular-nums"
                 title={`Repost #${repostCount}`}
               >
                 Reposted {repostCount > 9 ? "9+" : repostCount}×
@@ -137,7 +145,7 @@ export const JobRowContent = ({
             )}
             {job.tailoringFailureReason && (
               <span
-                className="rounded border border-[#784756] bg-[#504453] px-1.5 py-px text-[10px] font-medium text-rose-200"
+                className="rounded border border-[color:color-mix(in_oklab,var(--badge-base)_70%,var(--badge-bad))] bg-[color-mix(in_oklab,var(--badge-base)_90%,var(--badge-bad))] px-1.5 py-px text-[10px] font-medium text-rose-200"
                 title={job.tailoringFailureReason}
               >
                 Tailor failed
@@ -165,12 +173,12 @@ export const JobRowContent = ({
                 </span>
               )}
               {closureReason && (
-                <span className="rounded-full border border-[#8b4756] bg-[#5a4554] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-300">
+                <span className="rounded-full border border-[color:color-mix(in_oklab,var(--badge-base)_60%,var(--badge-bad))] bg-[color-mix(in_oklab,var(--badge-base)_85%,var(--badge-bad))] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-300">
                   {closureReason}
                 </span>
               )}
               {isSkipped && (
-                <span className="rounded-full border border-[#856648] bg-[#565050] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+                <span className="rounded-full border border-[color:color-mix(in_oklab,var(--badge-base)_60%,var(--badge-warn))] bg-[color-mix(in_oklab,var(--badge-base)_85%,var(--badge-warn))] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
                   Skipped
                 </span>
               )}

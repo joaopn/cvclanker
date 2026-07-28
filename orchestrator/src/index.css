@@ -80,50 +80,88 @@
   --color-destructive-foreground: var(--destructive-foreground);
 }
 
-/* Light scheme: VS Code Light+ (canonical hex) */
+/* ---------------------------------------------------------------------------
+   Palettes.
+
+   Six palettes are selected by data-theme on <html> (stamped by the FOUC
+   script in index.html and by applyThemeClass() in src/lib/theme.ts, which are
+   a lockstep pinned by theme.test.ts). The .dark CLASS is stamped alongside it
+   whenever the resolved palette is a dark one; .dark carries no colors of its
+   own and exists purely as the hook for @custom-variant dark and every dark:
+   utility in the app.
+
+   :root holds the structural tokens plus the DEFAULT light palette
+   (Sandstone), so it doubles as the pre-hydration / no-data-theme fallback —
+   it must therefore stay a COMPLETE palette. There is deliberately no
+   [data-theme="sandstone"] block: :root already is it, and a duplicate would
+   be an unenforced 40-value lockstep in the same file.
+
+   index.css.test.ts pins every [data-theme] block against one explicit key
+   list, so a palette that forgets a token fails the suite instead of silently
+   inheriting Sandstone's light value.
+   --------------------------------------------------------------------------- */
+
+/* Light — Sandstone (default light) */
 :root {
   --radius: 0.5rem;
-  --background: #ffffff;
-  --foreground: #333333;
-  --card: #ffffff;
-  --card-foreground: #333333;
-  --popover: #ffffff;
-  --popover-foreground: #333333;
-  --primary: #007acc;
-  --primary-foreground: #ffffff;
-  --secondary: #f3f3f3;
-  --secondary-foreground: #333333;
-  --muted: #f3f3f3;
-  --muted-foreground: #616161;
-  --accent: #e8e8e8;
-  --accent-foreground: #333333;
-  --destructive: #a1260d;
-  --destructive-foreground: #ffffff;
-  --border: #e7e7e7;
-  --input: #cecece;
-  --ring: #007acc;
-  --chart-1: #007acc;
-  --chart-2: #098658;
-  --chart-3: #795e26;
-  --chart-4: #a31515;
-  --chart-5: #267f99;
-  --sidebar: #f3f3f3;
-  --sidebar-foreground: #333333;
-  --sidebar-primary: #007acc;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #e8e8e8;
-  --sidebar-accent-foreground: #333333;
-  --sidebar-border: #e7e7e7;
-  --sidebar-ring: #007acc;
-  --status-good: #098658;
-  --status-warn: #bf8803;
+  --background: #f6f1e7;
+  --foreground: #3b352c;
+  --card: #fffdf8;
+  --card-foreground: #3b352c;
+  --popover: #fffdf8;
+  --popover-foreground: #3b352c;
+  --primary: #a2612f;
+  --primary-foreground: #fffdf8;
+  --secondary: #ece4d5;
+  --secondary-foreground: #3b352c;
+  --muted: #ece4d5;
+  --muted-foreground: #6b6152;
+  --accent: #e2d8c6;
+  --accent-foreground: #3b352c;
+  --destructive: #a13a2a;
+  --destructive-foreground: #fffdf8;
+  --border: #e2d8c6;
+  --input: #cfc3ac;
+  --ring: #a2612f;
+  --chart-1: #a2612f;
+  --chart-2: #4a7239;
+  --chart-3: #8a6417;
+  --chart-4: #a13a2a;
+  --chart-5: #3a6786;
+  --sidebar: #ece4d5;
+  --sidebar-foreground: #3b352c;
+  --sidebar-primary: #a2612f;
+  --sidebar-primary-foreground: #fffdf8;
+  --sidebar-accent: #e2d8c6;
+  --sidebar-accent-foreground: #3b352c;
+  --sidebar-border: #e2d8c6;
+  --sidebar-ring: #a2612f;
+  --status-good: #4a7239;
+  --status-warn: #8a6417;
   --status-bad: var(--destructive);
-  --status-info: #007acc;
-  --accent-cyan: #267f99;
-  --accent-purple: #af00db;
-  /* The -text companions are defined ONCE here and re-resolve per scheme
-     because .dark overrides the base vars on the same <html> element — this
-     topology breaks if .dark ever moves to a subtree element. */
+  --status-info: #3a6786;
+  --accent-cyan: #2b6a70;
+  --accent-purple: #71479c;
+  --badge-base: #3b352c;
+  --badge-muted: #4c443a;
+  --badge-muted-fg: #cfc5b4;
+  /* Fixed, theme-INDEPENDENT badge hues: the Tailwind v4 -500 values that the
+     badge families were baked from. Job badges deliberately keep one identity
+     across every palette; only the base they are flattened over is per-theme
+     (--badge-base), which is what keeps a chip sitting flush on its card.
+     Kept in oklch, not hex: hex quantization shifts the color-mix result by up
+     to 7/255, while these reproduce the previously baked hexes byte-for-byte. */
+  --badge-good: oklch(69.6% 0.17 162.48); /* emerald-500 */
+  --badge-info: oklch(68.5% 0.169 237.323); /* sky-500 */
+  --badge-warn: oklch(76.9% 0.188 70.08); /* amber-500 */
+  --badge-bad: oklch(64.5% 0.246 16.439); /* rose-500 */
+  --badge-cyan: oklch(71.5% 0.143 215.221); /* cyan-500 */
+  --badge-purple: oklch(60.6% 0.25 292.717); /* violet-500 */
+  --badge-neutral: oklch(55.3% 0.013 58.071); /* stone-500 */
+  /* The -text companions are defined ONCE here and re-resolve per palette
+     because every [data-theme] block overrides the base vars on the same
+     <html> element — this topology breaks if a palette ever moves to a
+     subtree element. */
   --status-good-text: color-mix(
     in oklab,
     var(--status-good) 55%,
@@ -184,46 +222,236 @@
   --tracking-normal: 0em;
 }
 
-/* Dark scheme: Nord (canonical hex). Colors only — everything else inherits from :root. */
-.dark {
-  --background: #2e3440;
-  --foreground: #eceff4;
-  --card: #3b4252;
-  --card-foreground: #eceff4;
-  --popover: #3b4252;
-  --popover-foreground: #eceff4;
-  --primary: #88c0d0;
-  --primary-foreground: #2e3440;
-  --secondary: #434c5e;
-  --secondary-foreground: #eceff4;
-  --muted: #434c5e;
-  --muted-foreground: #d8dee9;
-  --accent: #434c5e;
-  --accent-foreground: #eceff4;
-  --destructive: #bf616a;
-  --destructive-foreground: #eceff4;
-  --border: #434c5e;
-  --input: #4c566a;
-  --ring: #88c0d0;
-  --chart-1: #88c0d0;
-  --chart-2: #a3be8c;
-  --chart-3: #ebcb8b;
-  --chart-4: #d08770;
-  --chart-5: #b48ead;
-  --sidebar: #3b4252;
-  --sidebar-foreground: #eceff4;
-  --sidebar-primary: #88c0d0;
-  --sidebar-primary-foreground: #2e3440;
-  --sidebar-accent: #434c5e;
-  --sidebar-accent-foreground: #eceff4;
-  --sidebar-border: #434c5e;
-  --sidebar-ring: #88c0d0;
-  --status-good: #a3be8c;
-  --status-warn: #ebcb8b;
+/* Light — Ice */
+:root[data-theme="ice"] {
+  --background: #f2f7fb;
+  --foreground: #22303c;
+  --card: #ffffff;
+  --card-foreground: #22303c;
+  --popover: #ffffff;
+  --popover-foreground: #22303c;
+  --primary: #1f6f9e;
+  --primary-foreground: #ffffff;
+  --secondary: #e4eef6;
+  --secondary-foreground: #22303c;
+  --muted: #e4eef6;
+  --muted-foreground: #556a7d;
+  --accent: #d5e2ec;
+  --accent-foreground: #22303c;
+  --destructive: #a83232;
+  --destructive-foreground: #ffffff;
+  --border: #d5e2ec;
+  --input: #b9cddd;
+  --ring: #1f6f9e;
+  --chart-1: #1f6f9e;
+  --chart-2: #1a6b4f;
+  --chart-3: #7d5c12;
+  --chart-4: #a83232;
+  --chart-5: #5a4b9c;
+  --sidebar: #e4eef6;
+  --sidebar-foreground: #22303c;
+  --sidebar-primary: #1f6f9e;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #d5e2ec;
+  --sidebar-accent-foreground: #22303c;
+  --sidebar-border: #d5e2ec;
+  --sidebar-ring: #1f6f9e;
+  --status-good: #1a6b4f;
+  --status-warn: #7d5c12;
   --status-bad: var(--destructive);
-  --status-info: #81a1c1;
-  --accent-cyan: #88c0d0;
-  --accent-purple: #b48ead;
+  --status-info: #1f6f9e;
+  --accent-cyan: #14707f;
+  --accent-purple: #5a4b9c;
+  --badge-base: #26313b;
+  --badge-muted: #37444f;
+  --badge-muted-fg: #c3d1dd;
+  color-scheme: light;
+}
+
+/* Light — Newsprint (paper + ink; near-zero chroma by design) */
+:root[data-theme="newsprint"] {
+  --background: #f4f2ec;
+  --foreground: #1a1a18;
+  --card: #faf9f5;
+  --card-foreground: #1a1a18;
+  --popover: #faf9f5;
+  --popover-foreground: #1a1a18;
+  --primary: #1a1a18;
+  --primary-foreground: #faf9f5;
+  --secondary: #e8e5dc;
+  --secondary-foreground: #1a1a18;
+  --muted: #e8e5dc;
+  --muted-foreground: #605c54;
+  --accent: #d9d5cb;
+  --accent-foreground: #1a1a18;
+  --destructive: #8f2b23;
+  --destructive-foreground: #faf9f5;
+  --border: #d9d5cb;
+  --input: #c3bfb3;
+  --ring: #1a1a18;
+  --chart-1: #1a1a18;
+  --chart-2: #43593a;
+  --chart-3: #7a5c1c;
+  --chart-4: #8f2b23;
+  --chart-5: #3a4f5f;
+  --sidebar: #e8e5dc;
+  --sidebar-foreground: #1a1a18;
+  --sidebar-primary: #1a1a18;
+  --sidebar-primary-foreground: #faf9f5;
+  --sidebar-accent: #d9d5cb;
+  --sidebar-accent-foreground: #1a1a18;
+  --sidebar-border: #d9d5cb;
+  --sidebar-ring: #1a1a18;
+  --status-good: #43593a;
+  --status-warn: #7a5c1c;
+  --status-bad: var(--destructive);
+  --status-info: #3a4f5f;
+  --accent-cyan: #275a60;
+  --accent-purple: #53456b;
+  --badge-base: #26241f;
+  --badge-muted: #37342d;
+  --badge-muted-fg: #cdc8bc;
+  color-scheme: light;
+}
+
+/* Dark — Graphite Mono (default dark). Achromatic chrome; the semantic status
+   colors deliberately stay colored, because the job list's fit/status
+   signalling is carried by hue. --destructive likewise stays red: a
+   destructive action is signalling, not decoration. */
+:root[data-theme="graphite-mono"] {
+  --background: #121212;
+  --foreground: #e6e6e6;
+  --card: #1c1c1c;
+  --card-foreground: #e6e6e6;
+  --popover: #1c1c1c;
+  --popover-foreground: #e6e6e6;
+  --primary: #d0d0d0;
+  --primary-foreground: #121212;
+  --secondary: #262626;
+  --secondary-foreground: #e6e6e6;
+  --muted: #262626;
+  --muted-foreground: #a3a3a3;
+  --accent: #2e2e2e;
+  --accent-foreground: #e6e6e6;
+  --destructive: #a84343;
+  --destructive-foreground: #f5f5f5;
+  --border: #2e2e2e;
+  --input: #3a3a3a;
+  --ring: #8f8f8f;
+  --chart-1: #d0d0d0;
+  --chart-2: #7fae7f;
+  --chart-3: #cbab6a;
+  --chart-4: #cf7a7a;
+  --chart-5: #8fa8bd;
+  --sidebar: #1c1c1c;
+  --sidebar-foreground: #e6e6e6;
+  --sidebar-primary: #d0d0d0;
+  --sidebar-primary-foreground: #121212;
+  --sidebar-accent: #2e2e2e;
+  --sidebar-accent-foreground: #e6e6e6;
+  --sidebar-border: #2e2e2e;
+  --sidebar-ring: #8f8f8f;
+  --status-good: #7fae7f;
+  --status-warn: #cbab6a;
+  --status-bad: var(--destructive);
+  --status-info: #8fa8bd;
+  --accent-cyan: #7fa9ae;
+  --accent-purple: #a99ac0;
+  --badge-base: var(--card);
+  --badge-muted: var(--muted);
+  --badge-muted-fg: var(--muted-foreground);
+  color-scheme: dark;
+}
+
+/* Dark — Slate Blue */
+:root[data-theme="slate-blue"] {
+  --background: #1e2530;
+  --foreground: #e2e8f2;
+  --card: #28313f;
+  --card-foreground: #e2e8f2;
+  --popover: #28313f;
+  --popover-foreground: #e2e8f2;
+  --primary: #7aa2d8;
+  --primary-foreground: #1e2530;
+  --secondary: #333d4d;
+  --secondary-foreground: #e2e8f2;
+  --muted: #333d4d;
+  --muted-foreground: #9aa8bd;
+  --accent: #3a4658;
+  --accent-foreground: #e2e8f2;
+  --destructive: #ab4459;
+  --destructive-foreground: #f2f6fb;
+  --border: #3a4658;
+  --input: #47546a;
+  --ring: #7aa2d8;
+  --chart-1: #7aa2d8;
+  --chart-2: #7fb08a;
+  --chart-3: #d7b06a;
+  --chart-4: #d4808f;
+  --chart-5: #a08fd0;
+  --sidebar: #28313f;
+  --sidebar-foreground: #e2e8f2;
+  --sidebar-primary: #7aa2d8;
+  --sidebar-primary-foreground: #1e2530;
+  --sidebar-accent: #3a4658;
+  --sidebar-accent-foreground: #e2e8f2;
+  --sidebar-border: #3a4658;
+  --sidebar-ring: #7aa2d8;
+  --status-good: #7fb08a;
+  --status-warn: #d7b06a;
+  --status-bad: var(--destructive);
+  --status-info: #7aa2d8;
+  --accent-cyan: #6fb3c9;
+  --accent-purple: #a08fd0;
+  --badge-base: var(--card);
+  --badge-muted: var(--muted);
+  --badge-muted-fg: var(--muted-foreground);
+  color-scheme: dark;
+}
+
+/* Dark — Forest Amber */
+:root[data-theme="forest-amber"] {
+  --background: #14201a;
+  --foreground: #e6efe6;
+  --card: #1c2b23;
+  --card-foreground: #e6efe6;
+  --popover: #1c2b23;
+  --popover-foreground: #e6efe6;
+  --primary: #d9a441;
+  --primary-foreground: #14201a;
+  --secondary: #24382d;
+  --secondary-foreground: #e6efe6;
+  --muted: #24382d;
+  --muted-foreground: #9db3a4;
+  --accent: #2c4034;
+  --accent-foreground: #e6efe6;
+  --destructive: #ad4c3e;
+  --destructive-foreground: #f3efe6;
+  --border: #2c4034;
+  --input: #3a5243;
+  --ring: #d9a441;
+  --chart-1: #d9a441;
+  --chart-2: #7fb069;
+  --chart-3: #6fa2a0;
+  --chart-4: #d6857a;
+  --chart-5: #b09ac0;
+  --sidebar: #1c2b23;
+  --sidebar-foreground: #e6efe6;
+  --sidebar-primary: #d9a441;
+  --sidebar-primary-foreground: #14201a;
+  --sidebar-accent: #2c4034;
+  --sidebar-accent-foreground: #e6efe6;
+  --sidebar-border: #2c4034;
+  --sidebar-ring: #d9a441;
+  --status-good: #7fb069;
+  --status-warn: #d9a441;
+  --status-bad: var(--destructive);
+  --status-info: #6fa2a0;
+  --accent-cyan: #6fa2a0;
+  --accent-purple: #b09ac0;
+  --badge-base: var(--card);
+  --badge-muted: var(--muted);
+  --badge-muted-fg: var(--muted-foreground);
   color-scheme: dark;
 }
 

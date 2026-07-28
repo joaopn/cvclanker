@@ -1,10 +1,36 @@
 import { useSyncExternalStore } from "react";
 
 // Mirrored by the inline FOUC script in orchestrator/index.html — keep the
-// storage key and the resolution semantics (absent/unknown = system) in lockstep.
+// storage keys, the theme ids AND their order (the script falls back to the
+// first entry of each list) in lockstep. theme.test.ts pins both sides.
 export const THEME_STORAGE_KEY = "cvclanker:theme";
+export const LIGHT_THEME_STORAGE_KEY = "cvclanker:theme-light";
+export const DARK_THEME_STORAGE_KEY = "cvclanker:theme-dark";
 
 export type ThemePreference = "system" | "light" | "dark";
+export type LightThemeId = "sandstone" | "ice" | "newsprint";
+export type DarkThemeId = "graphite-mono" | "slate-blue" | "forest-amber";
+export type ThemeId = LightThemeId | DarkThemeId;
+
+type ThemeOption<Id extends ThemeId> = { id: Id; label: string };
+
+// The one home of the selectable palettes. Each id must have a matching
+// :root[data-theme="<id>"] block in src/index.css (except the default light
+// one, which lives in :root itself) — index.css.test.ts pins that.
+export const LIGHT_THEMES: ReadonlyArray<ThemeOption<LightThemeId>> = [
+  { id: "sandstone", label: "Sandstone" },
+  { id: "ice", label: "Ice" },
+  { id: "newsprint", label: "Newsprint" },
+];
+
+export const DARK_THEMES: ReadonlyArray<ThemeOption<DarkThemeId>> = [
+  { id: "graphite-mono", label: "Graphite Mono" },
+  { id: "slate-blue", label: "Slate Blue" },
+  { id: "forest-amber", label: "Forest Amber" },
+];
+
+export const DEFAULT_LIGHT_THEME: LightThemeId = LIGHT_THEMES[0].id;
+export const DEFAULT_DARK_THEME: DarkThemeId = DARK_THEMES[0].id;
 
 const listeners = new Set<() => void>();
 
@@ -18,13 +44,40 @@ function systemPrefersDark(): boolean {
   }
 }
 
-export function getThemePreference(): ThemePreference {
+function readStored(key: string): string | null {
   try {
-    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
-    return stored === "light" || stored === "dark" ? stored : "system";
+    return window.localStorage.getItem(key);
   } catch {
-    return "system";
+    return null;
   }
+}
+
+function writeStored(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Storage unavailable — the caller still restamps, the choice just does
+    // not survive a reload.
+  }
+}
+
+export function getThemePreference(): ThemePreference {
+  const stored = readStored(THEME_STORAGE_KEY);
+  return stored === "light" || stored === "dark" ? stored : "system";
+}
+
+export function getLightTheme(): LightThemeId {
+  const stored = readStored(LIGHT_THEME_STORAGE_KEY);
+  return LIGHT_THEMES.some((theme) => theme.id === stored)
+    ? (stored as LightThemeId)
+    : DEFAULT_LIGHT_THEME;
+}
+
+export function getDarkTheme(): DarkThemeId {
+  const stored = readStored(DARK_THEME_STORAGE_KEY);
+  return DARK_THEMES.some((theme) => theme.id === stored)
+    ? (stored as DarkThemeId)
+    : DEFAULT_DARK_THEME;
 }
 
 export function resolveIsDark(preference: ThemePreference): boolean {
@@ -33,23 +86,42 @@ export function resolveIsDark(preference: ThemePreference): boolean {
   return systemPrefersDark();
 }
 
+export function resolveActiveThemeId(): ThemeId {
+  return resolveIsDark(getThemePreference()) ? getDarkTheme() : getLightTheme();
+}
+
+// Stamps BOTH hooks, unconditionally and on every branch: the .dark class
+// (which drives @custom-variant dark and every dark: utility) and data-theme
+// (which selects the palette). A one-sided stamp would leave .dark set against
+// the light :root palette — dark-variant styling over light colors.
 export function applyThemeClass(): void {
-  document.documentElement.classList.toggle(
-    "dark",
-    resolveIsDark(getThemePreference()),
-  );
+  const root = document.documentElement;
+  root.classList.toggle("dark", resolveIsDark(getThemePreference()));
+  root.setAttribute("data-theme", resolveActiveThemeId());
 }
 
 export function setThemePreference(preference: ThemePreference): void {
-  try {
-    if (preference === "system") {
+  if (preference === "system") {
+    try {
       window.localStorage.removeItem(THEME_STORAGE_KEY);
-    } else {
-      window.localStorage.setItem(THEME_STORAGE_KEY, preference);
+    } catch {
+      // Storage unavailable — still restamp below; resolution falls back to system.
     }
-  } catch {
-    // Storage unavailable — still restamp below; resolution falls back to system.
+  } else {
+    writeStored(THEME_STORAGE_KEY, preference);
   }
+  applyThemeClass();
+  notifyListeners();
+}
+
+export function setLightTheme(theme: LightThemeId): void {
+  writeStored(LIGHT_THEME_STORAGE_KEY, theme);
+  applyThemeClass();
+  notifyListeners();
+}
+
+export function setDarkTheme(theme: DarkThemeId): void {
+  writeStored(DARK_THEME_STORAGE_KEY, theme);
   applyThemeClass();
   notifyListeners();
 }
@@ -92,11 +164,30 @@ function subscribe(listener: () => void): () => void {
 export function useTheme(): {
   preference: ThemePreference;
   isDark: boolean;
+  activeTheme: ThemeId;
+  lightTheme: LightThemeId;
+  darkTheme: DarkThemeId;
   setPreference: (preference: ThemePreference) => void;
+  setLightTheme: (theme: LightThemeId) => void;
+  setDarkTheme: (theme: DarkThemeId) => void;
 } {
+  // Every subscribed snapshot must be a PRIMITIVE — useSyncExternalStore
+  // re-renders forever if getSnapshot returns a fresh object each call.
   const preference = useSyncExternalStore(subscribe, getThemePreference);
   const isDark = useSyncExternalStore(subscribe, () =>
     resolveIsDark(getThemePreference()),
   );
-  return { preference, isDark, setPreference: setThemePreference };
+  const activeTheme = useSyncExternalStore(subscribe, resolveActiveThemeId);
+  const lightTheme = useSyncExternalStore(subscribe, getLightTheme);
+  const darkTheme = useSyncExternalStore(subscribe, getDarkTheme);
+  return {
+    preference,
+    isDark,
+    activeTheme,
+    lightTheme,
+    darkTheme,
+    setPreference: setThemePreference,
+    setLightTheme,
+    setDarkTheme,
+  };
 }

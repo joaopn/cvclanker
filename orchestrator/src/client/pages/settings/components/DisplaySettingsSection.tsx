@@ -5,8 +5,22 @@ import type React from "react";
 import { Controller, useFormContext } from "react-hook-form";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { type ThemePreference, useTheme } from "@/lib/theme";
+import {
+  DARK_THEMES,
+  type DarkThemeId,
+  LIGHT_THEMES,
+  type LightThemeId,
+  type ThemePreference,
+  useTheme,
+} from "@/lib/theme";
 
 const THEME_OPTIONS: Array<{ value: ThemePreference; label: string }> = [
   { value: "system", label: "System" },
@@ -29,7 +43,14 @@ export const DisplaySettingsSection: React.FC<DisplaySettingsSectionProps> = ({
 }) => {
   const { showSponsorInfo, renderMarkdownInJobDescriptions } = values;
   const { control } = useFormContext<UpdateSettingsInput>();
-  const { preference, setPreference } = useTheme();
+  const {
+    preference,
+    setPreference,
+    lightTheme,
+    darkTheme,
+    setLightTheme,
+    setDarkTheme,
+  } = useTheme();
 
   return (
     <SettingsSectionFrame
@@ -65,6 +86,62 @@ export const DisplaySettingsSection: React.FC<DisplaySettingsSectionProps> = ({
               </div>
             ))}
           </RadioGroup>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="theme-light-select"
+              className="text-sm font-medium leading-none"
+            >
+              Light theme
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Used whenever the mode above resolves to light.
+            </p>
+            <Select
+              value={lightTheme}
+              onValueChange={(value) => setLightTheme(value as LightThemeId)}
+            >
+              <SelectTrigger id="theme-light-select" aria-label="Light theme">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {LIGHT_THEMES.map((theme) => (
+                  <SelectItem key={theme.id} value={theme.id}>
+                    {theme.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="theme-dark-select"
+              className="text-sm font-medium leading-none"
+            >
+              Dark theme
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Used whenever the mode above resolves to dark.
+            </p>
+            <Select
+              value={darkTheme}
+              onValueChange={(value) => setDarkTheme(value as DarkThemeId)}
+            >
+              <SelectTrigger id="theme-dark-select" aria-label="Dark theme">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DARK_THEMES.map((theme) => (
+                  <SelectItem key={theme.id} value={theme.id}>
+                    {theme.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <Separator />

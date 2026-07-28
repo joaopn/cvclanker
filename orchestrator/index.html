@@ -7,11 +7,19 @@
     <meta name="description" content="CV Clanker - Manage your job applications intelligently" />
     <title>CV Clanker</title>
     <script>
+      /* Lockstep with src/lib/theme.ts: storage keys, theme ids and their
+         order (index 0 is the default for each slot). theme.test.ts pins both
+         sides. Both hooks are stamped on BOTH branches — .dark without
+         data-theme would style dark variants over the light :root palette. */
       (function () {
         try {
           var stored = localStorage.getItem("cvclanker:theme");
           var dark = stored === "dark" || (stored !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-          if (dark) document.documentElement.classList.add("dark");
+          var ids = dark ? ["graphite-mono", "slate-blue", "forest-amber"] : ["sandstone", "ice", "newsprint"];
+          var picked = localStorage.getItem(dark ? "cvclanker:theme-dark" : "cvclanker:theme-light");
+          if (ids.indexOf(picked) < 0) picked = ids[0];
+          document.documentElement.classList.toggle("dark", dark);
+          document.documentElement.setAttribute("data-theme", picked);
         } catch (_) {}
       })();
     </script>

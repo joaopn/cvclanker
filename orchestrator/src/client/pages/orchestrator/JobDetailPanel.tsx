@@ -12,6 +12,8 @@ import {
 } from "@client/hooks/queries/useJobMutations";
 import { useActiveCv } from "@client/hooks/useActiveCv";
 import { useSettings } from "@client/hooks/useSettings";
+import { toast } from "@client/lib/toast";
+import { restoreJobStates, snapshotJob } from "@client/lib/undo";
 import type { Job, JobListItem, JobOutcome } from "@shared/types.js";
 import {
   CheckCircle2,
@@ -27,7 +29,6 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "@client/lib/toast";
 import { JobDescriptionMarkdown } from "@/client/components/JobDescriptionMarkdown";
 import { getRenderableJobDescription } from "@/client/lib/jobDescription";
 import { Button } from "@/components/ui/button";
@@ -45,7 +46,6 @@ import {
   formatJobForWebhook,
   safeFilenamePart,
 } from "@/lib/utils";
-import { restoreJobStates, snapshotJob } from "@client/lib/undo";
 import { CompanyNameButton } from "./CompanyNameButton";
 import { type FilterTab, outcomeLabel } from "./constants";
 import { InterviewQaSection } from "./InterviewQaSection";
@@ -460,12 +460,12 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
         <div className="flex shrink-0 items-center gap-1.5">
           <FitIndicator category={selectedJob.suitabilityCategory ?? null} />
           {selectedJob.outcome ? (
-            <span className="inline-flex items-center rounded-full border border-[#8b4756] bg-[#5a4554] px-2.5 py-0.5 text-xs font-semibold text-rose-300">
+            <span className="inline-flex items-center rounded-full border border-[color:color-mix(in_oklab,var(--badge-base)_60%,var(--badge-bad))] bg-[color-mix(in_oklab,var(--badge-base)_85%,var(--badge-bad))] px-2.5 py-0.5 text-xs font-semibold text-rose-300">
               {outcomeLabel[selectedJob.outcome]}
             </span>
           ) : null}
           {selectedJob.status === "skipped" ? (
-            <span className="inline-flex items-center rounded-full border border-[#856648] bg-[#565050] px-2.5 py-0.5 text-xs font-semibold text-amber-300">
+            <span className="inline-flex items-center rounded-full border border-[color:color-mix(in_oklab,var(--badge-base)_60%,var(--badge-warn))] bg-[color-mix(in_oklab,var(--badge-base)_85%,var(--badge-warn))] px-2.5 py-0.5 text-xs font-semibold text-amber-300">
               Skipped
             </span>
           ) : null}
