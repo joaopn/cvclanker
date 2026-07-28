@@ -8,32 +8,35 @@ export const LIGHT_THEME_STORAGE_KEY = "cvclanker:theme-light";
 export const DARK_THEME_STORAGE_KEY = "cvclanker:theme-dark";
 
 export type ThemePreference = "system" | "light" | "dark";
-export type LightThemeId = "sandstone" | "ice" | "newsprint" | "vscode-light";
-export type DarkThemeId =
-  | "graphite-mono"
-  | "slate-blue"
-  | "forest-amber"
-  | "nord";
-export type ThemeId = LightThemeId | DarkThemeId;
 
-type ThemeOption<Id extends ThemeId> = { id: Id; label: string };
+type ThemeOption = { id: string; label: string };
 
 // The one home of the selectable palettes. Each id must have a matching
 // :root[data-theme="<id>"] block in src/index.css (except the default light
 // one, which lives in :root itself) — index.css.test.ts pins that.
-export const LIGHT_THEMES: ReadonlyArray<ThemeOption<LightThemeId>> = [
+//
+// The id unions below are DERIVED from these arrays rather than declared
+// beside them. A hand-written union constrains only one direction: an array
+// member outside it fails, but a union member MISSING from the array
+// type-checks, gets no CSS block, and then silently reverts to the default
+// when read back.
+export const LIGHT_THEMES = [
   { id: "sandstone", label: "Sandstone" },
   { id: "ice", label: "Ice" },
   { id: "newsprint", label: "Newsprint" },
   { id: "vscode-light", label: "VS Code Light" },
-];
+] as const satisfies ReadonlyArray<ThemeOption>;
 
-export const DARK_THEMES: ReadonlyArray<ThemeOption<DarkThemeId>> = [
+export const DARK_THEMES = [
   { id: "graphite-mono", label: "Graphite Mono" },
   { id: "slate-blue", label: "Slate Blue" },
   { id: "forest-amber", label: "Forest Amber" },
   { id: "nord", label: "Nord" },
-];
+] as const satisfies ReadonlyArray<ThemeOption>;
+
+export type LightThemeId = (typeof LIGHT_THEMES)[number]["id"];
+export type DarkThemeId = (typeof DARK_THEMES)[number]["id"];
+export type ThemeId = LightThemeId | DarkThemeId;
 
 export const DEFAULT_LIGHT_THEME: LightThemeId = LIGHT_THEMES[0].id;
 export const DEFAULT_DARK_THEME: DarkThemeId = DARK_THEMES[0].id;

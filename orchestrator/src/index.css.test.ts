@@ -66,6 +66,22 @@ const SHARED_BADGE_HUES = [
 
 const css = readFileSync(resolve(process.cwd(), "src/index.css"), "utf8");
 
+function blockBody(selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = css.match(new RegExp(`${escaped}\\s*\\{([\\s\\S]*?)\\n\\}`));
+  if (!match) throw new Error(`no CSS block for selector ${selector}`);
+  return match[1];
+}
+
+function declaredValues(selector: string): Record<string, string> {
+  return Object.fromEntries(
+    Array.from(
+      blockBody(selector).matchAll(/(--[a-z0-9-]+):\s*([^;\n]+);/g),
+      (m) => [m[1], m[2].trim()],
+    ),
+  );
+}
+
 function declaredKeys(selector: string): Set<string> {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = css.match(new RegExp(`${escaped}\\s*\\{([\\s\\S]*?)\\n\\}`));
@@ -137,6 +153,25 @@ describe("index.css palettes", () => {
     expect(css.match(/:root\s*\{([\s\S]*?)\n\}/)?.[1]).toContain(
       "color-scheme: light;",
     );
+  });
+
+  it("pins the legacy palettes' restore guarantee", () => {
+    // These six values ARE the restore: the badge hexes were originally
+    // flattened over #3b4252 / #434c5e / #d8dee9, so Nord reproduces every
+    // chip byte-for-byte only while its own tokens still hold them, and
+    // vscode-light only while it pins the same literals rather than deriving
+    // from its own near-white card. A later "tidy" that differentiates Nord's
+    // muted from its border, or harmonises vscode-light's badge base, would
+    // silently void the guarantee its comment makes.
+    const nord = declaredValues(':root[data-theme="nord"]');
+    expect(nord["--card"]).toBe("#3b4252");
+    expect(nord["--muted"]).toBe("#434c5e");
+    expect(nord["--muted-foreground"]).toBe("#d8dee9");
+
+    const vscode = declaredValues(':root[data-theme="vscode-light"]');
+    expect(vscode["--badge-base"]).toBe("#3b4252");
+    expect(vscode["--badge-muted"]).toBe("#434c5e");
+    expect(vscode["--badge-muted-fg"]).toBe("#d8dee9");
   });
 
   it("keeps .dark free of color declarations", () => {
