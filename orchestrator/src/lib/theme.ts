@@ -25,6 +25,7 @@ export const LIGHT_THEMES = [
   { id: "ice", label: "Ice" },
   { id: "newsprint", label: "Newsprint" },
   { id: "vscode-light", label: "VS Code Light" },
+  { id: "grape-light", label: "Grape Light" },
 ] as const satisfies ReadonlyArray<ThemeOption>;
 
 export const DARK_THEMES = [
@@ -32,6 +33,7 @@ export const DARK_THEMES = [
   { id: "slate-blue", label: "Slate Blue" },
   { id: "forest-amber", label: "Forest Amber" },
   { id: "nord", label: "Nord" },
+  { id: "crimson-noir", label: "Crimson Noir" },
 ] as const satisfies ReadonlyArray<ThemeOption>;
 
 export type LightThemeId = (typeof LIGHT_THEMES)[number]["id"];

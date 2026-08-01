@@ -364,6 +364,52 @@
   color-scheme: light;
 }
 
+/* Light — Grape Light */
+:root[data-theme="grape-light"] {
+  --background: #f7f4fb;
+  --foreground: #322a3c;
+  --card: #fffdff;
+  --card-foreground: #322a3c;
+  --popover: #fffdff;
+  --popover-foreground: #322a3c;
+  --primary: #6b3fa0;
+  --primary-foreground: #fffdff;
+  --secondary: #eae1f4;
+  --secondary-foreground: #322a3c;
+  --muted: #eae1f4;
+  --muted-foreground: #5f5470;
+  --accent: #ddd1ec;
+  --accent-foreground: #322a3c;
+  --destructive: #a5303f;
+  --destructive-foreground: #fffdff;
+  --border: #ddd1ec;
+  --input: #c2b0d8;
+  --ring: #6b3fa0;
+  --chart-1: #6b3fa0;
+  --chart-2: #2f6f4e;
+  --chart-3: #7c5a13;
+  --chart-4: #a5303f;
+  --chart-5: #2c6689;
+  --sidebar: #eae1f4;
+  --sidebar-foreground: #322a3c;
+  --sidebar-primary: #6b3fa0;
+  --sidebar-primary-foreground: #fffdff;
+  --sidebar-accent: #ddd1ec;
+  --sidebar-accent-foreground: #322a3c;
+  --sidebar-border: #ddd1ec;
+  --sidebar-ring: #6b3fa0;
+  --status-good: #2f6f4e;
+  --status-warn: #7c5a13;
+  --status-bad: var(--destructive);
+  --status-info: #2c6689;
+  --accent-cyan: #1f6a72;
+  --accent-purple: #6b3fa0;
+  --badge-base: #2b2333;
+  --badge-muted: #3c3346;
+  --badge-muted-fg: #cec3da;
+  color-scheme: light;
+}
+
 /* Dark — Graphite Mono (default dark). Achromatic chrome; the semantic status
    colors deliberately stay colored, because the job list's fit/status
    signalling is carried by hue. --destructive likewise stays red: a
@@ -548,6 +594,57 @@
   --status-info: #81a1c1;
   --accent-cyan: #88c0d0;
   --accent-purple: #b48ead;
+  --badge-base: var(--card);
+  --badge-muted: var(--muted);
+  --badge-muted-fg: var(--muted-foreground);
+  color-scheme: dark;
+}
+
+/* Dark — Crimson Noir. Near-black warm chrome with crimson as the single
+   accent. --destructive is deliberately a lighter coral rather than a second
+   crimson: the accent is already red here, and collapsing the two would make
+   every primary CTA read as destructive. The gap (~22 deg of oklch hue, 0.09
+   lightness) is the one to preserve — it is a touch wider than the brown/red
+   pair Sandstone already ships. */
+:root[data-theme="crimson-noir"] {
+  --background: #16100f;
+  --foreground: #f2e8e6;
+  --card: #201817;
+  --card-foreground: #f2e8e6;
+  --popover: #201817;
+  --popover-foreground: #f2e8e6;
+  --primary: #e35d72;
+  --primary-foreground: #16100f;
+  --secondary: #2c2220;
+  --secondary-foreground: #f2e8e6;
+  --muted: #2c2220;
+  --muted-foreground: #b6a4a1;
+  --accent: #372b29;
+  --accent-foreground: #f2e8e6;
+  --destructive: #ef9078;
+  --destructive-foreground: #16100f;
+  --border: #372b29;
+  --input: #4a3a37;
+  --ring: #e35d72;
+  --chart-1: #e35d72;
+  --chart-2: #86b385;
+  --chart-3: #d4ab6a;
+  --chart-4: #ef9078;
+  --chart-5: #93a9c9;
+  --sidebar: #201817;
+  --sidebar-foreground: #f2e8e6;
+  --sidebar-primary: #e35d72;
+  --sidebar-primary-foreground: #16100f;
+  --sidebar-accent: #372b29;
+  --sidebar-accent-foreground: #f2e8e6;
+  --sidebar-border: #372b29;
+  --sidebar-ring: #e35d72;
+  --status-good: #86b385;
+  --status-warn: #d4ab6a;
+  --status-bad: var(--destructive);
+  --status-info: #93a9c9;
+  --accent-cyan: #7ab0b6;
+  --accent-purple: #b79ccb;
   --badge-base: var(--card);
   --badge-muted: var(--muted);
   --badge-muted-fg: var(--muted-foreground);

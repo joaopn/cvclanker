@@ -15,7 +15,7 @@
         try {
           var stored = localStorage.getItem("cvclanker:theme");
           var dark = stored === "dark" || (stored !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-          var ids = dark ? ["graphite-mono", "slate-blue", "forest-amber", "nord"] : ["sandstone", "ice", "newsprint", "vscode-light"];
+          var ids = dark ? ["graphite-mono", "slate-blue", "forest-amber", "nord", "crimson-noir"] : ["sandstone", "ice", "newsprint", "vscode-light", "grape-light"];
           var picked = localStorage.getItem(dark ? "cvclanker:theme-dark" : "cvclanker:theme-light");
           if (ids.indexOf(picked) < 0) picked = ids[0];
           document.documentElement.classList.toggle("dark", dark);
