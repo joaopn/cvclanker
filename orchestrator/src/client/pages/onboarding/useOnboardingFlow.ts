@@ -430,9 +430,13 @@ export function useOnboardingFlow() {
         disabled: false,
       },
       {
-        id: "basicauth",
-        label: "Basic auth",
-        subtitle: "Protect write actions or skip",
+        id: "finalize",
+        label: "Finalize",
+        subtitle: "Sign-in and appearance",
+        // Keyed on the basic-auth decision ALONE. The theme half of this step
+        // is a per-device localStorage preference with no server-side value to
+        // check, and gating on it would push existing installs back through
+        // onboarding.
         complete: basicAuthComplete,
         disabled: false,
       },

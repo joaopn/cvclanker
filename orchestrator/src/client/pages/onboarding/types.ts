@@ -22,7 +22,7 @@ export type StepId =
   | "cv"
   | "searchprofile"
   | "sources"
-  | "basicauth";
+  | "finalize";
 export type BasicAuthChoice = "enable" | "skip" | null;
 export type CvChoice = "upload" | "skip" | null;
 export type CvFormatChoice = "latex" | "docx" | null;

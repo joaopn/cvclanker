@@ -19,9 +19,9 @@ import type {
   StepId,
   ValidationState,
 } from "../types";
-import { BasicAuthStep } from "./BasicAuthStep";
 import { CvFormatStep } from "./CvFormatStep";
 import { CvUploadStep } from "./CvUploadStep";
+import { FinalizeStep } from "./FinalizeStep";
 import { LlmConnectionStep } from "./LlmConnectionStep";
 import { SearchProfileStep } from "./SearchProfileStep";
 import { SourcesStep } from "./SourcesStep";
@@ -140,7 +140,7 @@ export const OnboardingStepContent: React.FC<{
   }
 
   return (
-    <BasicAuthStep
+    <FinalizeStep
       basicAuthChoice={props.basicAuthChoice}
       basicAuthPassword={props.basicAuthPassword}
       basicAuthUser={props.basicAuthUser}

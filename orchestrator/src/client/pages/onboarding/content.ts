@@ -45,10 +45,10 @@ export const STEP_COPY: Record<
     description:
       "The built-in boards are free and all on by default; turn off any you don't want. Apify actors are optional, need your own paid Apify account, and any actor you add here will run — and spend credits — on your next search. You can change all of this later on the Sources page.",
   },
-  basicauth: {
+  finalize: {
     eyebrow: "Step 6",
-    title: "Secure your workspace",
+    title: "Finish setting up.",
     description:
-      "Add a username and password so only signed-in users can access protected parts of CV Clanker. You can always set this up later in Settings.",
+      "Two last things. Add a username and password so only signed-in users can reach the protected parts of CV Clanker — or skip it and set it up later in Settings. Then pick the theme you want to work in; it applies immediately and is stored on this device.",
   },
 };
