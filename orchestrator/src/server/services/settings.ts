@@ -22,6 +22,9 @@ function resolveDefaultLlmBaseUrl(provider: string): string {
   if (normalized === "codex") {
     return "";
   }
+  if (normalized === "claude_code") {
+    return "";
+  }
   return "https://openrouter.ai";
 }
 
@@ -51,6 +54,18 @@ function normalizeModelForProviderCompatibility(
       normalizedModel.startsWith("models/") ||
       normalizedModel.startsWith("gemini");
     if (!isGeminiModel) {
+      return null;
+    }
+  }
+
+  if (normalizedProvider === "claude_code") {
+    // The CLI takes either a full id (`claude-sonnet-5`) or a family alias
+    // (`sonnet`, `opus`, `haiku`, `fable`). Anything else is a leftover from
+    // another provider and must fall back to the CLI's own default.
+    const isClaudeModel =
+      ["sonnet", "opus", "haiku", "fable"].includes(normalizedModel) ||
+      normalizedModel.startsWith("claude-");
+    if (!isClaudeModel) {
       return null;
     }
   }

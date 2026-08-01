@@ -14,6 +14,7 @@ ENV CODEX_HOME=/app/codex-home
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV PATH=/root/.local/bin:${PATH}
 ARG CODEX_CLI_VERSION=0.120.0
+ARG CLAUDE_CODE_CLI_VERSION=2.1.220
 
 # Install runtime dependencies shared by build and production stages.
 # poppler-utils provides `pdftotext`, used by services/cv/pdftotext-diff.ts to
@@ -48,6 +49,12 @@ RUN pip3 install --break-system-packages unoserver
 
 # Install Codex CLI for local app-server based inference.
 RUN npm install -g @openai/codex@${CODEX_CLI_VERSION}
+
+# Install Claude Code CLI for the headless `claude -p` provider. Unlike Codex
+# it needs no persisted auth home: the provider authenticates purely through
+# CLAUDE_CODE_OAUTH_TOKEN and spawns each query with sessions, settings and
+# MCP config disabled.
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_CLI_VERSION}
 
 WORKDIR /app
 

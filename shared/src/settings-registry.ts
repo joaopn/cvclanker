@@ -31,6 +31,9 @@ function normalizeLlmProviderOrNull(raw: string | undefined): string | null {
 export const DEFAULT_GEMINI_MODEL = "google/gemini-3-flash-preview";
 export const DEFAULT_OPENAI_MODEL = "gpt-5.4-mini";
 export const DEFAULT_CODEX_MODEL = "";
+// Empty means "let the Claude Code CLI pick its own default" — the same
+// contract as Codex, so no model id is pinned here to rot.
+export const DEFAULT_CLAUDE_CODE_MODEL = "";
 
 export function getDefaultModelForProvider(
   provider: string | null | undefined,
@@ -53,6 +56,10 @@ export function getDefaultModelForProvider(
 
   if (normalizedProvider === "codex") {
     return DEFAULT_CODEX_MODEL;
+  }
+
+  if (normalizedProvider === "claude_code") {
+    return DEFAULT_CLAUDE_CODE_MODEL;
   }
   return DEFAULT_GEMINI_MODEL;
 }
@@ -117,6 +124,7 @@ export const settingsRegistry = {
           "openai_compatible",
           "gemini",
           "codex",
+          "claude_code",
         ])
         .nullable(),
     ),
@@ -511,6 +519,16 @@ export const settingsRegistry = {
   apifyApiToken: {
     kind: "secret" as const,
     envKey: "APIFY_API_TOKEN",
+    schema: z.string().trim().max(2000),
+  },
+  // Deliberately its OWN key rather than reusing llmApiKey: the Claude Code
+  // provider spawns a CLI that reads CLAUDE_CODE_OAUTH_TOKEN from its own
+  // environment, and the envKey machinery syncs this value into process.env at
+  // boot and on save. Sharing llmApiKey would let a stale key from a previously
+  // configured provider silently shadow a working ambient token.
+  claudeCodeOauthToken: {
+    kind: "secret" as const,
+    envKey: "CLAUDE_CODE_OAUTH_TOKEN",
     schema: z.string().trim().max(2000),
   },
 

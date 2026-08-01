@@ -25,7 +25,7 @@ a single SQLite file, and **neither auto-applies**.
 | **Post-application tracking** | — *(removed)* | Gmail auto-detection |
 | **Visa sponsorship** | — *(removed)* | Licensed-sponsor register checks |
 | **Telemetry** | **None** | Umami (opt-out) + analytics dashboard |
-| **LLM providers** | OpenAI, Gemini, OpenRouter, Codex, OpenAI-compatible, LM Studio, Ollama | Similar, plus a dedicated Claude/GLM path |
+| **LLM providers** | OpenAI, Gemini, OpenRouter, Codex, Claude Code, OpenAI-compatible, LM Studio, Ollama | Similar, plus a dedicated GLM path |
 | **Themes** | 8 palettes (4 light + 4 dark) | Minimal / undocumented |
 | **Hosting** | Self-host only, local build | Self-host (GHCR image) **+ paid cloud** |
 

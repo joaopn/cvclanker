@@ -13,6 +13,7 @@ export const LLM_PROVIDERS = [
   "openai_compatible",
   "gemini",
   "codex",
+  "claude_code",
 ] as const;
 
 export type LlmProviderId = (typeof LLM_PROVIDERS)[number];
@@ -20,6 +21,7 @@ export const LLM_MODEL_SUGGESTION_PROVIDERS = [
   "openai",
   "gemini",
   "ollama",
+  "claude_code",
 ] as const;
 
 export const LLM_PROVIDER_LABELS: Record<LlmProviderId, string> = {
@@ -30,6 +32,7 @@ export const LLM_PROVIDER_LABELS: Record<LlmProviderId, string> = {
   openai_compatible: "OpenAI-compatible",
   gemini: "Gemini",
   codex: "Codex",
+  claude_code: "Claude Code",
 };
 
 const PROVIDERS_WITH_API_KEY = new Set<LlmProviderId>([
@@ -56,6 +59,8 @@ const PROVIDER_HINTS: Record<LlmProviderId, string> = {
   gemini: "Gemini uses the native AI Studio API and requires a key.",
   codex:
     "Codex runs through a local app-server process and uses your Codex login session.",
+  claude_code:
+    "Claude Code runs the official CLI on this host, one `claude -p` process per query, using your subscription token.",
 };
 
 const PROVIDER_KEY_HELPERS: Record<
@@ -80,6 +85,9 @@ const PROVIDER_KEY_HELPERS: Record<
     href: "https://aistudio.google.com/app/apikey",
   },
   codex: { text: "No API key required when Codex is authenticated locally" },
+  claude_code: {
+    text: "No API key required — Claude Code uses the OAuth token field below",
+  },
 };
 
 const BASE_URL_PROVIDERS = ["lmstudio", "ollama", "openai_compatible"] as const;
@@ -96,9 +104,12 @@ export function normalizeLlmProvider(
 ): LlmProviderId {
   const normalized = value?.trim().toLowerCase();
   if (!normalized) return "openrouter";
-  if (normalized === "openai-compatible") return "openai_compatible";
-  return (LLM_PROVIDERS as readonly string[]).includes(normalized)
-    ? (normalized as LlmProviderId)
+  // Hyphens are normalized generally, matching the server's normalizeProvider
+  // and the settings registry. This used to special-case `openai-compatible`
+  // alone, which silently dropped every other hyphenated alias to openrouter.
+  const normalizedId = normalized.replace(/-/g, "_");
+  return (LLM_PROVIDERS as readonly string[]).includes(normalizedId)
+    ? (normalizedId as LlmProviderId)
     : "openrouter";
 }
 
@@ -132,6 +143,7 @@ export function getLlmProviderConfig(provider: string | null | undefined) {
     showApiKey,
     showBaseUrl,
     requiresApiKey: showApiKey,
+
     baseUrlPlaceholder,
     baseUrlHelper,
     providerHint,

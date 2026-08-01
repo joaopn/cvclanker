@@ -23,8 +23,8 @@ case it's useful — there's no roadmap, hosted version, or support commitment.
 - **Tailoring from a brief.** You write a free-text "personal brief" describing
   things your CV leaves out. Per-job tailoring and an ATS keyword pass use the
   brief and the job description; a chat panel proposes edits you accept or reject.
-- **LLM of your choice.** OpenAI, Gemini, OpenRouter, Codex, any OpenAI-compatible
-  endpoint, or a local model via LM Studio or Ollama.
+- **LLM of your choice.** OpenAI, Gemini, OpenRouter, Codex, Claude Code, any
+  OpenAI-compatible endpoint, or a local model via LM Studio or Ollama.
 - **Local.** No accounts and no telemetry; the only outbound calls are to the LLM
   and the job sources you configure.
 

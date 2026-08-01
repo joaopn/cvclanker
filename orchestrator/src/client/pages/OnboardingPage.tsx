@@ -115,6 +115,7 @@ export const OnboardingPage: React.FC = () => {
                     isBusy={flow.isBusy}
                     isGeneratingSearchTerms={flow.isGeneratingSearchTerms}
                     llmKeyHint={flow.llmKeyHint}
+                    claudeCodeTokenHint={flow.claudeCodeTokenHint}
                     llmValidation={flow.llmValidation}
                     personalBrief={flow.watch("personalBrief")}
                     searchTermsSource={flow.searchTermsSource}

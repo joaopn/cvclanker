@@ -144,9 +144,20 @@ describe("settingsRegistry helpers", () => {
         "google/gemini-3-flash-preview",
       );
       expect(getDefaultModelForProvider("codex")).toBe("");
+      // Empty means "let the Claude Code CLI choose", same contract as codex.
+      expect(getDefaultModelForProvider("claude_code")).toBe("");
       expect(getDefaultModelForProvider("openrouter")).toBe(
         "google/gemini-3-flash-preview",
       );
+    });
+
+    it("accepts claude_code as an llmProvider value", () => {
+      expect(settingsRegistry.llmProvider.parse("claude-code")).toBe(
+        "claude_code",
+      );
+      expect(
+        settingsRegistry.llmProvider.schema.safeParse("claude_code").success,
+      ).toBe(true);
     });
   });
 });

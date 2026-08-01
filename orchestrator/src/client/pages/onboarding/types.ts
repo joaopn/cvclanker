@@ -9,7 +9,9 @@ export type OnboardingFormData = {
   llmProvider: string;
   llmBaseUrl: string;
   llmApiKey: string;
+  claudeCodeOauthToken: string;
   personalBrief: string;
+
   searchTerms: string[];
   searchTermDraft: string;
   basicAuthUser: string;

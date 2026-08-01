@@ -37,6 +37,34 @@ describe("settings utils", () => {
     expect(config.showBaseUrl).toBe(false);
   });
 
+  // Claude Code authenticates with its own CLAUDE_CODE_OAUTH_TOKEN secret, not
+  // the shared llmApiKey — sharing that field let a stale key from a previously
+  // configured provider shadow a working token.
+  it("does not offer the shared API key field for claude code", () => {
+    const config = getLlmProviderConfig("claude_code");
+
+    expect(config.label).toBe("Claude Code");
+    expect(config.showApiKey).toBe(false);
+    expect(config.showBaseUrl).toBe(false);
+  });
+
+  it("keeps key-bearing providers required", () => {
+    expect(getLlmProviderConfig("openai").requiresApiKey).toBe(true);
+    expect(getLlmProviderConfig("openrouter").requiresApiKey).toBe(true);
+    expect(getLlmProviderConfig("gemini").requiresApiKey).toBe(true);
+    expect(getLlmProviderConfig("openai_compatible").requiresApiKey).toBe(true);
+    expect(getLlmProviderConfig("codex").requiresApiKey).toBe(false);
+    expect(getLlmProviderConfig("claude_code").requiresApiKey).toBe(false);
+  });
+
+  it("normalizes the hyphenated claude-code alias", () => {
+    expect(normalizeLlmProvider("claude-code")).toBe("claude_code");
+  });
+
+  it("offers curated model suggestions for claude code", () => {
+    expect(supportsLlmModelSuggestions("claude_code")).toBe(true);
+  });
+
   it("normalizes the hyphenated openai-compatible alias", () => {
     expect(normalizeLlmProvider("openai-compatible")).toBe("openai_compatible");
   });

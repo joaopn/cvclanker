@@ -71,7 +71,9 @@ export const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
     llmProvider,
     llmBaseUrl,
     llmApiKeyHint,
+    claudeCodeOauthTokenHint,
   } = values;
+
   const {
     register,
     control,
@@ -85,6 +87,8 @@ export const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
   const providerConfig = getLlmProviderConfig(selectedProvider);
   const { showApiKey, showBaseUrl } = providerConfig;
   const isCodexProvider = providerConfig.normalizedProvider === "codex";
+  const isClaudeCodeProvider =
+    providerConfig.normalizedProvider === "claude_code";
 
   const llmBaseUrlValue = watch("llmBaseUrl");
   const llmApiKeyValue = watch("llmApiKey") ?? "";
@@ -182,6 +186,8 @@ export const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
   ]);
 
   const keyHint = formatSecretHint(llmApiKeyHint);
+  const claudeCodeTokenHint = formatSecretHint(claudeCodeOauthTokenHint);
+
   const keyText = showApiKey ? keyHint || "Not set" : "Not required";
   const resolvedBaseUrl = llmBaseUrlValue?.trim() || llmBaseUrl || "-";
   const selectedDefaultModel = modelValue.trim();
@@ -293,6 +299,24 @@ export const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
                   Boolean(keyHint),
                 )}
                 current={keyHint}
+              />
+            )}
+            {isClaudeCodeProvider && (
+              <SettingsInput
+                label="Claude Code OAuth token"
+                inputProps={register("claudeCodeOauthToken")}
+                type="password"
+                placeholder="Enter new token"
+                disabled={isLoading || isSaving}
+                error={
+                  errors.claudeCodeOauthToken?.message as string | undefined
+                }
+                helper={renderKeyHelper(
+                  "Mint one with `claude setup-token`. Leave blank to use CLAUDE_CODE_OAUTH_TOKEN from the environment",
+                  null,
+                  Boolean(claudeCodeTokenHint),
+                )}
+                current={claudeCodeTokenHint}
               />
             )}
           </div>

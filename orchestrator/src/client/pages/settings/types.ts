@@ -14,6 +14,7 @@ export type ModelValues = EffectiveDefault<string> & {
   llmProvider: string;
   llmBaseUrl: string;
   llmApiKeyHint: string | null;
+  claudeCodeOauthTokenHint: string | null;
 };
 
 export type DisplayValues = {

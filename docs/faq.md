@@ -26,7 +26,8 @@ model (scoring, tailoring), or you can point it at a local model and use no key.
 
 ### Can I use Claude / GPT / Gemini / a local model?
 
-All of them. OpenAI and Gemini directly, **Claude** via OpenRouter, any
+All of them. OpenAI and Gemini directly, **Claude** with a Claude subscription
+via the Claude Code provider (or per-token via OpenRouter), any
 OpenAI-compatible endpoint, and local models via LM Studio or Ollama. See
 [LLM providers](llm-providers.md).
 

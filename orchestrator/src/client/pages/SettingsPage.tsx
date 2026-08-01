@@ -53,7 +53,9 @@ const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
   llmProvider: null,
   llmBaseUrl: "",
   llmApiKey: "",
+  claudeCodeOauthToken: "",
   showSponsorInfo: null,
+
   renderMarkdownInJobDescriptions: null,
   chatStyleTone: "",
   chatStyleFormality: "",
@@ -131,7 +133,15 @@ const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
         id: "model",
         label: "Models",
         description: "Provider, API credentials, and task-specific overrides.",
-        searchTerms: ["llm", "provider", "openai", "gemini", "ollama", "codex"],
+        searchTerms: [
+          "llm",
+          "provider",
+          "openai",
+          "gemini",
+          "ollama",
+          "codex",
+          "claude",
+        ],
       },
       {
         id: "chat",
@@ -240,7 +250,9 @@ const SECTION_FIELD_MAP: Record<
     "llmProvider",
     "llmBaseUrl",
     "llmApiKey",
+    "claudeCodeOauthToken",
     "model",
+
     "modelScorer",
     "modelTailoring",
   ],
@@ -307,7 +319,9 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   llmProvider: null,
   llmBaseUrl: null,
   llmApiKey: null,
+  claudeCodeOauthToken: null,
   showSponsorInfo: null,
+
   renderMarkdownInJobDescriptions: null,
   chatStyleTone: null,
   chatStyleFormality: null,
@@ -351,6 +365,8 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   ),
   llmBaseUrl: data.llmBaseUrl.override ?? "",
   llmApiKey: "",
+  claudeCodeOauthToken: "",
+
   showSponsorInfo: data.showSponsorInfo.override,
   renderMarkdownInJobDescriptions:
     data.renderMarkdownInJobDescriptions.override,
@@ -413,6 +429,7 @@ const getDerivedSettings = (settings: AppSettings | null) => {
       llmProvider: settings?.llmProvider?.value ?? "",
       llmBaseUrl: settings?.llmBaseUrl?.value ?? "",
       llmApiKeyHint: settings?.llmApiKeyHint ?? null,
+      claudeCodeOauthTokenHint: settings?.claudeCodeOauthTokenHint ?? null,
     },
     display: {
       showSponsorInfo: {
@@ -677,6 +694,11 @@ export const SettingsPage: React.FC = () => {
       if (dirtyFields.llmApiKey) {
         const value = normalizePrivateInput(data.llmApiKey);
         if (value !== undefined) envPayload.llmApiKey = value;
+      }
+
+      if (dirtyFields.claudeCodeOauthToken) {
+        const value = normalizePrivateInput(data.claudeCodeOauthToken);
+        if (value !== undefined) envPayload.claudeCodeOauthToken = value;
       }
 
       const payload: Partial<UpdateSettingsInput> = {

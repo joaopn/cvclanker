@@ -49,6 +49,8 @@ export const OnboardingStepContent: React.FC<{
   isGeneratingSearchTerms: boolean;
   hasSavedSearchTermsInSession: boolean;
   llmKeyHint: string | null;
+  claudeCodeTokenHint: string | null;
+
   llmValidation: ValidationState;
   personalBrief: string;
   searchTermsSource: SearchTermsSuggestionResponse["source"] | null;
@@ -73,6 +75,7 @@ export const OnboardingStepContent: React.FC<{
         control={props.control}
         isBusy={props.isBusy}
         llmKeyHint={props.llmKeyHint}
+        claudeCodeTokenHint={props.claudeCodeTokenHint}
         selectedProvider={props.selectedProvider}
         validation={props.llmValidation}
       />

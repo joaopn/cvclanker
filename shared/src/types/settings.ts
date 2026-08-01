@@ -107,6 +107,7 @@ export interface AppSettings {
   llmApiKeyHint: string | null;
   basicAuthPasswordHint: string | null;
   apifyApiTokenHint: string | null;
+  claudeCodeOauthTokenHint: string | null;
 
   // Computed:
   basicAuthActive: boolean;

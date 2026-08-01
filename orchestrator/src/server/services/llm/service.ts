@@ -1,5 +1,6 @@
 import { logger } from "@infra/logger";
 import { toStringOrNull } from "@shared/utils/type-conversion";
+import { ClaudeCodeClient } from "./claude-code/client";
 import { CodexClient } from "./codex/client";
 import { llmCallObserver } from "./observer";
 import {
@@ -35,6 +36,7 @@ export class LlmService {
   private readonly apiKey: string | null;
   private readonly strategy: (typeof strategies)[LlmProvider];
   private readonly codexClient: CodexClient;
+  private readonly claudeCodeClient: ClaudeCodeClient;
 
   constructor(options: LlmServiceOptions = {}) {
     const normalizedBaseUrl =
@@ -76,6 +78,7 @@ export class LlmService {
     this.apiKey = apiKey;
     this.strategy = strategy;
     this.codexClient = new CodexClient();
+    this.claudeCodeClient = new ClaudeCodeClient();
   }
 
   async callJson<T>(options: LlmRequestOptions<T>): Promise<LlmResponse<T>> {
@@ -101,6 +104,10 @@ export class LlmService {
   ): Promise<LlmResponse<T>> {
     if (this.provider === "codex") {
       return this.callCodexJson(options);
+    }
+
+    if (this.provider === "claude_code") {
+      return this.callClaudeCodeJson(options);
     }
 
     if (this.strategy.requiresApiKey && !this.apiKey) {
@@ -158,6 +165,10 @@ export class LlmService {
   async validateCredentials(): Promise<LlmValidationResult> {
     if (this.provider === "codex") {
       return this.codexClient.validateCredentials();
+    }
+
+    if (this.provider === "claude_code") {
+      return this.claudeCodeClient.validateCredentials();
     }
 
     if (this.strategy.requiresApiKey && !this.apiKey) {
@@ -219,6 +230,10 @@ export class LlmService {
   async listModels(): Promise<string[]> {
     if (this.provider === "codex") {
       return this.codexClient.listModels();
+    }
+
+    if (this.provider === "claude_code") {
+      return this.claudeCodeClient.listModels();
     }
 
     if (this.strategy.requiresApiKey && !this.apiKey) {
@@ -298,6 +313,78 @@ export class LlmService {
 
         this.logCallCompleted({
           mode: "codex",
+          model: options.model,
+          jobId,
+          startedAt: attemptStartedAt,
+          attemptNumber: attempt + 1,
+          success: false,
+          errorMessage: message,
+        });
+        return { success: false, error: message };
+      }
+    }
+
+    return { success: false, error: "All retry attempts failed" };
+  }
+
+  /**
+   * Mirrors `callCodexJson`, but the Claude Code CLI's `--output-format json`
+   * envelope carries real token counts, so usage is populated rather than
+   * nulled.
+   *
+   * No credential is passed explicitly: the CLI reads CLAUDE_CODE_OAUTH_TOKEN
+   * from the environment, and the `claudeCodeOauthToken` registry secret keeps
+   * process.env in sync at boot and on save. Handing it `this.apiKey` instead
+   * would let a stale key left over from a previously configured provider
+   * (LLM_API_KEY) silently shadow a working ambient token.
+   */
+
+  private async callClaudeCodeJson<T>(
+    options: LlmRequestOptions<T>,
+  ): Promise<LlmResponse<T>> {
+    const { maxRetries = 0, retryDelayMs = 500, jobId } = options;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const attemptStartedAt = Date.now();
+      try {
+        if (attempt > 0) {
+          logger.info("LLM retry attempt", {
+            jobId: jobId ?? "unknown",
+            attempt,
+            maxRetries,
+          });
+          await sleep(getRetryDelayMs(retryDelayMs, attempt));
+        }
+
+        const result = await this.claudeCodeClient.callJson(options);
+
+        const parsed = parseJsonContent<T>(result.text, jobId);
+        this.logCallCompleted({
+          mode: "claude_code",
+          model: options.model,
+          jobId,
+          startedAt: attemptStartedAt,
+          attemptNumber: attempt + 1,
+          success: true,
+          promptTokens: result.usage.promptTokens,
+          completionTokens: result.usage.completionTokens,
+        });
+        return { success: true, data: parsed, usage: result.usage };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+
+        if (attempt < maxRetries && shouldRetryAttempt({ message })) {
+          logger.warn("Claude Code attempt failed, retrying", {
+            jobId: jobId ?? "unknown",
+            attempt: attempt + 1,
+            maxRetries,
+            message,
+          });
+          continue;
+        }
+
+        this.logCallCompleted({
+          mode: "claude_code",
           model: options.model,
           jobId,
           startedAt: attemptStartedAt,
@@ -484,7 +571,7 @@ export class LlmService {
    * mode and are accounted for there.
    */
   private logCallCompleted(args: {
-    mode: ResponseMode | "codex";
+    mode: ResponseMode | "codex" | "claude_code";
     model: string;
     jobId: string | undefined;
     startedAt: number;
@@ -635,6 +722,7 @@ function normalizeProvider(
   if (normalized === "lmstudio") return "lmstudio";
   if (normalized === "ollama") return "ollama";
   if (normalized === "codex") return "codex";
+  if (normalized === "claude_code") return "claude_code";
   if (normalized && normalized !== "openrouter") {
     logger.warn("Unknown LLM provider, defaulting to openrouter", {
       normalized,

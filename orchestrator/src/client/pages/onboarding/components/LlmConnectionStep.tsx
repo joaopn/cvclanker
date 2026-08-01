@@ -46,12 +46,22 @@ export const LlmConnectionStep: React.FC<{
   control: Control<OnboardingFormData>;
   isBusy: boolean;
   llmKeyHint: string | null;
+  claudeCodeTokenHint: string | null;
   selectedProvider: LlmProviderId;
   validation: ValidationState;
-}> = ({ control, isBusy, llmKeyHint, selectedProvider, validation }) => {
+}> = ({
+  control,
+  isBusy,
+  llmKeyHint,
+  claudeCodeTokenHint,
+  selectedProvider,
+  validation,
+}) => {
   const providerConfig = getLlmProviderConfig(selectedProvider);
   const { showApiKey, showBaseUrl } = providerConfig;
   const isCodexProvider = providerConfig.normalizedProvider === "codex";
+  const isClaudeCodeProvider =
+    providerConfig.normalizedProvider === "claude_code";
 
   return (
     <div className="space-y-6">
@@ -128,6 +138,29 @@ export const LlmConnectionStep: React.FC<{
                   providerConfig.keyHelperText,
                   providerConfig.keyHelperHref,
                   Boolean(llmKeyHint),
+                )}
+                disabled={isBusy}
+              />
+            )}
+          />
+        ) : isClaudeCodeProvider ? (
+          <Controller
+            name="claudeCodeOauthToken"
+            control={control}
+            render={({ field }) => (
+              <SettingsInput
+                label="Claude Code OAuth token"
+                inputProps={{
+                  name: "claudeCodeOauthToken",
+                  value: field.value,
+                  onChange: field.onChange,
+                }}
+                type="password"
+                placeholder="Paste a new token"
+                helper={renderKeyHelper(
+                  "Mint one with `claude setup-token`. Leave blank to use CLAUDE_CODE_OAUTH_TOKEN from the environment",
+                  null,
+                  Boolean(claudeCodeTokenHint),
                 )}
                 disabled={isBusy}
               />

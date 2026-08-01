@@ -28,6 +28,11 @@ services:
       - PYTHON_PATH=/usr/bin/python3
       # Codex runtime home (stores auth and config)
       - CODEX_HOME=/app/codex-home
+      # Claude Code provider auth. Bare name (no `=`) so the variable is passed
+      # through only when it is actually set on the host or in ./.env — writing
+      # `KEY=${KEY:-}` would define it as empty inside the container. Mint one
+      # with `claude setup-token`; it can also be pasted into Settings instead.
+      - CLAUDE_CODE_OAUTH_TOKEN
       # Baked prompt YAMLs — the SEED source for the DB prompts table (live
       # copies are edited in-app / via the API, not on disk)
       - PROMPTS_DIR=/app/prompts

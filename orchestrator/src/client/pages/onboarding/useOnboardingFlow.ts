@@ -125,7 +125,9 @@ export function useOnboardingFlow() {
         llmProvider: "",
         llmBaseUrl: "",
         llmApiKey: "",
+        claudeCodeOauthToken: "",
         personalBrief: "",
+
         searchTerms: [],
         searchTermDraft: "",
         basicAuthUser: "",
@@ -182,8 +184,10 @@ export function useOnboardingFlow() {
       llmProvider: settings.llmProvider?.value || "",
       llmBaseUrl: settings.llmBaseUrl?.value || "",
       llmApiKey: "",
+      claudeCodeOauthToken: "",
       personalBrief: "",
       searchTerms: getValues().searchTerms,
+
       searchTermDraft: "",
       basicAuthUser: settings.basicAuthUser ?? "",
       basicAuthPassword: "",
@@ -265,7 +269,9 @@ export function useOnboardingFlow() {
   } = providerConfig;
 
   const llmKeyHint = settings?.llmApiKeyHint ?? null;
+  const claudeCodeTokenHint = settings?.claudeCodeOauthTokenHint ?? null;
   const hasLlmKey = Boolean(llmKeyHint);
+
   const llmValidated = llmValidation.valid;
   const searchTermsComplete = searchTermsSaved && !searchTermsStale;
   const basicAuthComplete = hasCompletedBasicAuthOnboarding(settings);
@@ -483,6 +489,29 @@ export function useOnboardingFlow() {
     if (requiresLlmKey && !apiKeyValue && !hasLlmKey) {
       toast.info("Add your LLM API key to continue");
       return false;
+    }
+
+    // Claude Code validates by asking the CLI, which reads the token from the
+    // server's environment — so a token typed here has to be persisted (which
+    // applies it to process.env) BEFORE validating, or the check runs against
+    // the old credential and a first-time setup can never pass.
+    const claudeCodeTokenValue = values.claudeCodeOauthToken.trim();
+    if (normalizedProvider === "claude_code" && claudeCodeTokenValue) {
+      try {
+        setIsSaving(true);
+        const nextSettings = await api.updateSettings({
+          claudeCodeOauthToken: claudeCodeTokenValue,
+        });
+        syncSettingsCache(nextSettings);
+        setValue("claudeCodeOauthToken", "");
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Failed to save the token",
+        );
+        return false;
+      } finally {
+        setIsSaving(false);
+      }
     }
 
     const validation = await validateLlm();
@@ -1079,6 +1108,8 @@ export function useOnboardingFlow() {
     isGeneratingSearchTerms,
     hasSavedSearchTermsInSession,
     llmKeyHint,
+    claudeCodeTokenHint,
+
     llmValidation,
     primaryLabel,
     progressValue,

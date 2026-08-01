@@ -1,4 +1,5 @@
 import type { LlmProvider, ProviderStrategy } from "../types";
+import { claudeCodeStrategy } from "./claude-code";
 import { codexStrategy } from "./codex";
 import { geminiStrategy } from "./gemini";
 import { lmStudioStrategy } from "./lmstudio";
@@ -15,4 +16,5 @@ export const strategies: Record<LlmProvider, ProviderStrategy> = {
   openai_compatible: openAiCompatibleStrategy,
   gemini: geminiStrategy,
   codex: codexStrategy,
+  claude_code: claudeCodeStrategy,
 };

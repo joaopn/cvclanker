@@ -15,9 +15,11 @@ or local, and you can edit the prompts.
 | **LM Studio** | A model running locally. |
 | **Ollama** | A model running locally with [Ollama](https://ollama.com). |
 | **Codex** | Local Codex app-server (authenticated with `codex login`; session persists in the `codex-home` volume). |
+| **Claude Code** | Headless `claude -p` runs using a Claude subscription. Mint a token with `claude setup-token` and paste it into Settings (or set `CLAUDE_CODE_OAUTH_TOKEN`). |
 
-To use Claude, use OpenRouter (or an Anthropic-compatible gateway via the
-OpenAI-compatible provider). There's no dedicated Anthropic provider.
+**Claude Code** is the dedicated Claude path — it bills your Claude
+subscription, not an API key. Claude via API key works through OpenRouter (or an
+Anthropic-compatible gateway via the OpenAI-compatible provider).
 
 With **LM Studio** or **Ollama**, the CV, brief, and job descriptions aren't sent
 to an external service for the model steps — there's no key and no external LLM
