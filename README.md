@@ -1,119 +1,89 @@
 # CV Clanker
 
-Self-hosted job search workspace built around a LaTeX-native CV pipeline,
-with Word (`.docx`) as an alternative CV substrate. Scrapes job boards,
-scores fit, tailors your CV and a cover letter per job, and tracks them
-through an inbox/live/closed lifecycle. Runs locally in Docker. Does not
-auto-apply.
+CV Clanker is a self-hosted workspace for a job search. It scrapes job boards,
+optionally scores how well each posting matches you, and tailors a copy of your
+CV and a cover letter for each one. It runs locally in Docker, stores everything
+in a single SQLite file, and does not submit applications for you.
 
-## What this is
+It's a fork of [JobOps](https://github.com/DaKheera47/job-ops), adapted to a
+LaTeX/Word CV workflow and with the parts that weren't needed for that removed
+(telemetry, hosted cloud, application tracking). It's a personal fork shared in
+case it's useful — there's no roadmap, hosted version, or support commitment.
 
-Workflow:
+## What it does
 
-1. Upload a LaTeX CV (single `.tex` or zip with `\input{}`). The server
-   flattens it, has the LLM extract a templated `.tex` plus a JSON of
-   substitutable fields, then verifies the round-trip by recompiling and
-   diffing the PDF text against the original. Partial extractions are
-   rejected — there is no "mostly worked" state.
-2. Write a `personal_brief` — long-form free text describing context the
-   CV doesn't capture (side projects, things you've used in passing).
-3. Scrape jobs from LinkedIn, Indeed, Glassdoor (via jobspy), Hiring Cafe,
-   Working Nomads, startup.jobs, and Golang Jobs.
-4. Per job, tailor the CV at the field level (JSON-Patch edits over the
-   flattened TeX) using `personal_brief + JD + currentContent`, plus an
-   ATS-keyword pass that surfaces matched/skipped JD terms. Generate a
-   cover letter against the same substrate.
-5. Render with Tectonic. Review and edit through a chat panel that
-   proposes accept/reject patches against either document.
-6. Move the job through Inbox → Live → Closed with outcome tagging.
+- **CVs in LaTeX or Word.** You upload your own `.tex` or `.docx`. Tailoring
+  edits the content of that document rather than generating a new one from a
+  fixed template. LaTeX renders to PDF; Word is downloaded as a `.docx`, with a
+  PDF preview.
+- **Job scraping.** Built-in sources are LinkedIn, Indeed, and Glassdoor (via
+  jobspy), Hiring Cafe, startup.jobs, and Working Nomads. [Apify](https://apify.com)
+  actors can also be used as sources, with ready-made templates for LinkedIn and
+  Indeed.
+- **Tailoring from a brief.** You write a free-text "personal brief" describing
+  things your CV leaves out. Per-job tailoring and an ATS keyword pass use the
+  brief and the job description; a chat panel proposes edits you accept or reject.
+- **LLM of your choice.** OpenAI, Gemini, OpenRouter, Codex, any OpenAI-compatible
+  endpoint, or a local model via LM Studio or Ollama.
+- **Local.** No accounts and no telemetry; the only outbound calls are to the LLM
+  and the job sources you configure.
 
-Word CVs: a User Profile can use `.docx` instead of LaTeX — the choice is
-made once, at onboarding, and is permanent for that profile. The server
-extracts the document's text, the LLM names the tailorable spans (it never
-writes markup), and the upload is gated on exact text equality plus a
-successful LibreOffice conversion. Tailoring then rewrites those spans, so
-the file you download is a `.docx`; the PDF is only a preview. Cover
-letters remain LaTeX-only.
+## Requirements
 
-LLM providers: OpenAI, Gemini, OpenRouter, Codex, or any
-OpenAI-compatible endpoint. Prompts are stored in the database (seeded from `prompts/` YAML defaults) and editable in-app. Both CV-tailoring prompts are format-aware: the server splices in the rules for the profile's CV format (`prompts/fragments/cv-format-latex.yaml` / `cv-format-docx.yaml`).
+[Docker](https://docs.docker.com/get-docker/) with Compose. The image bundles the
+rest (Tectonic for LaTeX, LibreOffice for Word, headless browsers).
 
-## Where it came from
-
-Fork of [JobOps](https://github.com/DaKheera47/jobops). Diverged at
-commit `01452b6`. The fork is intentionally independent — no GHCR pulls,
-no upstream pings, no analytics, no CI.
-
-Removed:
-- Telemetry (Umami client/server, fingerprint, reverse proxy).
-- CI workflows and FUNDING.
-- Reactive Resume integration and the RxResume-era tailoring UI.
-- Gmail / Tracking Inbox / post-application stack.
-- In-progress kanban + application stage tracking.
-- Tracer link rewriting + click analytics.
-- Visa sponsorship, demo mode, conversion analytics, outbound webhooks,
-  DB backup.
-- Region-specific extractors: Adzuna, Gradcracker, UK Visa Jobs, Seek.
-- Bundled documentation site.
-
-Replaced or added:
-- LaTeX CV substrate: flatten → Eta render → Tectonic compile, with a
-  pdftotext content-equivalence gate on upload.
-- `personal_brief` substrate; the rigid `cvContentSchema` is gone — the
-  tailored JSON mirrors whatever shape the source CV uses.
-- Field-level tailoring via JSON-Patch over flattened TeX, plus an
-  ATS-coverage sidecar (matched/skipped JD keywords).
-- Word (`.docx`) CV substrate: server-owned marker splicing over
-  LLM-selected text spans, an exact-text-equality upload gate, and
-  LibreOffice/unoserver conversion for PDF previews.
-- Cover-letter document substrate with its own gated upload, per-job
-  Generate, and Edit/PDF tab toggle.
-- Job lifecycle redesign: Inbox / Live / Closed tabs, repost detection,
-  pipeline-bound auto-aging, posted-date sort, outcome tagging.
-- Batch URL import via streaming sheet.
-- LLM observability: structured per-call logs, live call queue, status
-  button, persistent upload spinner.
-- User-editable LLM prompts, stored in the DB and seeded from `prompts/` YAML defaults.
-- Onboarding wizard with a CV upload step.
-
-## Operator manual
-
-### Run
+## Install
 
 ```bash
+git clone https://github.com/joaopn/cvclanker.git
+cd cvclanker
 docker compose up -d --build
 ```
 
-App is at `http://localhost:3005`. The image builds locally from the
-included [`Dockerfile`](Dockerfile); nothing is pulled from a registry.
+Then open http://localhost:3005. The onboarding wizard covers uploading a CV,
+writing a brief, choosing an LLM, and picking sources. No API key is needed to
+start the app — you need one (or a local model) for the steps that call an LLM.
 
-### Persistent state
+## How it works
 
-- `data/` — SQLite DB (`data/jobs.db`) — the complete installation: jobs, settings, CV/cover-letter archives, generated PDFs, prompts, and the JWT secret all live inside it. Gitignored. Back this up (or use the in-app snapshot export).
-- `prompts/` — baked into the image as the SEED defaults for the DB prompts table. Edit live prompts in-app, not on disk.
-- `codex-home` named volume — Codex provider auth, if used.
+1. Upload a CV (LaTeX or Word). The upload is accepted only if the app can
+   reproduce your document exactly; see [docs/cvs.md](docs/cvs.md).
+2. Write a personal brief — context your CV doesn't include.
+3. Scrape jobs from the sources you enabled.
+4. Optionally score fit, then triage from the list or the swipe view.
+5. Tailor the CV and generate a cover letter per job, reviewing each change.
+6. Track jobs through Inbox → Live → Closed.
 
-### Configuration
+## Documentation
 
-LLM provider keys and any env overrides go in `./.env` (optional). See
-the Settings page in the UI for in-app config (provider selection,
-scoring toggle, tailoring opt-in, prompt overrides).
+See [`docs/`](docs/):
 
-### Common operations
+- [Getting started](docs/getting-started.md) — install and first run
+- [CVs: LaTeX, Word & the brief](docs/cvs.md)
+- [Job sources](docs/job-sources.md) and [Apify integration](docs/apify.md)
+- [Tailoring & AI assist](docs/tailoring.md)
+- [Tracking your hunt](docs/job-lifecycle.md)
+- [LLM providers & prompts](docs/llm-providers.md)
+- [Configuration](docs/configuration.md) and [FAQ](docs/faq.md)
 
-```bash
-# Tail logs
-docker compose logs -f --tail=200 cvclanker
+## Relation to JobOps
 
-# Stop
-docker compose down
+Fork of [JobOps](https://github.com/DaKheera47/job-ops), diverged at commit
+`01452b6`. The main differences:
 
-# Wipe state (destructive — deletes all jobs, CVs, generated PDFs)
-docker compose down
-rm -rf data/
-docker compose up -d --build
-```
+| | CV Clanker | JobOps |
+|---|---|---|
+| CV output | LaTeX and Word `.docx` | PDF only (`.docx` import-only) |
+| Apify | Any actor, plus templates | One hard-coded actor |
+| Telemetry | None | Umami (opt-out) |
+| Hosting | Self-host only | Self-host and paid cloud |
+| Scope | CV documents | Full application tracking (Gmail, kanban, visa) |
+
+The application-tracking, hosted-cloud, and telemetry features from JobOps were
+removed. A fuller comparison is in [docs/comparison.md](docs/comparison.md).
 
 ## License
 
-**AGPLv3 + Commons Clause** — see [LICENSE](LICENSE).
+AGPLv3 + Commons Clause — see [LICENSE](LICENSE). Contributions welcome:
+[CONTRIBUTING.md](CONTRIBUTING.md).
