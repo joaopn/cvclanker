@@ -13,7 +13,6 @@ ENV DATA_DIR=/app/data
 ENV CODEX_HOME=/app/data/codex-home
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV PATH=/root/.local/bin:${PATH}
-ARG CODEX_CLI_VERSION=0.120.0
 ARG CLAUDE_CODE_CLI_VERSION=2.1.220
 
 # Install runtime dependencies shared by build and production stages.
@@ -47,8 +46,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # hang it indefinitely while converting fine through the daemon (W1 finding).
 RUN pip3 install --break-system-packages unoserver
 
-# Install Codex CLI for local app-server based inference.
-RUN npm install -g @openai/codex@${CODEX_CLI_VERSION}
+# The Codex CLI is deliberately NOT baked into the image: it is installed at
+# runtime into the data volume (Settings/wizard → Install Codex), so it
+# updates independently of the image. CODEX_CLI_VERSION pins the installed
+# version; CODEX_APP_SERVER_BIN points at a mounted binary for air-gapped use.
 
 # Install Claude Code CLI for the headless `claude -p` provider. Unlike Codex
 # it needs no persisted auth home: the provider authenticates purely through

@@ -15,6 +15,11 @@ import {
   updateClaudeCodeCli,
 } from "@server/services/llm/claude-code/manage";
 import {
+  getCodexInstallStatus,
+  InvalidCodexCliVersionError,
+  installCodexCli,
+} from "@server/services/llm/codex/install";
+import {
   disconnectCodexAuth,
   getCodexDeviceAuthSnapshot,
   startCodexDeviceAuth,
@@ -145,6 +150,9 @@ async function getCodexAuthResponseData(): Promise<{
   startedAt: string | null;
   expiresAt: string | null;
   flowMessage: string | null;
+  installed: boolean;
+  installedVersion: string | null;
+  pinnedVersion: string | null;
 }> {
   const flow = getCodexDeviceAuthSnapshot();
   const validation = flow.loginInProgress
@@ -153,6 +161,11 @@ async function getCodexAuthResponseData(): Promise<{
   if (!flow.loginInProgress) {
     clearCodexValidationCache();
   }
+
+  // `installed` comes from the same path predicate the spawn resolver uses —
+  // never inferred from `authenticated`, which spawns the CLI and therefore
+  // cannot tell installed-but-unauthed apart from not-installed.
+  const install = getCodexInstallStatus();
 
   return {
     authenticated: validation.valid,
@@ -165,6 +178,9 @@ async function getCodexAuthResponseData(): Promise<{
     startedAt: flow.startedAt,
     expiresAt: flow.expiresAt,
     flowMessage: flow.message,
+    installed: install.installed,
+    installedVersion: install.installedVersion,
+    pinnedVersion: install.pinnedVersion,
   };
 }
 
@@ -315,6 +331,42 @@ settingsRouter.post(
         error instanceof InvalidClaudeCodeVersionError
           ? badRequest(message)
           : upstreamError(message),
+      );
+    }
+  }),
+);
+
+/**
+ * POST /api/settings/codex-install — synchronous npm install of the Codex CLI
+ * into the data volume. The version comes from CODEX_CLI_VERSION (or latest),
+ * never from the request. Overlapping requests join the in-flight install.
+ */
+settingsRouter.post(
+  "/codex-install",
+  asyncRoute(async (_req: Request, res: Response) => {
+    try {
+      await installCodexCli();
+      // A successful install flips the codex spawn from ENOENT to runnable —
+      // a state change, so clear the validation cache exactly like
+      // /codex-auth/start and /disconnect do.
+      clearCodexValidationCache();
+      const data = await getCodexAuthResponseData();
+      ok(res, data);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to install the Codex CLI.";
+      logger.warn("Codex CLI install failed", {
+        requestId: getRequestId() ?? null,
+        route: "POST /api/settings/codex-install",
+        message,
+      });
+      fail(
+        res,
+        error instanceof InvalidCodexCliVersionError
+          ? badRequest(message)
+          : serviceUnavailable(message),
       );
     }
   }),

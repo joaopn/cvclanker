@@ -1,6 +1,7 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { logger } from "@infra/logger";
 import { truncate } from "../utils/string";
+import { resolveCodexCommand } from "./install";
 
 const DEVICE_AUTH_TIMEOUT_MS = 15_000;
 const LOGOUT_TIMEOUT_MS = 10_000;
@@ -317,7 +318,7 @@ export async function startCodexDeviceAuth(
     }
   }
 
-  const command = process.env.CODEX_APP_SERVER_BIN?.trim() || "codex";
+  const command = resolveCodexCommand();
   const proc = spawn(command, ["login", "--device-auth"], {
     stdio: "pipe",
     cwd: process.cwd(),
@@ -354,7 +355,7 @@ export async function disconnectCodexAuth(): Promise<CodexDeviceAuthSnapshot> {
     activeSession = null;
   }
 
-  const command = process.env.CODEX_APP_SERVER_BIN?.trim() || "codex";
+  const command = resolveCodexCommand();
 
   await new Promise<void>((resolve, reject) => {
     const proc = spawn(command, ["logout"], {
