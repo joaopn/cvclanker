@@ -103,6 +103,7 @@ function chooseKeeper(jobs: JobListItem[]): string {
 }
 
 const FIT_LABEL: Record<string, string> = {
+  great_fit: "Great fit",
   very_good_fit: "Very good fit",
   good_fit: "Good fit",
   bad_fit: "Bad fit",

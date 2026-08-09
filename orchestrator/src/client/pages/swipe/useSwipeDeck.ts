@@ -17,9 +17,10 @@ import { useCallback, useEffect, useState } from "react";
 export type SwipeAction = "move_to_ready" | "skip" | "move_to_backlog";
 
 const FIT_RANK: Record<SuitabilityCategory, number> = {
-  very_good_fit: 0,
-  good_fit: 1,
-  bad_fit: 2,
+  great_fit: 0,
+  very_good_fit: 1,
+  good_fit: 2,
+  bad_fit: 3,
 };
 
 /** Best-effort ms timestamp; tolerates ISO or all-digit Unix-ms strings. */
@@ -32,8 +33,8 @@ const dateMs = (value: string | null): number => {
 
 /** Fit-first, then newest-posted first. */
 const byFitThenDate = (a: Job, b: Job): number => {
-  const ra = a.suitabilityCategory ? FIT_RANK[a.suitabilityCategory] : 3;
-  const rb = b.suitabilityCategory ? FIT_RANK[b.suitabilityCategory] : 3;
+  const ra = a.suitabilityCategory ? FIT_RANK[a.suitabilityCategory] : 4;
+  const rb = b.suitabilityCategory ? FIT_RANK[b.suitabilityCategory] : 4;
   if (ra !== rb) return ra - rb;
   return dateMs(b.datePosted) - dateMs(a.datePosted);
 };

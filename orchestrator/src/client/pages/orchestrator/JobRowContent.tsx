@@ -23,6 +23,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // which desaturate against the card. Vivid text stays on the fixed Tailwind
 // palette and is deliberately NOT re-based.
 const CATEGORY_PILL_CLASS: Record<SuitabilityCategory, string> = {
+  great_fit:
+    "bg-[color-mix(in_oklab,var(--badge-base)_80%,var(--badge-purple))] text-violet-300 border border-[color:color-mix(in_oklab,var(--badge-base)_65%,var(--badge-purple))]",
   very_good_fit:
     "bg-[color-mix(in_oklab,var(--badge-base)_85%,var(--badge-good))] text-emerald-300 border border-[color:color-mix(in_oklab,var(--badge-base)_70%,var(--badge-good))]",
   good_fit:
@@ -32,6 +34,7 @@ const CATEGORY_PILL_CLASS: Record<SuitabilityCategory, string> = {
 };
 
 const CATEGORY_PILL_LABEL: Record<SuitabilityCategory, string> = {
+  great_fit: "Great",
   very_good_fit: "Very good",
   good_fit: "Good",
   bad_fit: "Bad",

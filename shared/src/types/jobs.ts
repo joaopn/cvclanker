@@ -55,6 +55,7 @@ export const APPLICATION_OUTCOMES = [
 export type JobOutcome = (typeof APPLICATION_OUTCOMES)[number];
 
 export const SUITABILITY_CATEGORIES = [
+  "great_fit",
   "very_good_fit",
   "good_fit",
   "bad_fit",
@@ -64,19 +65,21 @@ export type SuitabilityCategory = (typeof SUITABILITY_CATEGORIES)[number];
 
 export const SUITABILITY_CATEGORY_LABELS: Record<SuitabilityCategory, string> =
   {
+    great_fit: "Great fit",
     very_good_fit: "Very good fit",
     good_fit: "Good fit",
     bad_fit: "Bad fit",
   };
 
 /**
- * Rank from "worst" (0) to "best" (2). Used to implement
+ * Rank from "worst" (0) to "best" (3). Used to implement
  * "min category" filtering: a job qualifies when its rank >= threshold rank.
  */
 export const SUITABILITY_CATEGORY_RANK: Record<SuitabilityCategory, number> = {
   bad_fit: 0,
   good_fit: 1,
   very_good_fit: 2,
+  great_fit: 3,
 };
 
 export const APPLICATION_TASK_TYPES = [

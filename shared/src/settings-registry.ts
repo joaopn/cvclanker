@@ -129,6 +129,7 @@ A DIFFERENTIATOR is a capability the ad emphasizes as what distinguishes the wan
 Venue neutrality: research, academic, and open-source work is DIRECT evidence of a discipline, equal to commercial experience. Never demote for an academic background, for "professional/commercial environment" phrasing, or for lacking the employer's industry exposure. Sole exception: when the ad explicitly demands a delivered commercial/product track record of a specific deliverable, academic-only versions of that deliverable cap the job at good_fit.
 
 Categories:
+- great_fit: the role reads as written for the candidate. Everything very_good_fit requires, plus most of the ad's desirable items are also met with direct evidence, and the role matches the candidate's stated target roles and preferences. Reserve it for roles where the candidate is truly among the strongest plausible applicants.
 - very_good_fit: clear shortlist. Direct, demonstrated experience on the core requirements at the right level, and no explicitly demanded differentiator is absent.
 - good_fit: a fair shot — worth an application. The core discipline is practiced with direct evidence, but the level is a modest stretch, an explicitly demanded differentiator is missing, or a core experience threshold falls slightly short in a discipline the candidate genuinely practices.
 - bad_fit: the core discipline is not one the candidate has actually practiced (adjacent skills do not substitute); or a mandatory qualification or experience threshold in it is clearly unmet; or a hard blocker exists (required language, clearance, credential, or a veto rule in the candidate's brief).
@@ -138,8 +139,8 @@ Transferable or adjacent experience satisfies SECONDARY requirements only; for C
 Calibration examples (real verdicts, corrected by the user):
 - Ad: enterprise ETL/DWH engineer — 10+ years ETL/DWH, Spark/Databricks at its core. Brief: TB-scale research data pipelines, strong Python/SQL, never an ETL/DWH developer -> bad_fit. Adjacent pipeline skill does not substitute for an unpracticed core discipline.
 - Ad: ML engineer explicitly demanding demonstrable delivery of multiple production time-series forecasting projects. Brief: strong ML/statistical modeling, academic time-series work, production deployment skills — but no delivered forecasting projects -> good_fit. The explicitly demanded differentiator is absent; still worth applying.
-- Ad: commercial data scientist — core is statistical/ML modeling with Python/SQL; insurance domain and Azure/Databricks listed as desirable. Brief: PhD-level statistical modeling on messy real-world data plus TB-scale production pipelines, all from academia -> very_good_fit. The core is practiced directly; domain and cloud vendor are secondary; the academic venue is not a demotion.
-- Ad: university research data scientist embedded with academic teams. Brief: PhD computational scientist with a cross-disciplinary research record, matching the candidate's stated target roles -> very_good_fit. The role reads as written for the candidate.`;
+- Ad: commercial data scientist — core is statistical/ML modeling with Python/SQL; insurance domain and Azure/Databricks listed as desirable. Brief: PhD-level statistical modeling on messy real-world data plus TB-scale production pipelines, all from academia -> very_good_fit, not great_fit. The core is practiced directly and the academic venue is not a demotion, but the desirables are not covered.
+- Ad: university research data scientist embedded with academic teams. Brief: PhD computational scientist with a cross-disciplinary research record, covering the desirables and matching the candidate's stated target roles -> great_fit. The role reads as written for the candidate.`;
 
 const parseChatStyleManualLanguageOrNull = createEnumParser(
   CHAT_STYLE_MANUAL_LANGUAGE_VALUES,
@@ -202,7 +203,7 @@ export const settingsRegistry = {
   },
   scoringInstructions: {
     kind: "typed" as const,
-    // The full scoring policy lives here (~3.7k chars shipped); 16k leaves
+    // The full scoring policy lives here (~4.1k chars shipped); 16k leaves
     // room for the user to grow the calibration-example list several-fold
     // without letting a runaway paste bloat every scoring call unnoticed.
     schema: z.string().trim().max(16000),

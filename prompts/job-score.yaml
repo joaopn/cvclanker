@@ -1,7 +1,7 @@
 name: job-score
 description: |
-  Classifies how well a candidate fits a job into one of three categories:
-  very_good_fit, good_fit, or bad_fit.
+  Classifies how well a candidate fits a job into one of four categories:
+  great_fit, very_good_fit, good_fit, or bad_fit.
   Used by services/scorer.ts when ranking discovered jobs.
 variables:
   - name: briefText
@@ -20,8 +20,8 @@ model:
 system: ""
 user: |
   Classify how well this candidate fits the job, into exactly one of the
-  categories "very_good_fit", "good_fit", or "bad_fit", following the
-  scoring policy below.
+  categories "great_fit", "very_good_fit", "good_fit", or "bad_fit",
+  following the scoring policy below.
 
   Scoring policy:
   {{scoringInstructionsText}}
@@ -41,5 +41,5 @@ user: |
   {{jobDescription}}
 
   Respond as JSON with
-    { "category": "<very_good_fit | good_fit | bad_fit>",
+    { "category": "<great_fit | very_good_fit | good_fit | bad_fit>",
       "reason": "<one to two sentence explanation>" }.

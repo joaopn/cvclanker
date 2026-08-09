@@ -15,11 +15,18 @@ import { cn } from "@/lib/utils";
 
 type Bucket = SuitabilityCategory | "unscored";
 
-const ORDER: Bucket[] = ["very_good_fit", "good_fit", "bad_fit", "unscored"];
+const ORDER: Bucket[] = [
+  "great_fit",
+  "very_good_fit",
+  "good_fit",
+  "bad_fit",
+  "unscored",
+];
 const UNSCORED_CLASS = "bg-muted/40 text-muted-foreground border-border/60";
 
 export const FitCountChips: React.FC<{ jobs: Job[] }> = ({ jobs }) => {
   const counts: Record<Bucket, number> = {
+    great_fit: 0,
     very_good_fit: 0,
     good_fit: 0,
     bad_fit: 0,

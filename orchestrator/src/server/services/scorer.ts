@@ -1,8 +1,8 @@
 /**
  * Service for scoring job suitability using AI.
  *
- * Emits a categorical suitability assessment (`very_good_fit | good_fit |
- * bad_fit`) instead of a 0-100 numeric score. The "missing salary" penalty
+ * Emits a categorical suitability assessment (`great_fit | very_good_fit |
+ * good_fit | bad_fit`) instead of a 0-100 numeric score. The "missing salary" penalty
  * (when enabled) demotes the category by one tier so a great-on-paper match
  * with no salary disclosure surfaces below other comparable matches.
  */
@@ -60,7 +60,8 @@ const SCORING_SCHEMA: JsonSchemaDefinition = {
       category: {
         type: "string",
         enum: [...SUITABILITY_CATEGORIES],
-        description: "Categorical fit: very_good_fit, good_fit, or bad_fit.",
+        description:
+          "Categorical fit: great_fit, very_good_fit, good_fit, or bad_fit.",
       },
       reason: {
         type: "string",
@@ -80,6 +81,7 @@ const RANK_TO_CATEGORY: Record<number, SuitabilityCategory> = {
   0: "bad_fit",
   1: "good_fit",
   2: "very_good_fit",
+  3: "great_fit",
 };
 
 function demoteOneTier(category: SuitabilityCategory): SuitabilityCategory {

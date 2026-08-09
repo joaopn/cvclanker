@@ -24,6 +24,8 @@ interface FitIndicatorProps {
 // which desaturate against the card. Vivid text stays on the fixed Tailwind
 // palette and is deliberately NOT re-based.
 export const PILL_CLASS: Record<SuitabilityCategory, string> = {
+  great_fit:
+    "bg-[color-mix(in_oklab,var(--badge-base)_80%,var(--badge-purple))] text-violet-300 border-[color:color-mix(in_oklab,var(--badge-base)_65%,var(--badge-purple))]",
   very_good_fit:
     "bg-[color-mix(in_oklab,var(--badge-base)_85%,var(--badge-good))] text-emerald-300 border-[color:color-mix(in_oklab,var(--badge-base)_70%,var(--badge-good))]",
   good_fit:

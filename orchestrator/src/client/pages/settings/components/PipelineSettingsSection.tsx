@@ -235,10 +235,10 @@ export const PipelineSettingsSection: React.FC<
               Score discovered jobs with the LLM
             </label>
             <p className="text-xs text-muted-foreground">
-              When on (default), each new job is classified as a very good /
-              good / bad fit and gets a one-line reason. Turn off to skip the
-              LLM scoring step entirely; jobs land in the inbox unscored and you
-              triage them manually.
+              When on (default), each new job is classified as a great / very
+              good / good / bad fit and gets a one-line reason. Turn off to skip
+              the LLM scoring step entirely; jobs land in the inbox unscored and
+              you triage them manually.
             </p>
           </div>
         </div>

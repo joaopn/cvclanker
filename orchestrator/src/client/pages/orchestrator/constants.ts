@@ -31,6 +31,12 @@ export const FIT_FILTER_CHIP_CLASS: Record<
   FitFilterValue,
   { active: string; inactive: string }
 > = {
+  great_fit: {
+    active:
+      "bg-[color-mix(in_oklab,var(--badge-base)_75%,var(--badge-purple))] text-violet-200 border border-[color:color-mix(in_oklab,var(--badge-base)_55%,var(--badge-purple))] hover:bg-[color-mix(in_oklab,var(--badge-base)_70%,var(--badge-purple))]",
+    inactive:
+      "text-[#a78bfa] hover:bg-[color-mix(in_oklab,var(--badge-base)_90%,var(--badge-purple))] hover:text-violet-200 border border-transparent",
+  },
   very_good_fit: {
     active:
       "bg-[color-mix(in_oklab,var(--badge-base)_80%,var(--badge-good))] text-emerald-200 border border-[color:color-mix(in_oklab,var(--badge-base)_60%,var(--badge-good))] hover:bg-[color-mix(in_oklab,var(--badge-base)_75%,var(--badge-good))]",

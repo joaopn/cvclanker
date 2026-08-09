@@ -444,6 +444,26 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     expect(payload.error.details.max).toBe(50_000);
   });
 
+  it("PATCH accepts great_fit and it survives the migrated DB's CHECK", async () => {
+    await seedJob({ id: "job-great", status: "discovered" });
+    const res = await fetch(`${baseUrl}/api/jobs/job-great`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ suitabilityCategory: "great_fit" }),
+    });
+    expect(res.status).toBe(200);
+
+    const { db, schema } = await import("@server/db/index");
+    const rows = await db
+      .select({
+        id: schema.jobs.id,
+        suitabilityCategory: schema.jobs.suitabilityCategory,
+      })
+      .from(schema.jobs);
+    const stored = rows.find((r) => r.id === "job-great");
+    expect(stored?.suitabilityCategory).toBe("great_fit");
+  });
+
   it("GET /duplicates returns active-triage jobs grouped by title + company", async () => {
     // seedJob uses the same title/employer for every row, so two active rows
     // form one duplicate group.

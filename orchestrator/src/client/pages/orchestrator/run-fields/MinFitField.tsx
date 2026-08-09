@@ -22,6 +22,7 @@ export function MinFitField({ value, onChange }: MinFitFieldProps) {
       >
         {(
           [
+            "great_fit",
             "very_good_fit",
             "good_fit",
             "bad_fit",
@@ -38,11 +39,11 @@ export function MinFitField({ value, onChange }: MinFitFieldProps) {
               <RadioGroupItem value={category} id={id} />
               <span className="text-sm font-medium">
                 {SUITABILITY_CATEGORY_LABELS[category]}
-                {category === "good_fit"
-                  ? " (and better)"
+                {category === "great_fit"
+                  ? ""
                   : category === "bad_fit"
                     ? " (everything)"
-                    : ""}
+                    : " (and better)"}
               </span>
             </label>
           );
