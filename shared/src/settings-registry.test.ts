@@ -38,6 +38,51 @@ describe("settingsRegistry helpers", () => {
     });
   });
 
+  describe("concurrency limits", () => {
+    const keys = [
+      "discoveryConcurrency",
+      "scoringConcurrency",
+      "tailoringConcurrency",
+      "bulkActionConcurrency",
+      "batchUrlImportConcurrency",
+    ] as const;
+
+    it("carries the pre-settings hardcoded values as defaults", () => {
+      expect(settingsRegistry.discoveryConcurrency.default()).toBe(3);
+      expect(settingsRegistry.scoringConcurrency.default()).toBe(4);
+      expect(settingsRegistry.tailoringConcurrency.default()).toBe(3);
+      expect(settingsRegistry.bulkActionConcurrency.default()).toBe(4);
+      expect(settingsRegistry.batchUrlImportConcurrency.default()).toBe(3);
+    });
+
+    // Max 10 mirrors asyncPool's hard clamp — a larger stored value would
+    // silently not apply, so the schema must refuse it at save time.
+    it("accepts 1 through 10 and rejects out-of-range or fractional values", () => {
+      for (const key of keys) {
+        const schema = settingsRegistry[key].schema;
+        expect(schema.safeParse(1).success).toBe(true);
+        expect(schema.safeParse(10).success).toBe(true);
+        expect(schema.safeParse(0).success).toBe(false);
+        expect(schema.safeParse(11).success).toBe(false);
+        expect(schema.safeParse(2.5).success).toBe(false);
+      }
+    });
+
+    // The background-tailor FIFO consumes the value with no downstream
+    // asyncPool clamp, so the read path must clamp out-of-band stored values
+    // itself — a raw 0 would stall the queue forever.
+    it("clamps out-of-band stored values to 1-10 on read", () => {
+      for (const key of keys) {
+        expect(settingsRegistry[key].parse("0")).toBe(1);
+        expect(settingsRegistry[key].parse("-3")).toBe(1);
+        expect(settingsRegistry[key].parse("50")).toBe(10);
+        expect(settingsRegistry[key].parse("5")).toBe(5);
+        expect(settingsRegistry[key].parse("abc")).toBeNull();
+        expect(settingsRegistry[key].parse(undefined)).toBeNull();
+      }
+    });
+  });
+
   describe("boolean (bit-bool) parsing and serialization", () => {
     it("parses bit bools correctly", () => {
       expect(settingsRegistry.showSponsorInfo.parse("1")).toBe(true);

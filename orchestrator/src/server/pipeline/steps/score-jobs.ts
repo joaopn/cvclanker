@@ -5,6 +5,7 @@ import {
   JobNotScoreableError,
   scoreJobSuitability,
 } from "@server/services/scorer";
+import { getEffectiveSettings } from "@server/services/settings";
 import { asyncPool } from "@server/utils/async-pool";
 import {
   SUITABILITY_CATEGORIES,
@@ -14,8 +15,6 @@ import {
 } from "@shared/types";
 import { progressHelpers, updateProgress } from "../progress";
 import type { ScoredJob } from "./types";
-
-const SCORING_CONCURRENCY = 4;
 
 function parseCategoryOrNull(
   raw: string | null | undefined,
@@ -47,6 +46,8 @@ export async function scoreJobsStep(args: {
   const autoSkipCategory = parseCategoryOrNull(
     await settingsRepo.getSetting("autoSkipCategory"),
   );
+  const scoringConcurrency = (await getEffectiveSettings()).scoringConcurrency
+    .value;
 
   updateProgress({
     step: "scoring",
@@ -62,7 +63,7 @@ export async function scoreJobsStep(args: {
 
   await asyncPool({
     items: unprocessedJobs,
-    concurrency: SCORING_CONCURRENCY,
+    concurrency: scoringConcurrency,
     shouldStop: args.shouldCancel,
     task: async (job) => {
       if (args.shouldCancel?.()) return;
@@ -141,7 +142,7 @@ export async function scoreJobsStep(args: {
   progressHelpers.scoringComplete(scoredJobs.length);
   logger.info("Scoring step completed", {
     scoredJobs: scoredJobs.length,
-    concurrency: SCORING_CONCURRENCY,
+    concurrency: scoringConcurrency,
   });
 
   return { unprocessedJobs, scoredJobs };

@@ -52,6 +52,56 @@ const bytesToMb = (bytes: number): number =>
   Math.round((bytes / ONE_MB) * 100) / 100;
 const mbToBytes = (mb: number): number => Math.round(mb * ONE_MB);
 
+// 10 mirrors the hard clamp in the server's asyncPool — a higher value would
+// silently not apply, so the form refuses it upfront.
+const MAX_CONCURRENCY = 10;
+
+type ConcurrencyFieldKey =
+  | "discoveryConcurrency"
+  | "scoringConcurrency"
+  | "tailoringConcurrency"
+  | "bulkActionConcurrency"
+  | "batchUrlImportConcurrency";
+
+type ConcurrencyField = {
+  key: ConcurrencyFieldKey;
+  label: string;
+  description: string;
+};
+
+const CONCURRENCY_FIELDS: ConcurrencyField[] = [
+  {
+    key: "discoveryConcurrency",
+    label: "Discovery concurrency",
+    description:
+      "How many job sources scrape in parallel during a pipeline run. Raising this multiplies simultaneous scraper/actor traffic — mind rate limits and per-actor cost.",
+  },
+  {
+    key: "scoringConcurrency",
+    label: "Scoring concurrency",
+    description:
+      "How many jobs the pipeline's scoring step scores in parallel (one LLM call each).",
+  },
+  {
+    key: "tailoringConcurrency",
+    label: "Tailoring concurrency",
+    description:
+      "How many jobs tailor in parallel (LLM + PDF render). Applies to both the pipeline's processing step and background Tailor actions.",
+  },
+  {
+    key: "bulkActionConcurrency",
+    label: "Bulk action concurrency",
+    description:
+      "How many jobs a multi-select action (rescore, rescrape, move, …) processes in parallel.",
+  },
+  {
+    key: "batchUrlImportConcurrency",
+    label: "Batch URL import concurrency",
+    description:
+      "How many pasted URLs the batch import fetches and infers in parallel.",
+  },
+];
+
 export const PipelineSettingsSection: React.FC<
   PipelineSettingsSectionProps
 > = ({ values, isLoading, isSaving, layoutMode }) => {
@@ -60,6 +110,11 @@ export const PipelineSettingsSection: React.FC<
     enableJobScoring,
     inboxStaleThresholdDays,
     maxBulkActionJobs,
+    discoveryConcurrency,
+    scoringConcurrency,
+    tailoringConcurrency,
+    bulkActionConcurrency,
+    batchUrlImportConcurrency,
     manualJobFetchTimeoutMs,
     manualJobFetchMinExtractedChars,
     manualJobFetchBrowserSettleMs,
@@ -74,6 +129,16 @@ export const PipelineSettingsSection: React.FC<
     maxCvUploadBytes,
     maxCoverLetterUploadBytes,
     maxExpandedLatexBytes,
+  };
+  const concurrencyValues: Record<
+    ConcurrencyFieldKey,
+    { effective: number; default: number }
+  > = {
+    discoveryConcurrency,
+    scoringConcurrency,
+    tailoringConcurrency,
+    bulkActionConcurrency,
+    batchUrlImportConcurrency,
   };
   const {
     control,
@@ -266,6 +331,64 @@ export const PipelineSettingsSection: React.FC<
             <span className="font-mono">{maxBulkActionJobs.effective}</span>
           </div>
         </div>
+
+        {CONCURRENCY_FIELDS.map((field) => {
+          const value = concurrencyValues[field.key];
+          const error = errors[field.key as keyof typeof errors];
+          return (
+            <div className="space-y-2" key={field.key}>
+              <label htmlFor={field.key} className="text-sm font-medium">
+                {field.label}
+              </label>
+              <Controller
+                name={field.key}
+                control={control}
+                rules={{
+                  validate: (v) =>
+                    v === null ||
+                    v === undefined ||
+                    (Number.isInteger(v) && v >= 1 && v <= MAX_CONCURRENCY) ||
+                    `Must be between 1 and ${MAX_CONCURRENCY}`,
+                }}
+                render={({ field: controllerField }) => (
+                  <Input
+                    id={field.key}
+                    type="number"
+                    min={1}
+                    max={MAX_CONCURRENCY}
+                    step={1}
+                    placeholder={String(value.default)}
+                    disabled={isLoading || isSaving}
+                    value={
+                      typeof controllerField.value === "number"
+                        ? controllerField.value
+                        : ""
+                    }
+                    onChange={(e) => {
+                      const raw = e.target.valueAsNumber;
+                      controllerField.onChange(
+                        Number.isFinite(raw) ? raw : null,
+                      );
+                    }}
+                  />
+                )}
+              />
+              {error && (
+                <div className="text-xs text-destructive">
+                  {(error as { message?: string }).message}
+                </div>
+              )}
+              <div className="text-xs text-muted-foreground">
+                {field.description}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Current: <span className="font-mono">{value.effective}</span>
+                {" — "}Default:{" "}
+                <span className="font-mono">{value.default}</span>
+              </div>
+            </div>
+          );
+        })}
 
         <div className="space-y-2">
           <label

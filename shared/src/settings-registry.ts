@@ -17,6 +17,15 @@ function parseIntOrNull(raw: string | undefined): number | null {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
+// Clamps to the same 1..10 the concurrency schemas enforce, so an
+// out-of-band stored value (hand-edited DB row, crafted snapshot) can never
+// stall a pool at 0 or overshoot the asyncPool clamp on read.
+function parseConcurrencyOrNull(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const parsed = parseInt(raw, 10);
+  return Number.isNaN(parsed) ? null : Math.min(10, Math.max(1, parsed));
+}
+
 function parseBitBoolOrNull(raw: string | undefined): boolean | null {
   if (!raw) return null;
   return raw === "true" || raw === "1";
@@ -353,6 +362,45 @@ export const settingsRegistry = {
     schema: z.number().int().min(1),
     default: (): number => 1000,
     parse: parseIntOrNull,
+    serialize: serializeNullableNumber,
+  },
+  // --- Concurrency limits (Pipeline section) ---
+  // Max 10 mirrors the hard clamp in orchestrator utils/async-pool.ts — a
+  // higher value would silently not apply there, so the schema keeps the UI
+  // honest. Raise both together or not at all.
+  discoveryConcurrency: {
+    kind: "typed" as const,
+    schema: z.number().int().min(1).max(10),
+    default: (): number => 3,
+    parse: parseConcurrencyOrNull,
+    serialize: serializeNullableNumber,
+  },
+  scoringConcurrency: {
+    kind: "typed" as const,
+    schema: z.number().int().min(1).max(10),
+    default: (): number => 4,
+    parse: parseConcurrencyOrNull,
+    serialize: serializeNullableNumber,
+  },
+  tailoringConcurrency: {
+    kind: "typed" as const,
+    schema: z.number().int().min(1).max(10),
+    default: (): number => 3,
+    parse: parseConcurrencyOrNull,
+    serialize: serializeNullableNumber,
+  },
+  bulkActionConcurrency: {
+    kind: "typed" as const,
+    schema: z.number().int().min(1).max(10),
+    default: (): number => 4,
+    parse: parseConcurrencyOrNull,
+    serialize: serializeNullableNumber,
+  },
+  batchUrlImportConcurrency: {
+    kind: "typed" as const,
+    schema: z.number().int().min(1).max(10),
+    default: (): number => 3,
+    parse: parseConcurrencyOrNull,
     serialize: serializeNullableNumber,
   },
   // --- Context limits (LLM-bound character caps) ---

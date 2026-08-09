@@ -16,6 +16,7 @@ import {
   JobNotScoreableError,
   scoreJobSuitability,
 } from "@server/services/scorer";
+import { getEffectiveSettings } from "@server/services/settings";
 import { asyncPool } from "@server/utils/async-pool";
 import type {
   BatchUrlImportItemResult,
@@ -191,7 +192,6 @@ manualJobsRouter.post("/import", async (req: Request, res: Response) => {
   }
 });
 
-const BATCH_URL_IMPORT_CONCURRENCY = 3;
 const BATCH_URL_IMPORT_MAX_URLS = 50;
 
 const batchUrlImportSchema = z.object({
@@ -378,6 +378,8 @@ manualJobsRouter.post(
 
     try {
       const scoringEnabled = await isJobScoringEnabled();
+      const batchUrlImportConcurrency = (await getEffectiveSettings())
+        .batchUrlImportConcurrency.value;
 
       if (!sendEvent({ type: "started", requested, requestId })) {
         logger.info("Client disconnected before batch URL import started", {
@@ -390,7 +392,7 @@ manualJobsRouter.post(
 
       await asyncPool({
         items: dedupedUrls,
-        concurrency: BATCH_URL_IMPORT_CONCURRENCY,
+        concurrency: batchUrlImportConcurrency,
         shouldStop: () => !isResponseWritable(),
         task: async (url) => {
           if (!isResponseWritable()) return;
@@ -442,7 +444,7 @@ manualJobsRouter.post(
         succeeded,
         duplicates,
         failed,
-        concurrency: BATCH_URL_IMPORT_CONCURRENCY,
+        concurrency: batchUrlImportConcurrency,
         requestId,
       });
     } catch (error) {

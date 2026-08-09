@@ -78,6 +78,11 @@ const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
   enableJobScoring: null,
   inboxStaleThresholdDays: null,
   maxBulkActionJobs: null,
+  discoveryConcurrency: null,
+  scoringConcurrency: null,
+  tailoringConcurrency: null,
+  bulkActionConcurrency: null,
+  batchUrlImportConcurrency: null,
   maxBriefChars: null,
   maxJobDescriptionChars: null,
   maxTailoredContentChars: null,
@@ -287,6 +292,11 @@ const SECTION_FIELD_MAP: Record<
     "enableJobScoring",
     "inboxStaleThresholdDays",
     "maxBulkActionJobs",
+    "discoveryConcurrency",
+    "scoringConcurrency",
+    "tailoringConcurrency",
+    "bulkActionConcurrency",
+    "batchUrlImportConcurrency",
     "manualJobFetchTimeoutMs",
     "manualJobFetchMinExtractedChars",
     "manualJobFetchBrowserSettleMs",
@@ -346,6 +356,11 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   enableJobScoring: null,
   inboxStaleThresholdDays: null,
   maxBulkActionJobs: null,
+  discoveryConcurrency: null,
+  scoringConcurrency: null,
+  tailoringConcurrency: null,
+  bulkActionConcurrency: null,
+  batchUrlImportConcurrency: null,
   maxBriefChars: null,
   maxJobDescriptionChars: null,
   maxTailoredContentChars: null,
@@ -395,6 +410,11 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   enableJobScoring: data.enableJobScoring.override,
   inboxStaleThresholdDays: data.inboxStaleThresholdDays.override,
   maxBulkActionJobs: data.maxBulkActionJobs.override,
+  discoveryConcurrency: data.discoveryConcurrency.override,
+  scoringConcurrency: data.scoringConcurrency.override,
+  tailoringConcurrency: data.tailoringConcurrency.override,
+  bulkActionConcurrency: data.bulkActionConcurrency.override,
+  batchUrlImportConcurrency: data.batchUrlImportConcurrency.override,
   maxBriefChars: data.maxBriefChars.override,
   maxJobDescriptionChars: data.maxJobDescriptionChars.override,
   maxTailoredContentChars: data.maxTailoredContentChars.override,
@@ -524,6 +544,26 @@ const getDerivedSettings = (settings: AppSettings | null) => {
       maxBulkActionJobs: {
         effective: settings?.maxBulkActionJobs?.value ?? 1000,
         default: settings?.maxBulkActionJobs?.default ?? 1000,
+      },
+      discoveryConcurrency: {
+        effective: settings?.discoveryConcurrency?.value ?? 3,
+        default: settings?.discoveryConcurrency?.default ?? 3,
+      },
+      scoringConcurrency: {
+        effective: settings?.scoringConcurrency?.value ?? 4,
+        default: settings?.scoringConcurrency?.default ?? 4,
+      },
+      tailoringConcurrency: {
+        effective: settings?.tailoringConcurrency?.value ?? 3,
+        default: settings?.tailoringConcurrency?.default ?? 3,
+      },
+      bulkActionConcurrency: {
+        effective: settings?.bulkActionConcurrency?.value ?? 4,
+        default: settings?.bulkActionConcurrency?.default ?? 4,
+      },
+      batchUrlImportConcurrency: {
+        effective: settings?.batchUrlImportConcurrency?.value ?? 3,
+        default: settings?.batchUrlImportConcurrency?.default ?? 3,
       },
       manualJobFetchTimeoutMs: {
         effective: settings?.manualJobFetchTimeoutMs?.value ?? 15_000,
@@ -779,6 +819,26 @@ export const SettingsPage: React.FC = () => {
         maxBulkActionJobs: nullIfSame(
           data.maxBulkActionJobs,
           pipeline.maxBulkActionJobs.default,
+        ),
+        discoveryConcurrency: nullIfSame(
+          data.discoveryConcurrency,
+          pipeline.discoveryConcurrency.default,
+        ),
+        scoringConcurrency: nullIfSame(
+          data.scoringConcurrency,
+          pipeline.scoringConcurrency.default,
+        ),
+        tailoringConcurrency: nullIfSame(
+          data.tailoringConcurrency,
+          pipeline.tailoringConcurrency.default,
+        ),
+        bulkActionConcurrency: nullIfSame(
+          data.bulkActionConcurrency,
+          pipeline.bulkActionConcurrency.default,
+        ),
+        batchUrlImportConcurrency: nullIfSame(
+          data.batchUrlImportConcurrency,
+          pipeline.batchUrlImportConcurrency.default,
         ),
         manualJobFetchTimeoutMs: nullIfSame(
           data.manualJobFetchTimeoutMs,

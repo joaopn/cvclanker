@@ -78,6 +78,11 @@ export interface AppSettings {
   jwtExpirySeconds: Resolved<number | null>;
   inboxStaleThresholdDays: Resolved<number>;
   maxBulkActionJobs: Resolved<number>;
+  discoveryConcurrency: Resolved<number>;
+  scoringConcurrency: Resolved<number>;
+  tailoringConcurrency: Resolved<number>;
+  bulkActionConcurrency: Resolved<number>;
+  batchUrlImportConcurrency: Resolved<number>;
   maxBriefChars: Resolved<number>;
   maxJobDescriptionChars: Resolved<number>;
   maxTailoredContentChars: Resolved<number>;

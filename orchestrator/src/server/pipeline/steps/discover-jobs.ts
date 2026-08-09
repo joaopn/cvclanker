@@ -6,6 +6,7 @@ import { getAllJobUrls } from "@server/repositories/jobs";
 import * as providerInstancesRepo from "@server/repositories/provider-instances";
 import * as settingsRepo from "@server/repositories/settings";
 import * as sourceConfigsRepo from "@server/repositories/source-configs";
+import { getEffectiveSettings } from "@server/services/settings";
 import { resolveSourceContextSettings } from "@server/services/source-configs/resolve";
 import { asyncPool } from "@server/utils/async-pool";
 import type { ExtractorSourceId } from "@shared/extractors";
@@ -27,8 +28,6 @@ import type {
 } from "@shared/types";
 import { type CrawlSource, progressHelpers, updateProgress } from "../progress";
 import { captureRunJobs, toCapturedRunJob } from "../run-job-capture";
-
-const DISCOVERY_CONCURRENCY = 3;
 
 type DiscoveryTaskResult = {
   discoveredJobs: CreateJobInput[];
@@ -393,12 +392,15 @@ export async function discoverJobsStep(args: {
     return { discoveredJobs, sourceErrors };
   }
 
+  const discoveryConcurrency = (await getEffectiveSettings())
+    .discoveryConcurrency.value;
+
   const sourceResults = await asyncPool<
     DiscoverySourceTask,
     DiscoveryTaskResult
   >({
     items: sourceTasks,
-    concurrency: DISCOVERY_CONCURRENCY,
+    concurrency: discoveryConcurrency,
     shouldStop: args.shouldCancel,
     onTaskStarted: (sourceTask) => {
       progressHelpers.startSource(

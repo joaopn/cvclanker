@@ -219,6 +219,11 @@ export const createAppSettings = (
   jwtExpirySeconds: { value: null, default: null, override: null },
   inboxStaleThresholdDays: { value: 7, default: 7, override: null },
   maxBulkActionJobs: { value: 1000, default: 1000, override: null },
+  discoveryConcurrency: { value: 3, default: 3, override: null },
+  scoringConcurrency: { value: 4, default: 4, override: null },
+  tailoringConcurrency: { value: 3, default: 3, override: null },
+  bulkActionConcurrency: { value: 4, default: 4, override: null },
+  batchUrlImportConcurrency: { value: 3, default: 3, override: null },
   maxBriefChars: { value: 200_000, default: 200_000, override: null },
   maxJobDescriptionChars: { value: 100_000, default: 100_000, override: null },
   maxTailoredContentChars: {

@@ -49,6 +49,11 @@ export type PipelineSettingsValues = {
   enableJobScoring: EffectiveDefault<boolean>;
   inboxStaleThresholdDays: EffectiveDefault<number>;
   maxBulkActionJobs: EffectiveDefault<number>;
+  discoveryConcurrency: EffectiveDefault<number>;
+  scoringConcurrency: EffectiveDefault<number>;
+  tailoringConcurrency: EffectiveDefault<number>;
+  bulkActionConcurrency: EffectiveDefault<number>;
+  batchUrlImportConcurrency: EffectiveDefault<number>;
   manualJobFetchTimeoutMs: EffectiveDefault<number>;
   manualJobFetchMinExtractedChars: EffectiveDefault<number>;
   manualJobFetchBrowserSettleMs: EffectiveDefault<number>;

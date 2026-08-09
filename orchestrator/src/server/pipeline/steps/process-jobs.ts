@@ -1,4 +1,5 @@
 import { logger } from "@infra/logger";
+import { getEffectiveSettings } from "@server/services/settings";
 import { asyncPool } from "@server/utils/async-pool";
 import { progressHelpers, updateProgress } from "../progress";
 import type { ScoredJob } from "./types";
@@ -7,7 +8,6 @@ type ProcessJobFn = (
   jobId: string,
   options?: { force?: boolean },
 ) => Promise<{ success: boolean; error?: string }>;
-const PROCESSING_CONCURRENCY = 3;
 
 export async function processJobsStep(args: {
   jobsToProcess: ScoredJob[];
@@ -21,6 +21,9 @@ export async function processJobsStep(args: {
     let startedCount = 0;
     let completedCount = 0;
 
+    const tailoringConcurrency = (await getEffectiveSettings())
+      .tailoringConcurrency.value;
+
     updateProgress({
       step: "processing",
       jobsProcessed: 0,
@@ -29,7 +32,7 @@ export async function processJobsStep(args: {
 
     await asyncPool({
       items: args.jobsToProcess,
-      concurrency: PROCESSING_CONCURRENCY,
+      concurrency: tailoringConcurrency,
       shouldStop: args.shouldCancel,
       onTaskStarted: (job) => {
         startedCount += 1;

@@ -35,6 +35,7 @@ import {
 } from "@server/services/scorer";
 import { getEffectiveSettings } from "@server/services/settings";
 import { asyncPool } from "@server/utils/async-pool";
+import { settingsRegistry } from "@shared/settings-registry";
 import {
   APPLICATION_OUTCOMES,
   SUITABILITY_CATEGORIES,
@@ -56,7 +57,6 @@ import { type Request, type Response, Router } from "express";
 import { z } from "zod";
 
 export const jobsRouter = Router();
-const JOB_ACTION_CONCURRENCY = 4;
 
 const jobNoteSchema = z.object({
   title: z.string().trim().min(1).max(120),
@@ -304,17 +304,34 @@ function createSharedRescoreBriefLoader(): () => Promise<string> {
 
 // Bounded FIFO runner for detached tailoring. A bulk "Tailor N" flips every
 // row to `processing` and enqueues N background runs; without a cap that would
-// spawn N concurrent LLM + tectonic jobs. Mirror the pipeline's
-// PROCESSING_CONCURRENCY so manual and automatic tailoring load the box the
-// same way.
-const BACKGROUND_TAILOR_CONCURRENCY = 3;
+// spawn N concurrent LLM + tectonic jobs. The cap is the same
+// `tailoringConcurrency` setting the pipeline's process step reads, so manual
+// and automatic tailoring load the box the same way by construction.
 let backgroundTailorActive = 0;
 const backgroundTailorQueue: Array<() => void> = [];
 
 function drainBackgroundTailorQueue(): void {
-  if (backgroundTailorActive >= BACKGROUND_TAILOR_CONCURRENCY) return;
-  const next = backgroundTailorQueue.shift();
-  if (next) next();
+  if (backgroundTailorQueue.length === 0) return;
+  void getEffectiveSettings()
+    .then((settings) => settings.tailoringConcurrency.value)
+    .catch((error) => {
+      // A queued run must never strand: with zero active runs there is no
+      // future completion to re-trigger the drain, so fall back to the
+      // registry default instead of dropping the drain on the floor.
+      logger.error("Background tailor drain fell back to default concurrency", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return settingsRegistry.tailoringConcurrency.default();
+    })
+    .then((limit) => {
+      while (
+        backgroundTailorActive < limit &&
+        backgroundTailorQueue.length > 0
+      ) {
+        const next = backgroundTailorQueue.shift();
+        if (next) next();
+      }
+    });
 }
 
 /**
@@ -349,8 +366,8 @@ function scheduleBackgroundTailor(
       });
   };
 
-  if (backgroundTailorActive < BACKGROUND_TAILOR_CONCURRENCY) run();
-  else backgroundTailorQueue.push(run);
+  backgroundTailorQueue.push(run);
+  drainBackgroundTailorQueue();
 }
 
 // Trim-to-null normalization (reimplemented locally rather than reaching for
@@ -955,8 +972,9 @@ jobsRouter.get("/duplicates", async (_req: Request, res: Response) => {
 jobsRouter.post("/actions", async (req: Request, res: Response) => {
   try {
     const parsed = jobActionRequestSchema.parse(req.body);
-    const maxBulkActionJobs = (await getEffectiveSettings()).maxBulkActionJobs
-      .value;
+    const settings = await getEffectiveSettings();
+    const maxBulkActionJobs = settings.maxBulkActionJobs.value;
+    const bulkActionConcurrency = settings.bulkActionConcurrency.value;
     if (parsed.jobIds.length > maxBulkActionJobs) {
       throw badRequest(
         `Too many jobs for one action (max ${maxBulkActionJobs}).`,
@@ -988,7 +1006,7 @@ jobsRouter.post("/actions", async (req: Request, res: Response) => {
 
     const results = await asyncPool({
       items: dedupedJobIds,
-      concurrency: JOB_ACTION_CONCURRENCY,
+      concurrency: bulkActionConcurrency,
       task: async (jobId) =>
         executeJobActionForJob(parsed.action, jobId, executionOptions),
     });
@@ -1009,7 +1027,7 @@ jobsRouter.post("/actions", async (req: Request, res: Response) => {
       requested: dedupedJobIds.length,
       succeeded,
       failed,
-      concurrency: JOB_ACTION_CONCURRENCY,
+      concurrency: bulkActionConcurrency,
     });
 
     ok(res, payload);
@@ -1048,8 +1066,9 @@ jobsRouter.post("/actions/stream", async (req: Request, res: Response) => {
     );
   }
 
-  const maxBulkActionJobs = (await getEffectiveSettings()).maxBulkActionJobs
-    .value;
+  const settings = await getEffectiveSettings();
+  const maxBulkActionJobs = settings.maxBulkActionJobs.value;
+  const bulkActionConcurrency = settings.bulkActionConcurrency.value;
   if (parsed.data.jobIds.length > maxBulkActionJobs) {
     return fail(
       res,
@@ -1134,7 +1153,7 @@ jobsRouter.post("/actions/stream", async (req: Request, res: Response) => {
 
     await asyncPool({
       items: dedupedJobIds,
-      concurrency: JOB_ACTION_CONCURRENCY,
+      concurrency: bulkActionConcurrency,
       shouldStop: () => !isResponseWritable(),
       task: async (jobId) => {
         if (!isResponseWritable()) return;
@@ -1192,7 +1211,7 @@ jobsRouter.post("/actions/stream", async (req: Request, res: Response) => {
       requested,
       succeeded,
       failed,
-      concurrency: JOB_ACTION_CONCURRENCY,
+      concurrency: bulkActionConcurrency,
       requestId,
     });
   } catch (error) {
