@@ -1,3 +1,4 @@
+import { DEFAULT_SCORING_INSTRUCTIONS } from "../settings-registry";
 import type {
   ApplicationTask,
   AppSettings,
@@ -168,8 +169,8 @@ export const createAppSettings = (
   cvSourceFormat: null,
   claudeCodeEffort: null,
   scoringInstructions: {
-    value: "",
-    default: "",
+    value: DEFAULT_SCORING_INSTRUCTIONS,
+    default: DEFAULT_SCORING_INSTRUCTIONS,
     override: null,
   },
   showSponsorInfo: { value: true, default: true, override: null },

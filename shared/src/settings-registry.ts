@@ -111,6 +111,15 @@ const parseChatStyleLanguageModeOrNull = createEnumParser(
   CHAT_STYLE_LANGUAGE_MODE_VALUES,
 );
 
+// Baseline few-shot calibration for the job scorer. Rides into every scoring
+// call via {{scoringInstructionsText}}, so additions must stay succinct. A
+// stored scoringInstructions override replaces this wholesale.
+export const DEFAULT_SCORING_INSTRUCTIONS = `Calibration examples:
+- Posting lists 8 requirements; the brief shows depth in the 4 core ones and none of the extras → very_good_fit.
+- Senior posting in the candidate's exact stack; the brief reads mid-level → good_fit.
+- Python backend role; the brief has strong Go/Java backend work but no Python → good_fit (transferable), not bad_fit.
+- Role requires fluent German; the brief shows none → bad_fit (hard blocker).`;
+
 const parseChatStyleManualLanguageOrNull = createEnumParser(
   CHAT_STYLE_MANUAL_LANGUAGE_VALUES,
 );
@@ -173,7 +182,7 @@ export const settingsRegistry = {
   scoringInstructions: {
     kind: "typed" as const,
     schema: z.string().trim().max(4000),
-    default: (): string => "",
+    default: (): string => DEFAULT_SCORING_INSTRUCTIONS,
     parse: parseNonEmptyStringOrNull,
     serialize: (value: string | null | undefined): string | null =>
       value ?? null,

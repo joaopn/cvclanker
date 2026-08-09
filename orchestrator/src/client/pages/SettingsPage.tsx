@@ -411,7 +411,8 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   autoSkipCategory: data.autoSkipCategory.override,
   autoTailoringEnabled: data.autoTailoringEnabled.override,
   enableJobScoring: data.enableJobScoring.override,
-  scoringInstructions: data.scoringInstructions.override ?? "",
+  scoringInstructions:
+    data.scoringInstructions.override ?? data.scoringInstructions.default,
   inboxStaleThresholdDays: data.inboxStaleThresholdDays.override,
   maxBulkActionJobs: data.maxBulkActionJobs.override,
   discoveryConcurrency: data.discoveryConcurrency.override,
@@ -820,7 +821,10 @@ export const SettingsPage: React.FC = () => {
           data.enableJobScoring,
           pipeline.enableJobScoring.default,
         ),
-        scoringInstructions: normalizeString(data.scoringInstructions),
+        scoringInstructions: nullIfSame(
+          normalizeString(data.scoringInstructions),
+          pipeline.scoringInstructions.default,
+        ),
         inboxStaleThresholdDays: nullIfSame(
           data.inboxStaleThresholdDays,
           pipeline.inboxStaleThresholdDays.default,

@@ -14,7 +14,7 @@ variables:
   - name: disciplines
   - name: jobDescription
   - name: scoringInstructionsText
-    description: User-supplied additional scoring guidance.
+    description: Extra scoring guidance — the built-in calibration default or the user's scoringInstructions override.
 model:
   preferStructuredOutput: true
 system: ""
@@ -38,16 +38,6 @@ user: |
       itself.
   When torn between two categories, pick the more generous one unless a
   hard blocker exists.
-
-  Calibration examples:
-  - Posting lists 8 requirements; the brief shows depth in the 4 core ones
-    and none of the extras → very_good_fit.
-  - Senior posting in the candidate's exact stack; the brief reads
-    mid-level → good_fit.
-  - Python backend role; the brief has strong Go/Java backend work but no
-    Python → good_fit (transferable), not bad_fit.
-  - Role requires fluent German; the brief shows none → bad_fit (hard
-    blocker).
 
   Candidate brief:
   {{briefText}}

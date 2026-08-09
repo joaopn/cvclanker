@@ -39,7 +39,10 @@ const PipelineSettingsHarness = ({
           values={{
             autoTailoringEnabled: { effective: false, default: false },
             enableJobScoring: { effective: true, default: true },
-            scoringInstructions: { effective: "", default: "" },
+            scoringInstructions: {
+              effective: "Calibration: ties go to the more generous tier.",
+              default: "Calibration: ties go to the more generous tier.",
+            },
             inboxStaleThresholdDays: { effective: 7, default: 7 },
             maxBulkActionJobs: { effective: 1000, default: 1000 },
             discoveryConcurrency: { effective: 3, default: 3 },
@@ -73,6 +76,10 @@ describe("PipelineSettingsSection", () => {
     render(<PipelineSettingsHarness />);
 
     const textarea = screen.getByLabelText("Scoring instructions");
+    expect(textarea).toHaveAttribute(
+      "placeholder",
+      "Calibration: ties go to the more generous tier.",
+    );
     fireEvent.change(textarea, {
       target: { value: "Prefer remote roles; on-site abroad is a bad fit." },
     });

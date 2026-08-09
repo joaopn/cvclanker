@@ -235,9 +235,10 @@ export const PipelineSettingsSection: React.FC<
               Score discovered jobs with the LLM
             </label>
             <p className="text-xs text-muted-foreground">
-              When on (default), each new job is scored 0–100 for fit and gets a
-              one-line reason. Turn off to skip the LLM scoring step entirely;
-              jobs land in the inbox unscored and you triage them manually.
+              When on (default), each new job is classified as a very good /
+              good / bad fit and gets a one-line reason. Turn off to skip the
+              LLM scoring step entirely; jobs land in the inbox unscored and you
+              triage them manually.
             </p>
           </div>
         </div>
@@ -259,8 +260,8 @@ export const PipelineSettingsSection: React.FC<
             render={({ field }) => (
               <Textarea
                 id="scoringInstructions"
-                rows={5}
-                placeholder="e.g. I will not relocate; on-site roles outside my city are a bad fit. Embedded/firmware roles are a stretch, not a mismatch."
+                rows={8}
+                placeholder={scoringInstructions.default}
                 disabled={isLoading || isSaving}
                 value={typeof field.value === "string" ? field.value : ""}
                 onChange={(e) => field.onChange(e.target.value)}
@@ -274,15 +275,17 @@ export const PipelineSettingsSection: React.FC<
           )}
           <div className="text-xs text-muted-foreground">
             Appended to every scoring call as extra guidance for the fit
-            category — your own hard constraints, calibration notes, or example
-            verdicts. It rides along on each scored job, so keep it succinct.
-            Leave empty for none.
+            category — calibration examples, your own hard constraints (e.g.
+            relocation), example verdicts. It rides along on each scored job, so
+            keep it succinct. The pre-filled text is the built-in default: edit
+            it to make it yours; clearing the field restores the default on
+            save.
           </div>
           <div className="text-xs text-muted-foreground">
             Current:{" "}
             <span className="font-mono">
               {scoringInstructions.effective
-                ? `${scoringInstructions.effective.length} chars`
+                ? `${scoringInstructions.effective.length} chars${scoringInstructions.effective === scoringInstructions.default ? " (built-in default)" : " (custom)"}`
                 : "none"}
             </span>
           </div>
