@@ -9,6 +9,23 @@ services:
       dockerfile: Dockerfile
     image: cvclanker:local
     container_name: cvclanker
+    # Least-privilege hardening. The app runs an agentic `claude -p` subprocess
+    # over internet-scraped text and drives content parsers (tectonic,
+    # LibreOffice, Firefox) on untrusted documents — the one realistic
+    # prompt-injection-to-host chain is a memory-safety bug in one of those
+    # parsers. Dropping all Linux capabilities and blocking privilege
+    # escalation contains that blast radius. Verified: the full workload
+    # (server, tectonic compile, unoserver/LibreOffice convert, Firefox launch)
+    # runs with no capabilities re-added — none of these binaries need one, and
+    # the app binds 3001 (>1024, so no NET_BIND_SERVICE). Firefox/camoufox
+    # sandbox via user namespaces + seccomp, which no-new-privileges does not
+    # affect. Caveat: dropping ALL also removes root's DAC_OVERRIDE, so this
+    # assumes ./data is writable by uid 0 (the default) — mount a data volume
+    # owned by a non-root uid and you would need to re-add CAP_DAC_OVERRIDE.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "3005:3001"
     volumes:
