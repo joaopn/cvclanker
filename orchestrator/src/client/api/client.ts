@@ -108,6 +108,9 @@ export type CodexAuthStatusResponse = {
   startedAt: string | null;
   expiresAt: string | null;
   flowMessage: string | null;
+  installed: boolean;
+  installedVersion: string | null;
+  pinnedVersion: string | null;
 };
 
 const SESSION_AUTH_TOKEN_KEY = "cvclanker.authToken";
@@ -1322,6 +1325,12 @@ export async function startCodexAuth(input?: {
 
 export async function disconnectCodexAuth(): Promise<CodexAuthStatusResponse> {
   return fetchApi<CodexAuthStatusResponse>("/settings/codex-auth/disconnect", {
+    method: "POST",
+  });
+}
+
+export async function installCodexCli(): Promise<CodexAuthStatusResponse> {
+  return fetchApi<CodexAuthStatusResponse>("/settings/codex-install", {
     method: "POST",
   });
 }

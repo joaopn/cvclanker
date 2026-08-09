@@ -10,8 +10,10 @@ CV Clanker runs as a single Docker container on your own machine.
   [LLM providers](llm-providers.md).
 
 The image bundles everything else it needs (Tectonic for LaTeX, LibreOffice for
-Word, headless browsers, the Codex and Claude Code CLIs) and builds locally —
-nothing is pulled from a registry.
+Word, headless browsers, the Claude Code CLI) and builds locally — nothing is
+pulled from a registry. The Codex CLI is not bundled: install it in-app when
+you pick the Codex provider; it lives in `data/` and updates independently of
+the image.
 
 ## Install & run
 

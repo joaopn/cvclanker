@@ -1,5 +1,11 @@
 import * as api from "@client/api";
-import { CheckCircle2, Copy, ExternalLink, Loader2 } from "lucide-react";
+import {
+  CheckCircle2,
+  Copy,
+  Download,
+  ExternalLink,
+  Loader2,
+} from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +35,7 @@ export const CodexAuthPanel: React.FC<CodexAuthPanelProps> = ({ isBusy }) => {
     useState(false);
   const [codexAuthError, setCodexAuthError] = useState<string | null>(null);
   const [hasCopiedCode, setHasCopiedCode] = useState(false);
+  const [isInstallingCodex, setIsInstallingCodex] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   const refreshCodexAuthStatus = useCallback(async (showLoading = true) => {
@@ -105,6 +112,28 @@ export const CodexAuthPanel: React.FC<CodexAuthPanelProps> = ({ isBusy }) => {
     }
   }, []);
 
+  const installCodex = useCallback(async () => {
+    setIsInstallingCodex(true);
+    setCodexAuthError(null);
+    try {
+      const status = await api.installCodexCli();
+      setCodexAuthStatus(status);
+    } catch (error) {
+      // An aborted/failed request's install may still be running (or have
+      // partially landed) — re-probe so the panel never shows stale state.
+      // Await it BEFORE setting the error: the refresh clears the error
+      // state, so the other order silently wipes the failure message.
+      await refreshCodexAuthStatus(false);
+      setCodexAuthError(
+        error instanceof Error
+          ? error.message
+          : "Failed to install the Codex CLI.",
+      );
+    } finally {
+      setIsInstallingCodex(false);
+    }
+  }, [refreshCodexAuthStatus]);
+
   useEffect(() => {
     void refreshCodexAuthStatus();
   }, [refreshCodexAuthStatus]);
@@ -157,6 +186,39 @@ export const CodexAuthPanel: React.FC<CodexAuthPanelProps> = ({ isBusy }) => {
     Boolean(codexAuthStatus?.loginInProgress) && !isAuthenticated;
   const displayUsername = codexAuthStatus?.username?.trim() || "your account";
 
+  // Default to "installed" until the server says otherwise — hiding a working
+  // Codex behind a load gap is the failure mode, not the reverse.
+  const isInstalled = codexAuthStatus?.installed ?? true;
+  const installedVersion = codexAuthStatus?.installedVersion ?? null;
+  const pinnedVersion = codexAuthStatus?.pinnedVersion ?? null;
+
+  // An unset pin tracking a concrete installed version is the designed steady
+  // state — never render that pair as "out of date".
+  const versionRow = installedVersion ? (
+    <div className="flex items-center justify-between gap-2 rounded-md border border-border/70 bg-background/60 px-3 py-2">
+      <span className="text-xs text-muted-foreground">
+        CLI v{installedVersion} ·{" "}
+        {pinnedVersion ? `pinned ${pinnedVersion}` : "tracking latest"}
+      </span>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        onClick={() => void installCodex()}
+        disabled={isBusy || isInstallingCodex}
+      >
+        {isInstallingCodex ? "Updating..." : "Update"}
+      </Button>
+    </div>
+  ) : null;
+
+  const installingNotice = isInstallingCodex ? (
+    <p className="text-xs text-muted-foreground">
+      Installing the Codex CLI — this can take a few minutes on a slow
+      connection. Leave this page open.
+    </p>
+  ) : null;
+
   if (isAuthenticated) {
     return (
       <div className="space-y-3 rounded-md border border-border bg-muted/30 p-3">
@@ -186,6 +248,45 @@ export const CodexAuthPanel: React.FC<CodexAuthPanelProps> = ({ isBusy }) => {
           </button>
         </div>
 
+        {versionRow}
+        {installingNotice}
+        {codexAuthError ? (
+          <p className="text-xs text-destructive">{codexAuthError}</p>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (!isInstalled) {
+    return (
+      <div className="space-y-3 rounded-md border border-border bg-muted/30 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-xs font-medium">Codex CLI</div>
+          <Badge variant="outline">Not installed</Badge>
+        </div>
+
+        <div className="rounded-md border border-dashed border-border/70 bg-background/60 px-3 py-2 text-xs text-muted-foreground">
+          Codex is installed into your data volume and updates independently of
+          the app image. Leave{" "}
+          <span className="font-mono">CODEX_CLI_VERSION</span> unset for the
+          latest release, or set it to pin a version.
+        </div>
+
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => void installCodex()}
+          disabled={isBusy || isInstallingCodex}
+        >
+          <Download className="h-3.5 w-3.5" />
+          {isInstallingCodex
+            ? "Installing..."
+            : pinnedVersion
+              ? `Install Codex ${pinnedVersion}`
+              : "Install Codex"}
+        </Button>
+
+        {installingNotice}
         {codexAuthError ? (
           <p className="text-xs text-destructive">{codexAuthError}</p>
         ) : null}
@@ -317,6 +418,8 @@ export const CodexAuthPanel: React.FC<CodexAuthPanelProps> = ({ isBusy }) => {
         )}
       </div>
 
+      {versionRow}
+      {installingNotice}
       {codexAuthError ? (
         <p className="text-xs text-destructive">{codexAuthError}</p>
       ) : null}

@@ -14,7 +14,7 @@ or local, and you can edit the prompts.
 | **OpenAI-compatible** | Any endpoint that speaks the OpenAI API. |
 | **LM Studio** | A model running locally. |
 | **Ollama** | A model running locally with [Ollama](https://ollama.com). |
-| **Codex** | Local Codex app-server (authenticated with `codex login`; session persists under `data/codex-home/`). |
+| **Codex** | Local Codex app-server. Not bundled — install it in-app (Settings or the wizard → Install Codex); it lives in `data/` and updates independently of the app image. Sign-in session persists under `data/codex-home/`. |
 | **Claude Code** | Headless `claude -p` runs using a Claude subscription. Mint a token with `claude setup-token` and paste it into Settings (or set `CLAUDE_CODE_OAUTH_TOKEN`). |
 
 **Claude Code** is the dedicated Claude path — it bills your Claude
