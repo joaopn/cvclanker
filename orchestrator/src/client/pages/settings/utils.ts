@@ -2,6 +2,11 @@
  * Settings page helpers.
  */
 
+import {
+  CLAUDE_CODE_EFFORT_LEVELS,
+  type ClaudeCodeEffortLevel,
+} from "@shared/settings-registry";
+
 export const formatSecretHint = (hint: string | null) =>
   hint ? `${hint}********` : "Not set";
 
@@ -111,6 +116,23 @@ export function normalizeLlmProvider(
   return (LLM_PROVIDERS as readonly string[]).includes(normalizedId)
     ? (normalizedId as LlmProviderId)
     : "openrouter";
+}
+
+/**
+ * The effective setting can carry a value outside the known levels (an env
+ * var typo, or enum drift across versions). Feeding that into the form would
+ * fail the zod resolver on the user's FIRST edit of ANY field and silently
+ * disable Save for the whole settings page — so non-members collapse to null
+ * (CLI default) here, mirroring how the server drops unknown levels at spawn.
+ */
+export function normalizeClaudeCodeEffort(
+  value: string | null | undefined,
+): ClaudeCodeEffortLevel | null {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return null;
+  return (CLAUDE_CODE_EFFORT_LEVELS as readonly string[]).includes(normalized)
+    ? (normalized as ClaudeCodeEffortLevel)
+    : null;
 }
 
 export function supportsLlmModelSuggestions(

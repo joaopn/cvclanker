@@ -9,6 +9,7 @@ import type {
   AppSettings,
   BatchUrlImportStreamEvent,
   BranchInfo,
+  ClaudeCodeCliStatus,
   CoverLetterDocument,
   CoverLetterDocumentSummary,
   CoverLetterUploadTemplateResponse,
@@ -1322,6 +1323,19 @@ export async function startCodexAuth(input?: {
 export async function disconnectCodexAuth(): Promise<CodexAuthStatusResponse> {
   return fetchApi<CodexAuthStatusResponse>("/settings/codex-auth/disconnect", {
     method: "POST",
+  });
+}
+
+export async function getClaudeCodeCliStatus(): Promise<ClaudeCodeCliStatus> {
+  return fetchApi<ClaudeCodeCliStatus>("/settings/claude-code-cli");
+}
+
+export async function updateClaudeCodeCli(input?: {
+  version?: string;
+}): Promise<ClaudeCodeCliStatus> {
+  return fetchApi<ClaudeCodeCliStatus>("/settings/claude-code-cli/update", {
+    method: "POST",
+    body: JSON.stringify({ version: input?.version ?? "latest" }),
   });
 }
 

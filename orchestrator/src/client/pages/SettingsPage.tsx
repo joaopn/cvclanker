@@ -15,6 +15,7 @@ import { PromptsPanel } from "@client/pages/settings/components/PromptsPanel";
 import { UserProfilesPanel } from "@client/pages/settings/components/UserProfilesPanel";
 import {
   type LlmProviderId,
+  normalizeClaudeCodeEffort,
   normalizeLlmProvider,
 } from "@client/pages/settings/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -54,6 +55,7 @@ const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
   llmBaseUrl: "",
   llmApiKey: "",
   claudeCodeOauthToken: "",
+  claudeCodeEffort: null,
   showSponsorInfo: null,
 
   renderMarkdownInJobDescriptions: null,
@@ -251,6 +253,7 @@ const SECTION_FIELD_MAP: Record<
     "llmBaseUrl",
     "llmApiKey",
     "claudeCodeOauthToken",
+    "claudeCodeEffort",
     "model",
 
     "modelScorer",
@@ -320,6 +323,7 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   llmBaseUrl: null,
   llmApiKey: null,
   claudeCodeOauthToken: null,
+  claudeCodeEffort: null,
   showSponsorInfo: null,
 
   renderMarkdownInJobDescriptions: null,
@@ -366,6 +370,7 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   llmBaseUrl: data.llmBaseUrl.override ?? "",
   llmApiKey: "",
   claudeCodeOauthToken: "",
+  claudeCodeEffort: normalizeClaudeCodeEffort(data.claudeCodeEffort),
 
   showSponsorInfo: data.showSponsorInfo.override,
   renderMarkdownInJobDescriptions:
@@ -699,6 +704,10 @@ export const SettingsPage: React.FC = () => {
       if (dirtyFields.claudeCodeOauthToken) {
         const value = normalizePrivateInput(data.claudeCodeOauthToken);
         if (value !== undefined) envPayload.claudeCodeOauthToken = value;
+      }
+
+      if (dirtyFields.claudeCodeEffort) {
+        envPayload.claudeCodeEffort = data.claudeCodeEffort ?? null;
       }
 
       const payload: Partial<UpdateSettingsInput> = {

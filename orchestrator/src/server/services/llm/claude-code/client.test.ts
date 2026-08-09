@@ -282,6 +282,29 @@ describe("buildCallArgv", () => {
       JSON.stringify(REQUEST.jsonSchema.schema),
     );
   });
+
+  it("passes --effort only when CLAUDE_CODE_EFFORT holds a known level", () => {
+    const previous = process.env.CLAUDE_CODE_EFFORT;
+    try {
+      delete process.env.CLAUDE_CODE_EFFORT;
+      expect(
+        buildCallArgv({ model: "", jsonSchema: REQUEST.jsonSchema }),
+      ).not.toContain("--effort");
+
+      process.env.CLAUDE_CODE_EFFORT = "xhigh";
+      const argv = buildCallArgv({ model: "", jsonSchema: REQUEST.jsonSchema });
+      expect(argv[argv.indexOf("--effort") + 1]).toBe("xhigh");
+
+      // An unknown value is dropped, not forwarded for the CLI to warn about.
+      process.env.CLAUDE_CODE_EFFORT = "turbo";
+      expect(
+        buildCallArgv({ model: "", jsonSchema: REQUEST.jsonSchema }),
+      ).not.toContain("--effort");
+    } finally {
+      if (previous === undefined) delete process.env.CLAUDE_CODE_EFFORT;
+      else process.env.CLAUDE_CODE_EFFORT = previous;
+    }
+  });
 });
 
 describe("ClaudeCodeClient.callJson", () => {

@@ -1,5 +1,6 @@
 export * from "./api";
 export * from "./chat";
+export * from "./claude-code-cli";
 export * from "./cover-letter-document";
 export * from "./cv-content";
 export * from "./cv-document";

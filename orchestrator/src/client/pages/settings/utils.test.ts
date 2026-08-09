@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getLlmProviderConfig,
+  normalizeClaudeCodeEffort,
   normalizeLlmProvider,
   supportsLlmModelSuggestions,
 } from "./utils";
@@ -78,5 +79,17 @@ describe("settings utils", () => {
     expect(supportsLlmModelSuggestions("gemini")).toBe(true);
     expect(supportsLlmModelSuggestions("ollama")).toBe(true);
     expect(supportsLlmModelSuggestions("openrouter")).toBe(false);
+  });
+
+  // An out-of-enum value fed into the form would fail the zod resolver on the
+  // first edit of ANY field and silently disable Save for the whole page — so
+  // the normalizer must collapse anything unknown to null.
+  it("collapses unknown claude code effort values to null", () => {
+    expect(normalizeClaudeCodeEffort("xhigh")).toBe("xhigh");
+    expect(normalizeClaudeCodeEffort(" High ")).toBe("high");
+    expect(normalizeClaudeCodeEffort("turbo")).toBeNull();
+    expect(normalizeClaudeCodeEffort("")).toBeNull();
+    expect(normalizeClaudeCodeEffort(null)).toBeNull();
+    expect(normalizeClaudeCodeEffort(undefined)).toBeNull();
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  CLAUDE_CODE_EFFORT_LEVELS,
   getDefaultModelForProvider,
   settingsRegistry,
 } from "./settings-registry";
@@ -158,6 +159,23 @@ describe("settingsRegistry helpers", () => {
       expect(
         settingsRegistry.llmProvider.schema.safeParse("claude_code").success,
       ).toBe(true);
+    });
+
+    it("pins claudeCodeEffort to the CLI's accepted levels and its envKey", () => {
+      expect(settingsRegistry.claudeCodeEffort.envKey).toBe(
+        "CLAUDE_CODE_EFFORT",
+      );
+      for (const level of CLAUDE_CODE_EFFORT_LEVELS) {
+        expect(
+          settingsRegistry.claudeCodeEffort.schema.safeParse(level).success,
+        ).toBe(true);
+      }
+      expect(
+        settingsRegistry.claudeCodeEffort.schema.safeParse("turbo").success,
+      ).toBe(false);
+      expect(
+        settingsRegistry.claudeCodeEffort.schema.safeParse("").success,
+      ).toBe(false);
     });
   });
 });

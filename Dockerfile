@@ -55,6 +55,9 @@ RUN npm install -g @openai/codex@${CODEX_CLI_VERSION}
 # CLAUDE_CODE_OAUTH_TOKEN and spawns each query with sessions, settings and
 # MCP config disabled.
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_CLI_VERSION}
+# Surface the build-time pin to the runtime so the Settings CLI panel can show
+# which version the image (and the provider's flag set) was verified against.
+ENV CLAUDE_CODE_CLI_PINNED=${CLAUDE_CODE_CLI_VERSION}
 
 WORKDIR /app
 

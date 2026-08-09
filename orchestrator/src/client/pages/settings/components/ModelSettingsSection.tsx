@@ -1,4 +1,5 @@
 import * as api from "@client/api";
+import { ClaudeCodeCliPanel } from "@client/components/ClaudeCodeCliPanel";
 import { CodexAuthPanel } from "@client/components/CodexAuthPanel";
 import { SettingsInput } from "@client/pages/settings/components/SettingsInput";
 import { SettingsSectionFrame } from "@client/pages/settings/components/SettingsSectionFrame";
@@ -10,7 +11,10 @@ import {
   LLM_PROVIDERS,
   supportsLlmModelSuggestions,
 } from "@client/pages/settings/utils";
-import { getDefaultModelForProvider } from "@shared/settings-registry";
+import {
+  CLAUDE_CODE_EFFORT_LEVELS,
+  getDefaultModelForProvider,
+} from "@shared/settings-registry";
 import type { UpdateSettingsInput } from "@shared/settings-schema.js";
 import type React from "react";
 import { useDeferredValue, useEffect, useRef, useState } from "react";
@@ -31,6 +35,10 @@ type ModelSettingsSectionProps = {
   isSaving: boolean;
   layoutMode?: "accordion" | "panel";
 };
+
+// Radix SelectItem forbids an empty-string value, so "use the CLI default"
+// (stored as null) rides this sentinel in the effort dropdown.
+const CLI_DEFAULT_EFFORT = "cli-default";
 
 function renderKeyHelper(
   helperText: string,
@@ -273,6 +281,9 @@ export const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
               {isCodexProvider ? (
                 <CodexAuthPanel isBusy={isLoading || isSaving} />
               ) : null}
+              {isClaudeCodeProvider ? (
+                <ClaudeCodeCliPanel isBusy={isLoading || isSaving} />
+              ) : null}
             </div>
             {showBaseUrl && (
               <SettingsInput
@@ -318,6 +329,52 @@ export const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
                 )}
                 current={claudeCodeTokenHint}
               />
+            )}
+            {isClaudeCodeProvider && (
+              <div className="space-y-2">
+                <label
+                  htmlFor="claudeCodeEffort"
+                  className="text-sm font-medium"
+                >
+                  Reasoning effort
+                </label>
+                <Controller
+                  name="claudeCodeEffort"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      value={field.value ?? CLI_DEFAULT_EFFORT}
+                      onValueChange={(value) =>
+                        field.onChange(
+                          value === CLI_DEFAULT_EFFORT ? null : value,
+                        )
+                      }
+                      disabled={isLoading || isSaving}
+                    >
+                      <SelectTrigger id="claudeCodeEffort">
+                        <SelectValue placeholder="CLI default" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={CLI_DEFAULT_EFFORT}>
+                          CLI default
+                        </SelectItem>
+                        {CLAUDE_CODE_EFFORT_LEVELS.map((level) => (
+                          <SelectItem key={level} value={level}>
+                            {level}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Higher effort thinks longer per call: better judgment, slower
+                  and more usage. Applies to every task (scoring, tailoring,
+                  chat). CLI default defers to the CLI — or to a
+                  CLAUDE_CODE_EFFORT environment baseline when the server sets
+                  one.
+                </p>
+              </div>
             )}
           </div>
         </div>

@@ -1,8 +1,19 @@
-import { badRequest, serviceUnavailable, upstreamError } from "@infra/errors";
+import {
+  badRequest,
+  conflict,
+  serviceUnavailable,
+  upstreamError,
+} from "@infra/errors";
 import { asyncRoute, fail, ok } from "@infra/http";
 import { logger } from "@infra/logger";
 import { getRequestId } from "@infra/request-context";
+import { getPipelineStatus } from "@server/pipeline/index";
 import { getSetting } from "@server/repositories/settings";
+import {
+  getClaudeCodeCliStatus,
+  InvalidClaudeCodeVersionError,
+  updateClaudeCodeCli,
+} from "@server/services/llm/claude-code/manage";
 import {
   disconnectCodexAuth,
   getCodexDeviceAuthSnapshot,
@@ -253,6 +264,58 @@ settingsRouter.post(
         message,
       });
       fail(res, serviceUnavailable(message));
+    }
+  }),
+);
+
+settingsRouter.get(
+  "/claude-code-cli",
+  asyncRoute(async (_req: Request, res: Response) => {
+    ok(res, await getClaudeCodeCliStatus());
+  }),
+);
+
+settingsRouter.post(
+  "/claude-code-cli/update",
+  asyncRoute(async (req: Request, res: Response) => {
+    if (getPipelineStatus().isRunning) {
+      fail(
+        res,
+        conflict(
+          "A pipeline run is in progress. Update the CLI after it finishes.",
+        ),
+      );
+      return;
+    }
+
+    // Absent version means latest; a PRESENT non-string is malformed and must
+    // 400 rather than silently install latest — "" fails version validation.
+    const rawVersion = req.body?.version;
+    const version =
+      rawVersion === undefined
+        ? "latest"
+        : typeof rawVersion === "string"
+          ? rawVersion.trim()
+          : "";
+
+    try {
+      ok(res, await updateClaudeCodeCli(version));
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to update the Claude Code CLI.";
+      logger.warn("Claude Code CLI update failed", {
+        requestId: getRequestId() ?? null,
+        route: "POST /api/settings/claude-code-cli/update",
+        message,
+      });
+      fail(
+        res,
+        error instanceof InvalidClaudeCodeVersionError
+          ? badRequest(message)
+          : upstreamError(message),
+      );
     }
   }),
 );

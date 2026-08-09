@@ -35,6 +35,18 @@ export const DEFAULT_CODEX_MODEL = "";
 // contract as Codex, so no model id is pinned here to rot.
 export const DEFAULT_CLAUDE_CODE_MODEL = "";
 
+// Accepted values of the Claude Code CLI's `--effort` flag (verified against
+// v2.1.220 and v2.1.226 — an unknown value only warns and falls back to the
+// CLI default, so a future CLI changing this list degrades gracefully).
+export const CLAUDE_CODE_EFFORT_LEVELS = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
+export type ClaudeCodeEffortLevel = (typeof CLAUDE_CODE_EFFORT_LEVELS)[number];
+
 export function getDefaultModelForProvider(
   provider: string | null | undefined,
   fallbackModel?: string | null,
@@ -498,6 +510,16 @@ export const settingsRegistry = {
   cvSourceFormat: {
     kind: "string" as const,
     schema: z.enum(["latex", "docx"]),
+  },
+  // Reasoning-effort level passed to the Claude Code CLI as `--effort` on
+  // every call (claude_code provider only). Unset means the CLI's own default.
+  // envKey machinery syncs the stored value into process.env, where the
+  // subprocess spawner reads it at call time — the same knob shape as
+  // CLAUDE_CODE_BIN and the timeout envs.
+  claudeCodeEffort: {
+    kind: "string" as const,
+    envKey: "CLAUDE_CODE_EFFORT",
+    schema: z.enum(CLAUDE_CODE_EFFORT_LEVELS),
   },
   basicAuthUser: {
     kind: "string" as const,

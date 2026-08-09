@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { logger } from "@infra/logger";
+import { CLAUDE_CODE_EFFORT_LEVELS } from "@shared/settings-registry";
 
 import type {
   JsonSchemaDefinition,
@@ -573,6 +574,18 @@ export function buildCallArgv(args: {
   const model = args.model?.trim();
   if (model) {
     argv.push("--model", model);
+  }
+
+  // The `claudeCodeEffort` setting rides its envKey into process.env (boot +
+  // save), read here at spawn time like CLAUDE_CODE_BIN. Values outside the
+  // known set are dropped rather than passed: the CLI would only warn and
+  // ignore them, but not forwarding garbage keeps the argv deterministic.
+  const effort = process.env.CLAUDE_CODE_EFFORT?.trim();
+  if (
+    effort &&
+    (CLAUDE_CODE_EFFORT_LEVELS as readonly string[]).includes(effort)
+  ) {
+    argv.push("--effort", effort);
   }
 
   argv.push("--json-schema", JSON.stringify(args.jsonSchema.schema));

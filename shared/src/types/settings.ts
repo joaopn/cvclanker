@@ -100,6 +100,7 @@ export interface AppSettings {
   userProfileName: string | null;
   onboardingBasicAuthDecision: "enabled" | "skipped" | null;
   cvSourceFormat: CvSourceFormat | null;
+  claudeCodeEffort: string | null;
   basicAuthUser: string | null;
   basicAuthPassword: string | null;
 
