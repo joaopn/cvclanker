@@ -9,6 +9,7 @@
 
 import { AppError } from "@infra/errors";
 import { logger } from "@infra/logger";
+import { DEFAULT_SCORING_INSTRUCTIONS } from "@shared/settings-registry";
 import {
   SUITABILITY_CATEGORIES,
   SUITABILITY_CATEGORY_RANK,
@@ -202,9 +203,12 @@ async function buildScoringPrompt(
     degreeRequired: job.degreeRequired || "Not specified",
     disciplines: job.disciplines || "Not specified",
     jobDescription: job.jobDescription || "No description available",
+    // The prompt is a structural shell; the instructions ARE the scoring
+    // policy, so an empty value must fall back to the shipped policy — a
+    // bare shell would leave the model no category semantics at all.
     scoringInstructionsText: preferences.instructions
       ? preferences.instructions
-      : "No additional custom scoring instructions.",
+      : DEFAULT_SCORING_INSTRUCTIONS,
   });
   return { system: loaded.system, user: loaded.user };
 }

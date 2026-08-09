@@ -14,30 +14,17 @@ variables:
   - name: disciplines
   - name: jobDescription
   - name: scoringInstructionsText
-    description: Extra scoring guidance — the built-in calibration default or the user's scoringInstructions override.
+    description: The scoring policy — category semantics, gates, and calibration examples. The scoringInstructions setting (built-in default or user override).
 model:
   preferStructuredOutput: true
 system: ""
 user: |
-  Classify how well this candidate fits the job. This is a shortlisting
-  decision: would a reasonable recruiter who read the brief interview this
-  candidate for this job? Treat the listed requirements as a wishlist, not
-  a checklist — postings ask for more than any single hire has — and count
-  adjacent, transferable experience as evidence. Pick exactly one of:
-    - "very_good_fit": the candidate covers the core of the role (primary
-      stack/domain, roughly the right level). Missing nice-to-haves or a
-      couple of peripheral requirements does not disqualify. A recruiter
-      would clearly shortlist.
-    - "good_fit": real overlap with a real gap — the level is a stretch,
-      the domain is adjacent rather than exact, or one core requirement is
-      missing but learnable. A recruiter might shortlist.
-    - "bad_fit": hard mismatches only — a different occupation, a level far
-      off (e.g. junior brief vs. staff role), or a hard blocker such as a
-      required language, clearance, or credential the brief shows no
-      evidence of. "Covers only part of the wishlist" is not bad_fit by
-      itself.
-  When torn between two categories, pick the more generous one unless a
-  hard blocker exists.
+  Classify how well this candidate fits the job, into exactly one of the
+  categories "very_good_fit", "good_fit", or "bad_fit", following the
+  scoring policy below.
+
+  Scoring policy:
+  {{scoringInstructionsText}}
 
   Candidate brief:
   {{briefText}}
@@ -52,8 +39,6 @@ user: |
 
   Job description:
   {{jobDescription}}
-
-  Additional scoring guidance: {{scoringInstructionsText}}
 
   Respond as JSON with
     { "category": "<very_good_fit | good_fit | bad_fit>",

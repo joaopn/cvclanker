@@ -111,14 +111,35 @@ const parseChatStyleLanguageModeOrNull = createEnumParser(
   CHAT_STYLE_LANGUAGE_MODE_VALUES,
 );
 
-// Baseline few-shot calibration for the job scorer. Rides into every scoring
-// call via {{scoringInstructionsText}}, so additions must stay succinct. A
-// stored scoringInstructions override replaces this wholesale.
-export const DEFAULT_SCORING_INSTRUCTIONS = `Calibration examples:
-- Posting lists 8 requirements; the brief shows depth in the 4 core ones and none of the extras → very_good_fit.
-- Senior posting in the candidate's exact stack; the brief reads mid-level → good_fit.
-- Python backend role; the brief has strong Go/Java backend work but no Python → good_fit (transferable), not bad_fit.
-- Role requires fluent German; the brief shows none → bad_fit (hard blocker).`;
+// The COMPLETE scoring policy for the job scorer — category semantics, gates,
+// and calibration examples. The job-score prompt is a structural shell (inputs
+// + JSON contract) and injects this wholesale via {{scoringInstructionsText}};
+// a stored scoringInstructions override replaces it entirely, so this text is
+// the single home of scoring behavior. It rides into every scoring call — keep
+// it dense. Must stay trim-stable (no edge whitespace): the client save path
+// compares the trimmed field against this constant to decide override-vs-default.
+export const DEFAULT_SCORING_INSTRUCTIONS = `Decide as a recruiter: would this candidate clearly be shortlisted? They need not be the perfect applicant — direct coverage of the core with no missing differentiator is a clear shortlist.
+
+Separate the job's requirements into two groups:
+- CORE: the discipline and stack the role is actually about, plus explicit mandatory qualifications or experience thresholds in it. These are gates.
+- SECONDARY: everything else — tools, cloud vendors, industry/domain exposure, specific modalities, "desirable" items. Missing several of these is normal and never blocks very_good_fit.
+
+A DIFFERENTIATOR is a capability the ad emphasizes as what distinguishes the wanted candidate — headlined, repeated, or demanded as demonstrable ("proven delivery of X"). Do not promote secondary items into differentiators to justify a demotion.
+
+Venue neutrality: research, academic, and open-source work is DIRECT evidence of a discipline, equal to commercial experience. Never demote for an academic background, for "professional/commercial environment" phrasing, or for lacking the employer's industry exposure. Sole exception: when the ad explicitly demands a delivered commercial/product track record of a specific deliverable, academic-only versions of that deliverable cap the job at good_fit.
+
+Categories:
+- very_good_fit: clear shortlist. Direct, demonstrated experience on the core requirements at the right level, and no explicitly demanded differentiator is absent.
+- good_fit: a fair shot — worth an application. The core discipline is practiced with direct evidence, but the level is a modest stretch, an explicitly demanded differentiator is missing, or a core experience threshold falls slightly short in a discipline the candidate genuinely practices.
+- bad_fit: the core discipline is not one the candidate has actually practiced (adjacent skills do not substitute); or a mandatory qualification or experience threshold in it is clearly unmet; or a hard blocker exists (required language, clearance, credential, or a veto rule in the candidate's brief).
+
+Transferable or adjacent experience satisfies SECONDARY requirements only; for CORE requirements it never lifts a job past good_fit. Keyword overlap is not fit: a role in a different specialty that shares the candidate's tools is still bad_fit. When torn between categories, decide from the concrete evidence above — do not invent a hypothetical stronger applicant pool to demote against.
+
+Calibration examples (real verdicts, corrected by the user):
+- Ad: enterprise ETL/DWH engineer — 10+ years ETL/DWH, Spark/Databricks at its core. Brief: TB-scale research data pipelines, strong Python/SQL, never an ETL/DWH developer -> bad_fit. Adjacent pipeline skill does not substitute for an unpracticed core discipline.
+- Ad: ML engineer explicitly demanding demonstrable delivery of multiple production time-series forecasting projects. Brief: strong ML/statistical modeling, academic time-series work, production deployment skills — but no delivered forecasting projects -> good_fit. The explicitly demanded differentiator is absent; still worth applying.
+- Ad: commercial data scientist — core is statistical/ML modeling with Python/SQL; insurance domain and Azure/Databricks listed as desirable. Brief: PhD-level statistical modeling on messy real-world data plus TB-scale production pipelines, all from academia -> very_good_fit. The core is practiced directly; domain and cloud vendor are secondary; the academic venue is not a demotion.
+- Ad: university research data scientist embedded with academic teams. Brief: PhD computational scientist with a cross-disciplinary research record, matching the candidate's stated target roles -> very_good_fit. The role reads as written for the candidate.`;
 
 const parseChatStyleManualLanguageOrNull = createEnumParser(
   CHAT_STYLE_MANUAL_LANGUAGE_VALUES,
@@ -181,7 +202,10 @@ export const settingsRegistry = {
   },
   scoringInstructions: {
     kind: "typed" as const,
-    schema: z.string().trim().max(4000),
+    // The full scoring policy lives here (~3.7k chars shipped); 16k leaves
+    // room for the user to grow the calibration-example list several-fold
+    // without letting a runaway paste bloat every scoring call unnoticed.
+    schema: z.string().trim().max(16000),
     default: (): string => DEFAULT_SCORING_INSTRUCTIONS,
     parse: parseNonEmptyStringOrNull,
     serialize: (value: string | null | undefined): string | null =>

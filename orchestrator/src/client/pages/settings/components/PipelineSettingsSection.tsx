@@ -57,9 +57,9 @@ const mbToBytes = (mb: number): number => Math.round(mb * ONE_MB);
 // silently not apply, so the form refuses it upfront.
 const MAX_CONCURRENCY = 10;
 
-// Mirrors the registry's z.string().max(4000) on scoringInstructions — a
+// Mirrors the registry's z.string().max(16000) on scoringInstructions — a
 // longer value would 400 on save, so the form refuses it upfront.
-const MAX_SCORING_INSTRUCTIONS_CHARS = 4000;
+const MAX_SCORING_INSTRUCTIONS_CHARS = 16000;
 
 type ConcurrencyFieldKey =
   | "discoveryConcurrency"
@@ -245,7 +245,7 @@ export const PipelineSettingsSection: React.FC<
 
         <div className="space-y-2">
           <label htmlFor="scoringInstructions" className="text-sm font-medium">
-            Scoring instructions
+            Scoring policy
           </label>
           <Controller
             name="scoringInstructions"
@@ -274,12 +274,13 @@ export const PipelineSettingsSection: React.FC<
             </div>
           )}
           <div className="text-xs text-muted-foreground">
-            Appended to every scoring call as extra guidance for the fit
-            category — calibration examples, your own hard constraints (e.g.
-            relocation), example verdicts. It rides along on each scored job, so
-            keep it succinct. The pre-filled text is the built-in default: edit
-            it to make it yours; clearing the field restores the default on
-            save.
+            The complete scoring policy sent with every scoring call — how to
+            read a job ad, what each fit category means, and the calibration
+            examples. The job-score prompt is just the structural shell around
+            it, so this text is the one place scoring behavior is tuned. It
+            rides along on each scored job, so keep it dense. The pre-filled
+            text is the built-in default: edit it to make it yours; clearing the
+            field restores the default on save.
           </div>
           <div className="text-xs text-muted-foreground">
             Current:{" "}

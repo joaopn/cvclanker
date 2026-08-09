@@ -75,7 +75,7 @@ describe("PipelineSettingsSection", () => {
   it("renders the scoring instructions textarea and binds typed input", () => {
     render(<PipelineSettingsHarness />);
 
-    const textarea = screen.getByLabelText("Scoring instructions");
+    const textarea = screen.getByLabelText("Scoring policy");
     expect(textarea).toHaveAttribute(
       "placeholder",
       "Calibration: ties go to the more generous tier.",
@@ -91,15 +91,15 @@ describe("PipelineSettingsSection", () => {
     ).toBeInTheDocument();
   });
 
-  it("rejects instructions over the 4000-char cap", async () => {
+  it("rejects a policy over the 16000-char cap", async () => {
     render(<PipelineSettingsHarness mode="onChange" />);
 
-    const textarea = screen.getByLabelText("Scoring instructions");
-    fireEvent.change(textarea, { target: { value: "x".repeat(4001) } });
+    const textarea = screen.getByLabelText("Scoring policy");
+    fireEvent.change(textarea, { target: { value: "x".repeat(16001) } });
 
     await waitFor(() => {
       expect(
-        screen.getByText("Must be at most 4000 characters"),
+        screen.getByText("Must be at most 16000 characters"),
       ).toBeInTheDocument();
     });
   });
