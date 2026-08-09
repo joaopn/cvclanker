@@ -10,7 +10,7 @@ ENV NODE_ENV=production
 ENV PORT=3001
 ENV PYTHON_PATH=/usr/bin/python3
 ENV DATA_DIR=/app/data
-ENV CODEX_HOME=/app/codex-home
+ENV CODEX_HOME=/app/data/codex-home
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV PATH=/root/.local/bin:${PATH}
 ARG CODEX_CLI_VERSION=0.120.0
@@ -192,9 +192,6 @@ COPY extractors/workingnomads ./extractors/workingnomads
 # `docker compose up` works even before the host-side bind mount is wired.
 COPY prompts ./prompts
 
-# Create runtime directories.
-RUN mkdir -p /app/codex-home
-
 ENV PROMPTS_DIR=/app/prompts
 
 EXPOSE 3001
@@ -203,4 +200,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:3001/health || exit 1
 
 WORKDIR /app/orchestrator
-CMD ["sh", "-c", "npx tsx src/server/db/migrate.ts && npm run start"]
+CMD ["sh", "-c", "mkdir -p \"$CODEX_HOME\" && npx tsx src/server/db/migrate.ts && npm run start"]

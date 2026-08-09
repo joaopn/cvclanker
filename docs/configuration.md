@@ -55,7 +55,8 @@ secret.
   export**.
 - **Restore** by dropping the file back, or via snapshot restore. The session
   secret lives in the DB, so a restore keeps you logged in.
-- The **`codex-home`** volume holds Codex auth, if used.
+- Codex auth, if used, lives under `data/codex-home/` — a `data/` copy carries
+  it along.
 
 Wipe and start over:
 

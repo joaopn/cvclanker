@@ -29,10 +29,8 @@ services:
     ports:
       - "3005:3001"
     volumes:
-      # Persist database and generated PDFs
+      # Persist database, generated PDFs, and the Codex login
       - ./data:/app/data
-      # Persist Codex login/session data for app-server provider
-      - codex-home:/app/codex-home
     environment:
       # Server config
       - NODE_ENV=production
@@ -43,8 +41,6 @@ services:
 
       # Python path (uses system python in container)
       - PYTHON_PATH=/usr/bin/python3
-      # Codex runtime home (stores auth and config)
-      - CODEX_HOME=/app/codex-home
       # Claude Code provider auth. Bare name (no `=`) so the variable is passed
       # through only when it is actually set on the host or in ./.env — writing
       # `KEY=${KEY:-}` would define it as empty inside the container. Mint one
@@ -88,8 +84,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-
-# Volumes for data persistence
-volumes:
-  data:
-  codex-home:
