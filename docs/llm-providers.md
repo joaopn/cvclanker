@@ -19,7 +19,10 @@ or local, and you can edit the prompts.
 
 **Claude Code** is the dedicated Claude path — it bills your Claude
 subscription, not an API key. Claude via API key works through OpenRouter (or an
-Anthropic-compatible gateway via the OpenAI-compatible provider).
+Anthropic-compatible gateway via the OpenAI-compatible provider). Each query
+runs as an isolated pinned-version subprocess with tools, settings, MCP,
+telemetry, and auto-update all disabled, a minimal environment, and a throwaway
+working directory — a plain model call, nothing else.
 
 With **LM Studio** or **Ollama**, the CV, brief, and job descriptions aren't sent
 to an external service for the model steps — there's no key and no external LLM

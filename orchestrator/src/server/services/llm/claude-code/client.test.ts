@@ -1,7 +1,9 @@
 // @vitest-environment node
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PassThrough } from "node:stream";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -394,12 +396,72 @@ describe("ClaudeCodeClient.callJson", () => {
     ).rejects.toThrow(/credential store unavailable/);
   });
 
-  it("pins the working directory away from the server's cwd", async () => {
+  it("pins cwd and HOME to a fresh per-spawn scratch dir and removes it after", async () => {
     const { spawnFn, calls } = fakeSpawn({ stdout: resultEnvelope() });
 
     await new ClaudeCodeClient({ spawnFn }).callJson(REQUEST);
 
-    expect(calls[0].cwd).toBe(tmpdir());
+    const scratch = calls[0].cwd;
+    expect(scratch).toBeDefined();
+    expect(scratch).not.toBe(tmpdir());
+    expect(scratch?.startsWith(join(tmpdir(), "cvclanker-claude-"))).toBe(true);
+    expect(calls[0].env.HOME).toBe(scratch);
+    expect(existsSync(scratch as string)).toBe(false);
+  });
+
+  it("removes the scratch dir even when the CLI fails", async () => {
+    const enoent = Object.assign(new Error("spawn claude ENOENT"), {
+      code: "ENOENT",
+    });
+    const { spawnFn, calls } = fakeSpawn({ emitError: enoent });
+
+    await expect(
+      new ClaudeCodeClient({ spawnFn }).callJson(REQUEST),
+    ).rejects.toThrow();
+
+    expect(existsSync(calls[0].cwd as string)).toBe(false);
+  });
+
+  // The child env is an allowlist, never {...process.env}: the CLI must not
+  // receive unrelated server secrets.
+  it("does not forward server secrets or ambient Anthropic keys to the CLI", async () => {
+    const previous = {
+      JWT_SECRET: process.env.JWT_SECRET,
+      LLM_API_KEY: process.env.LLM_API_KEY,
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+      APIFY_API_TOKEN: process.env.APIFY_API_TOKEN,
+    };
+    process.env.JWT_SECRET = "server-jwt-secret";
+    process.env.LLM_API_KEY = "other-provider-key";
+    process.env.ANTHROPIC_API_KEY = "ambient-api-key";
+    process.env.APIFY_API_TOKEN = "apify-token";
+    try {
+      const { spawnFn, calls } = fakeSpawn({ stdout: resultEnvelope() });
+
+      await new ClaudeCodeClient({ spawnFn }).callJson(REQUEST);
+
+      expect(calls[0].env.JWT_SECRET).toBeUndefined();
+      expect(calls[0].env.LLM_API_KEY).toBeUndefined();
+      expect(calls[0].env.ANTHROPIC_API_KEY).toBeUndefined();
+      expect(calls[0].env.APIFY_API_TOKEN).toBeUndefined();
+      expect(calls[0].env.PATH).toBe(process.env.PATH);
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
+  it("disables CLI telemetry, error reporting, and the auto-updater", async () => {
+    const { spawnFn, calls } = fakeSpawn({ stdout: resultEnvelope() });
+
+    await new ClaudeCodeClient({ spawnFn }).callJson(REQUEST);
+
+    expect(calls[0].env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe("1");
+    expect(calls[0].env.DISABLE_TELEMETRY).toBe("1");
+    expect(calls[0].env.DISABLE_ERROR_REPORTING).toBe("1");
+    expect(calls[0].env.DISABLE_AUTOUPDATER).toBe("1");
   });
 });
 
