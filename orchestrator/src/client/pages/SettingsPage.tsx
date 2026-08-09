@@ -43,6 +43,17 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -250,7 +261,7 @@ const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
   },
 ];
 
-const SECTION_FIELD_MAP: Record<
+export const SECTION_FIELD_MAP: Record<
   SettingsSectionId,
   Array<keyof UpdateSettingsInput>
 > = {
@@ -272,6 +283,8 @@ const SECTION_FIELD_MAP: Record<
     "chatStyleDoNotUse",
     "chatStyleLanguageMode",
     "chatStyleManualLanguage",
+    "chatStyleSummaryMaxWords",
+    "chatStyleMaxKeywordsPerSkill",
   ],
   "context-limits": [
     "maxBriefChars",
@@ -327,6 +340,9 @@ const normalizeLlmProviderValue = (
   value: string | null | undefined,
 ): LlmProviderValue => (value ? normalizeLlmProvider(value) : null);
 
+// No longer PATCHed wholesale (the global reset is gone) — this is the lookup
+// of which keys a section reset may clear: a key valued null here is
+// clearable, undefined (enableBasicAuth) is never cleared by reset.
 const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   model: null,
   modelScorer: null,
@@ -376,6 +392,38 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   maxCvUploadBytes: null,
   maxCoverLetterUploadBytes: null,
   maxExpandedLatexBytes: null,
+};
+
+/**
+ * Credentials are never cleared by a reset — losing them locks the user out
+ * of scoring/tailoring (and, for the LLM key, bounces the app back into the
+ * onboarding wizard via the llmValid gate). They have their own explicit
+ * update affordances.
+ */
+export const RESET_EXCLUDED_SECRETS: ReadonlySet<keyof UpdateSettingsInput> =
+  new Set([
+    "llmApiKey",
+    "claudeCodeOauthToken",
+    "basicAuthUser",
+    "basicAuthPassword",
+  ]);
+
+/**
+ * Reset payload for ONE settings section: null (= clear the override) for
+ * each of the section's fields, minus credential secrets. Keys whose
+ * NULL_SETTINGS_PAYLOAD value is undefined (enableBasicAuth) are omitted
+ * entirely — same as the old global reset, which never flipped basic auth.
+ */
+export const buildSectionResetPayload = (
+  sectionId: SettingsSectionId,
+): UpdateSettingsInput => {
+  const payload: Record<string, null> = {};
+  for (const field of SECTION_FIELD_MAP[sectionId]) {
+    if (RESET_EXCLUDED_SECRETS.has(field)) continue;
+    if (NULL_SETTINGS_PAYLOAD[field] === undefined) continue;
+    payload[field] = null;
+  }
+  return payload as UpdateSettingsInput;
 };
 
 const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
@@ -1003,15 +1051,17 @@ export const SettingsPage: React.FC = () => {
     );
   };
 
-  const handleReset = async () => {
+  const handleResetSection = async () => {
+    const payload = buildSectionResetPayload(activeSection);
+    if (Object.keys(payload).length === 0) return;
     try {
       setIsSaving(true);
-      const updated = await updateSettingsMutation.mutateAsync(
-        NULL_SETTINGS_PAYLOAD,
-      );
+      const updated = await updateSettingsMutation.mutateAsync(payload);
       setSettings(updated);
       reset(mapSettingsToForm(updated));
-      toast.success("Reset to default");
+      toast.success(
+        `${activeSectionMeta?.label ?? "Section"} reset to defaults`,
+      );
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to reset settings";
@@ -1318,15 +1368,43 @@ export const SettingsPage: React.FC = () => {
                       Discard changes
                     </Button>
                   ) : null}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="whitespace-nowrap"
-                    onClick={handleReset}
-                    disabled={isLoading || isSaving || !settings}
-                  >
-                    Reset to defaults
-                  </Button>
+                  {Object.keys(buildSectionResetPayload(activeSection)).length >
+                  0 ? (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="whitespace-nowrap"
+                          disabled={isLoading || isSaving || !settings}
+                        >
+                          Reset section to defaults
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>
+                            Reset {activeSectionMeta?.label ?? "this section"}{" "}
+                            to defaults?
+                          </AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Clears the saved overrides of this section only, so
+                            its defaults apply again. Other sections' saved
+                            values are not touched (though unsaved edits
+                            anywhere on this page are discarded), and stored
+                            credentials (API keys, tokens, passwords) are always
+                            kept. This cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={handleResetSection}>
+                            Reset section
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  ) : null}
                   <Button
                     type="button"
                     className="whitespace-nowrap"
