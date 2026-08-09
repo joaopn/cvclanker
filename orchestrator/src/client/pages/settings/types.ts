@@ -47,6 +47,7 @@ export type EnvSettingsValues = {
 export type PipelineSettingsValues = {
   autoTailoringEnabled: EffectiveDefault<boolean>;
   enableJobScoring: EffectiveDefault<boolean>;
+  scoringInstructions: EffectiveDefault<string>;
   inboxStaleThresholdDays: EffectiveDefault<number>;
   maxBulkActionJobs: EffectiveDefault<number>;
   discoveryConcurrency: EffectiveDefault<number>;

@@ -19,15 +19,35 @@ model:
   preferStructuredOutput: true
 system: ""
 user: |
-  Classify how well this candidate fits the job. Pick exactly one of:
-    - "very_good_fit": clear, strong match. The candidate's brief shows
-      direct, recent experience covering most of the job's core
-      requirements; level and domain align.
-    - "good_fit": reasonable match with some stretch. The brief shows
-      relevant experience but is missing one or two important pieces, or
-      the level/domain partially overlap.
-    - "bad_fit": substantial mismatch. The brief lacks the core
-      requirements, the level is wrong, or the domain is unrelated.
+  Classify how well this candidate fits the job. This is a shortlisting
+  decision: would a reasonable recruiter who read the brief interview this
+  candidate for this job? Treat the listed requirements as a wishlist, not
+  a checklist — postings ask for more than any single hire has — and count
+  adjacent, transferable experience as evidence. Pick exactly one of:
+    - "very_good_fit": the candidate covers the core of the role (primary
+      stack/domain, roughly the right level). Missing nice-to-haves or a
+      couple of peripheral requirements does not disqualify. A recruiter
+      would clearly shortlist.
+    - "good_fit": real overlap with a real gap — the level is a stretch,
+      the domain is adjacent rather than exact, or one core requirement is
+      missing but learnable. A recruiter might shortlist.
+    - "bad_fit": hard mismatches only — a different occupation, a level far
+      off (e.g. junior brief vs. staff role), or a hard blocker such as a
+      required language, clearance, or credential the brief shows no
+      evidence of. "Covers only part of the wishlist" is not bad_fit by
+      itself.
+  When torn between two categories, pick the more generous one unless a
+  hard blocker exists.
+
+  Calibration examples:
+  - Posting lists 8 requirements; the brief shows depth in the 4 core ones
+    and none of the extras → very_good_fit.
+  - Senior posting in the candidate's exact stack; the brief reads
+    mid-level → good_fit.
+  - Python backend role; the brief has strong Go/Java backend work but no
+    Python → good_fit (transferable), not bad_fit.
+  - Role requires fluent German; the brief shows none → bad_fit (hard
+    blocker).
 
   Candidate brief:
   {{briefText}}

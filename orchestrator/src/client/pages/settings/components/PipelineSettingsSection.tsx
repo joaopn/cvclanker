@@ -5,6 +5,7 @@ import type React from "react";
 import { Controller, useFormContext } from "react-hook-form";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 type PipelineSettingsSectionProps = {
   values: PipelineSettingsValues;
@@ -55,6 +56,10 @@ const mbToBytes = (mb: number): number => Math.round(mb * ONE_MB);
 // 10 mirrors the hard clamp in the server's asyncPool — a higher value would
 // silently not apply, so the form refuses it upfront.
 const MAX_CONCURRENCY = 10;
+
+// Mirrors the registry's z.string().max(4000) on scoringInstructions — a
+// longer value would 400 on save, so the form refuses it upfront.
+const MAX_SCORING_INSTRUCTIONS_CHARS = 4000;
 
 type ConcurrencyFieldKey =
   | "discoveryConcurrency"
@@ -108,6 +113,7 @@ export const PipelineSettingsSection: React.FC<
   const {
     autoTailoringEnabled,
     enableJobScoring,
+    scoringInstructions,
     inboxStaleThresholdDays,
     maxBulkActionJobs,
     discoveryConcurrency,
@@ -233,6 +239,52 @@ export const PipelineSettingsSection: React.FC<
               one-line reason. Turn off to skip the LLM scoring step entirely;
               jobs land in the inbox unscored and you triage them manually.
             </p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="scoringInstructions" className="text-sm font-medium">
+            Scoring instructions
+          </label>
+          <Controller
+            name="scoringInstructions"
+            control={control}
+            rules={{
+              validate: (v) =>
+                v == null ||
+                (typeof v === "string" &&
+                  v.length <= MAX_SCORING_INSTRUCTIONS_CHARS) ||
+                `Must be at most ${MAX_SCORING_INSTRUCTIONS_CHARS} characters`,
+            }}
+            render={({ field }) => (
+              <Textarea
+                id="scoringInstructions"
+                rows={5}
+                placeholder="e.g. I will not relocate; on-site roles outside my city are a bad fit. Embedded/firmware roles are a stretch, not a mismatch."
+                disabled={isLoading || isSaving}
+                value={typeof field.value === "string" ? field.value : ""}
+                onChange={(e) => field.onChange(e.target.value)}
+              />
+            )}
+          />
+          {errors.scoringInstructions && (
+            <div className="text-xs text-destructive">
+              {errors.scoringInstructions.message as string}
+            </div>
+          )}
+          <div className="text-xs text-muted-foreground">
+            Appended to every scoring call as extra guidance for the fit
+            category — your own hard constraints, calibration notes, or example
+            verdicts. It rides along on each scored job, so keep it succinct.
+            Leave empty for none.
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Current:{" "}
+            <span className="font-mono">
+              {scoringInstructions.effective
+                ? `${scoringInstructions.effective.length} chars`
+                : "none"}
+            </span>
           </div>
         </div>
 

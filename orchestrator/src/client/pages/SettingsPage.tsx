@@ -76,6 +76,7 @@ const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
   autoSkipCategory: null,
   autoTailoringEnabled: null,
   enableJobScoring: null,
+  scoringInstructions: "",
   inboxStaleThresholdDays: null,
   maxBulkActionJobs: null,
   discoveryConcurrency: null,
@@ -290,6 +291,7 @@ const SECTION_FIELD_MAP: Record<
   pipeline: [
     "autoTailoringEnabled",
     "enableJobScoring",
+    "scoringInstructions",
     "inboxStaleThresholdDays",
     "maxBulkActionJobs",
     "discoveryConcurrency",
@@ -354,6 +356,7 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   autoSkipCategory: null,
   autoTailoringEnabled: null,
   enableJobScoring: null,
+  scoringInstructions: null,
   inboxStaleThresholdDays: null,
   maxBulkActionJobs: null,
   discoveryConcurrency: null,
@@ -408,6 +411,7 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   autoSkipCategory: data.autoSkipCategory.override,
   autoTailoringEnabled: data.autoTailoringEnabled.override,
   enableJobScoring: data.enableJobScoring.override,
+  scoringInstructions: data.scoringInstructions.override ?? "",
   inboxStaleThresholdDays: data.inboxStaleThresholdDays.override,
   maxBulkActionJobs: data.maxBulkActionJobs.override,
   discoveryConcurrency: data.discoveryConcurrency.override,
@@ -536,6 +540,10 @@ const getDerivedSettings = (settings: AppSettings | null) => {
       enableJobScoring: {
         effective: settings?.enableJobScoring?.value ?? true,
         default: settings?.enableJobScoring?.default ?? true,
+      },
+      scoringInstructions: {
+        effective: settings?.scoringInstructions?.value ?? "",
+        default: settings?.scoringInstructions?.default ?? "",
       },
       inboxStaleThresholdDays: {
         effective: settings?.inboxStaleThresholdDays?.value ?? 7,
@@ -812,6 +820,7 @@ export const SettingsPage: React.FC = () => {
           data.enableJobScoring,
           pipeline.enableJobScoring.default,
         ),
+        scoringInstructions: normalizeString(data.scoringInstructions),
         inboxStaleThresholdDays: nullIfSame(
           data.inboxStaleThresholdDays,
           pipeline.inboxStaleThresholdDays.default,
