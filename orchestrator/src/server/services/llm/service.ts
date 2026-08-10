@@ -90,7 +90,7 @@ export class LlmService {
     });
     try {
       const result = await this.callJsonInner<T>(options);
-      if (result.success) handle.succeed();
+      if (result.success) handle.succeed(result.usage);
       else handle.fail(result.error);
       return result;
     } catch (error) {

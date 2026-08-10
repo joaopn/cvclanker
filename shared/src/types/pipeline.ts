@@ -335,6 +335,13 @@ export interface LlmCallRecord {
   startedAt: string;
   completedAt: string | null;
   durationMs: number | null;
+  /**
+   * Provider-reported prompt + completion tokens. Null while the call is
+   * running, when it failed, when the provider exposes no usage at all
+   * (Codex), or when it reports a zeroed usage block — never estimated
+   * locally.
+   */
+  totalTokens: number | null;
   jobId: string | null;
   errorMessage: string | null;
 }

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { computeTokensPerSec, extractUsage } from "./usage";
+import { computeTokensPerSec, computeTotalTokens, extractUsage } from "./usage";
 
 describe("extractUsage", () => {
   it("reads OpenAI / OpenRouter chat-completions usage", () => {
@@ -66,6 +66,46 @@ describe("extractUsage", () => {
     expect(
       extractUsage({ usage: { prompt_tokens: 50 } }),
     ).toEqual({ promptTokens: 50, completionTokens: null });
+  });
+});
+
+describe("computeTotalTokens", () => {
+  it("sums both provider-reported halves", () => {
+    expect(
+      computeTotalTokens({ promptTokens: 1234, completionTokens: 56 }),
+    ).toBe(1290);
+  });
+
+  it("returns the known half when the other is missing", () => {
+    expect(
+      computeTotalTokens({ promptTokens: 50, completionTokens: null }),
+    ).toBe(50);
+    expect(
+      computeTotalTokens({ promptTokens: null, completionTokens: 7 }),
+    ).toBe(7);
+  });
+
+  it("returns null when the provider reported no usage", () => {
+    expect(
+      computeTotalTokens({ promptTokens: null, completionTokens: null }),
+    ).toBeNull();
+    expect(computeTotalTokens(null)).toBeNull();
+    expect(computeTotalTokens(undefined)).toBeNull();
+  });
+
+  it("treats a zeroed usage block as no usage", () => {
+    expect(
+      computeTotalTokens({ promptTokens: 0, completionTokens: 0 }),
+    ).toBeNull();
+    expect(
+      computeTotalTokens({ promptTokens: 0, completionTokens: null }),
+    ).toBeNull();
+  });
+
+  it("keeps a non-zero total when only one half is zero", () => {
+    expect(
+      computeTotalTokens({ promptTokens: 1234, completionTokens: 0 }),
+    ).toBe(1234);
   });
 });
 

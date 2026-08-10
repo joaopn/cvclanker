@@ -52,6 +52,26 @@ export function extractUsage(data: unknown): LlmTokenUsage {
 }
 
 /**
+ * Sum the provider-reported halves into a single total. A provider that
+ * reports just one non-zero side still yields a total, as in the
+ * batch-URL-import convention. Returns `null` when the provider reported
+ * neither half, and — deliberately diverging from that convention — also
+ * when the reported total is zero: a zeroed usage block (some
+ * OpenAI-compatible proxies emit one) is indistinguishable from "no usage
+ * reported", and a real completion never costs zero tokens. Never estimates:
+ * no token count is invented from prompt length.
+ */
+export function computeTotalTokens(
+  usage: LlmTokenUsage | null | undefined,
+): number | null {
+  if (!usage) return null;
+  const { promptTokens, completionTokens } = usage;
+  if (promptTokens === null && completionTokens === null) return null;
+  const total = (promptTokens ?? 0) + (completionTokens ?? 0);
+  return total > 0 ? total : null;
+}
+
+/**
  * Compute output tokens-per-second for an LLM call. Returns `null` when
  * we don't have enough information (no completion-token count or
  * non-positive duration). Rounded to one decimal place for log readability.

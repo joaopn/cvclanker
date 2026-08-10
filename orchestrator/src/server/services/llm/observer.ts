@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { LlmCallRecord } from "@shared/types";
+import type { LlmTokenUsage } from "./types";
+import { computeTotalTokens } from "./utils/usage";
 
 const MAX_RECORDS = 50;
 
@@ -12,7 +14,7 @@ interface RegisterArgs {
 }
 
 interface ObserverHandle {
-  succeed: () => void;
+  succeed: (usage?: LlmTokenUsage | null) => void;
   fail: (errorMessage: string) => void;
 }
 
@@ -38,6 +40,7 @@ class LlmCallObserver extends EventEmitter {
       startedAt,
       completedAt: null,
       durationMs: null,
+      totalTokens: null,
       jobId: args.jobId ?? null,
       errorMessage: null,
     };
@@ -50,6 +53,7 @@ class LlmCallObserver extends EventEmitter {
     const finalize = (
       status: "succeeded" | "failed",
       errorMessage: string | null,
+      usage?: LlmTokenUsage | null,
     ) => {
       const current = this.records.get(id);
       if (!current) return;
@@ -60,6 +64,7 @@ class LlmCallObserver extends EventEmitter {
         status,
         completedAt,
         durationMs: Number.isFinite(durationMs) ? durationMs : 0,
+        totalTokens: computeTotalTokens(usage),
         errorMessage,
       };
       this.records.set(id, updated);
@@ -67,7 +72,7 @@ class LlmCallObserver extends EventEmitter {
     };
 
     return {
-      succeed: () => finalize("succeeded", null),
+      succeed: (usage) => finalize("succeeded", null, usage),
       fail: (errorMessage) => finalize("failed", errorMessage),
     };
   }

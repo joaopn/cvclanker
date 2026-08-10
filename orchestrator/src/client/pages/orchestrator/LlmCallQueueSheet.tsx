@@ -150,6 +150,8 @@ const CallRow: React.FC<{ call: LlmCallRecord; now: number }> = ({
         )}
         <div className="truncate font-mono text-[11px] text-muted-foreground">
           {call.model}
+          {call.totalTokens !== null &&
+            ` (${call.totalTokens.toLocaleString()} tokens)`}
         </div>
         {call.status === "failed" && call.errorMessage && (
           <div className="truncate text-destructive">{call.errorMessage}</div>
