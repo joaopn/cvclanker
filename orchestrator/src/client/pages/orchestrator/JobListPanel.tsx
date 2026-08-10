@@ -72,6 +72,7 @@ const FIT_CHIP_TABS: FilterTab[] = [
   "live",
   "interviewing",
   "backlog",
+  "stale",
 ];
 
 export const JobListPanel = forwardRef<VirtualListHandle, JobListPanelProps>(

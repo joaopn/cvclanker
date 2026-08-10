@@ -184,6 +184,71 @@ describe("JobListPanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders the fit-filter chips on the stale tab and reports a toggle", () => {
+    const onFitFilterChange = vi.fn();
+    const jobs = createJobs(2);
+
+    render(
+      <JobListPanel
+        isLoading={false}
+        jobs={jobs}
+        activeJobs={jobs}
+        selectedJobId={null}
+        selectedJobIds={new Set()}
+        activeTab="stale"
+        onSelectJob={vi.fn()}
+        onToggleSelectJob={vi.fn()}
+        onToggleSelectAll={vi.fn()}
+        fitFilter={[]}
+        onFitFilterChange={onFitFilterChange}
+        // Stale always ships these two alongside the chips in production, so
+        // render them here rather than testing the chips in isolation.
+        staleControlBar={<div>STALE_CONTROL_BAR_SLOT</div>}
+        facetBar={<div>FACET_BAR_SLOT</div>}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Great fit" }));
+
+    expect(onFitFilterChange).toHaveBeenCalledWith(["great_fit"]);
+    expect(
+      screen.getByRole("button", { name: "Unscored" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("STALE_CONTROL_BAR_SLOT")).toBeInTheDocument();
+    expect(screen.getByText("FACET_BAR_SLOT")).toBeInTheDocument();
+  });
+
+  it.each([
+    "closed",
+    "all",
+  ] as const)("hides the fit-filter chips on the %s tab", (activeTab) => {
+    const jobs = createJobs(2);
+
+    render(
+      <JobListPanel
+        isLoading={false}
+        jobs={jobs}
+        activeJobs={jobs}
+        selectedJobId={null}
+        selectedJobIds={new Set()}
+        activeTab={activeTab}
+        onSelectJob={vi.fn()}
+        onToggleSelectJob={vi.fn()}
+        onToggleSelectAll={vi.fn()}
+        fitFilter={[]}
+        onFitFilterChange={vi.fn()}
+      />,
+    );
+
+    // Positive control: the header rendered, the chips specifically did not.
+    expect(
+      screen.getByLabelText("Select all filtered jobs"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Great fit" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("renders jobs and notifies when a job is selected", () => {
     const onSelectJob = vi.fn();
     const onToggleSelectJob = vi.fn();
