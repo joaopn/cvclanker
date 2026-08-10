@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CLAUDE_CODE_EFFORT_LEVELS,
   getDefaultModelForProvider,
+  MAX_POOL_CONCURRENCY,
   settingsRegistry,
 } from "./settings-registry";
 
@@ -55,15 +56,16 @@ describe("settingsRegistry helpers", () => {
       expect(settingsRegistry.batchUrlImportConcurrency.default()).toBe(3);
     });
 
-    // Max 10 mirrors asyncPool's hard clamp — a larger stored value would
-    // silently not apply, so the schema must refuse it at save time.
-    it("accepts 1 through 10 and rejects out-of-range or fractional values", () => {
+    // The max mirrors asyncPool's hard clamp (MAX_POOL_CONCURRENCY) — a
+    // larger stored value would silently not apply, so the schema must
+    // refuse it at save time.
+    it("accepts 1 through the shared ceiling and rejects out-of-range or fractional values", () => {
       for (const key of keys) {
         const schema = settingsRegistry[key].schema;
         expect(schema.safeParse(1).success).toBe(true);
-        expect(schema.safeParse(10).success).toBe(true);
+        expect(schema.safeParse(MAX_POOL_CONCURRENCY).success).toBe(true);
         expect(schema.safeParse(0).success).toBe(false);
-        expect(schema.safeParse(11).success).toBe(false);
+        expect(schema.safeParse(MAX_POOL_CONCURRENCY + 1).success).toBe(false);
         expect(schema.safeParse(2.5).success).toBe(false);
       }
     });
@@ -71,11 +73,13 @@ describe("settingsRegistry helpers", () => {
     // The background-tailor FIFO consumes the value with no downstream
     // asyncPool clamp, so the read path must clamp out-of-band stored values
     // itself — a raw 0 would stall the queue forever.
-    it("clamps out-of-band stored values to 1-10 on read", () => {
+    it("clamps out-of-band stored values to the shared ceiling on read", () => {
       for (const key of keys) {
         expect(settingsRegistry[key].parse("0")).toBe(1);
         expect(settingsRegistry[key].parse("-3")).toBe(1);
-        expect(settingsRegistry[key].parse("50")).toBe(10);
+        expect(settingsRegistry[key].parse("100000")).toBe(
+          MAX_POOL_CONCURRENCY,
+        );
         expect(settingsRegistry[key].parse("5")).toBe(5);
         expect(settingsRegistry[key].parse("abc")).toBeNull();
         expect(settingsRegistry[key].parse(undefined)).toBeNull();

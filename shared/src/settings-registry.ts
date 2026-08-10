@@ -17,13 +17,26 @@ function parseIntOrNull(raw: string | undefined): number | null {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
-// Clamps to the same 1..10 the concurrency schemas enforce, so an
-// out-of-band stored value (hand-edited DB row, crafted snapshot) can never
-// stall a pool at 0 or overshoot the asyncPool clamp on read.
+// The one ceiling every concurrency layer shares: the asyncPool hard clamp,
+// the five pool-width setting schemas, the read-path clamp below, and the
+// Settings form all mirror this constant. It is deliberately far above any
+// useful width for API-backed LLM pools — its job is not tuning but blast
+// containment: under the claude_code provider every pooled task is a spawned
+// CLI subprocess (and batch URL import multiplies pages inside the shared
+// Camoufox browser), so an unbounded fat-fingered value would fork-bomb the
+// container. The upstream fork shipped 10 with no recorded reasoning; raised
+// to 100 on 2026-08-10.
+export const MAX_POOL_CONCURRENCY = 100;
+
+// Clamps to the same 1..MAX_POOL_CONCURRENCY the concurrency schemas enforce,
+// so an out-of-band stored value (hand-edited DB row, crafted snapshot) can
+// never stall a pool at 0 or overshoot the asyncPool clamp on read.
 function parseConcurrencyOrNull(raw: string | undefined): number | null {
   if (!raw) return null;
   const parsed = parseInt(raw, 10);
-  return Number.isNaN(parsed) ? null : Math.min(10, Math.max(1, parsed));
+  return Number.isNaN(parsed)
+    ? null
+    : Math.min(MAX_POOL_CONCURRENCY, Math.max(1, parsed));
 }
 
 function parseBitBoolOrNull(raw: string | undefined): boolean | null {
@@ -399,40 +412,40 @@ export const settingsRegistry = {
     serialize: serializeNullableNumber,
   },
   // --- Concurrency limits (Pipeline section) ---
-  // Max 10 mirrors the hard clamp in orchestrator utils/async-pool.ts — a
-  // higher value would silently not apply there, so the schema keeps the UI
-  // honest. Raise both together or not at all.
+  // The max mirrors asyncPool's hard clamp by construction — both sides
+  // derive from MAX_POOL_CONCURRENCY (see its comment for why a ceiling
+  // exists at all), so a saved value can never silently exceed what applies.
   discoveryConcurrency: {
     kind: "typed" as const,
-    schema: z.number().int().min(1).max(10),
+    schema: z.number().int().min(1).max(MAX_POOL_CONCURRENCY),
     default: (): number => 3,
     parse: parseConcurrencyOrNull,
     serialize: serializeNullableNumber,
   },
   scoringConcurrency: {
     kind: "typed" as const,
-    schema: z.number().int().min(1).max(10),
+    schema: z.number().int().min(1).max(MAX_POOL_CONCURRENCY),
     default: (): number => 4,
     parse: parseConcurrencyOrNull,
     serialize: serializeNullableNumber,
   },
   tailoringConcurrency: {
     kind: "typed" as const,
-    schema: z.number().int().min(1).max(10),
+    schema: z.number().int().min(1).max(MAX_POOL_CONCURRENCY),
     default: (): number => 3,
     parse: parseConcurrencyOrNull,
     serialize: serializeNullableNumber,
   },
   bulkActionConcurrency: {
     kind: "typed" as const,
-    schema: z.number().int().min(1).max(10),
+    schema: z.number().int().min(1).max(MAX_POOL_CONCURRENCY),
     default: (): number => 4,
     parse: parseConcurrencyOrNull,
     serialize: serializeNullableNumber,
   },
   batchUrlImportConcurrency: {
     kind: "typed" as const,
-    schema: z.number().int().min(1).max(10),
+    schema: z.number().int().min(1).max(MAX_POOL_CONCURRENCY),
     default: (): number => 3,
     parse: parseConcurrencyOrNull,
     serialize: serializeNullableNumber,

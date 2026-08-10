@@ -1,5 +1,6 @@
 import { SettingsSectionFrame } from "@client/pages/settings/components/SettingsSectionFrame";
 import type { PipelineSettingsValues } from "@client/pages/settings/types";
+import { MAX_POOL_CONCURRENCY } from "@shared/settings-registry";
 import type { UpdateSettingsInput } from "@shared/settings-schema.js";
 import type React from "react";
 import { Controller, useFormContext } from "react-hook-form";
@@ -53,9 +54,10 @@ const bytesToMb = (bytes: number): number =>
   Math.round((bytes / ONE_MB) * 100) / 100;
 const mbToBytes = (mb: number): number => Math.round(mb * ONE_MB);
 
-// 10 mirrors the hard clamp in the server's asyncPool — a higher value would
-// silently not apply, so the form refuses it upfront.
-const MAX_CONCURRENCY = 10;
+// Mirrors the asyncPool hard clamp — a higher value would silently not
+// apply, so the form refuses it upfront. See MAX_POOL_CONCURRENCY for why a
+// ceiling exists at all (subprocess/browser blast containment, not tuning).
+const MAX_CONCURRENCY = MAX_POOL_CONCURRENCY;
 
 // Mirrors the registry's z.string().max(16000) on scoringInstructions — a
 // longer value would 400 on save, so the form refuses it upfront.

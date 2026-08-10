@@ -1,3 +1,4 @@
+import { MAX_POOL_CONCURRENCY } from "@shared/settings-registry";
 import { describe, expect, it } from "vitest";
 import { asyncPool } from "./async-pool";
 
@@ -27,9 +28,15 @@ describe("asyncPool", () => {
       task: async (item) => item,
     });
 
+    // More items than the clamp allows in flight — with the requested
+    // concurrency far above the ceiling, an unclamped pool would exceed it.
+    const manyItems = Array.from(
+      { length: MAX_POOL_CONCURRENCY + 20 },
+      (_, index) => index,
+    );
     await asyncPool({
-      items,
-      concurrency: 100,
+      items: manyItems,
+      concurrency: 100_000,
       task: async (item) => {
         inFlight += 1;
         maxInFlight = Math.max(maxInFlight, inFlight);
@@ -39,7 +46,7 @@ describe("asyncPool", () => {
       },
     });
 
-    expect(maxInFlight).toBeLessThanOrEqual(10);
+    expect(maxInFlight).toBeLessThanOrEqual(MAX_POOL_CONCURRENCY);
   });
 
   it("propagates task errors", async () => {

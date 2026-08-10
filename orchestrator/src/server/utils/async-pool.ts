@@ -1,3 +1,5 @@
+import { MAX_POOL_CONCURRENCY } from "@shared/settings-registry";
+
 type AsyncPoolTaskStatus<TResult> =
   | { status: "fulfilled"; result: TResult }
   | { status: "rejected"; error: unknown };
@@ -18,7 +20,10 @@ export async function asyncPool<TItem, TResult>(args: {
   const rawConcurrency = Number.isFinite(args.concurrency)
     ? args.concurrency
     : 1;
-  const safeConcurrency = Math.max(1, Math.min(10, Math.floor(rawConcurrency)));
+  const safeConcurrency = Math.max(
+    1,
+    Math.min(MAX_POOL_CONCURRENCY, Math.floor(rawConcurrency)),
+  );
 
   if (items.length === 0) return [];
 
