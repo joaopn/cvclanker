@@ -6,6 +6,7 @@ import {
   LLM_PROVIDERS,
   type LlmProviderId,
 } from "@client/pages/settings/utils";
+import { Loader2 } from "lucide-react";
 import type React from "react";
 import { type Control, Controller } from "react-hook-form";
 import {
@@ -45,6 +46,7 @@ function renderKeyHelper(
 export const LlmConnectionStep: React.FC<{
   control: Control<OnboardingFormData>;
   isBusy: boolean;
+  isValidatingLlm: boolean;
   llmKeyHint: string | null;
   claudeCodeTokenHint: string | null;
   selectedProvider: LlmProviderId;
@@ -52,6 +54,7 @@ export const LlmConnectionStep: React.FC<{
 }> = ({
   control,
   isBusy,
+  isValidatingLlm,
   llmKeyHint,
   claudeCodeTokenHint,
   selectedProvider,
@@ -173,10 +176,18 @@ export const LlmConnectionStep: React.FC<{
         )}
       </div>
 
-      <InlineValidation
-        state={validation}
-        successMessage={`${providerConfig.label} connection verified.`}
-      />
+      {isValidatingLlm ? (
+        <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Checking the connection… (this spawns the provider's CLI or calls its
+          API and can take a few seconds)
+        </div>
+      ) : (
+        <InlineValidation
+          state={validation}
+          successMessage={`${providerConfig.label} connection verified.`}
+        />
+      )}
     </div>
   );
 };

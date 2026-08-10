@@ -1106,6 +1106,7 @@ export function useOnboardingFlow() {
     instances,
     isBusy,
     isGeneratingSearchTerms,
+    isValidatingLlm,
     hasSavedSearchTermsInSession,
     llmKeyHint,
     claudeCodeTokenHint,

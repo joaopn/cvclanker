@@ -430,6 +430,18 @@ export class ClaudeCodeClient {
     message: string | null;
     username?: string | null;
   }> {
+    // The child runs with a per-spawn scratch HOME, so the ONLY way it can be
+    // authenticated is the token (argument or env). With neither, spawning
+    // `auth status` burns seconds to learn what we already know — and that
+    // wait surfaces as a dead, disabled Save button in the onboarding wizard.
+    if (!oauthToken && !process.env.CLAUDE_CODE_OAUTH_TOKEN) {
+      return {
+        valid: false,
+        message:
+          "No Claude Code OAuth token is configured. Mint one with `claude setup-token`, then paste it in the Claude Code OAuth token field or set CLAUDE_CODE_OAUTH_TOKEN.",
+        username: null,
+      };
+    }
     try {
       const { stdout, stderr } = await runClaudeCode({
         spawnFn: this.spawnFn,

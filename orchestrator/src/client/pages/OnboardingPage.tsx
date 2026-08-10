@@ -2,7 +2,7 @@ import { ActivityLogButton } from "@client/components/ActivityLogButton";
 import { PageHeader, PageMain } from "@client/components/layout";
 import { LlmStatusButton } from "@client/components/LlmStatusButton";
 import { useOnboardingRequirement } from "@client/hooks/useOnboardingRequirement";
-import { ArrowLeft, ArrowRight, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2, Sparkles } from "lucide-react";
 import type React from "react";
 import { Navigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
@@ -114,6 +114,7 @@ export const OnboardingPage: React.FC = () => {
                     }
                     isBusy={flow.isBusy}
                     isGeneratingSearchTerms={flow.isGeneratingSearchTerms}
+                    isValidatingLlm={flow.isValidatingLlm}
                     llmKeyHint={flow.llmKeyHint}
                     claudeCodeTokenHint={flow.claudeCodeTokenHint}
                     llmValidation={flow.llmValidation}
@@ -158,7 +159,11 @@ export const OnboardingPage: React.FC = () => {
                   <div className="flex flex-col items-start gap-2 sm:items-end">
                     <Button type="submit" disabled={flow.isBusy}>
                       {flow.primaryLabel}
-                      <ArrowRight className="h-4 w-4" />
+                      {flow.isBusy ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <ArrowRight className="h-4 w-4" />
+                      )}
                     </Button>
                   </div>
                 </div>

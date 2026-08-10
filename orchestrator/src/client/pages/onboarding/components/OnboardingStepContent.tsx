@@ -47,6 +47,7 @@ export const OnboardingStepContent: React.FC<{
   storedCvSourceFormat: CvSourceFormat | null;
   isBusy: boolean;
   isGeneratingSearchTerms: boolean;
+  isValidatingLlm: boolean;
   hasSavedSearchTermsInSession: boolean;
   llmKeyHint: string | null;
   claudeCodeTokenHint: string | null;
@@ -74,6 +75,7 @@ export const OnboardingStepContent: React.FC<{
       <LlmConnectionStep
         control={props.control}
         isBusy={props.isBusy}
+        isValidatingLlm={props.isValidatingLlm}
         llmKeyHint={props.llmKeyHint}
         claudeCodeTokenHint={props.claudeCodeTokenHint}
         selectedProvider={props.selectedProvider}

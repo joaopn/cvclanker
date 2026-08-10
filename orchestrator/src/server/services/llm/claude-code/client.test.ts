@@ -500,7 +500,7 @@ describe("ClaudeCodeClient.validateCredentials", () => {
 
     const result = await new ClaudeCodeClient({
       spawnFn,
-    }).validateCredentials();
+    }).validateCredentials("token-xyz");
 
     expect(calls[0].args).toEqual(["auth", "status", "--json"]);
     expect(result).toEqual({
@@ -518,10 +518,30 @@ describe("ClaudeCodeClient.validateCredentials", () => {
 
     const result = await new ClaudeCodeClient({
       spawnFn,
-    }).validateCredentials();
+    }).validateCredentials("token-xyz");
 
     expect(result.valid).toBe(false);
     expect(result.message).toMatch(/setup-token/);
+  });
+
+  it("fast-fails without spawning when no token is configured anywhere", async () => {
+    const previous = process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    try {
+      const { spawnFn, calls } = fakeSpawn({ stdout: "" });
+
+      const result = await new ClaudeCodeClient({
+        spawnFn,
+      }).validateCredentials();
+
+      expect(calls).toHaveLength(0);
+      expect(result.valid).toBe(false);
+      expect(result.message).toMatch(/No Claude Code OAuth token/);
+    } finally {
+      if (previous !== undefined) {
+        process.env.CLAUDE_CODE_OAUTH_TOKEN = previous;
+      }
+    }
   });
 
   it("passes a configured token through to the auth check", async () => {
@@ -539,7 +559,7 @@ describe("ClaudeCodeClient.validateCredentials", () => {
 
     const result = await new ClaudeCodeClient({
       spawnFn,
-    }).validateCredentials();
+    }).validateCredentials("token-xyz");
 
     expect(result.valid).toBe(false);
   });
@@ -551,7 +571,7 @@ describe("ClaudeCodeClient.validateCredentials", () => {
 
     const result = await new ClaudeCodeClient({
       spawnFn,
-    }).validateCredentials();
+    }).validateCredentials("token-xyz");
 
     expect(result.valid).toBe(false);
     expect(result.message).toMatch(/not found in PATH/);
