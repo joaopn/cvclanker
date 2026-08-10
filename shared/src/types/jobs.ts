@@ -409,7 +409,9 @@ export interface UpdateJobInput {
   jobDescription?: string | null;
   locationEvidence?: JobLocationEvidence | null;
   suitabilityCategory?: SuitabilityCategory | null;
-  suitabilityReason?: string;
+  // Nullable so a score can be CLEARED, not just overwritten — the column has
+  // always been nullable, only this input type was narrower.
+  suitabilityReason?: string | null;
   tailoredFields?: CvFieldOverrides;
   cvFieldLocks?: string[];
   tailoringMatched?: string[] | null;

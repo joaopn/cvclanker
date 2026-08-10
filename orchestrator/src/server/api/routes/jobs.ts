@@ -122,6 +122,10 @@ const jobActionRequestSchema = z.discriminatedUnion("action", [
     jobIds: z.array(z.string().min(1)).min(1),
   }),
   z.object({
+    action: z.literal("clear_score"),
+    jobIds: z.array(z.string().min(1)).min(1),
+  }),
+  z.object({
     action: z.literal("rescrape"),
     jobIds: z.array(z.string().min(1)).min(1),
   }),
@@ -716,6 +720,33 @@ async function executeJobActionForJob(
             logger.warn("Rescrape rescore failed", { jobId, error });
           }
         }
+      }
+
+      return { jobId, ok: true, job: updated };
+    }
+
+    if (action === "clear_score") {
+      // Drops the stored suitability so the job reads as Unscored and can be
+      // scored afresh — the point being to re-run a batch against a new
+      // personal brief without deleting and re-importing the jobs. Purely a
+      // DB write: no LLM call, and the job keeps its status and its place.
+      if (job.status === "processing") {
+        throw badRequest(
+          `Job's score is not clearable from status "${job.status}"`,
+          { jobId, status: job.status, disallowedStatus: "processing" },
+        );
+      }
+
+      const updated = await jobsRepo.updateJob(jobId, {
+        suitabilityCategory: null,
+        suitabilityReason: null,
+      });
+      if (!updated) {
+        throw new AppError({
+          status: 404,
+          code: "NOT_FOUND",
+          message: "Job not found",
+        });
       }
 
       return { jobId, ok: true, job: updated };

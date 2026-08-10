@@ -330,6 +330,7 @@ export const OrchestratorPage: React.FC = () => {
     canSkipSelected,
     canMoveSelected,
     canRescoreSelected,
+    canClearScoreSelected,
     canRescrapeSelected,
     canMoveToBacklogSelected,
     canMoveToStaleSelected,
@@ -770,6 +771,7 @@ export const OrchestratorPage: React.FC = () => {
           canMoveSelected={canMoveSelected}
           canSkipSelected={canSkipSelected}
           canRescoreSelected={canRescoreSelected}
+          canClearScoreSelected={canClearScoreSelected}
           canRescrapeSelected={canRescrapeSelected}
           canMoveToBacklogSelected={canMoveToBacklogSelected}
           canMoveToStaleSelected={canMoveToStaleSelected}
@@ -780,6 +782,7 @@ export const OrchestratorPage: React.FC = () => {
           onMoveToReady={() => void runJobAction("move_to_ready")}
           onSkipSelected={() => void runJobAction("skip")}
           onRescoreSelected={() => void runJobAction("rescore")}
+          onClearScoreSelected={() => void runJobAction("clear_score")}
           onRescrapeSelected={() => void runJobAction("rescrape")}
           onMoveToBacklog={() => void runJobAction("move_to_backlog")}
           onMoveToStale={() => void runJobAction("move_to_stale")}

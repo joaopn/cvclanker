@@ -521,4 +521,58 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     expect(body.data.failed).toBe(1);
     expect(body.data.results[0].error.code).toBe("INVALID_REQUEST");
   });
+
+  it("clear_score drops the stored suitability without moving the job", async () => {
+    const { db, schema } = await import("@server/db/index");
+    await seedJob({ id: "job-cs1", status: "discovered" });
+    await seedJob({ id: "job-cs2", status: "backlog" });
+    const { eq } = await import("drizzle-orm");
+    for (const id of ["job-cs1", "job-cs2"]) {
+      await db
+        .update(schema.jobs)
+        .set({ suitabilityCategory: "good_fit", suitabilityReason: "why" })
+        .where(eq(schema.jobs.id, id));
+    }
+
+    const { body } = await postAction({
+      action: "clear_score",
+      jobIds: ["job-cs1", "job-cs2"],
+    });
+
+    expect(body.data.succeeded).toBe(2);
+    for (const result of body.data.results) {
+      expect(result.job.suitabilityCategory).toBeNull();
+      // The reason has to go too, or the row reads as unscored while still
+      // showing the old explanation.
+      expect(result.job.suitabilityReason).toBeNull();
+    }
+    // The job keeps its status and its place in the list.
+    expect(body.data.results[0].job.status).toBe("discovered");
+    expect(body.data.results[1].job.status).toBe("backlog");
+  });
+
+  it("clear_score is a no-op on an already-unscored job, not an error", async () => {
+    await seedJob({ id: "job-cs3", status: "discovered" });
+
+    const { body } = await postAction({
+      action: "clear_score",
+      jobIds: ["job-cs3"],
+    });
+
+    expect(body.data.succeeded).toBe(1);
+    expect(body.data.results[0].job.suitabilityCategory).toBeNull();
+  });
+
+  it("clear_score refuses a job that is mid-tailor", async () => {
+    await seedJob({ id: "job-cs4", status: "processing" });
+
+    const { body } = await postAction({
+      action: "clear_score",
+      jobIds: ["job-cs4"],
+    });
+
+    expect(body.data.failed).toBe(1);
+    expect(body.data.results[0].ok).toBe(false);
+    expect(body.data.results[0].error.message).toMatch(/not clearable/i);
+  });
 });

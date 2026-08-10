@@ -2,6 +2,7 @@ import { createJob } from "@shared/testing/factories.js";
 import type { JobActionResponse } from "@shared/types.js";
 import { describe, expect, it } from "vitest";
 import {
+  canClearScore,
   canMoveToReady,
   canRescore,
   canRescrape,
@@ -42,6 +43,37 @@ describe("jobActions", () => {
       canRescore([
         createJob({ id: "1", status: "ready" }),
         createJob({ id: "2", status: "processing" }),
+      ]),
+    ).toBe(false);
+  });
+
+  it("offers clear-score only when something is actually scored", () => {
+    const scored = createJob({
+      id: "1",
+      status: "discovered",
+      suitabilityCategory: "good_fit",
+    });
+    const unscored = createJob({
+      id: "2",
+      status: "discovered",
+      suitabilityCategory: null,
+    });
+
+    expect(canClearScore([scored])).toBe(true);
+    // Mixed is still offered — the unscored rows are simply left alone.
+    expect(canClearScore([scored, unscored])).toBe(true);
+    // All-unscored would be a silent no-op, so the button stays hidden.
+    expect(canClearScore([unscored])).toBe(false);
+    expect(canClearScore([])).toBe(false);
+    // A row mid-tailor is off limits, matching the server guard.
+    expect(
+      canClearScore([
+        scored,
+        createJob({
+          id: "3",
+          status: "processing",
+          suitabilityCategory: "good_fit",
+        }),
       ]),
     ).toBe(false);
   });

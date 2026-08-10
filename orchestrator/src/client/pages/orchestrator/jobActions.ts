@@ -51,6 +51,19 @@ export function canRescore(jobs: JobListItem[]): boolean {
   return jobs.length > 0 && jobs.every((job) => job.status !== "processing");
 }
 
+/**
+ * Clearing a score is only offered when at least one selected job actually has
+ * one — on an all-unscored selection the action would be a silent no-op, and a
+ * button that does nothing reads as broken.
+ */
+export function canClearScore(jobs: JobListItem[]): boolean {
+  return (
+    jobs.length > 0 &&
+    jobs.every((job) => job.status !== "processing") &&
+    jobs.some((job) => job.suitabilityCategory != null)
+  );
+}
+
 function isRescrapableUrl(url: string | null | undefined): boolean {
   return !!url && (url.startsWith("https://") || url.startsWith("http://"));
 }

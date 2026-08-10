@@ -11,6 +11,7 @@ interface FloatingJobActionsBarProps {
   canMoveSelected: boolean;
   canSkipSelected: boolean;
   canRescoreSelected: boolean;
+  canClearScoreSelected: boolean;
   canRescrapeSelected: boolean;
   canMoveToBacklogSelected: boolean;
   canMoveToStaleSelected: boolean;
@@ -21,6 +22,7 @@ interface FloatingJobActionsBarProps {
   onMoveToReady: () => void;
   onSkipSelected: () => void;
   onRescoreSelected: () => void;
+  onClearScoreSelected: () => void;
   onRescrapeSelected: () => void;
   onMoveToBacklog: () => void;
   onMoveToStale: () => void;
@@ -38,6 +40,7 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
   canMoveSelected,
   canSkipSelected,
   canRescoreSelected,
+  canClearScoreSelected,
   canRescrapeSelected,
   canMoveToBacklogSelected,
   canMoveToStaleSelected,
@@ -48,6 +51,7 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
   onMoveToReady,
   onSkipSelected,
   onRescoreSelected,
+  onClearScoreSelected,
   onRescrapeSelected,
   onMoveToBacklog,
   onMoveToStale,
@@ -117,6 +121,18 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
                 onClick={onRescoreSelected}
               >
                 Recalculate match
+              </Button>
+            )}
+            {canClearScoreSelected && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className={buttonClass}
+                disabled={jobActionInFlight}
+                onClick={onClearScoreSelected}
+              >
+                Clear match
               </Button>
             )}
             {rescrapeButton}

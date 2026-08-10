@@ -12,6 +12,7 @@ import { type JobStateSnapshot, restoreJobStates, snapshotJob } from "@client/li
 import type { FilterTab } from "./constants";
 import { JobActionProgressToast } from "./JobActionProgressToast";
 import {
+  canClearScore,
   canMarkClosed,
   canMoveToBacklog,
   canMoveToInbox,
@@ -29,6 +30,7 @@ const jobActionLabel: Record<JobAction, string> = {
   move_to_ready: "Tailoring selected jobs...",
   skip: "Skipping selected jobs...",
   rescore: "Calculating match scores...",
+  clear_score: "Clearing match scores...",
   rescrape: "Re-fetching from URL...",
   move_to_backlog: "Moving to Backlog...",
   move_to_stale: "Moving to Stale...",
@@ -42,6 +44,7 @@ const jobActionSuccessLabel: Record<JobAction, string> = {
   move_to_ready: "jobs sent to Tailoring",
   skip: "jobs skipped",
   rescore: "matches recalculated",
+  clear_score: "matches cleared",
   rescrape: "jobs rescraped",
   move_to_backlog: "jobs moved to Backlog",
   move_to_stale: "jobs moved to Stale",
@@ -52,8 +55,9 @@ const jobActionSuccessLabel: Record<JobAction, string> = {
 };
 
 // Triage status moves whose prior {status, outcome, closedAt} can be restored.
-// Tailor (move_to_ready) and rescore are excluded — they create PDFs/scores a
-// status-revert can't cleanly undo.
+// Tailor (move_to_ready), rescore and clear_score are excluded — they create or
+// destroy PDFs/scores that a status-revert can't cleanly undo (clear_score
+// drops the suitability reason, which nothing here retains).
 const undoActionLabel: Partial<Record<JobAction, string>> = {
   skip: "Skip",
   move_to_backlog: "Move to Backlog",
@@ -108,6 +112,10 @@ export function useJobSelectionActions({
   );
   const canRescoreSelected = useMemo(
     () => canRescore(selectedJobs),
+    [selectedJobs],
+  );
+  const canClearScoreSelected = useMemo(
+    () => canClearScore(selectedJobs),
     [selectedJobs],
   );
   const canRescrapeSelected = useMemo(
@@ -430,6 +438,7 @@ export function useJobSelectionActions({
     canSkipSelected,
     canMoveSelected,
     canRescoreSelected,
+    canClearScoreSelected,
     canRescrapeSelected,
     canMoveToBacklogSelected,
     canMoveToStaleSelected,
