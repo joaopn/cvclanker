@@ -221,6 +221,21 @@ export interface PipelineProgressEvent {
   startedAt?: string;
   completedAt?: string;
   sourceStats: PipelineSourceStats[];
+  /**
+   * Set on every event emitted while a multi-profile sequence is running, and
+   * null otherwise — including on the single aggregate terminal the sequence
+   * emits when the chain ends. Consumers read it as "this event belongs to one
+   * profile of a chain, so it is not the chain's own start or end". `index` is
+   * 1-based.
+   */
+  profileRun?: PipelineProfileRun | null;
+}
+
+export interface PipelineProfileRun {
+  id: string;
+  name: string;
+  index: number;
+  total: number;
 }
 
 export type PipelineMetricQuality =

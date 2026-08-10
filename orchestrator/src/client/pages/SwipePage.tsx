@@ -27,17 +27,13 @@ export const SwipePage: React.FC = () => {
       pipelineTerminalEvent,
     });
 
-  const {
-    profiles,
-    selectedProfileId,
-    setSelected: setSelectedProfile,
-  } = useSelectedProfile();
+  const { profiles, selectedProfileIds, toggleProfile } = useSelectedProfile();
 
   const profileSelect = (
     <ProfileSelect
       profiles={profiles}
-      selectedProfileId={selectedProfileId}
-      onSelect={setSelectedProfile}
+      selectedProfileIds={selectedProfileIds}
+      onToggle={toggleProfile}
     />
   );
 
@@ -64,7 +60,7 @@ export const SwipePage: React.FC = () => {
       {profileSelect}
       <Button
         size="sm"
-        onClick={() => runPipelineNow(selectedProfileId ?? undefined)}
+        onClick={() => runPipelineNow(selectedProfileIds)}
         className="gap-2"
       >
         <Play className="h-4 w-4" />
@@ -95,7 +91,7 @@ export const SwipePage: React.FC = () => {
         <SwipeDeck
           pipelineTerminalEvent={pipelineTerminalEvent}
           isPipelineRunning={isPipelineRunning}
-          onRunPipeline={() => runPipelineNow(selectedProfileId ?? undefined)}
+          onRunPipeline={() => runPipelineNow(selectedProfileIds)}
         />
       </main>
     </div>

@@ -15,10 +15,16 @@ import {
   getExtractorRegistry,
 } from "@server/extractors/registry";
 import {
+  endProfileSequence,
   getPipelineStatus,
+  isProfileSequenceActive,
+  type ProfileSequenceEntry,
   requestPipelineCancel,
+  requestProfileSequenceCancel,
   runPipeline,
+  runProfileSequence,
   subscribeToProgress,
+  tryBeginProfileSequence,
 } from "@server/pipeline/index";
 import { getRunJobs } from "@server/pipeline/run-job-capture";
 import * as pipelineRepo from "@server/repositories/pipeline";
@@ -41,7 +47,9 @@ import {
 import { deriveMaxJobsPerTerm } from "@shared/run-budget.js";
 import { parseSearchCitiesSetting } from "@shared/search-cities.js";
 import {
+  type PipelineConfig,
   type PipelineStatusResponse,
+  type Profile,
   RUN_JOB_BUCKETS,
   type RunJobsResponse,
   SUITABILITY_CATEGORIES,
@@ -226,27 +234,264 @@ const runPipelineSchema = z.object({
   // Resolve the run's scrape config from this Profile. Body fields still win
   // per-field (one-off overrides); absent → the default Profile.
   profileId: z.string().min(1).optional(),
+  // Run several Profiles one after another. Deliberately no `.max()`: the count
+  // is bounded by how many Profiles exist, and an invented ceiling would be a
+  // magic number. Cannot be combined with `profileId`, `partial`, `sources` or
+  // `providerInstanceIds` (see the guards in the handler).
+  profileIds: z.array(z.string().min(1)).min(1).optional(),
 });
 
+type RunBody = z.infer<typeof runPipelineSchema>;
+
+interface ResolveRunConfigArgs {
+  body: RunBody;
+  profile: Profile | null;
+  enabledExtractorIds: Set<string>;
+  enabledInstanceIds: Set<string>;
+  loadRegistry: () => Promise<ExtractorRegistry | null>;
+}
+
+type ResolveRunConfigResult =
+  | { ok: true; config: Partial<PipelineConfig> }
+  | { ok: false; error: AppError };
+
+/**
+ * Turn one Profile (plus the request body's per-field overrides) into a
+ * pipeline config, or into the error that should fail the request.
+ *
+ * Everything here is per-profile. The three profile-independent loads — the
+ * enabled-extractor ids, the enabled provider instances, and the registry
+ * loader — are passed in so a multi-profile request does them once rather than
+ * once per profile.
+ */
+async function resolveProfileRunConfig(
+  args: ResolveRunConfigArgs,
+): Promise<ResolveRunConfigResult> {
+  const {
+    body,
+    profile,
+    enabledExtractorIds,
+    enabledInstanceIds,
+    loadRegistry,
+  } = args;
+  const profileConfig = profile?.config ?? null;
+
+  const resolvedSearchTerms = body.searchTerms ?? profileConfig?.searchTerms;
+  const resolvedProviderInstanceIds =
+    body.providerInstanceIds ?? profileConfig?.providerInstanceIds;
+
+  const locationIntent = createLocationIntent({
+    selectedCountry: body.country ?? profileConfig?.searchCountry,
+    cityLocations:
+      body.cityLocations ??
+      (profileConfig
+        ? parseSearchCitiesSetting(profileConfig.searchCities)
+        : undefined),
+    workplaceTypes: body.workplaceTypes ?? profileConfig?.workplaceTypes,
+    geoScope: body.searchScope ?? profileConfig?.locationSearchScope,
+    matchStrictness:
+      body.matchStrictness ?? profileConfig?.locationMatchStrictness,
+  });
+
+  // Sources: a body list wins verbatim (including `[]` = "no built-in
+  // extractors"). Otherwise expand the Search Profile's pinned extractor ids
+  // to their platform ids via the registry. An empty pin set means NO
+  // extractors — a tick means what it says, and there is no "empty = all"
+  // fallback. No profile at all → undefined → discovery uses every enabled
+  // extractor.
+  let resolvedSources: ExtractorSourceId[] | undefined;
+  if (body.sources !== undefined) {
+    resolvedSources = body.sources;
+  } else if (profileConfig) {
+    if (profileConfig.enabledSourceIds.length === 0) {
+      // Short-circuit before the registry load: an unavailable registry must
+      // not turn a "no sources selected" 400 into a 503.
+      resolvedSources = [];
+    } else {
+      const registry = await loadRegistry();
+      if (!registry) {
+        return { ok: false, error: registryUnavailable() };
+      }
+      const pinned = new Set(profileConfig.enabledSourceIds);
+      resolvedSources = Array.from(registry.manifestBySource.entries())
+        .filter(([, manifest]) => pinned.has(manifest.id))
+        .map(([platform]) => platform);
+    }
+  }
+
+  // Location compatibility is profile-dependent (it reads the resolved intent),
+  // unlike the unknown/disabled source checks the caller already ran.
+  if (body.sources && body.sources.length > 0) {
+    const sourcePlans = planLocationSources({
+      intent: locationIntent,
+      sources: body.sources,
+    });
+    if (sourcePlans.incompatibleSources.length > 0) {
+      const incompatible = sourcePlans.plans
+        .filter((plan) => !plan.isCompatible)
+        .map((plan) => ({
+          source: plan.source,
+          reasons: plan.reasons,
+        }));
+
+      return {
+        ok: false,
+        error: badRequest(
+          "Requested sources are incompatible with the selected location setup",
+          { incompatibleSources: incompatible },
+        ),
+      };
+    }
+  }
+
+  // EFFECTIVE = selected AND enabled. The guard tests this intersection, not
+  // the raw selection: a Search Profile pinned to a source that was later
+  // disabled on the Sources page has a NON-empty pin list, so a selection-only
+  // guard stays silent — discovery then drops the source (a bare `continue`
+  // at the grouping step) and the run succeeds having scraped nothing. Both
+  // sets must be empty to reject: the per-source re-run button deliberately
+  // empties one side to scope the run to the other.
+  const effectiveInstanceIds =
+    resolvedProviderInstanceIds === undefined
+      ? Array.from(enabledInstanceIds)
+      : resolvedProviderInstanceIds.filter((id) => enabledInstanceIds.has(id));
+
+  let effectiveSourceCount = 0;
+  if (resolvedSources === undefined || resolvedSources.length > 0) {
+    const registry = await loadRegistry();
+    if (!registry) {
+      return { ok: false, error: registryUnavailable() };
+    }
+    const candidates =
+      resolvedSources ?? Array.from(registry.manifestBySource.keys());
+    effectiveSourceCount = candidates.filter((source) => {
+      const manifest = registry.manifestBySource.get(source);
+      return manifest !== undefined && enabledExtractorIds.has(manifest.id);
+    }).length;
+  }
+
+  if (effectiveSourceCount === 0 && effectiveInstanceIds.length === 0) {
+    return {
+      ok: false,
+      error: badRequest(
+        profile
+          ? `No sources are enabled for the "${profile.name}" search profile. Enable a source on the Sources page, then select it in the search profile.`
+          : "No sources are enabled for this run. Enable a source on the Sources page, then select it in the search profile.",
+      ),
+    };
+  }
+
+  // maxJobsPerTerm: a body value wins; otherwise derive it from the Profile's
+  // run budget spread across the run's compatible extractor sources × terms
+  // (provider instances excluded from the divisor, mirroring the client).
+  let resolvedMaxJobsPerTerm = body.maxJobsPerTerm;
+  if (resolvedMaxJobsPerTerm === undefined && profileConfig) {
+    const compatibleSourceCount = resolvedSources
+      ? planLocationSources({
+          intent: locationIntent,
+          sources: resolvedSources,
+        }).compatibleSources.length
+      : 0;
+    resolvedMaxJobsPerTerm = deriveMaxJobsPerTerm({
+      budget: profileConfig.runBudget,
+      termCount: (resolvedSearchTerms ?? []).length,
+      sourceCount: compatibleSourceCount,
+    });
+  }
+
+  return {
+    ok: true,
+    config: {
+      topN: body.topN ?? profileConfig?.topN,
+      minSuitabilityCategory:
+        body.minSuitabilityCategory ?? profileConfig?.minSuitabilityCategory,
+      sources: resolvedSources,
+      providerInstanceIds: resolvedProviderInstanceIds,
+      maxJobsPerTerm: resolvedMaxJobsPerTerm,
+      searchTerms: resolvedSearchTerms,
+      scrapeMaxAgeDays: profileConfig?.scrapeMaxAgeDays,
+      blockedCompanyKeywords: profileConfig?.blockedCompanyKeywords,
+      locationIntent,
+      enableAutoTailoring: body.enableAutoTailoring,
+      partial: body.partial,
+    },
+  };
+}
+
+const registryUnavailable = () =>
+  serviceUnavailable(
+    "Extractor registry is unavailable. Try again after fixing startup errors.",
+  );
+
 pipelineRouter.post("/run", async (req: Request, res: Response) => {
+  // Set once the sequence slot is claimed and still owned by THIS handler.
+  // Handing the entries to `runProfileSequence` transfers ownership (its
+  // `finally` releases), so the flag is cleared before the hand-off.
+  let holdsSequenceClaim = false;
   try {
     const body = runPipelineSchema.parse(req.body);
 
-    // Resolve the Profile that backs this run: an explicit id (404 if missing),
-    // else the default Profile. A null default (pre-seed only) means the run is
-    // driven from the body alone — today's behavior. Every scrape field below
-    // resolves `body.X ?? profile.config.X`, so a one-off body override wins
-    // per-field without persisting to the Profile.
-    let profile: Awaited<ReturnType<typeof getProfile>> = null;
-    if (body.profileId) {
-      profile = await getProfile(body.profileId);
-      if (!profile) {
-        return fail(res, notFound(`Profile not found: ${body.profileId}`));
-      }
-    } else {
-      profile = await getDefaultProfile();
+    // A chain owns the pipeline until it ends. Without this, a run started in
+    // the seconds-wide gap between two profiles wins the singleton, and the
+    // chain's next profile is silently skipped — `runPipeline` reports
+    // "already running" as a return value, so nothing surfaces it.
+    if (isProfileSequenceActive()) {
+      return fail(
+        res,
+        conflict("A multi-profile run is in progress. Cancel it first."),
+      );
     }
-    const profileConfig = profile?.config ?? null;
+
+    if (body.profileIds) {
+      // Symmetrically: starting a chain while a single run is in flight would
+      // burn through every profile instantly on that same guard.
+      if (getPipelineStatus().isRunning) {
+        return fail(
+          res,
+          conflict("A pipeline run is already in progress. Cancel it first."),
+        );
+      }
+
+      // These combinations have no coherent meaning across N profiles, and
+      // `partial` would make each profile accrete the previous one's funnel
+      // rows and captures. Refusing them is also what keeps the multi path free
+      // of body-driven source validation entirely.
+      const conflictingKey =
+        body.profileId !== undefined
+          ? "profileId"
+          : body.partial !== undefined
+            ? "partial"
+            : body.sources !== undefined
+              ? "sources"
+              : body.providerInstanceIds !== undefined
+                ? "providerInstanceIds"
+                : null;
+      if (conflictingKey) {
+        return fail(
+          res,
+          badRequest(`profileIds cannot be combined with ${conflictingKey}`),
+        );
+      }
+
+      const uniqueIds = new Set(body.profileIds);
+      if (uniqueIds.size !== body.profileIds.length) {
+        return fail(res, badRequest("profileIds contains duplicate entries"));
+      }
+
+      // Claimed HERE, synchronously before the first await. A read-then-act
+      // check would let two concurrent requests both pass while they await the
+      // profile and registry loads below, and both start a chain — clobbering
+      // each other's active-profile context and silently skipping profiles
+      // (the pipeline singleton reports "already running" as a return value,
+      // not a throw).
+      if (!tryBeginProfileSequence()) {
+        return fail(
+          res,
+          conflict("A multi-profile run is already in progress"),
+        );
+      }
+      holdsSequenceClaim = true;
+    }
 
     let cachedRegistry: ExtractorRegistry | null = null;
     let registryFailed = false;
@@ -266,74 +511,25 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
       }
     };
 
-    const resolvedSearchTerms = body.searchTerms ?? profileConfig?.searchTerms;
-    const resolvedProviderInstanceIds =
-      body.providerInstanceIds ?? profileConfig?.providerInstanceIds;
-
-    const locationIntent = createLocationIntent({
-      selectedCountry: body.country ?? profileConfig?.searchCountry,
-      cityLocations:
-        body.cityLocations ??
-        (profileConfig
-          ? parseSearchCitiesSetting(profileConfig.searchCities)
-          : undefined),
-      workplaceTypes: body.workplaceTypes ?? profileConfig?.workplaceTypes,
-      geoScope: body.searchScope ?? profileConfig?.locationSearchScope,
-      matchStrictness:
-        body.matchStrictness ?? profileConfig?.locationMatchStrictness,
-    });
-
-    // Sources: a body list wins verbatim (including `[]` = "no built-in
-    // extractors"). Otherwise expand the Search Profile's pinned extractor ids
-    // to their platform ids via the registry. An empty pin set means NO
-    // extractors — a tick means what it says, and there is no "empty = all"
-    // fallback. No profile at all → undefined → discovery uses every enabled
-    // extractor.
-    let resolvedSources: ExtractorSourceId[] | undefined;
-    if (body.sources !== undefined) {
-      resolvedSources = body.sources;
-    } else if (profileConfig) {
-      if (profileConfig.enabledSourceIds.length === 0) {
-        // Short-circuit before the registry load: an unavailable registry must
-        // not turn a "no sources selected" 400 into a 503.
-        resolvedSources = [];
-      } else {
-        const registry = await loadRegistry();
-        if (!registry) {
-          return fail(
-            res,
-            serviceUnavailable(
-              "Extractor registry is unavailable. Try again after fixing startup errors.",
-            ),
-          );
-        }
-        const pinned = new Set(profileConfig.enabledSourceIds);
-        resolvedSources = Array.from(registry.manifestBySource.entries())
-          .filter(([, manifest]) => pinned.has(manifest.id))
-          .map(([platform]) => platform);
-      }
-    }
-
     // A source runs only when the User Profile has it enabled (Sources page)
     // AND the run selects it. Both sets are needed below to gate on the
-    // EFFECTIVE selection rather than the raw one.
+    // EFFECTIVE selection rather than the raw one. Profile-independent, so a
+    // multi-profile request loads them once, not once per profile.
     const enabledExtractorIds = new Set(await getEnabledExtractorIds());
     const enabledInstanceIds = new Set(
       (await getEnabledProviderInstances()).map((row) => row.id),
     );
 
-    // Body-provided sources are validated (unknown → 400, incompatible with the
-    // resolved location intent → 400). Profile-derived sources are NOT gated
-    // here — discovery skips incompatible ones rather than failing the run.
+    // Body-provided sources are validated here (unknown → 400, disabled → 400)
+    // because they depend on the body alone, not on any profile — running them
+    // per profile would produce N identical errors attributed to an arbitrary
+    // profile. The location-compatibility check IS profile-dependent and lives
+    // in `resolveProfileRunConfig`. Profile-derived sources are NOT gated —
+    // discovery skips incompatible ones rather than failing the run.
     if (body.sources && body.sources.length > 0) {
       const registry = await loadRegistry();
       if (!registry) {
-        return fail(
-          res,
-          serviceUnavailable(
-            "Extractor registry is unavailable. Try again after fixing startup errors.",
-          ),
-        );
+        return fail(res, registryUnavailable());
       }
       const unavailableSources = body.sources.filter(
         (source) => !registry.manifestBySource.has(source),
@@ -365,27 +561,6 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
           ),
         );
       }
-
-      const sourcePlans = planLocationSources({
-        intent: locationIntent,
-        sources: body.sources,
-      });
-      if (sourcePlans.incompatibleSources.length > 0) {
-        const incompatible = sourcePlans.plans
-          .filter((plan) => !plan.isCompatible)
-          .map((plan) => ({
-            source: plan.source,
-            reasons: plan.reasons,
-          }));
-
-        return fail(
-          res,
-          badRequest(
-            "Requested sources are incompatible with the selected location setup",
-            { incompatibleSources: incompatible },
-          ),
-        );
-      }
     }
 
     if (body.providerInstanceIds && body.providerInstanceIds.length > 0) {
@@ -403,80 +578,76 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
       }
     }
 
-    // EFFECTIVE = selected AND enabled. The guard tests this intersection, not
-    // the raw selection: a Search Profile pinned to a source that was later
-    // disabled on the Sources page has a NON-empty pin list, so a selection-only
-    // guard stays silent — discovery then drops the source (a bare `continue`
-    // at the grouping step) and the run succeeds having scraped nothing. Both
-    // sets must be empty to reject: the per-source re-run button deliberately
-    // empties one side to scope the run to the other.
-    const effectiveInstanceIds =
-      resolvedProviderInstanceIds === undefined
-        ? Array.from(enabledInstanceIds)
-        : resolvedProviderInstanceIds.filter((id) => enabledInstanceIds.has(id));
-
-    let effectiveSourceCount = 0;
-    if (resolvedSources === undefined || resolvedSources.length > 0) {
-      const registry = await loadRegistry();
-      if (!registry) {
-        return fail(
-          res,
-          serviceUnavailable(
-            "Extractor registry is unavailable. Try again after fixing startup errors.",
-          ),
-        );
+    // Multi-profile: resolve EVERY profile before starting anything, so a
+    // broken profile late in the list fails the whole request instead of being
+    // discovered after earlier profiles have already scraped.
+    if (body.profileIds) {
+      const entries: ProfileSequenceEntry[] = [];
+      for (const profileId of body.profileIds) {
+        const profile = await getProfile(profileId);
+        if (!profile) {
+          return fail(res, notFound(`Profile not found: ${profileId}`));
+        }
+        const resolved = await resolveProfileRunConfig({
+          body,
+          profile,
+          enabledExtractorIds,
+          enabledInstanceIds,
+          loadRegistry,
+        });
+        if (!resolved.ok) {
+          return fail(res, resolved.error);
+        }
+        entries.push({
+          profile: { id: profile.id, name: profile.name },
+          config: resolved.config,
+        });
       }
-      const candidates =
-        resolvedSources ?? Array.from(registry.manifestBySource.keys());
-      effectiveSourceCount = candidates.filter((source) => {
-        const manifest = registry.manifestBySource.get(source);
-        return manifest !== undefined && enabledExtractorIds.has(manifest.id);
-      }).length;
-    }
 
-    if (effectiveSourceCount === 0 && effectiveInstanceIds.length === 0) {
-      return fail(
-        res,
-        badRequest(
-          "No sources are enabled for this run. Enable a source on the Sources page, then select it in the search profile.",
-        ),
-      );
-    }
-
-    // maxJobsPerTerm: a body value wins; otherwise derive it from the Profile's
-    // run budget spread across the run's compatible extractor sources × terms
-    // (provider instances excluded from the divisor, mirroring the client).
-    let resolvedMaxJobsPerTerm = body.maxJobsPerTerm;
-    if (resolvedMaxJobsPerTerm === undefined && profileConfig) {
-      const compatibleSourceCount = resolvedSources
-        ? planLocationSources({
-            intent: locationIntent,
-            sources: resolvedSources,
-          }).compatibleSources.length
-        : 0;
-      resolvedMaxJobsPerTerm = deriveMaxJobsPerTerm({
-        budget: profileConfig.runBudget,
-        termCount: (resolvedSearchTerms ?? []).length,
-        sourceCount: compatibleSourceCount,
+      runWithRequestContext({}, () => {
+        runProfileSequence(entries).catch((error) => {
+          logger.error("Background multi-profile run failed", error);
+        });
       });
+      // Ownership of the claim has passed to the sequence, which releases it in
+      // its own `finally`. Cleared after the call, not before, so a throw on
+      // the way in still lets this handler's `finally` give the slot back.
+      holdsSequenceClaim = false;
+      return ok(res, {
+        message: "Pipeline started",
+        profileCount: entries.length,
+      });
+    }
+
+    // Resolve the Profile that backs this run: an explicit id (404 if missing),
+    // else the default Profile. A null default (pre-seed only) means the run is
+    // driven from the body alone — today's behavior. Every scrape field
+    // resolves `body.X ?? profile.config.X`, so a one-off body override wins
+    // per-field without persisting to the Profile.
+    let profile: Awaited<ReturnType<typeof getProfile>> = null;
+    if (body.profileId) {
+      profile = await getProfile(body.profileId);
+      if (!profile) {
+        return fail(res, notFound(`Profile not found: ${body.profileId}`));
+      }
+    } else {
+      profile = await getDefaultProfile();
+    }
+
+    const resolved = await resolveProfileRunConfig({
+      body,
+      profile,
+      enabledExtractorIds,
+      enabledInstanceIds,
+      loadRegistry,
+    });
+    if (!resolved.ok) {
+      return fail(res, resolved.error);
     }
 
     // Start pipeline in background
     runWithRequestContext({}, () => {
-      runPipeline({
-        topN: body.topN ?? profileConfig?.topN,
-        minSuitabilityCategory:
-          body.minSuitabilityCategory ?? profileConfig?.minSuitabilityCategory,
-        sources: resolvedSources,
-        providerInstanceIds: resolvedProviderInstanceIds,
-        maxJobsPerTerm: resolvedMaxJobsPerTerm,
-        searchTerms: resolvedSearchTerms,
-        scrapeMaxAgeDays: profileConfig?.scrapeMaxAgeDays,
-        blockedCompanyKeywords: profileConfig?.blockedCompanyKeywords,
-        locationIntent,
-        enableAutoTailoring: body.enableAutoTailoring,
-        partial: body.partial,
-      }).catch((error) => {
+      runPipeline(resolved.config).catch((error) => {
         logger.error("Background pipeline run failed", error);
       });
     });
@@ -496,6 +667,13 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
         message: error instanceof Error ? error.message : "Unknown error",
       }),
     );
+  } finally {
+    // Any exit that did not hand the entries to the sequence must give the slot
+    // back, or every later multi-profile run 409s and the app believes a run is
+    // in progress forever.
+    if (holdsSequenceClaim) {
+      endProfileSequence();
+    }
   }
 });
 
@@ -504,8 +682,21 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
  */
 pipelineRouter.post("/cancel", async (_req: Request, res: Response) => {
   try {
+    // Stop the chain first, then the in-flight run. Gated on an ACTIVE
+    // sequence: setting the flag during a plain single run would strand it
+    // (only the sequence's `finally` clears it), and the next multi-profile run
+    // would break on its first iteration and report "cancelled" having run
+    // nothing.
+    const sequenceActive = isProfileSequenceActive();
+    if (sequenceActive) {
+      requestProfileSequenceCancel();
+    }
+
     const cancelResult = requestPipelineCancel();
-    if (!cancelResult.accepted) {
+    // A cancel landing in the gap between two profiles finds no in-flight run,
+    // but the chain is still live and has just been told to stop — that is an
+    // accepted cancellation, not a "nothing to cancel".
+    if (!cancelResult.accepted && !sequenceActive) {
       return fail(res, conflict("No running pipeline to cancel"));
     }
 

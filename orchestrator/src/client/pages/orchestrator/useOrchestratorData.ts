@@ -37,6 +37,17 @@ type PipelineProgressEvent = {
   startedAt?: string;
   completedAt?: string;
   error?: string;
+  /**
+   * Present while a multi-profile run is in flight. Its presence means the
+   * event belongs to ONE profile of a chain, so the chain itself is still
+   * running whatever this event's step says.
+   */
+  profileRun?: {
+    id: string;
+    name: string;
+    index: number;
+    total: number;
+  } | null;
 };
 
 type PipelineTerminalStatus = "completed" | "cancelled" | "failed";
@@ -382,6 +393,23 @@ export const useOrchestratorData = (
 
           const typedStep = step as PipelineProgressStep;
           const isActiveStep = ACTIVE_PIPELINE_STEPS.has(typedStep);
+
+          // A multi-profile chain declares its own end: every event it emits
+          // mid-chain is tagged with the profile it belongs to, and the one
+          // untagged terminal at the end is the chain's. So a tagged event
+          // never ends the run here — not the per-profile terminal, and not
+          // the "idle" a profile sits in between reset and first crawl (which
+          // is also what a re-subscribing client replays).
+          const chainEvent =
+            (payload as PipelineProgressEvent).profileRun != null;
+          if (chainEvent && !isActiveStep) {
+            observePipelineState({ isRunning: true, terminal: null });
+            // Surface the finished profile's imports now rather than waiting
+            // for the next profile's throttled refresh.
+            if (TERMINAL_PIPELINE_STEPS.has(typedStep)) void loadJobs();
+            return;
+          }
+
           if (isActiveStep) {
             observePipelineState({ isRunning: true, terminal: null });
           } else if (typedStep === "idle") {

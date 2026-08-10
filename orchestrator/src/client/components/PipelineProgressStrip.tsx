@@ -36,15 +36,25 @@ export const PipelineProgressStrip: React.FC<PipelineProgressStripProps> = ({
 
   if (!isRunning) return null;
 
-  const step = progress?.step ?? "crawling";
+  const profileRun = progress?.profileRun ?? null;
   const percentage = progress ? computePercentage(progress) : 0;
   const message = progress?.message ?? "Starting pipeline…";
+  // Mid-chain, a profile's own terminal step would read "Complete" here while
+  // the chain keeps going; the chain is only done once the events stop being
+  // tagged, so fall back to the running label until then.
+  const rawStep = progress?.step ?? "crawling";
+  const step = profileRun && rawStep === "completed" ? "crawling" : rawStep;
 
   return (
     <div className="border-b bg-background/80 px-4 py-2">
       <div className="flex items-center gap-2 text-xs">
         <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
         <span className="shrink-0 font-medium">{stepLabels[step]}</span>
+        {profileRun && (
+          <span className="shrink-0 text-primary">
+            {profileRun.index}/{profileRun.total}
+          </span>
+        )}
         <span className="min-w-0 flex-1 truncate text-muted-foreground">
           {message}
         </span>

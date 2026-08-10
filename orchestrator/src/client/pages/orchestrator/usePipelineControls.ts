@@ -12,7 +12,7 @@ type UsePipelineControlsArgs = {
 
 export type UsePipelineControlsResult = {
   isCancelling: boolean;
-  runPipelineNow: (profileId?: string) => Promise<void>;
+  runPipelineNow: (profileIds?: string[]) => Promise<void>;
   handleCancelPipeline: () => Promise<void>;
   handleRerunSource: (source: JobSource) => Promise<void>;
 };
@@ -46,6 +46,7 @@ export function usePipelineControls(
   const startPipelineRun = useCallback(
     async (config: {
       profileId?: string;
+      profileIds?: string[];
       sources?: JobSource[];
       providerInstanceIds?: string[];
       partial?: boolean;
@@ -55,6 +56,7 @@ export function usePipelineControls(
         setIsCancelling(false);
         await api.runPipeline({
           profileId: config.profileId,
+          profileIds: config.profileIds,
           sources: config.sources,
           providerInstanceIds: config.providerInstanceIds,
           partial: config.partial,
@@ -62,12 +64,15 @@ export function usePipelineControls(
         const sources = config.sources ?? [];
         const scopeCount =
           sources.length + (config.providerInstanceIds?.length ?? 0);
+        const profileCount = config.profileIds?.length ?? 0;
         const scopeLabel =
           sources.length > 0
             ? `Sources: ${sources.join(", ")}`
             : scopeCount > 0
               ? `${scopeCount} source(s)`
-              : "Selected profile";
+              : profileCount > 1
+                ? `${profileCount} profiles, one after another`
+                : "Selected profile";
         toast.message("Pipeline started", {
           description: `${scopeLabel}. This may take a few minutes.`,
         });
@@ -83,8 +88,14 @@ export function usePipelineControls(
   );
 
   const runPipelineNow = useCallback(
-    async (profileId?: string) => {
-      await startPipelineRun({ profileId });
+    async (profileIds?: string[]) => {
+      // One profile keeps the single-run shape (`profileId`), which the server
+      // runs directly; several go through `profileIds` and the sequence runner.
+      if (profileIds && profileIds.length > 1) {
+        await startPipelineRun({ profileIds });
+        return;
+      }
+      await startPipelineRun({ profileId: profileIds?.[0] });
     },
     [startPipelineRun],
   );

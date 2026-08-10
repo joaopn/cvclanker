@@ -1005,6 +1005,8 @@ export async function getPipelineRunInsights(
 
 export async function runPipeline(config?: {
   profileId?: string;
+  /** Run several profiles one after another. Not combinable with profileId. */
+  profileIds?: string[];
   topN?: number;
   minSuitabilityCategory?: SuitabilityCategory;
   sources?: JobSource[];

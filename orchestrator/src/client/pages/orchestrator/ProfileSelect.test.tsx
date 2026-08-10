@@ -1,67 +1,43 @@
 import { defaultProfileConfig, type Profile } from "@shared/types";
 import { fireEvent, render, screen } from "@testing-library/react";
-import React from "react";
+import type React from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ProfileSelect } from "./ProfileSelect";
 
-// The real Radix Select can't open in jsdom (no pointer-capture / scrollIntoView
-// stubs). Mock it to a button-per-item shell — this validates ProfileSelect's
-// mapping (profiles -> items, onValueChange -> onSelect, selectedProfileId ->
-// value), not Radix behaviour, which is left to the browser smoke.
-vi.mock("@/components/ui/select", () => {
-  const SelectContext = React.createContext<{
-    onValueChange?: (value: string) => void;
-  } | null>(null);
-
-  const Select = ({
+// The real Radix DropdownMenu can't open in jsdom (no pointer-capture /
+// ResizeObserver). Mock it to an always-rendered shell — this validates
+// ProfileSelect's mapping (profiles -> checkbox items, tick -> onToggle,
+// selection -> trigger label), not Radix behaviour, which is left to the
+// browser smoke.
+vi.mock("@/components/ui/dropdown-menu", () => ({
+  DropdownMenu: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DropdownMenuCheckboxItem: ({
     children,
-    value,
-    onValueChange,
+    checked,
+    onCheckedChange,
   }: {
     children: React.ReactNode;
-    value?: string;
-    onValueChange?: (value: string) => void;
+    checked?: boolean;
+    onCheckedChange?: (checked: boolean) => void;
   }) => (
-    <SelectContext.Provider value={{ onValueChange }}>
-      <div>
-        <input readOnly value={value ?? ""} aria-label="select-value" />
-        {children}
-      </div>
-    </SelectContext.Provider>
-  );
-
-  const SelectContent = ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  );
-
-  const SelectItem = ({
-    value,
-    children,
-  }: {
-    value: string;
-    children: React.ReactNode;
-  }) => {
-    const context = React.useContext(SelectContext);
-    return (
-      <button type="button" onClick={() => context?.onValueChange?.(value)}>
-        {children}
-      </button>
-    );
-  };
-
-  const SelectTrigger = ({
-    children,
-    ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
-    <button type="button" role="combobox" aria-expanded="false" {...props}>
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={checked ? "true" : "false"}
+      onClick={() => onCheckedChange?.(!checked)}
+    >
       {children}
     </button>
-  );
-
-  const SelectValue = () => null;
-
-  return { Select, SelectContent, SelectItem, SelectTrigger, SelectValue };
-});
+  ),
+}));
 
 function makeProfile(id: string, name: string): Profile {
   return {
@@ -76,51 +52,79 @@ function makeProfile(id: string, name: string): Profile {
 const PROFILES = [
   makeProfile("a", "Berlin backend"),
   makeProfile("b", "EU ML"),
+  makeProfile("c", "Remote data"),
 ];
 
 describe("ProfileSelect", () => {
-  it("renders an item per profile", () => {
+  it("renders an item per profile, ticked for the selected ones", () => {
     render(
       <ProfileSelect
         profiles={PROFILES}
-        selectedProfileId="a"
-        onSelect={vi.fn()}
+        selectedProfileIds={["a", "c"]}
+        onToggle={vi.fn()}
       />,
     );
-    expect(screen.getByText("Berlin backend")).toBeInTheDocument();
-    expect(screen.getByText("EU ML")).toBeInTheDocument();
+
+    expect(
+      screen.getByRole("menuitemcheckbox", { name: "Berlin backend" }),
+    ).toHaveAttribute("aria-checked", "true");
+    expect(
+      screen.getByRole("menuitemcheckbox", { name: "EU ML" }),
+    ).toHaveAttribute("aria-checked", "false");
+    expect(
+      screen.getByRole("menuitemcheckbox", { name: "Remote data" }),
+    ).toHaveAttribute("aria-checked", "true");
   });
 
-  it("reflects the selected profile id as the value", () => {
-    render(
+  it("shows the profile name for one selection and a count for several", () => {
+    const { rerender } = render(
       <ProfileSelect
         profiles={PROFILES}
-        selectedProfileId="b"
-        onSelect={vi.fn()}
+        selectedProfileIds={["b"]}
+        onToggle={vi.fn()}
       />,
     );
-    expect(screen.getByLabelText("select-value")).toHaveValue("b");
+    expect(
+      screen.getByRole("button", { name: /Active profiles/ }),
+    ).toHaveTextContent("EU ML");
+
+    rerender(
+      <ProfileSelect
+        profiles={PROFILES}
+        selectedProfileIds={["a", "b"]}
+        onToggle={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: /Active profiles/ }),
+    ).toHaveTextContent("2 profiles");
   });
 
-  it("calls onSelect with the profile id when an item is chosen", () => {
-    const onSelect = vi.fn();
+  it("reports a toggle with the profile id, both ticking and unticking", () => {
+    const onToggle = vi.fn();
     render(
       <ProfileSelect
         profiles={PROFILES}
-        selectedProfileId="a"
-        onSelect={onSelect}
+        selectedProfileIds={["a"]}
+        onToggle={onToggle}
       />,
     );
-    fireEvent.click(screen.getByText("EU ML"));
-    expect(onSelect).toHaveBeenCalledWith("b");
+
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "EU ML" }));
+    expect(onToggle).toHaveBeenCalledWith("b");
+
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Berlin backend" }),
+    );
+    expect(onToggle).toHaveBeenCalledWith("a");
   });
 
   it("renders nothing when there are no profiles", () => {
     const { container } = render(
       <ProfileSelect
         profiles={[]}
-        selectedProfileId={null}
-        onSelect={vi.fn()}
+        selectedProfileIds={[]}
+        onToggle={vi.fn()}
       />,
     );
     expect(container).toBeEmptyDOMElement();

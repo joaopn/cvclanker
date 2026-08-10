@@ -5,6 +5,7 @@ import {
   sourceLabel as resolveExtractorLabel,
 } from "@shared/extractors";
 import type {
+  PipelineProfileRun,
   PipelineProgressEvent,
   PipelineProgressStep,
   PipelineSourceStats,
@@ -217,6 +218,18 @@ function aggregateCrawlingStats() {
 }
 
 /**
+ * Which profile of a multi-profile sequence is running right now. Stamped onto
+ * every emitted event (and onto the reset state) rather than passed through the
+ * helpers, so no progress helper — and nothing inside `runPipeline` — has to
+ * know sequences exist.
+ */
+let activeProfileRun: PipelineProfileRun | null = null;
+
+export function setActiveProfileRun(value: PipelineProfileRun | null): void {
+  activeProfileRun = value;
+}
+
+/**
  * Update the current progress and notify all listeners.
  */
 export function updateProgress(update: Partial<PipelineProgress>): void {
@@ -224,6 +237,7 @@ export function updateProgress(update: Partial<PipelineProgress>): void {
     ...currentProgress,
     ...update,
     sourceStats: buildSourceStats(),
+    profileRun: activeProfileRun,
   };
 
   // Notify all listeners
@@ -286,6 +300,11 @@ export function resetProgress(options?: {
     jobsProcessed: 0,
     totalToProcess: 0,
     sourceStats: options?.preserveSourceStats ? buildSourceStats() : [],
+    // Stamped here too, not only in updateProgress: `subscribeToProgress`
+    // replays `currentProgress` to every NEW subscriber, and this idle state is
+    // what a mid-sequence re-subscribe would otherwise see — an untagged "idle"
+    // that reads as "no run in progress" between two profiles.
+    profileRun: activeProfileRun,
   };
 }
 
@@ -665,6 +684,30 @@ export const progressHelpers = {
       detail: error,
       error,
       completedAt: new Date().toISOString(),
+    });
+  },
+
+  /**
+   * The single terminal a multi-profile sequence emits for the WHOLE chain,
+   * after clearing the active-profile context so it arrives untagged. `status`
+   * is restricted to the three real terminal steps: the client drops any event
+   * whose step it doesn't know, and an invented one would leave the run
+   * hanging forever with no toast.
+   */
+  sequenceFinished: (args: {
+    status: "completed" | "cancelled" | "failed";
+    message: string;
+    detail: string;
+    error?: string;
+  }) => {
+    sweepInFlightRows(args.status === "completed" ? "completed" : "failed");
+    updateProgress({
+      step: args.status,
+      message: args.message,
+      detail: args.detail,
+      error: args.error,
+      completedAt: new Date().toISOString(),
+      currentJob: undefined,
     });
   },
 };

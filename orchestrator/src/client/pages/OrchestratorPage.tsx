@@ -273,11 +273,7 @@ export const OrchestratorPage: React.FC = () => {
     pipelineTerminalEvent,
   });
 
-  const {
-    profiles,
-    selectedProfileId,
-    setSelected: setSelectedProfile,
-  } = useSelectedProfile();
+  const { profiles, selectedProfileIds, toggleProfile } = useSelectedProfile();
 
   const activeFacetsForTab = facetsEnabledForTab
     ? facetFilters.activeFacets
@@ -530,7 +526,7 @@ export const OrchestratorPage: React.FC = () => {
     if (activeTab === "inbox" || activeTab === "all") {
       return {
         label: "Run pipeline",
-        onClick: () => runPipelineNow(selectedProfileId ?? undefined),
+        onClick: () => runPipelineNow(selectedProfileIds),
       };
     }
 
@@ -539,7 +535,7 @@ export const OrchestratorPage: React.FC = () => {
     activeTab,
     counts.discovered,
     runPipelineNow,
-    selectedProfileId,
+    selectedProfileIds,
     setActiveTab,
   ]);
 
@@ -547,12 +543,12 @@ export const OrchestratorPage: React.FC = () => {
     if (activeTab === "tailoring") {
       return {
         label: "Run pipeline",
-        onClick: () => runPipelineNow(selectedProfileId ?? undefined),
+        onClick: () => runPipelineNow(selectedProfileIds),
       };
     }
 
     return undefined;
-  }, [activeTab, runPipelineNow, selectedProfileId]);
+  }, [activeTab, runPipelineNow, selectedProfileIds]);
 
   const emptyStateMessage = useMemo(() => {
     if (dateFilter.dimensions.length === 0) {
@@ -579,11 +575,11 @@ export const OrchestratorPage: React.FC = () => {
             profileSelect={
               <ProfileSelect
                 profiles={profiles}
-                selectedProfileId={selectedProfileId}
-                onSelect={setSelectedProfile}
+                selectedProfileIds={selectedProfileIds}
+                onToggle={toggleProfile}
               />
             }
-            onRunPipeline={() => runPipelineNow(selectedProfileId ?? undefined)}
+            onRunPipeline={() => runPipelineNow(selectedProfileIds)}
             onOpenBatchUrlImport={() => setIsBatchUrlImportOpen(true)}
             onOpenLlmQueue={() => setIsLlmQueueOpen(true)}
             llmActiveCount={llmQueue.active.length}

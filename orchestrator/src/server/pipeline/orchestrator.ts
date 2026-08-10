@@ -26,6 +26,7 @@ import {
   updatePipelineRunResultSummary,
 } from "./run-details";
 import { resetRunJobCapture } from "./run-job-capture";
+import { isProfileSequenceActive } from "./sequence-state";
 import {
   discoverJobsStep,
   importJobsStep,
@@ -566,9 +567,16 @@ async function runProcessJob(
 
 /**
  * Check if pipeline is currently running.
+ *
+ * A multi-profile sequence counts as running even in the gap between two
+ * profiles, where `isPipelineRunning` is briefly false. Composed here rather
+ * than at any one call site because this flag is a safety guard, not just
+ * banner state: it gates the User Profile DB swap (which closes and replaces
+ * the live SQLite file) and the claude-code CLI update. All consumers must
+ * agree, or the next profile's run writes into a swapped database.
  */
 export function getPipelineStatus(): { isRunning: boolean } {
-  return { isRunning: isPipelineRunning };
+  return { isRunning: isPipelineRunning || isProfileSequenceActive() };
 }
 
 export function requestPipelineCancel(): {

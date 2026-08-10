@@ -3,21 +3,26 @@ import { queryKeys } from "@client/lib/queryKeys";
 import { toast } from "@client/lib/toast";
 import type { Profile } from "@shared/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 export type UseSelectedProfileResult = {
   profiles: Profile[];
   selectedProfileId: string | null;
-  setSelected: (id: string) => void;
+  selectedProfileIds: string[];
+  toggleProfile: (id: string) => void;
   isLoading: boolean;
 };
 
 /**
- * Owns which Profile the header dropdown shows and drives runs with. The
- * selection is persisted server-side (`setDefaultProfile`) so it survives
- * reload and affects every future run, while a local `override` reflects the
- * pick synchronously — the run passes `selectedProfileId` explicitly so a
- * select-then-run can't race the in-flight set-default mutation.
+ * Owns which Profiles the header dropdown shows and drives runs with. Ticking
+ * several makes the next run sequential.
+ *
+ * Only the FIRST selected profile is persisted server-side
+ * (`setDefaultProfile`), which keeps single-selection behaviour identical to
+ * before and leaves API callers with a default to resolve. The rest of the set
+ * is session state: it is a choice made immediately before pressing Run, and
+ * persisting it would need its own settings key. A reload falls back to the
+ * single default.
  *
  * `selectedProfileId` mirrors the server resolver: an explicit local pick, else
  * the persisted default, else the most-recent profile (getProfiles is ordered
@@ -30,7 +35,7 @@ export function useSelectedProfile(): UseSelectedProfileResult {
     queryKey: queryKeys.profiles.list(),
     queryFn: api.getProfiles,
   });
-  const [override, setOverride] = useState<string | null>(null);
+  const [override, setOverride] = useState<string[] | null>(null);
 
   const mutation = useMutation({
     mutationFn: (id: string) => api.setDefaultProfile(id),
@@ -45,21 +50,52 @@ export function useSelectedProfile(): UseSelectedProfileResult {
   });
 
   const profiles = query.data?.profiles ?? [];
-  const selectedProfileId =
-    override ??
-    query.data?.defaultProfileId ??
-    query.data?.profiles[0]?.id ??
-    null;
+  const fallbackId =
+    query.data?.defaultProfileId ?? query.data?.profiles[0]?.id ?? null;
+  // Memoised: this is the untouched-dropdown path, and a fresh array each
+  // render would bust every consumer's memo that lists it as a dependency.
+  const fallbackIds = useMemo(
+    () => (fallbackId ? [fallbackId] : []),
+    [fallbackId],
+  );
+  const selectedProfileIds = override ?? fallbackIds;
+  const selectedProfileId = selectedProfileIds[0] ?? null;
 
-  const setSelected = (id: string) => {
-    setOverride(id);
-    mutation.mutate(id);
+  const toggleProfile = (id: string) => {
+    const next = selectedProfileIds.includes(id)
+      ? selectedProfileIds.filter((entry) => entry !== id)
+      : // Keep the dropdown's own order so the run order matches what the user
+        // sees, rather than the click order.
+        profiles
+          .map((profile) => profile.id)
+          .filter(
+            (profileId) =>
+              selectedProfileIds.includes(profileId) || profileId === id,
+          );
+
+    // A run always needs at least one profile, mirroring the old
+    // exactly-one selection: refuse to untick the last one.
+    if (next.length === 0) return;
+
+    setOverride(next);
+
+    // Persist the default ONLY when the selection is unambiguous. Adding a
+    // second profile to a one-off run must not silently repoint the default
+    // that every profile-less run resolves — and it would, since `next` is in
+    // dropdown order, so ticking a newer profile changes the head. Compared
+    // against the STORED default rather than the current head: narrowing
+    // ["a","b"] back to ["a"] leaves the head unchanged but is still the user
+    // settling on a new single profile.
+    if (next.length === 1 && next[0] !== query.data?.defaultProfileId) {
+      mutation.mutate(next[0] as string);
+    }
   };
 
   return {
     profiles,
     selectedProfileId,
-    setSelected,
+    selectedProfileIds,
+    toggleProfile,
     isLoading: query.isLoading,
   };
 }

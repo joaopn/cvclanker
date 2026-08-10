@@ -47,6 +47,16 @@ vi.mock("@server/pipeline/index", () => {
       alreadyRequested: false,
     })),
     isPipelineCancelRequested: vi.fn(() => false),
+    // `runProfileSequence` must RESOLVE: the route chains `.catch()` on it, so
+    // a bare `vi.fn()` returning undefined would 500 every multi-profile test.
+    // The claim defaults to grantable and the active flag to false so the new
+    // 409 never fires on a pre-existing single-run test.
+    runProfileSequence: vi.fn().mockResolvedValue(undefined),
+    tryBeginProfileSequence: vi.fn(() => true),
+    endProfileSequence: vi.fn(),
+    isProfileSequenceActive: vi.fn(() => false),
+    requestProfileSequenceCancel: vi.fn(),
+    isProfileSequenceCancelRequested: vi.fn(() => false),
     subscribeToProgress: vi.fn((listener: (data: unknown) => void) => {
       listener(progress);
       return () => {};

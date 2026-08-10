@@ -231,12 +231,28 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
   if (dismissed) return null;
   if (!isRunning && !progress) return null;
 
-  const step = progress?.step ?? "idle";
+  const rawStep = progress?.step ?? "idle";
+  const profileRun = progress?.profileRun ?? null;
+  // One profile of a chain reaching a terminal step does not end the chain,
+  // and `resetProgress` doesn't notify listeners — so that tagged terminal is
+  // the last event received until the next profile starts crawling. Showing
+  // its label verbatim would park a green "Complete" badge (or a red "Failed")
+  // over a run that is still going, for as long as the next profile's setup
+  // takes. The chain's own end arrives untagged.
+  const step =
+    profileRun != null &&
+    (rawStep === "completed" || rawStep === "cancelled" || rawStep === "failed")
+      ? "crawling"
+      : rawStep;
+  // A tagged event belongs to one profile of a multi-profile chain, so the run
+  // is still active even when that profile's own step reads terminal — this is
+  // what keeps the per-source re-run buttons off between profiles.
   const isActive =
-    step !== "idle" &&
-    step !== "completed" &&
-    step !== "cancelled" &&
-    step !== "failed";
+    profileRun != null ||
+    (step !== "idle" &&
+      step !== "completed" &&
+      step !== "cancelled" &&
+      step !== "failed");
 
   const sourceStats = progress?.sourceStats ?? [];
   const anyFailures = sourceStats.some((row) => row.status === "failed");
@@ -258,6 +274,17 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
                 >
                   {stepLabels[step]}
                 </Badge>
+                {profileRun && (
+                  <Badge
+                    variant="outline"
+                    className="max-w-[16rem] border-primary/20 bg-primary/10 text-primary"
+                  >
+                    <span className="truncate">
+                      Profile {profileRun.index} of {profileRun.total} ·{" "}
+                      {profileRun.name}
+                    </span>
+                  </Badge>
+                )}
                 <span className="truncate text-xs text-muted-foreground">
                   {isConnected ? "Live" : "Connecting…"}
                 </span>

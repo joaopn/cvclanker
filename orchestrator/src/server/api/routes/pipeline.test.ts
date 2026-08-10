@@ -317,11 +317,12 @@ describe.sequential("Pipeline API routes", () => {
   async function createProfile(
     baseUrl: string,
     config: Record<string, unknown>,
+    name = "Test profile",
   ): Promise<string> {
     const res = await fetch(`${baseUrl}/api/profiles`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Test profile", config }),
+      body: JSON.stringify({ name, config }),
     });
     const body = await res.json();
     expect(body.ok).toBe(true);
@@ -641,6 +642,188 @@ describe.sequential("Pipeline API routes", () => {
     expect(body.ok).toBe(false);
     expect(body.error.message).toMatch(/not enabled/i);
     expect(runPipeline).not.toHaveBeenCalled();
+  });
+
+  describe("multi-profile runs", () => {
+    const runnableConfig = (term: string) => ({
+      searchTerms: [term],
+      searchCountry: "united kingdom",
+      workplaceTypes: ["remote"],
+      runBudget: 300,
+      enabledSourceIds: ["test-linkedin"],
+    });
+
+    it("hands every profile's resolved config to the sequence, in order", async () => {
+      const { runProfileSequence, runPipeline } = await import(
+        "@server/pipeline/index"
+      );
+      const first = await createProfile(
+        baseUrl,
+        runnableConfig("backend engineer"),
+        "First",
+      );
+      const second = await createProfile(
+        baseUrl,
+        { ...runnableConfig("data engineer"), topN: 9 },
+        "Second",
+      );
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileIds: [first, second] }),
+      });
+      const body = await res.json();
+
+      expect(body.ok).toBe(true);
+      expect(body.data.profileCount).toBe(2);
+      // The chain owns the runs; the route never calls runPipeline itself.
+      expect(runPipeline).not.toHaveBeenCalled();
+      expect(runProfileSequence).toHaveBeenCalledWith([
+        expect.objectContaining({
+          profile: { id: first, name: "First" },
+          config: expect.objectContaining({
+            searchTerms: ["backend engineer"],
+            sources: ["linkedin"],
+          }),
+        }),
+        expect.objectContaining({
+          profile: { id: second, name: "Second" },
+          config: expect.objectContaining({
+            searchTerms: ["data engineer"],
+            topN: 9,
+          }),
+        }),
+      ]);
+    });
+
+    it("starts nothing when a later profile in the list is unknown", async () => {
+      const { runProfileSequence, endProfileSequence } = await import(
+        "@server/pipeline/index"
+      );
+      const first = await createProfile(baseUrl, runnableConfig("backend"));
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileIds: [first, "missing-profile"] }),
+      });
+      const body = await res.json();
+
+      expect(res.status).toBe(404);
+      expect(body.error.message).toMatch(/missing-profile/);
+      expect(runProfileSequence).not.toHaveBeenCalled();
+      // The claim must go back, or every later multi-run 409s forever.
+      expect(endProfileSequence).toHaveBeenCalled();
+    });
+
+    it("names the offending profile when one selects no sources", async () => {
+      const { runProfileSequence } = await import("@server/pipeline/index");
+      const good = await createProfile(
+        baseUrl,
+        runnableConfig("backend"),
+        "Good one",
+      );
+      // createProfile backfills an empty selection with every enabled source,
+      // so the source-less state is only reachable by clearing on update.
+      const empty = await createProfile(
+        baseUrl,
+        runnableConfig("backend"),
+        "Empty one",
+      );
+      const clearRes = await fetch(`${baseUrl}/api/profiles/${empty}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          config: { enabledSourceIds: [], providerInstanceIds: [] },
+        }),
+      });
+      expect((await clearRes.json()).ok).toBe(true);
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileIds: [good, empty] }),
+      });
+      const body = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(body.error.message).toMatch(/Empty one/);
+      expect(runProfileSequence).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["profileId", { profileId: "p1" }],
+      ["partial", { partial: true }],
+      ["sources", { sources: ["linkedin"] }],
+      ["providerInstanceIds", { providerInstanceIds: ["x"] }],
+    ])("rejects profileIds combined with %s", async (key, extra) => {
+      const { runProfileSequence } = await import("@server/pipeline/index");
+      const profileId = await createProfile(baseUrl, runnableConfig("backend"));
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileIds: [profileId], ...extra }),
+      });
+      const body = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(body.error.message).toMatch(new RegExp(key));
+      expect(runProfileSequence).not.toHaveBeenCalled();
+    });
+
+    it("rejects duplicate profileIds", async () => {
+      const { runProfileSequence } = await import("@server/pipeline/index");
+      const profileId = await createProfile(baseUrl, runnableConfig("backend"));
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileIds: [profileId, profileId] }),
+      });
+      const body = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(body.error.message).toMatch(/duplicate/i);
+      expect(runProfileSequence).not.toHaveBeenCalled();
+    });
+
+    it("returns conflict when a sequence is already claimed", async () => {
+      const { runProfileSequence, tryBeginProfileSequence } = await import(
+        "@server/pipeline/index"
+      );
+      vi.mocked(tryBeginProfileSequence).mockReturnValueOnce(false);
+      const profileId = await createProfile(baseUrl, runnableConfig("backend"));
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileIds: [profileId] }),
+      });
+      const body = await res.json();
+
+      expect(res.status).toBe(409);
+      expect(body.error.code).toBe("CONFLICT");
+      expect(runProfileSequence).not.toHaveBeenCalled();
+    });
+
+    it("accepts a cancel in the gap between profiles", async () => {
+      const { isProfileSequenceActive, requestProfileSequenceCancel } =
+        await import("@server/pipeline/index");
+      // The gap: no run is in flight (requestPipelineCancel declines) but the
+      // chain is live.
+      vi.mocked(isProfileSequenceActive).mockReturnValueOnce(true);
+
+      const res = await fetch(`${baseUrl}/api/pipeline/cancel`, {
+        method: "POST",
+      });
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.ok).toBe(true);
+      expect(requestProfileSequenceCancel).toHaveBeenCalled();
+    });
   });
 
   it("returns conflict when cancelling with no active pipeline", async () => {
