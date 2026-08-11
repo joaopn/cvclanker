@@ -425,8 +425,11 @@ export class LlmService {
         return { success: true, data: parsed, usage: result.usage };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        // The CLI reports its own api_error_status; trusting that beats
+        // pattern-matching model-authored prose.
+        const status = (error as LlmApiError).status;
 
-        if (attempt < maxRetries && shouldRetryAttempt({ message })) {
+        if (attempt < maxRetries && shouldRetryAttempt({ message, status })) {
           logger.warn("Claude Code attempt failed, retrying", {
             jobId: jobId ?? "unknown",
             attempt: attempt + 1,
@@ -443,12 +446,13 @@ export class LlmService {
           startedAt: attemptStartedAt,
           attemptNumber: attempt + 1,
           success: false,
+          errorStatus: status ?? null,
           errorMessage: message,
         });
         return {
           success: false,
           error: message,
-          code: classifyLlmError({ message }),
+          code: classifyLlmError({ status, message }),
         };
       }
     }

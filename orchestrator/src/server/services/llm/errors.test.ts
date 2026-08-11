@@ -43,6 +43,37 @@ describe("classifyLlmError", () => {
     );
   });
 
+  it("still reads auth from the text when a status is present", () => {
+    // Gemini reports a bad key as HTTP 400, not 401/403. Dropping the text
+    // check for any status would push those users from "LLM API key not set"
+    // to a raw provider string. Auth has no global side effect, so trusting
+    // the text here is safe in a way the rate-limit patterns are not.
+    expect(
+      classifyLlmError({
+        status: 400,
+        message:
+          "LLM API error: 400 - API key not valid. Please pass a valid API key.",
+      }),
+    ).toBe("auth");
+  });
+
+  it("ignores rate-limit text when the provider gave a status it doesn't recognise", () => {
+    // A 4xx body can echo the request, which carries the job description. A
+    // posting about API rate limiting must not read as a rate limit and stop
+    // every LLM call in the process.
+    const echoed =
+      "LLM API error: 400 - invalid_request: prompt was 'Senior SRE — own API rate limiting, quota management and traffic shaping'";
+    expect(classifyLlmError({ status: 400, message: echoed })).toBe("unknown");
+    expect(classifyLlmError({ status: 500, message: "quota" })).toBe("unknown");
+    // …but a real 429 is still a rate limit regardless of what it says.
+    expect(classifyLlmError({ status: 429, message: echoed })).toBe(
+      "rate_limited",
+    );
+    // The CLI providers report the same thing with no status, and must keep
+    // being read from the text.
+    expect(classifyLlmError({ message: echoed })).toBe("rate_limited");
+  });
+
   it("falls back to unknown", () => {
     expect(classifyLlmError({})).toBe("unknown");
     expect(classifyLlmError({ status: 500, message: "boom" })).toBe("unknown");

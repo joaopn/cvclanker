@@ -23,6 +23,12 @@
  * Idempotent: a second run finds nothing (cleared rows have a NULL reason).
  * Pass `--dry-run` to list what would change without writing.
  *
+ * This module has NO side effects on import — `main()` is invoked only by
+ * `clear-keyword-scores.cli.ts`. A module-scope `if (isMainThread) main()`
+ * guard is NOT good enough: `isMainThread` is true inside a vitest fork too,
+ * so importing this file from a test ran the destructive sweep against
+ * whatever DATA_DIR resolved to.
+ *
  * Usage:
  *   npm --workspace orchestrator run db:clear-keyword-scores -- --dry-run
  *   npm --workspace orchestrator run db:clear-keyword-scores
@@ -30,7 +36,6 @@
 
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
-import { isMainThread } from "node:worker_threads";
 import Database from "better-sqlite3";
 import { getDataDir } from "../config/dataDir";
 
@@ -124,7 +129,7 @@ export function findProfileDatabases(dataDir: string): string[] {
   return paths;
 }
 
-function main(): void {
+export function main(): void {
   const dryRun = process.argv.includes("--dry-run");
   const databases = findProfileDatabases(getDataDir());
 
@@ -156,13 +161,4 @@ function main(): void {
       ? `\n${matched} job(s) would be reset to unscored.${unskipNote}`
       : `\nReset ${matched} job(s) to unscored.${unskipNote} They will be scored on the next pipeline run, or immediately via Recalculate match.`,
   );
-}
-
-if (isMainThread) {
-  try {
-    main();
-  } catch (error) {
-    console.error("Failed to clear keyword scores:", error);
-    process.exitCode = 1;
-  }
 }

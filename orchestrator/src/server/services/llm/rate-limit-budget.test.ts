@@ -57,6 +57,16 @@ describe("rate-limit budget", () => {
     expect(getRateLimitStopReason()).toBeNull();
   });
 
+  it("bounds the stored stop reason", () => {
+    // It is handed back on every later call and persisted in the run error, and
+    // a provider body can contain an echo of the prompt.
+    resetRateLimitBudget(0);
+    consumeRateLimitRetry("x".repeat(5000));
+
+    const reason = getRateLimitStopReason() ?? "";
+    expect(reason.length).toBeLessThanOrEqual(200);
+  });
+
   it("treats a negative budget as zero", () => {
     resetRateLimitBudget(-5);
     expect(consumeRateLimitRetry("limit")).toBe(false);

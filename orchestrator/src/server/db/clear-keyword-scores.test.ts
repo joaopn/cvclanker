@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { findProfileDatabases, repairDatabase } from "./clear-keyword-scores";
 
 const KEYWORD_REASON = "Scored using keyword matching (API key not configured)";
@@ -160,5 +160,36 @@ describe("clear-keyword-scores", () => {
   it("sweeps inactive profiles as well as the active database", () => {
     const paths = findProfileDatabases("/data");
     expect(paths[0]).toBe("/data/jobs.db");
+  });
+  it("has no side effect on import — the sweep only runs from the CLI entry", async () => {
+    // `vi.resetModules()` is load-bearing: this file already imports the module
+    // at the top, so a bare `await import` is a cache hit and would prove
+    // nothing. With the registry cleared the module body re-evaluates, which is
+    // exactly when an `isMainThread`-guarded `main()` would fire — true inside
+    // a vitest fork — and sweep whatever DATA_DIR points at.
+    const previousDataDir = process.env.DATA_DIR;
+    process.env.DATA_DIR = dir;
+    seed([
+      {
+        id: "bystander",
+        status: "skipped",
+        suitability_category: "bad_fit",
+        suitability_reason: KEYWORD_REASON,
+      },
+    ]);
+
+    try {
+      vi.resetModules();
+      await import("./clear-keyword-scores");
+
+      expect(readAll()[0]).toMatchObject({
+        status: "skipped",
+        suitability_category: "bad_fit",
+        suitability_reason: KEYWORD_REASON,
+      });
+    } finally {
+      if (previousDataDir === undefined) delete process.env.DATA_DIR;
+      else process.env.DATA_DIR = previousDataDir;
+    }
   });
 });

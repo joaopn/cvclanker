@@ -24,6 +24,9 @@ interface BudgetState {
   initialized: boolean;
 }
 
+/** Enough for a provider's "resets at 2:10am" line, short of an echoed prompt. */
+const STOP_REASON_MAX_CHARS = 200;
+
 const state: BudgetState = {
   remaining: 0,
   stopped: false,
@@ -69,7 +72,13 @@ export function consumeRateLimitRetry(reason: string): boolean {
   if (state.stopped) return false;
   if (state.remaining <= 0) {
     state.stopped = true;
-    state.reason = reason;
+    // Bounded because this copy is handed to every subsequent short-circuited
+    // call, and a provider body can carry an echo of the prompt. Defence in
+    // depth rather than an overflow fix: the callers already truncate a
+    // response body to 400-500 chars. Note the call that spends the LAST retry
+    // surfaces its own untruncated message — this cap covers the followers.
+    // The full text stays in the log below.
+    state.reason = reason.slice(0, STOP_REASON_MAX_CHARS);
     logger.error("LLM rate-limit retry budget exhausted, stopping LLM work", {
       reason,
     });

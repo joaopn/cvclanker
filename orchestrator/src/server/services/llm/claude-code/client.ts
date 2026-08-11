@@ -148,12 +148,17 @@ export function parseCliJsonOutput(stdout: string): {
   }
 
   if (parsed.is_error) {
-    const status = parsed.api_error_status
-      ? ` (HTTP ${parsed.api_error_status})`
-      : "";
-    throw new Error(
-      `${toNonEmptyString(parsed.result) || "Claude Code CLI reported an error."}${status}`,
-    );
+    const apiStatus = numericOrNull(parsed.api_error_status);
+    const suffix = apiStatus !== null ? ` (HTTP ${apiStatus})` : "";
+    const error = new Error(
+      `${toNonEmptyString(parsed.result) || "Claude Code CLI reported an error."}${suffix}`,
+    ) as Error & { status?: number };
+    // `result` is the model's own text, which is derived from the job
+    // description — so classifying this error by prose alone lets a posting
+    // about "rate limiting" latch every LLM call. Carry the CLI's own status
+    // so the classifier can trust a number instead.
+    if (apiStatus !== null) error.status = apiStatus;
+    throw error;
   }
 
   const usage = readUsage(parsed.usage);

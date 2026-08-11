@@ -42,14 +42,29 @@ export function classifyLlmError(args: {
   if (status === 401 || status === 403) return "auth";
 
   const text = message ?? "";
+
+  // RATE-LIMIT text is trusted only when the provider gave us no status at all
+  // (the CLI-backed providers report a session limit as prose). The message for
+  // an HTTP failure is built from the response BODY, and a provider that echoes
+  // the request on a 4xx puts the job description in there — a posting about
+  // "API rate limiting and quota management" would otherwise latch every LLM
+  // call in the process. A real HTTP rate limit arrives as 429 above.
+  //
   // Checked before the auth patterns: a rate-limit body often mentions the key
   // or the account, and mistaking a temporary stop for a bad credential is the
   // exact confusion this function exists to prevent.
-  if (RATE_LIMIT_PATTERNS.some((pattern) => pattern.test(text))) {
-    return "rate_limited";
+  if (status === undefined) {
+    if (RATE_LIMIT_PATTERNS.some((pattern) => pattern.test(text))) {
+      return "rate_limited";
+    }
+    // A bare "(HTTP 429)" inside a CLI's message, with no status to read.
+    if (/\b429\b/.test(text)) return "rate_limited";
   }
-  // A bare "(HTTP 429)" inside a CLI's message, with no status field to read.
-  if (/\b429\b/.test(text)) return "rate_limited";
+
+  // AUTH text stays trusted with or without a status: it has no global side
+  // effect, and some supported providers report a bad key as 400 rather than
+  // 401/403 (Gemini: "API key not valid"). Dropping this would push those users
+  // to a raw provider string instead of "LLM API key not set".
   if (AUTH_PATTERNS.some((pattern) => pattern.test(text))) return "auth";
 
   return "unknown";
