@@ -1,6 +1,7 @@
 import type {
   ChatStyleLanguageMode,
   ChatStyleManualLanguage,
+  SuitabilityCategory,
 } from "@shared/types.js";
 
 export type EffectiveDefault<T> = {
@@ -47,6 +48,7 @@ export type EnvSettingsValues = {
 export type PipelineSettingsValues = {
   autoTailoringEnabled: EffectiveDefault<boolean>;
   enableJobScoring: EffectiveDefault<boolean>;
+  autoSkipCategory: EffectiveDefault<SuitabilityCategory | null>;
   scoringInstructions: EffectiveDefault<string>;
   inboxStaleThresholdDays: EffectiveDefault<number>;
   maxBulkActionJobs: EffectiveDefault<number>;

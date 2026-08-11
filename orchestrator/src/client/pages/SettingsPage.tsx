@@ -231,7 +231,7 @@ const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
         id: "pipeline",
         label: "Pipeline Behavior",
         description: "Auto-tailor toggle for pipeline runs.",
-        searchTerms: ["pipeline", "tailor", "auto", "scoring", "rank"],
+        searchTerms: ["pipeline", "tailor", "auto", "scoring", "rank", "skip"],
       },
     ],
   },
@@ -306,6 +306,7 @@ export const SECTION_FIELD_MAP: Record<
     "autoTailoringEnabled",
     "enableJobScoring",
     "scoringInstructions",
+    "autoSkipCategory",
     "inboxStaleThresholdDays",
     "maxBulkActionJobs",
     "discoveryConcurrency",
@@ -580,10 +581,6 @@ const getDerivedSettings = (settings: AppSettings | null) => {
         effective: settings?.missingSalaryPenalty?.value ?? 10,
         default: settings?.missingSalaryPenalty?.default ?? 10,
       },
-      autoSkipCategory: {
-        effective: settings?.autoSkipCategory?.value ?? null,
-        default: settings?.autoSkipCategory?.default ?? null,
-      },
     },
     pipeline: {
       autoTailoringEnabled: {
@@ -593,6 +590,10 @@ const getDerivedSettings = (settings: AppSettings | null) => {
       enableJobScoring: {
         effective: settings?.enableJobScoring?.value ?? true,
         default: settings?.enableJobScoring?.default ?? true,
+      },
+      autoSkipCategory: {
+        effective: settings?.autoSkipCategory?.value ?? null,
+        default: settings?.autoSkipCategory?.default ?? null,
       },
       scoringInstructions: {
         effective: settings?.scoringInstructions?.value ?? "",
@@ -863,7 +864,7 @@ export const SettingsPage: React.FC = () => {
         ),
         autoSkipCategory: nullIfSame(
           data.autoSkipCategory,
-          scoring.autoSkipCategory.default,
+          pipeline.autoSkipCategory.default,
         ),
         autoTailoringEnabled: nullIfSame(
           data.autoTailoringEnabled,

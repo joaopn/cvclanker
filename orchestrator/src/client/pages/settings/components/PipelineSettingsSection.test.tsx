@@ -1,20 +1,79 @@
 import type { UpdateSettingsInput } from "@shared/settings-schema.js";
+import type { SuitabilityCategory } from "@shared/types.js";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import React from "react";
 import { FormProvider, useForm } from "react-hook-form";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Radix Select can't open in jsdom (no pointer capture). Mock it to a plain
+// button-per-item shell — this validates PipelineSettingsSection's value
+// mapping, not Radix behaviour.
+vi.mock("@/components/ui/select", () => {
+  const SelectContext = React.createContext<{
+    onValueChange?: (value: string) => void;
+  } | null>(null);
+  return {
+    Select: ({
+      children,
+      value,
+      onValueChange,
+    }: {
+      children: React.ReactNode;
+      value?: string;
+      onValueChange?: (value: string) => void;
+    }) => (
+      <SelectContext.Provider value={{ onValueChange }}>
+        <div>
+          <input readOnly value={value ?? ""} aria-label="select-value" />
+          {children}
+        </div>
+      </SelectContext.Provider>
+    ),
+    SelectContent: ({ children }: { children: React.ReactNode }) => (
+      <>{children}</>
+    ),
+    SelectItem: ({
+      value,
+      children,
+    }: {
+      value: string;
+      children: React.ReactNode;
+    }) => {
+      const context = React.useContext(SelectContext);
+      return (
+        <button type="button" onClick={() => context?.onValueChange?.(value)}>
+          {children}
+        </button>
+      );
+    },
+    SelectTrigger: ({
+      children,
+      ...props
+    }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+      <button type="button" {...props}>
+        {children}
+      </button>
+    ),
+    SelectValue: () => null,
+  };
+});
+
 import { Accordion } from "@/components/ui/accordion";
 import { PipelineSettingsSection } from "./PipelineSettingsSection";
 
 const PipelineSettingsHarness = ({
   mode = "onSubmit" as const,
+  autoSkipCategory = null,
 }: {
   mode?: "onSubmit" | "onChange";
+  autoSkipCategory?: SuitabilityCategory | null;
 } = {}) => {
   const methods = useForm<UpdateSettingsInput>({
     mode,
     defaultValues: {
       autoTailoringEnabled: null,
       enableJobScoring: null,
+      autoSkipCategory,
       scoringInstructions: "",
       inboxStaleThresholdDays: null,
       maxBulkActionJobs: null,
@@ -40,6 +99,7 @@ const PipelineSettingsHarness = ({
           values={{
             autoTailoringEnabled: { effective: false, default: false },
             enableJobScoring: { effective: true, default: true },
+            autoSkipCategory: { effective: null, default: null },
             scoringInstructions: {
               effective: "Calibration: ties go to the more generous tier.",
               default: "Calibration: ties go to the more generous tier.",
@@ -69,6 +129,9 @@ const PipelineSettingsHarness = ({
           isSaving={false}
         />
       </Accordion>
+      <output data-testid="form-auto-skip">
+        {String(methods.watch("autoSkipCategory"))}
+      </output>
     </FormProvider>
   );
 };
@@ -104,5 +167,48 @@ describe("PipelineSettingsSection", () => {
         screen.getByText("Must be at most 16000 characters"),
       ).toBeInTheDocument();
     });
+  });
+  it("stores the picked tier, and null for Off", () => {
+    render(<PipelineSettingsHarness />);
+
+    // Default is off — the disabled state must be a real null, not the "off"
+    // sentinel, because null is what the API stores to disable the rule.
+    expect(screen.getByTestId("form-auto-skip")).toHaveTextContent("null");
+    // …and the other direction: null must display AS the sentinel, or the
+    // trigger falls back to a blank/placeholder instead of showing "Off".
+    expect(screen.getByLabelText("select-value")).toHaveValue("off");
+
+    fireEvent.click(screen.getByText("Bad fit and worse"));
+    expect(screen.getByTestId("form-auto-skip")).toHaveTextContent("bad_fit");
+    expect(screen.getByLabelText("select-value")).toHaveValue("bad_fit");
+
+    fireEvent.click(
+      screen.getByText("Off — every scored job lands in the Inbox"),
+    );
+    expect(screen.getByTestId("form-auto-skip")).toHaveTextContent("null");
+  });
+
+  it("never offers to auto-skip the top tier", () => {
+    render(<PipelineSettingsHarness />);
+
+    expect(screen.getByText("Bad fit and worse")).toBeInTheDocument();
+    expect(screen.getByText("Very good fit and worse")).toBeInTheDocument();
+    expect(screen.queryByText("Great fit and worse")).not.toBeInTheDocument();
+  });
+
+  it("shows Off as the current value when unset", () => {
+    render(<PipelineSettingsHarness />);
+
+    expect(screen.getByText("Off")).toBeInTheDocument();
+  });
+  it("still shows a tier the control doesn't offer but the API accepts", () => {
+    render(<PipelineSettingsHarness autoSkipCategory="great_fit" />);
+
+    // Without a matching item the trigger renders blank, hiding a rule that is
+    // actually in force.
+    expect(screen.getByLabelText("select-value")).toHaveValue("great_fit");
+    expect(screen.getAllByText("Great fit and worse").length).toBeGreaterThan(
+      0,
+    );
   });
 });

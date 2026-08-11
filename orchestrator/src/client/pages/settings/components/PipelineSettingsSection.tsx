@@ -2,10 +2,23 @@ import { SettingsSectionFrame } from "@client/pages/settings/components/Settings
 import type { PipelineSettingsValues } from "@client/pages/settings/types";
 import { MAX_POOL_CONCURRENCY } from "@shared/settings-registry";
 import type { UpdateSettingsInput } from "@shared/settings-schema.js";
+import {
+  SUITABILITY_CATEGORIES,
+  SUITABILITY_CATEGORY_LABELS,
+  SUITABILITY_CATEGORY_RANK,
+  type SuitabilityCategory,
+} from "@shared/types.js";
 import type React from "react";
 import { Controller, useFormContext } from "react-hook-form";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
 type PipelineSettingsSectionProps = {
@@ -58,6 +71,16 @@ const mbToBytes = (mb: number): number => Math.round(mb * ONE_MB);
 // apply, so the form refuses it upfront. See MAX_POOL_CONCURRENCY for why a
 // ceiling exists at all (subprocess/browser blast containment, not tuning).
 const MAX_CONCURRENCY = MAX_POOL_CONCURRENCY;
+
+/** Sentinel for "no auto-skip": Radix Select rejects an empty item value. */
+const AUTO_SKIP_OFF = "off";
+
+// Worst-first, derived rather than hand-listed so a future tier can't go
+// silently missing from the control. The TOP tier is dropped on purpose:
+// auto-skipping your best matches is never what someone means.
+const AUTO_SKIP_CATEGORIES: SuitabilityCategory[] = [...SUITABILITY_CATEGORIES]
+  .sort((a, b) => SUITABILITY_CATEGORY_RANK[a] - SUITABILITY_CATEGORY_RANK[b])
+  .slice(0, -1);
 
 // Mirrors the registry's z.string().max(16000) on scoringInstructions — a
 // longer value would 400 on save, so the form refuses it upfront.
@@ -115,6 +138,7 @@ export const PipelineSettingsSection: React.FC<
   const {
     autoTailoringEnabled,
     enableJobScoring,
+    autoSkipCategory,
     scoringInstructions,
     inboxStaleThresholdDays,
     maxBulkActionJobs,
@@ -243,6 +267,73 @@ export const PipelineSettingsSection: React.FC<
               the LLM scoring step entirely; jobs land in the inbox unscored and
               you triage them manually.
             </p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="autoSkipCategory" className="text-sm font-medium">
+            Auto-skip jobs scoring at or below
+          </label>
+          <Controller
+            name="autoSkipCategory"
+            control={control}
+            render={({ field }) => (
+              <Select
+                // Radix has no empty-string item value, so "off" is a sentinel
+                // that maps to null — the stored value that disables the rule.
+                value={field.value ?? AUTO_SKIP_OFF}
+                onValueChange={(value) =>
+                  field.onChange(
+                    value === AUTO_SKIP_OFF
+                      ? null
+                      : (value as SuitabilityCategory),
+                  )
+                }
+                disabled={isLoading || isSaving}
+              >
+                <SelectTrigger
+                  id="autoSkipCategory"
+                  aria-label="Auto-skip jobs scoring at or below"
+                >
+                  <SelectValue placeholder="Off" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={AUTO_SKIP_OFF}>
+                    Off — every scored job lands in the Inbox
+                  </SelectItem>
+                  {AUTO_SKIP_CATEGORIES.map((category) => (
+                    <SelectItem key={category} value={category}>
+                      {SUITABILITY_CATEGORY_LABELS[category]} and worse
+                    </SelectItem>
+                  ))}
+                  {/* The API accepts any tier, including the top one this
+                      control deliberately doesn't offer. Without an item to
+                      match, the trigger would render blank and misreport a
+                      rule that IS in force. */}
+                  {field.value &&
+                    !AUTO_SKIP_CATEGORIES.includes(field.value) && (
+                      <SelectItem value={field.value}>
+                        {SUITABILITY_CATEGORY_LABELS[field.value]} and worse
+                      </SelectItem>
+                    )}
+                </SelectContent>
+              </Select>
+            )}
+          />
+          <div className="text-xs text-muted-foreground">
+            Off by default. When set, a job scoring at or below this tier is
+            sent straight to Skipped instead of the Inbox, and you never see it
+            during triage — so a mis-scored job disappears silently. Only the
+            pipeline's scoring step auto-skips: Recalculate match never does,
+            and this has no effect while LLM scoring is off above.
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Current:{" "}
+            <span className="font-mono">
+              {autoSkipCategory.effective
+                ? `${SUITABILITY_CATEGORY_LABELS[autoSkipCategory.effective]} and worse`
+                : "Off"}
+            </span>
           </div>
         </div>
 
