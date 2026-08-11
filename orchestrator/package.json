@@ -23,6 +23,7 @@
     "db:clear": "tsx src/server/db/clear.ts",
     "db:drop": "tsx src/server/db/clear.ts --drop",
     "db:normalize-dates": "tsx src/server/db/normalize-dates.ts",
+    "db:clear-keyword-scores": "tsx src/server/db/clear-keyword-scores.ts",
     "test": "vitest",
     "test:run": "vitest run"
   },

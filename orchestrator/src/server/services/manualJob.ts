@@ -1032,7 +1032,16 @@ export async function inferManualJobDetails(
   const promptChars = prompt.user.length + (prompt.system?.length ?? 0);
 
   if (!result.success) {
-    if (result.error.toLowerCase().includes("api key")) {
+    // A rate limit is not a configuration problem — saying "key not set" here
+    // is the same misdiagnosis that had the scorer keyword-matching jobs.
+    if (result.code === "rate_limited") {
+      return {
+        job: {},
+        warning:
+          "The LLM provider is rate limiting. Fill details manually, or retry once the limit resets.",
+      };
+    }
+    if (result.code === "auth") {
       return {
         job: {},
         warning: "LLM API key not set. Fill details manually.",

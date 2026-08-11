@@ -3,6 +3,8 @@ import * as jobsRepo from "@server/repositories/jobs";
 import * as settingsRepo from "@server/repositories/settings";
 import {
   JobNotScoreableError,
+  JobScoringFailedError,
+  LlmRateLimitStopError,
   scoreJobSuitability,
 } from "@server/services/scorer";
 import { getEffectiveSettings } from "@server/services/settings";
@@ -88,6 +90,32 @@ export async function scoreJobsStep(args: {
       try {
         ({ category, reason } = await scoreJobSuitability(job, args.brief));
       } catch (error) {
+        if (error instanceof LlmRateLimitStopError) {
+          // Account-wide and temporary: every remaining job would hit the same
+          // wall, so end the whole run rather than burn through the queue
+          // leaving each row unscored.
+          logger.error("Scoring stopped by provider rate limit", {
+            jobId: job.id,
+            error: error.message,
+          });
+          throw error;
+        }
+        if (error instanceof JobScoringFailedError) {
+          // This job alone failed — leave it unscored and move on. A missing
+          // score is honest; a fabricated one is not.
+          logger.warn("Leaving job unscored after a scoring failure", {
+            jobId: job.id,
+            title: job.title,
+            error: error.message,
+          });
+          completed += 1;
+          progressHelpers.scoringJob(
+            completed,
+            unprocessedJobs.length,
+            `${job.title} (scoring failed)`,
+          );
+          return;
+        }
         if (error instanceof JobNotScoreableError) {
           // Skip — leave the row unscored. The user will see "Unscored" in
           // the UI; they can re-fetch the URL to enrich the description or

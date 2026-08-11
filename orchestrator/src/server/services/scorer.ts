@@ -42,6 +42,41 @@ export class JobNotScoreableError extends AppError {
   }
 }
 
+/**
+ * The provider refused on a rate/session limit and the global retry budget is
+ * spent. Distinct from a scoring failure because it is not about this job:
+ * nothing will score until the limit resets, so callers must STOP rather than
+ * move to the next job.
+ */
+export class LlmRateLimitStopError extends AppError {
+  constructor(args: { jobId: string; reason: string }) {
+    super({
+      status: 503,
+      code: "SERVICE_UNAVAILABLE",
+      message: `Scoring stopped — the LLM provider is rate limiting: ${args.reason}`,
+      details: { jobId: args.jobId, reason: args.reason },
+    });
+    this.name = "LlmRateLimitStopError";
+  }
+}
+
+/**
+ * The LLM could not score THIS job (bad response, transient error, no key).
+ * The row is left unscored and the run moves on — a job with no score is
+ * honest, a fabricated one is not.
+ */
+export class JobScoringFailedError extends AppError {
+  constructor(args: { jobId: string; reason: string }) {
+    super({
+      status: 502,
+      code: "UPSTREAM_ERROR",
+      message: `Could not score job: ${args.reason}`,
+      details: { jobId: args.jobId, reason: args.reason },
+    });
+    this.name = "JobScoringFailedError";
+  }
+}
+
 interface SuitabilityResult {
   category: SuitabilityCategory;
   reason: string;
@@ -157,27 +192,29 @@ export async function scoreJobSuitability(
   });
 
   if (!result.success) {
-    if (result.error.toLowerCase().includes("api key")) {
-      logger.warn("LLM API key not set, using mock scoring", { jobId: job.id });
+    // A rate limit is global and temporary: every other queued job is about to
+    // hit the same wall, so stop instead of failing one job at a time.
+    if (result.code === "rate_limited") {
+      throw new LlmRateLimitStopError({ jobId: job.id, reason: result.error });
     }
-    logger.error("Scoring failed, using mock scoring", {
+    logger.error("Scoring failed, leaving job unscored", {
       jobId: job.id,
+      code: result.code,
       error: result.error,
     });
-    return mockScore(job, {
-      penalizeMissingSalary: settings.penalizeMissingSalary.value,
-    });
+    throw new JobScoringFailedError({ jobId: job.id, reason: result.error });
   }
 
   const { category: rawCategory, reason: rawReason } = result.data;
 
   if (!isSuitabilityCategory(rawCategory)) {
-    logger.error("Invalid category in AI response, using mock scoring", {
+    logger.error("Invalid category in AI response, leaving job unscored", {
       jobId: job.id,
       rawCategory,
     });
-    return mockScore(job, {
-      penalizeMissingSalary: settings.penalizeMissingSalary.value,
+    throw new JobScoringFailedError({
+      jobId: job.id,
+      reason: `LLM returned an unrecognised category: ${String(rawCategory)}`,
     });
   }
 
@@ -213,56 +250,6 @@ async function buildScoringPrompt(
       : DEFAULT_SCORING_INSTRUCTIONS,
   });
   return { system: loaded.system, user: loaded.user };
-}
-
-async function mockScore(
-  job: Job,
-  settings: { penalizeMissingSalary: boolean },
-): Promise<SuitabilityResult> {
-  const jd = (job.jobDescription || "").toLowerCase();
-  const title = job.title.toLowerCase();
-
-  const goodKeywords = [
-    "typescript",
-    "react",
-    "node",
-    "python",
-    "web",
-    "frontend",
-    "backend",
-    "fullstack",
-    "software",
-    "engineer",
-    "developer",
-  ];
-  const badKeywords = [
-    "senior",
-    "5+ years",
-    "10+ years",
-    "principal",
-    "staff",
-    "manager",
-  ];
-
-  let goodHits = 0;
-  let badHits = 0;
-  for (const kw of goodKeywords) {
-    if (jd.includes(kw) || title.includes(kw)) goodHits += 1;
-  }
-  for (const kw of badKeywords) {
-    if (jd.includes(kw) || title.includes(kw)) badHits += 1;
-  }
-
-  const heuristic: SuitabilityCategory =
-    goodHits >= 4 && badHits === 0
-      ? "very_good_fit"
-      : goodHits >= 2 && badHits <= 1
-        ? "good_fit"
-        : "bad_fit";
-
-  const baseReason = "Scored using keyword matching (API key not configured)";
-
-  return applySalaryPenalty(job, heuristic, baseReason, settings);
 }
 
 /**

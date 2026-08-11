@@ -422,6 +422,20 @@ export const settingsRegistry = {
     parse: parseConcurrencyOrNull,
     serialize: serializeNullableNumber,
   },
+  // How many times a provider rate limit may be retried GLOBALLY (across every
+  // LLM call, not per call) before all LLM work stops. Small on purpose: the
+  // failure this guards is a session/quota limit that resets on the order of
+  // hours, so extra attempts buy nothing and each costs a full round trip —
+  // 3 rides out a transient per-minute 429 while stopping fast on a hard stop.
+  // 0 means stop at the first rate limit. The ceiling mirrors the pool cap: a
+  // blast-containment number, not a tuning one.
+  llmRateLimitRetries: {
+    kind: "typed" as const,
+    schema: z.number().int().min(0).max(MAX_POOL_CONCURRENCY),
+    default: (): number => 3,
+    parse: parseIntOrNull,
+    serialize: serializeNullableNumber,
+  },
   scoringConcurrency: {
     kind: "typed" as const,
     schema: z.number().int().min(1).max(MAX_POOL_CONCURRENCY),

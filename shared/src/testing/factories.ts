@@ -221,6 +221,7 @@ export const createAppSettings = (
   inboxStaleThresholdDays: { value: 7, default: 7, override: null },
   maxBulkActionJobs: { value: 1000, default: 1000, override: null },
   discoveryConcurrency: { value: 3, default: 3, override: null },
+  llmRateLimitRetries: { value: 3, default: 3, override: null },
   scoringConcurrency: { value: 4, default: 4, override: null },
   tailoringConcurrency: { value: 3, default: 3, override: null },
   bulkActionConcurrency: { value: 4, default: 4, override: null },

@@ -51,6 +51,7 @@ export type PipelineSettingsValues = {
   inboxStaleThresholdDays: EffectiveDefault<number>;
   maxBulkActionJobs: EffectiveDefault<number>;
   discoveryConcurrency: EffectiveDefault<number>;
+  llmRateLimitRetries: EffectiveDefault<number>;
   scoringConcurrency: EffectiveDefault<number>;
   tailoringConcurrency: EffectiveDefault<number>;
   bulkActionConcurrency: EffectiveDefault<number>;

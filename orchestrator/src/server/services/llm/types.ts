@@ -1,3 +1,5 @@
+import type { LlmErrorCode } from "./errors";
+
 export type LlmProvider =
   | "openrouter"
   | "lmstudio"
@@ -55,6 +57,12 @@ export interface LlmResult<T> {
 export interface LlmError {
   success: false;
   error: string;
+  /**
+   * Why it failed. Required so no caller can accidentally treat a rate limit as
+   * a configuration problem — the mistake that had a 429 reported as
+   * "API key not configured".
+   */
+  code: LlmErrorCode;
 }
 
 export type LlmResponse<T> = LlmResult<T> | LlmError;

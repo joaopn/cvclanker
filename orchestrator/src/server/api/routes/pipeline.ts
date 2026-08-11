@@ -31,7 +31,9 @@ import * as pipelineRepo from "@server/repositories/pipeline";
 import { getProfile } from "@server/repositories/profiles";
 import { getEnabledProviderInstances } from "@server/repositories/provider-instances";
 import { getEnabledExtractorIds } from "@server/repositories/source-configs";
+import { resetRateLimitBudget } from "@server/services/llm/rate-limit-budget";
 import { getDefaultProfile } from "@server/services/profiles";
+import { getEffectiveSettings } from "@server/services/settings";
 import {
   type ExtractorSourceId,
   PIPELINE_EXTRACTOR_SOURCE_IDS,
@@ -492,6 +494,15 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
       }
       holdsSequenceClaim = true;
     }
+
+    // A user starting a run is the signal that the rate limit may have passed,
+    // so the global stop latch clears here — NOT per profile, or a chain would
+    // re-hit the same wall for every remaining profile. Placed AFTER the 409
+    // guards on purpose: a REJECTED run must not clear the latch of the chain
+    // it just bounced off, which would let that chain sail on into the wall.
+    resetRateLimitBudget(
+      (await getEffectiveSettings()).llmRateLimitRetries.value,
+    );
 
     let cachedRegistry: ExtractorRegistry | null = null;
     let registryFailed = false;

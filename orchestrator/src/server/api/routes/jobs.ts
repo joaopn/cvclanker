@@ -21,6 +21,7 @@ import { getActivePersonalBrief } from "@server/services/brief";
 import { generateCoverLetter } from "@server/services/cover-letter/generate";
 import { renderCoverLetterPdf } from "@server/services/cover-letter/render";
 import { generateInterviewPrep } from "@server/services/interview-qa/generate";
+import { resetRateLimitBudget } from "@server/services/llm/rate-limit-budget";
 import {
   buildCvText,
   recomputeAtsCoverage,
@@ -111,6 +112,18 @@ const updateOutcomeSchema = z.object({
   outcome: z.enum(APPLICATION_OUTCOMES).nullable(),
   closedAt: z.number().int().nullable().optional(),
 });
+
+/**
+ * Actions that actually drive LLM work. Only these clear the global
+ * rate-limit stop latch: triage actions (skip, move_to_backlog, the Swipe
+ * deck's every-swipe calls) touch no provider, and letting them reset would
+ * silently resume a run the limit had stopped.
+ */
+const LLM_DRIVING_ACTIONS = new Set<JobAction>([
+  "rescore",
+  "rescrape",
+  "move_to_ready",
+]);
 
 const jobActionRequestSchema = z.discriminatedUnion("action", [
   z.object({
@@ -1004,6 +1017,11 @@ jobsRouter.post("/actions", async (req: Request, res: Response) => {
   try {
     const parsed = jobActionRequestSchema.parse(req.body);
     const settings = await getEffectiveSettings();
+    // A user-triggered LLM action is a fresh attempt: clear the stop latch so a
+    // limit that has since reset doesn't keep blocking work.
+    if (LLM_DRIVING_ACTIONS.has(parsed.action)) {
+      resetRateLimitBudget(settings.llmRateLimitRetries.value);
+    }
     const maxBulkActionJobs = settings.maxBulkActionJobs.value;
     const bulkActionConcurrency = settings.bulkActionConcurrency.value;
     if (parsed.jobIds.length > maxBulkActionJobs) {
@@ -1098,6 +1116,10 @@ jobsRouter.post("/actions/stream", async (req: Request, res: Response) => {
   }
 
   const settings = await getEffectiveSettings();
+  // Same fresh-attempt reset as the non-streaming handler.
+  if (LLM_DRIVING_ACTIONS.has(parsed.data.action)) {
+    resetRateLimitBudget(settings.llmRateLimitRetries.value);
+  }
   const maxBulkActionJobs = settings.maxBulkActionJobs.value;
   const bulkActionConcurrency = settings.bulkActionConcurrency.value;
   if (parsed.data.jobIds.length > maxBulkActionJobs) {

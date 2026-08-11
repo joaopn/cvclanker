@@ -1,5 +1,6 @@
 import { logger } from "@infra/logger";
 import type { PipelineConfig } from "@shared/types";
+import { isRateLimitStopped } from "../services/llm/rate-limit-budget";
 import { requestPipelineCancel, runPipeline } from "./orchestrator";
 import { progressHelpers, setActiveProfileRun } from "./progress";
 import {
@@ -35,6 +36,7 @@ export async function runProfileSequence(
   let failed = 0;
   let stopped = 0;
   let cancelled = false;
+  let rateLimited = false;
 
   try {
     for (const [index, entry] of entries.entries()) {
@@ -100,6 +102,14 @@ export async function runProfileSequence(
         cancelled = true;
         break;
       }
+
+      // The provider is rate limiting and the global retry budget is spent.
+      // Every remaining profile would burn its whole discovery run and then
+      // fail to classify anything, so stop the chain here.
+      if (isRateLimitStopped()) {
+        rateLimited = true;
+        break;
+      }
     }
   } finally {
     // State first, emit last. If the emit threw with the flag still set,
@@ -110,7 +120,7 @@ export async function runProfileSequence(
     endProfileSequence();
     setActiveProfileRun(null);
     progressHelpers.sequenceFinished(
-      summarize({ total, completed, failed, stopped, cancelled }),
+      summarize({ total, completed, failed, stopped, cancelled, rateLimited }),
     );
   }
 }
@@ -121,13 +131,14 @@ function summarize(counts: {
   failed: number;
   stopped: number;
   cancelled: boolean;
+  rateLimited: boolean;
 }): {
   status: "completed" | "cancelled" | "failed";
   message: string;
   detail: string;
   error?: string;
 } {
-  const { total, completed, failed, stopped, cancelled } = counts;
+  const { total, completed, failed, stopped, cancelled, rateLimited } = counts;
   const notStarted = total - completed - failed - stopped;
   // Every clause is omitted at zero — a cancel landing in the final gap has
   // nothing left unstarted, and a chain with no failures shouldn't say so.
@@ -139,6 +150,25 @@ function summarize(counts: {
   ]
     .filter(Boolean)
     .join(", ");
+
+  if (rateLimited) {
+    const note = `Stopped after ${completed + failed + stopped} of ${total} profiles — the LLM provider is rate limiting. Raise "LLM rate-limit retries" or try again once the limit resets.`;
+    // `failed` only when nothing landed: it drives the error toast AND gates
+    // the Swipe deck's refetch, so a chain that imported two profiles' worth of
+    // jobs before the wall must still read as completed.
+    return completed > 0
+      ? {
+          status: "completed",
+          message: "Multi-profile run stopped: LLM rate limited",
+          detail: `${detail}. ${note}`,
+        }
+      : {
+          status: "failed",
+          message: "Multi-profile run stopped: LLM rate limited",
+          detail,
+          error: note,
+        };
+  }
 
   if (cancelled) {
     return {

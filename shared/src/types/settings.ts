@@ -79,6 +79,7 @@ export interface AppSettings {
   inboxStaleThresholdDays: Resolved<number>;
   maxBulkActionJobs: Resolved<number>;
   discoveryConcurrency: Resolved<number>;
+  llmRateLimitRetries: Resolved<number>;
   scoringConcurrency: Resolved<number>;
   tailoringConcurrency: Resolved<number>;
   bulkActionConcurrency: Resolved<number>;

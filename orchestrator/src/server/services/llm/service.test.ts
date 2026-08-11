@@ -1,7 +1,29 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClaudeCodeClient } from "./claude-code/client";
 import { CodexClient } from "./codex/client";
+import {
+  consumeRateLimitRetry,
+  isRateLimitStopped,
+  resetRateLimitBudget,
+} from "./rate-limit-budget";
 import { LlmService } from "./service";
+import type { JsonSchemaDefinition } from "./types";
+
+const SCHEMA: JsonSchemaDefinition = {
+  name: "stub",
+  schema: {
+    type: "object",
+    properties: { ok: { type: "boolean" } },
+    required: ["ok"],
+    additionalProperties: false,
+  },
+};
+
+beforeEach(() => {
+  // Module-global and order-sensitive: a latched budget short-circuits every
+  // callJson in the file.
+  resetRateLimitBudget(0);
+});
 
 describe("LlmService provider normalization", () => {
   afterEach(() => {
@@ -234,5 +256,50 @@ describe("LlmService provider normalization", () => {
 
     expect(models).toEqual(["claude-sonnet-5"]);
     expect(listSpy).toHaveBeenCalledOnce();
+  });
+});
+
+describe("LlmService rate-limit budget", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    resetRateLimitBudget(0);
+  });
+
+  it("fails immediately, without calling the provider, once stopped", async () => {
+    // The whole point of the latch: N queued jobs must not each discover the
+    // wall for themselves.
+    const callSpy = vi.spyOn(ClaudeCodeClient.prototype, "callJson");
+    resetRateLimitBudget(0);
+    consumeRateLimitRetry("You've hit your session limit");
+
+    const llm = new LlmService({ provider: "claude_code" });
+    const result = await llm.callJson({
+      model: "claude-sonnet-5",
+      messages: [{ role: "user", content: "hi" }],
+      jsonSchema: SCHEMA,
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.code).toBe("rate_limited");
+    expect(callSpy).not.toHaveBeenCalled();
+  });
+
+  it("retries a rate-limited call from the global budget, then stops", async () => {
+    resetRateLimitBudget(2);
+    const callSpy = vi
+      .spyOn(ClaudeCodeClient.prototype, "callJson")
+      .mockRejectedValue(new Error("HTTP 429 — you've hit your session limit"));
+
+    const llm = new LlmService({ provider: "claude_code" });
+    const result = await llm.callJson({
+      model: "claude-sonnet-5",
+      messages: [{ role: "user", content: "hi" }],
+      jsonSchema: SCHEMA,
+    });
+
+    expect(result.success).toBe(false);
+    // Initial attempt + 2 budgeted retries, then the budget is spent.
+    expect(callSpy).toHaveBeenCalledTimes(3);
+    expect(isRateLimitStopped()).toBe(true);
   });
 });

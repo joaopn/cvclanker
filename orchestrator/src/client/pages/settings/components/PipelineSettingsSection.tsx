@@ -118,6 +118,7 @@ export const PipelineSettingsSection: React.FC<
     scoringInstructions,
     inboxStaleThresholdDays,
     maxBulkActionJobs,
+    llmRateLimitRetries,
     discoveryConcurrency,
     scoringConcurrency,
     tailoringConcurrency,
@@ -342,6 +343,43 @@ export const PipelineSettingsSection: React.FC<
             <span className="font-mono">
               {inboxStaleThresholdDays.effective}
             </span>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="llmRateLimitRetries" className="text-sm font-medium">
+            LLM rate-limit retries
+          </label>
+          <Controller
+            name="llmRateLimitRetries"
+            control={control}
+            render={({ field }) => (
+              <Input
+                id="llmRateLimitRetries"
+                type="number"
+                min={0}
+                step={1}
+                placeholder={String(llmRateLimitRetries.default)}
+                disabled={isLoading || isSaving}
+                value={field.value ?? ""}
+                onChange={(e) => {
+                  const value = e.target.valueAsNumber;
+                  field.onChange(Number.isFinite(value) ? value : null);
+                }}
+              />
+            )}
+          />
+          <div className="text-xs text-muted-foreground">
+            How many rate-limited LLM calls ("you've hit your session limit")
+            are retried in total — one shared budget across every call, not per
+            call — before all LLM work stops: scoring, tailoring, and any
+            remaining search profiles in a multi-profile run. Jobs are left
+            unscored rather than guessed at. 0 stops at the first rate limit.
+            Starting a run or a rescore clears the stop.
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Current:{" "}
+            <span className="font-mono">{llmRateLimitRetries.effective}</span>
           </div>
         </div>
 

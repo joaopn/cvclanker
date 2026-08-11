@@ -91,6 +91,7 @@ const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
   inboxStaleThresholdDays: null,
   maxBulkActionJobs: null,
   discoveryConcurrency: null,
+  llmRateLimitRetries: null,
   scoringConcurrency: null,
   tailoringConcurrency: null,
   bulkActionConcurrency: null,
@@ -308,6 +309,7 @@ export const SECTION_FIELD_MAP: Record<
     "inboxStaleThresholdDays",
     "maxBulkActionJobs",
     "discoveryConcurrency",
+    "llmRateLimitRetries",
     "scoringConcurrency",
     "tailoringConcurrency",
     "bulkActionConcurrency",
@@ -376,6 +378,7 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   inboxStaleThresholdDays: null,
   maxBulkActionJobs: null,
   discoveryConcurrency: null,
+  llmRateLimitRetries: null,
   scoringConcurrency: null,
   tailoringConcurrency: null,
   bulkActionConcurrency: null,
@@ -464,6 +467,7 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   inboxStaleThresholdDays: data.inboxStaleThresholdDays.override,
   maxBulkActionJobs: data.maxBulkActionJobs.override,
   discoveryConcurrency: data.discoveryConcurrency.override,
+  llmRateLimitRetries: data.llmRateLimitRetries.override,
   scoringConcurrency: data.scoringConcurrency.override,
   tailoringConcurrency: data.tailoringConcurrency.override,
   bulkActionConcurrency: data.bulkActionConcurrency.override,
@@ -605,6 +609,10 @@ const getDerivedSettings = (settings: AppSettings | null) => {
       discoveryConcurrency: {
         effective: settings?.discoveryConcurrency?.value ?? 3,
         default: settings?.discoveryConcurrency?.default ?? 3,
+      },
+      llmRateLimitRetries: {
+        effective: settings?.llmRateLimitRetries?.value ?? 3,
+        default: settings?.llmRateLimitRetries?.default ?? 3,
       },
       scoringConcurrency: {
         effective: settings?.scoringConcurrency?.value ?? 4,
@@ -884,6 +892,10 @@ export const SettingsPage: React.FC = () => {
         discoveryConcurrency: nullIfSame(
           data.discoveryConcurrency,
           pipeline.discoveryConcurrency.default,
+        ),
+        llmRateLimitRetries: nullIfSame(
+          data.llmRateLimitRetries,
+          pipeline.llmRateLimitRetries.default,
         ),
         scoringConcurrency: nullIfSame(
           data.scoringConcurrency,

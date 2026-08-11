@@ -11,6 +11,7 @@ const orchestratorMock = vi.hoisted(() => ({
 // imports at module load, and this suite only needs its two entry points.
 vi.mock("./orchestrator", () => orchestratorMock);
 
+import { resetRateLimitBudget } from "../services/llm/rate-limit-budget";
 import { runProfileSequence } from "./profile-sequence";
 import {
   getProgress,
@@ -57,6 +58,7 @@ beforeEach(() => {
   endProfileSequence();
   setActiveProfileRun(null);
   resetProgress();
+  resetRateLimitBudget(5);
   tryBeginProfileSequence();
 });
 
@@ -199,6 +201,42 @@ describe("runProfileSequence", () => {
     const terminal = getProgress();
     expect(terminal.step).toBe("cancelled");
     expect(terminal.detail).toBe("1 of 2 profiles completed, 1 stopped");
+  });
+
+  it("reports completed when the rate limit stops a chain that already landed profiles", async () => {
+    // `failed` gates the Swipe deck refetch and fires an error toast, so a
+    // chain that imported two profiles' jobs before the wall must not use it.
+    const { consumeRateLimitRetry } = await import(
+      "../services/llm/rate-limit-budget"
+    );
+    orchestratorMock.runPipeline.mockImplementation(async () => {
+      resetRateLimitBudget(0);
+      consumeRateLimitRetry("You've hit your session limit");
+      return ok;
+    });
+
+    await runProfileSequence([entry("a"), entry("b"), entry("c")]);
+
+    expect(orchestratorMock.runPipeline).toHaveBeenCalledTimes(1);
+    const terminal = getProgress();
+    expect(terminal.step).toBe("completed");
+    expect(terminal.message).toMatch(/rate limited/i);
+  });
+
+  it("reports failed when the rate limit stops a chain before anything landed", async () => {
+    const { consumeRateLimitRetry } = await import(
+      "../services/llm/rate-limit-budget"
+    );
+    orchestratorMock.runPipeline.mockImplementation(async () => {
+      resetRateLimitBudget(0);
+      consumeRateLimitRetry("You've hit your session limit");
+      return notOk;
+    });
+
+    await runProfileSequence([entry("a"), entry("b")]);
+
+    const terminal = getProgress();
+    expect(terminal.step).toBe("failed");
   });
 
   it("re-asserts the cancel when it lands in the commit window", async () => {

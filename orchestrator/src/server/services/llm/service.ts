@@ -2,6 +2,7 @@ import { logger } from "@infra/logger";
 import { toStringOrNull } from "@shared/utils/type-conversion";
 import { ClaudeCodeClient } from "./claude-code/client";
 import { CodexClient } from "./codex/client";
+import { classifyLlmError } from "./errors";
 import { llmCallObserver } from "./observer";
 import {
   buildModeCacheKey,
@@ -10,6 +11,12 @@ import {
 } from "./policies/mode-selection";
 import { getRetryDelayMs, shouldRetryAttempt } from "./policies/retry-policy";
 import { strategies } from "./providers";
+import {
+  consumeRateLimitRetry,
+  ensureRateLimitBudget,
+  getRateLimitStopReason,
+  isRateLimitStopped,
+} from "./rate-limit-budget";
 import type {
   JsonSchemaDefinition,
   LlmApiError,
@@ -82,6 +89,25 @@ export class LlmService {
   }
 
   async callJson<T>(options: LlmRequestOptions<T>): Promise<LlmResponse<T>> {
+    await ensureRateLimitBudget(async () => {
+      const { getEffectiveSettings } = await import("../settings");
+      return (await getEffectiveSettings()).llmRateLimitRetries.value;
+    });
+
+    // Once the global rate-limit budget is spent, every further call fails here
+    // without touching the provider. That is what turns "this job hit a session
+    // limit" into "stop classifying", instead of each queued job discovering
+    // the wall on its own and degrading however its caller sees fit.
+    if (isRateLimitStopped()) {
+      return {
+        success: false,
+        error:
+          getRateLimitStopReason() ??
+          "LLM stopped: provider rate limit reached",
+        code: "rate_limited",
+      };
+    }
+
     const handle = llmCallObserver.register({
       label: options.label?.trim() || "llm call",
       subject: options.subject?.trim() || null,
@@ -89,7 +115,18 @@ export class LlmService {
       jobId: options.jobId ?? null,
     });
     try {
-      const result = await this.callJsonInner<T>(options);
+      // Retrying the WHOLE call, spending from the shared budget: the per-call
+      // `maxRetries` is a local nicety, but a rate limit is account-wide, so
+      // the number of attempts that matters is the one counted across every
+      // call in flight.
+      let result = await this.callJsonInner<T>(options);
+      while (
+        !result.success &&
+        result.code === "rate_limited" &&
+        consumeRateLimitRetry(result.error)
+      ) {
+        result = await this.callJsonInner<T>(options);
+      }
       if (result.success) handle.succeed(result.usage);
       else handle.fail(result.error);
       return result;
@@ -111,7 +148,11 @@ export class LlmService {
     }
 
     if (this.strategy.requiresApiKey && !this.apiKey) {
-      return { success: false, error: "LLM API key not configured" };
+      return {
+        success: false,
+        error: "LLM API key not configured",
+        code: "auth",
+      };
     }
 
     const {
@@ -151,7 +192,11 @@ export class LlmService {
       return result;
     }
 
-    return { success: false, error: "All provider modes failed" };
+    return {
+      success: false,
+      error: "All provider modes failed",
+      code: "unknown",
+    };
   }
 
   getProvider(): LlmProvider {
@@ -320,11 +365,19 @@ export class LlmService {
           success: false,
           errorMessage: message,
         });
-        return { success: false, error: message };
+        return {
+          success: false,
+          error: message,
+          code: classifyLlmError({ message }),
+        };
       }
     }
 
-    return { success: false, error: "All retry attempts failed" };
+    return {
+      success: false,
+      error: "All retry attempts failed",
+      code: "unknown",
+    };
   }
 
   /**
@@ -392,11 +445,19 @@ export class LlmService {
           success: false,
           errorMessage: message,
         });
-        return { success: false, error: message };
+        return {
+          success: false,
+          error: message,
+          code: classifyLlmError({ message }),
+        };
       }
     }
 
-    return { success: false, error: "All retry attempts failed" };
+    return {
+      success: false,
+      error: "All retry attempts failed",
+      code: "unknown",
+    };
   }
 
   private async tryMode<T>(args: {
@@ -529,7 +590,11 @@ export class LlmService {
           // Capability errors signal "try the next mode" — they're not a
           // call failure. Skip the call-completed log; the next mode (or
           // the final exhaustion path in callJson) will emit one.
-          return { success: false, error: `CAPABILITY:${message}` };
+          return {
+            success: false,
+            error: `CAPABILITY:${message}`,
+            code: "unknown",
+          };
         }
 
         if (attempt < maxRetries && shouldRetryAttempt({ message, status })) {
@@ -555,11 +620,19 @@ export class LlmService {
           promptChars,
           bodyBytes,
         });
-        return { success: false, error: message };
+        return {
+          success: false,
+          error: message,
+          code: classifyLlmError({ status, message }),
+        };
       }
     }
 
-    return { success: false, error: "All retry attempts failed" };
+    return {
+      success: false,
+      error: "All retry attempts failed",
+      code: "unknown",
+    };
   }
 
   /**
