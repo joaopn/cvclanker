@@ -8,6 +8,7 @@ import type {
   ApiResponse,
   AppSettings,
   BatchUrlImportStreamEvent,
+  BenchRun,
   BranchInfo,
   ClaudeCodeCliStatus,
   CoverLetterDocument,
@@ -43,6 +44,7 @@ import type {
   RunJobBucket,
   RunJobsResponse,
   SearchTermsSuggestionResponse,
+  StartBenchRunInput,
   StoredUserProfile,
   SuitabilityCategory,
   UpdateJobNoteInput,
@@ -1734,3 +1736,19 @@ export async function deleteJobsByCategory(
 }
 
 // Multi-job operations (intentionally none - processing is manual)
+
+export async function startScoringBenchRun(
+  input: StartBenchRunInput,
+): Promise<BenchRun> {
+  const result = await fetchApi<{ run: BenchRun }>("/scoring-bench/runs", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return result.run;
+}
+
+export async function cancelScoringBenchRun(): Promise<{ cancelled: boolean }> {
+  return fetchApi<{ cancelled: boolean }>("/scoring-bench/cancel", {
+    method: "POST",
+  });
+}

@@ -9,6 +9,7 @@ import { ContextLimitsSection } from "@client/pages/settings/components/ContextL
 import { DangerZoneSection } from "@client/pages/settings/components/DangerZoneSection";
 import { DisplaySettingsSection } from "@client/pages/settings/components/DisplaySettingsSection";
 import { EnvironmentSettingsSection } from "@client/pages/settings/components/EnvironmentSettingsSection";
+import { ModelBenchmarkingPanel } from "@client/pages/settings/components/ModelBenchmarkingPanel";
 import { ModelSettingsSection } from "@client/pages/settings/components/ModelSettingsSection";
 import { PipelineSettingsSection } from "@client/pages/settings/components/PipelineSettingsSection";
 import { PromptsPanel } from "@client/pages/settings/components/PromptsPanel";
@@ -114,6 +115,7 @@ type LlmProviderValue = LlmProviderId | null;
 
 type SettingsSectionId =
   | "model"
+  | "model-benchmarking"
   | "chat"
   | "context-limits"
   | "environment"
@@ -161,6 +163,21 @@ const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
           "ollama",
           "codex",
           "claude",
+        ],
+      },
+      {
+        id: "model-benchmarking",
+        label: "Model Benchmarking",
+        description:
+          "Compare how different models and effort levels classify the same jobs.",
+        searchTerms: [
+          "benchmark",
+          "compare",
+          "scoring",
+          "model",
+          "effort",
+          "cost",
+          "tokens",
         ],
       },
       {
@@ -322,6 +339,9 @@ export const SECTION_FIELD_MAP: Record<
     "maxCoverLetterUploadBytes",
     "maxExpandedLatexBytes",
   ],
+  // Benchmarking owns no settings key — it runs an in-memory comparison, so it
+  // has nothing to reset and no dirty state to badge.
+  "model-benchmarking": [],
   "user-profiles": [],
   prompts: [],
   "danger-zone": [],
@@ -1174,6 +1194,15 @@ export const SettingsPage: React.FC = () => {
           isLoading={isLoading}
           isSaving={isSaving}
           layoutMode="panel"
+        />
+      );
+      break;
+    case "model-benchmarking":
+      activeSectionContent = (
+        <ModelBenchmarkingPanel
+          layoutMode="panel"
+          provider={model.llmProvider || null}
+          scoringModel={model.scorer || model.effective}
         />
       );
       break;
