@@ -1,3 +1,4 @@
+import type { ClaudeCodeEffortLevel } from "@shared/settings-registry";
 import type { LlmErrorCode } from "./errors";
 
 export type LlmProvider =
@@ -41,6 +42,15 @@ export interface LlmRequestOptions<_T> {
   label?: string;
   /** Optional secondary line shown under the label (e.g. "Title @ Employer") */
   subject?: string;
+  /**
+   * Per-call reasoning effort, claude_code only. Overrides the
+   * `claudeCodeEffort` setting (which reaches the spawner as
+   * CLAUDE_CODE_EFFORT) for this call alone — the setting is a process-global,
+   * so a caller that needs a different effort must pass it here rather than
+   * writing process.env, which would leak into every concurrent call.
+   * Other providers ignore it: no other provider exposes the knob.
+   */
+  effort?: ClaudeCodeEffortLevel;
 }
 
 export interface LlmTokenUsage {

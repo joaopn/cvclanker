@@ -524,6 +524,7 @@ export class ClaudeCodeClient {
       argv: buildCallArgv({
         model: options.model,
         jsonSchema: options.jsonSchema,
+        effort: options.effort,
       }),
       // The prompt goes on stdin, never argv: CV/JD payloads are large and an
       // argv prompt would also expose the candidate's CV in the process table.
@@ -568,6 +569,7 @@ export class ClaudeCodeClient {
 export function buildCallArgv(args: {
   model: string;
   jsonSchema: JsonSchemaDefinition;
+  effort?: string;
 }): string[] {
   const argv = [
     "-p",
@@ -594,10 +596,13 @@ export function buildCallArgv(args: {
   }
 
   // The `claudeCodeEffort` setting rides its envKey into process.env (boot +
-  // save), read here at spawn time like CLAUDE_CODE_BIN. Values outside the
-  // known set are dropped rather than passed: the CLI would only warn and
-  // ignore them, but not forwarding garbage keeps the argv deterministic.
-  const effort = process.env.CLAUDE_CODE_EFFORT?.trim();
+  // save), read here at spawn time like CLAUDE_CODE_BIN. A per-call `effort`
+  // wins over it: the env var is process-global, so a caller comparing efforts
+  // side by side cannot express itself through the environment without
+  // corrupting every concurrent call. Values outside the known set are dropped
+  // rather than passed: the CLI would only warn and ignore them, but not
+  // forwarding garbage keeps the argv deterministic.
+  const effort = (args.effort ?? process.env.CLAUDE_CODE_EFFORT)?.trim();
   if (
     effort &&
     (CLAUDE_CODE_EFFORT_LEVELS as readonly string[]).includes(effort)

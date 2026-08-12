@@ -305,6 +305,43 @@ describe("buildCallArgv", () => {
       else process.env.CLAUDE_CODE_EFFORT = previous;
     }
   });
+
+  it("lets a per-call effort win over CLAUDE_CODE_EFFORT", () => {
+    const previous = process.env.CLAUDE_CODE_EFFORT;
+    try {
+      // The env var is process-global, so a caller comparing efforts side by
+      // side must be able to override it per call without writing to it.
+      process.env.CLAUDE_CODE_EFFORT = "max";
+      const argv = buildCallArgv({
+        model: "",
+        jsonSchema: REQUEST.jsonSchema,
+        effort: "low",
+      });
+      expect(argv[argv.indexOf("--effort") + 1]).toBe("low");
+      expect(argv.filter((arg) => arg === "--effort")).toHaveLength(1);
+      expect(process.env.CLAUDE_CODE_EFFORT).toBe("max");
+    } finally {
+      if (previous === undefined) delete process.env.CLAUDE_CODE_EFFORT;
+      else process.env.CLAUDE_CODE_EFFORT = previous;
+    }
+  });
+
+  it("drops an unknown per-call effort instead of falling back to the env", () => {
+    const previous = process.env.CLAUDE_CODE_EFFORT;
+    try {
+      process.env.CLAUDE_CODE_EFFORT = "high";
+      expect(
+        buildCallArgv({
+          model: "",
+          jsonSchema: REQUEST.jsonSchema,
+          effort: "turbo",
+        }),
+      ).not.toContain("--effort");
+    } finally {
+      if (previous === undefined) delete process.env.CLAUDE_CODE_EFFORT;
+      else process.env.CLAUDE_CODE_EFFORT = previous;
+    }
+  });
 });
 
 describe("ClaudeCodeClient.callJson", () => {

@@ -9,7 +9,10 @@
 
 import { AppError } from "@infra/errors";
 import { logger } from "@infra/logger";
-import { DEFAULT_SCORING_INSTRUCTIONS } from "@shared/settings-registry";
+import {
+  type ClaudeCodeEffortLevel,
+  DEFAULT_SCORING_INSTRUCTIONS,
+} from "@shared/settings-registry";
 import {
   SUITABILITY_CATEGORIES,
   SUITABILITY_CATEGORY_RANK,
@@ -17,7 +20,7 @@ import {
   type SuitabilityCategory,
 } from "@shared/types";
 import { LlmService } from "./llm/service";
-import type { JsonSchemaDefinition } from "./llm/types";
+import type { JsonSchemaDefinition, LlmTokenUsage } from "./llm/types";
 import { resolveLlmModel } from "./modelSelection";
 import { loadPrompt } from "./prompts";
 import { getEffectiveSettings } from "./settings";
@@ -28,7 +31,7 @@ import { getEffectiveSettings } from "./settings";
  * judge against the brief), so we'd rather leave the row unscored and
  * surface the problem.
  */
-const MIN_SCOREABLE_DESCRIPTION_CHARS = 100;
+export const MIN_SCOREABLE_DESCRIPTION_CHARS = 100;
 
 export class JobNotScoreableError extends AppError {
   constructor(args: { jobId: string; observed: number; required: number }) {
@@ -152,10 +155,30 @@ function isSuitabilityCategory(value: unknown): value is SuitabilityCategory {
   );
 }
 
-export async function scoreJobSuitability(
+/**
+ * One classification call, with the model configuration handed in rather than
+ * resolved from settings. This is the whole scoring path EXCEPT the salary
+ * penalty: the description gate, the prompt, the LLM call, and the typed
+ * failures. `scoreJobSuitability` is this plus the penalty; the model-benchmark
+ * runner is this with a caller-chosen model/effort and nothing persisted.
+ *
+ * The penalty deliberately lives outside: it is deterministic post-processing
+ * applied identically whatever the model, so a comparison that included it
+ * would only add correlated noise to every column.
+ */
+export async function classifyJob(
   job: Job,
   brief: string,
-): Promise<SuitabilityResult> {
+  config: {
+    model: string;
+    instructions: string;
+    effort?: ClaudeCodeEffortLevel;
+  },
+): Promise<{
+  category: SuitabilityCategory;
+  reason: string;
+  usage?: LlmTokenUsage;
+}> {
   const descriptionLength = (job.jobDescription ?? "").trim().length;
   if (descriptionLength < MIN_SCOREABLE_DESCRIPTION_CHARS) {
     throw new JobNotScoreableError({
@@ -165,13 +188,8 @@ export async function scoreJobSuitability(
     });
   }
 
-  const [model, settings] = await Promise.all([
-    resolveLlmModel("scoring"),
-    getEffectiveSettings(),
-  ]);
-
   const prompt = await buildScoringPrompt(job, brief.trim(), {
-    instructions: settings.scoringInstructions?.value ?? "",
+    instructions: config.instructions,
   });
 
   const llm = new LlmService();
@@ -182,13 +200,14 @@ export async function scoreJobSuitability(
   messages.push({ role: "user", content: prompt.user });
 
   const result = await llm.callJson<{ category: unknown; reason: unknown }>({
-    model,
+    model: config.model,
     messages,
     jsonSchema: SCORING_SCHEMA,
     maxRetries: 2,
     jobId: job.id,
     label: "score job",
     subject: `${job.title} @ ${job.employer}`,
+    ...(config.effort ? { effort: config.effort } : {}),
   });
 
   if (!result.success) {
@@ -223,7 +242,37 @@ export async function scoreJobSuitability(
       ? rawReason.trim()
       : "No explanation provided";
 
-  return applySalaryPenalty(job, rawCategory, reason, {
+  return { category: rawCategory, reason, usage: result.usage };
+}
+
+export async function scoreJobSuitability(
+  job: Job,
+  brief: string,
+): Promise<SuitabilityResult> {
+  // Re-checked here, ahead of the settings reads, purely to keep an unscoreable
+  // job as cheap as it was before `classifyJob` was split out — a batch of them
+  // would otherwise pay two settings reads each before being rejected.
+  // `classifyJob` checks it again; the gate is idempotent.
+  const descriptionLength = (job.jobDescription ?? "").trim().length;
+  if (descriptionLength < MIN_SCOREABLE_DESCRIPTION_CHARS) {
+    throw new JobNotScoreableError({
+      jobId: job.id,
+      observed: descriptionLength,
+      required: MIN_SCOREABLE_DESCRIPTION_CHARS,
+    });
+  }
+
+  const [model, settings] = await Promise.all([
+    resolveLlmModel("scoring"),
+    getEffectiveSettings(),
+  ]);
+
+  const { category, reason } = await classifyJob(job, brief, {
+    model,
+    instructions: settings.scoringInstructions?.value ?? "",
+  });
+
+  return applySalaryPenalty(job, category, reason, {
     penalizeMissingSalary: settings.penalizeMissingSalary.value,
   });
 }
