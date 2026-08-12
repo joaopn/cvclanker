@@ -72,8 +72,16 @@ vi.mock("@server/services/manualJob", () => ({
   fetchAndExtractJobContent: vi.fn(),
 }));
 
+// The whole module is replaced, so every export the server imports must be
+// listed: `classifyJob` and the two below are read by the scoring-bench runner,
+// and a missing export throws on first access rather than returning undefined.
 vi.mock("@server/services/scorer", () => ({
   scoreJobSuitability: vi.fn(),
+  classifyJob: vi.fn(),
+  MIN_SCOREABLE_DESCRIPTION_CHARS: 100,
+  LlmRateLimitStopError: class LlmRateLimitStopError extends Error {},
+  JobNotScoreableError: class JobNotScoreableError extends Error {},
+  JobScoringFailedError: class JobScoringFailedError extends Error {},
 }));
 
 vi.mock("@server/services/brief", () => ({

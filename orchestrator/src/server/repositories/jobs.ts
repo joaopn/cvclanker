@@ -822,6 +822,40 @@ export async function getUnscoredDiscoveredJobs(
 }
 
 /**
+ * Draw a uniform random sample of jobs that are still alive (anything but
+ * `closed`) and long enough to be worth judging.
+ *
+ * `minDescriptionChars` is a parameter rather than a constant here so the
+ * caller can pass the scorer's own threshold: duplicating the number in the
+ * repository would let the sampler and the scoring gate drift apart, and a
+ * repository importing a service to read it would invert the layering.
+ */
+export async function getRandomScoreableJobs(args: {
+  limit: number;
+  minDescriptionChars: number;
+}): Promise<Job[]> {
+  if (args.limit <= 0) return [];
+
+  const rows = await db
+    .select()
+    .from(jobs)
+    .where(
+      and(
+        ne(jobs.status, "closed"),
+        // SQLite's one-argument trim() strips SPACES only, so the whitespace
+        // set is spelled out to match JS `.trim()` — a description padded with
+        // newlines would otherwise pass here and then be rejected as too short
+        // by the scorer, which is exactly the drift this query must not have.
+        sql`length(trim(coalesce(${jobs.jobDescription}, ''), char(9) || char(10) || char(11) || char(12) || char(13) || ' ')) >= ${args.minDescriptionChars}`,
+      ),
+    )
+    .orderBy(sql`random()`)
+    .limit(args.limit);
+
+  return rows.map(mapRowToJob);
+}
+
+/**
  * Delete jobs by status.
  */
 export async function deleteJobsByStatus(status: JobStatus): Promise<number> {
