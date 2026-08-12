@@ -1,5 +1,5 @@
 import { PILL_CLASS } from "@client/components/ScoreIndicator";
-import type { DisagreementRow } from "@shared/scoring-bench";
+import { configSubtitle, type DisagreementRow } from "@shared/scoring-bench";
 import { type BenchConfig, SUITABILITY_CATEGORY_LABELS } from "@shared/types";
 import { ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import type React from "react";
@@ -67,8 +67,7 @@ export const BenchDisagreementDialog: React.FC<
                           {config.label}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {config.model || "provider default"}
-                          {config.effort ? ` · ${config.effort}` : ""}
+                          {configSubtitle(config)}
                         </div>
                       </div>
                       {cell?.category ? (

@@ -4,7 +4,10 @@
  * renders what these functions return.
  */
 
-import { SUITABILITY_CATEGORY_RANK } from "./types/jobs";
+import {
+  SUITABILITY_CATEGORY_RANK,
+  type SuitabilityCategory,
+} from "./types/jobs";
 import type { BenchCell, BenchConfig, BenchJob } from "./types/scoring-bench";
 
 export interface ConfigSummary {
@@ -23,11 +26,29 @@ export interface ConfigSummary {
   /** Jobs both classified — the denominator behind the two rates above. */
   comparable: number;
   /**
-   * Mean of (promptTokens + completionTokens) over cells that reported usage.
-   * Null when the provider reports none (codex reports no usage at all), which
-   * is deliberately distinct from 0.
+   * Mean input and output tokens per classified job, over the cells that
+   * reported each. Null when the provider reported none (codex reports no usage
+   * at all), which is deliberately distinct from 0.
    */
-  avgTotalTokens: number | null;
+  avgPromptTokens: number | null;
+  avgCompletionTokens: number | null;
+  /**
+   * What the reported usage cost at the configured per-million rates, and the
+   * same figure per job. BOTH are computed over the cells that actually
+   * reported usage — mixing a usage-only numerator with an all-jobs divisor
+   * would understate per-job cost, and every multiplier built on it. Null when
+   * the column carries no rates or the provider reported nothing; an absent
+   * estimate is never rendered as 0, which would read as "free".
+   */
+  estimatedCost: number | null;
+  estimatedCostPerJob: number | null;
+  /** Cells behind the two figures above — the honest denominator. */
+  pricedJobs: number;
+  /**
+   * True when a rate was given for a half the provider never reported, so the
+   * estimate covers only part of the spend.
+   */
+  partialEstimate: boolean;
   /** Mean wall-clock per classified cell, milliseconds. */
   avgDurationMs: number | null;
 }
@@ -47,6 +68,55 @@ export function cellKey(jobId: string, configId: string): string {
   return `${jobId}::${configId}`;
 }
 
+/**
+ * Column id for what is already saved on each job. It is modelled as a
+ * synthetic config so every function here — agreement, disagreements, the
+ * summary — treats "the database" as just another column, instead of each
+ * caller special-casing it.
+ */
+export const STORED_COLUMN_ID = "__stored__";
+
+export const STORED_COLUMN: BenchConfig = {
+  id: STORED_COLUMN_ID,
+  label: "Saved in database",
+  model: "",
+  effort: null,
+  // No rates: what a past run cost is not something this screen can know.
+  inputCostPerMillion: null,
+  outputCostPerMillion: null,
+};
+
+/**
+ * Cells for the saved-value column. A job that has never been classified
+ * yields a cell with no category, which every rate here already excludes from
+ * its denominator — the same treatment a model that failed on that job gets.
+ */
+export function buildStoredCells(jobs: BenchJob[]): BenchCell[] {
+  return jobs.map((job) => ({
+    jobId: job.id,
+    configId: STORED_COLUMN_ID,
+    status: job.storedCategory ? ("done" as const) : ("pending" as const),
+    category: job.storedCategory,
+    reason: job.storedReason,
+    error: null,
+    promptTokens: null,
+    completionTokens: null,
+    durationMs: null,
+  }));
+}
+
+/**
+ * The line under a column's name. Shared because this is rendered in three
+ * places and the saved column has no model to name — printing its empty model
+ * as "provider default" would claim the database's value came from the
+ * provider's default model.
+ */
+export function configSubtitle(config: BenchConfig): string {
+  if (config.id === STORED_COLUMN_ID) return "saved on the job";
+  const model = config.model || "provider default";
+  return config.effort ? `${model} · ${config.effort}` : model;
+}
+
 export function indexCells(cells: BenchCell[]): Map<string, BenchCell> {
   const byKey = new Map<string, BenchCell>();
   for (const cell of cells) {
@@ -55,15 +125,22 @@ export function indexCells(cells: BenchCell[]): Map<string, BenchCell> {
   return byKey;
 }
 
+function sum(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return values.reduce((total, value) => total + value, 0);
+}
+
 function mean(values: number[]): number | null {
   if (values.length === 0) return null;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
+  return values.reduce((total, value) => total + value, 0) / values.length;
 }
 
 export function summarizeConfig(args: {
   configId: string;
   referenceConfigId: string | null;
   cells: BenchCell[];
+  /** Per-million prices for this column; omit for no cost estimate. */
+  rates?: { input: number | null; output: number | null };
   /**
    * Prebuilt index of the same cells. Optional, but a caller summarising every
    * config of a streaming run should pass one: without it each config re-indexes
@@ -76,14 +153,15 @@ export function summarizeConfig(args: {
   const own = args.cells.filter((cell) => cell.configId === configId);
 
   const classifiedCells = own.filter((cell) => cell.category !== null);
-  const tokenValues: number[] = [];
-  for (const cell of classifiedCells) {
-    // A provider reporting neither count contributes nothing; one that reports
-    // only completion tokens still carries real information, so treat the
-    // missing half as 0 rather than dropping the cell.
-    if (cell.promptTokens === null && cell.completionTokens === null) continue;
-    tokenValues.push((cell.promptTokens ?? 0) + (cell.completionTokens ?? 0));
-  }
+  // Each half is averaged over the cells that reported THAT half, so a provider
+  // reporting only one of the two still contributes the number it does report
+  // instead of being averaged against an invented zero.
+  const promptValues = classifiedCells
+    .map((cell) => cell.promptTokens)
+    .filter((value): value is number => value !== null);
+  const completionValues = classifiedCells
+    .map((cell) => cell.completionTokens)
+    .filter((value): value is number => value !== null);
   const durationValues = classifiedCells
     .map((cell) => cell.durationMs)
     .filter((value): value is number => value !== null);
@@ -109,6 +187,20 @@ export function summarizeConfig(args: {
     }
   }
 
+  // The set the sums cover: a cell counts once if it reported either half.
+  const pricedJobs = classifiedCells.filter(
+    (cell) => cell.promptTokens !== null || cell.completionTokens !== null,
+  ).length;
+  const cost = estimateCost({
+    promptTokens: sum(promptValues),
+    completionTokens: sum(completionValues),
+    rates: args.rates,
+  });
+  const partialEstimate =
+    cost !== null &&
+    ((args.rates?.input != null && promptValues.length === 0) ||
+      (args.rates?.output != null && completionValues.length === 0));
+
   return {
     configId,
     classified: classifiedCells.length,
@@ -116,9 +208,52 @@ export function summarizeConfig(args: {
     comparable,
     agreement: comparable > 0 ? exact / comparable : null,
     withinOneTier: comparable > 0 ? withinOne / comparable : null,
-    avgTotalTokens: mean(tokenValues),
+    avgPromptTokens: mean(promptValues),
+    avgCompletionTokens: mean(completionValues),
+    estimatedCost: cost,
+    estimatedCostPerJob:
+      cost === null || pricedJobs === 0 ? null : cost / pricedJobs,
+    pricedJobs,
+    partialEstimate,
     avgDurationMs: mean(durationValues),
   };
+}
+
+/**
+ * Priced from the tokens actually reported, so a column whose provider reports
+ * nothing yields null rather than a confident zero. Rates are per million.
+ */
+function estimateCost(args: {
+  promptTokens: number | null;
+  completionTokens: number | null;
+  rates?: { input: number | null; output: number | null };
+}): number | null {
+  const { rates } = args;
+  if (!rates) return null;
+  if (rates.input === null && rates.output === null) return null;
+  if (args.promptTokens === null && args.completionTokens === null) return null;
+
+  return (
+    ((args.promptTokens ?? 0) * (rates.input ?? 0)) / 1_000_000 +
+    ((args.completionTokens ?? 0) * (rates.output ?? 0)) / 1_000_000
+  );
+}
+
+/**
+ * How much dearer this column is than the reference, per classified job. Null
+ * unless both sides carry an estimate — a ratio against an unpriced column
+ * would be meaningless rather than infinite.
+ */
+export function costMultiplier(
+  summary: ConfigSummary,
+  reference: ConfigSummary | undefined,
+): number | null {
+  const own = summary.estimatedCostPerJob;
+  const base = reference?.estimatedCostPerJob;
+  if (own === null || base === undefined || base === null || base === 0) {
+    return null;
+  }
+  return own / base;
 }
 
 /**
@@ -153,6 +288,28 @@ export function findDisagreements(args: {
   }
 
   return rows;
+}
+
+/**
+ * How many jobs each column put in each category. The summary reads down these
+ * to answer "is the cheap model just harsher across the board?", which an
+ * agreement percentage alone cannot show.
+ */
+export function categoryCounts(
+  cells: BenchCell[],
+  configId: string,
+): Record<SuitabilityCategory, number> {
+  const counts: Record<SuitabilityCategory, number> = {
+    great_fit: 0,
+    very_good_fit: 0,
+    good_fit: 0,
+    bad_fit: 0,
+  };
+  for (const cell of cells) {
+    if (cell.configId !== configId || !cell.category) continue;
+    counts[cell.category] += 1;
+  }
+  return counts;
 }
 
 export function formatPercent(value: number | null): string {

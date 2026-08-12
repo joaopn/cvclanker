@@ -16,6 +16,7 @@ import type {
   BenchJob,
   BenchRun,
   BenchRunStatus,
+  BenchSampleCategory,
   BenchStreamEvent,
 } from "@shared/types";
 
@@ -58,7 +59,10 @@ export function isBenchRunActive(): boolean {
  * BEFORE its first await, or two concurrent POSTs both read "idle" and both
  * start a run. Returns the seeded run, or null when one is already active.
  */
-export function claimBenchRun(configs: BenchConfig[]): BenchRun | null {
+export function claimBenchRun(
+  configs: BenchConfig[],
+  sampleCategories: BenchSampleCategory[],
+): BenchRun | null {
   if (isBenchRunActive()) return null;
 
   stopRequested = false;
@@ -70,6 +74,7 @@ export function claimBenchRun(configs: BenchConfig[]): BenchRun | null {
     configs,
     jobs: [],
     cells: [],
+    sampleCategories,
     startedAt: new Date().toISOString(),
     finishedAt: null,
   };

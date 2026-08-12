@@ -68,6 +68,59 @@ describe.sequential("Scoring bench API routes", () => {
     ]);
   });
 
+  it("records the categories a run was drawn from, deduped", async () => {
+    // A payload repeating one category must not count its way to the full
+    // length and be read as "all of them".
+    const response = await startRun({
+      sampleSize: 1,
+      categories: ["good_fit", "good_fit", "good_fit", "good_fit", "good_fit"],
+      configs: [{ model: "m" }],
+    });
+    const body = (await response.json()) as {
+      data: { run: { sampleCategories: string[] } };
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.data.run.sampleCategories).toEqual(["good_fit"]);
+  });
+
+  it("defaults to every category when the client sends none", async () => {
+    const response = await startRun({
+      sampleSize: 1,
+      configs: [{ model: "m" }],
+    });
+    const body = (await response.json()) as {
+      data: { run: { sampleCategories: string[] } };
+    };
+
+    expect(body.data.run.sampleCategories).toEqual([
+      "great_fit",
+      "very_good_fit",
+      "good_fit",
+      "bad_fit",
+      "unscored",
+    ]);
+  });
+
+  it("rejects an empty category selection rather than reading it as everything", async () => {
+    const response = await startRun({
+      sampleSize: 1,
+      categories: [],
+      configs: [{ model: "m" }],
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects a negative price", async () => {
+    const response = await startRun({
+      sampleSize: 1,
+      configs: [{ model: "m", inputCostPerMillion: -1 }],
+    });
+
+    expect(response.status).toBe(400);
+  });
+
   it("reports nothing to cancel when idle", async () => {
     const response = await fetch(`${baseUrl}/api/scoring-bench/cancel`, {
       method: "POST",

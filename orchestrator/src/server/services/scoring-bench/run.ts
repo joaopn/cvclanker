@@ -27,6 +27,7 @@ import type {
   BenchConfig,
   BenchJob,
   BenchRun,
+  BenchSampleCategory,
   Job,
 } from "@shared/types";
 import {
@@ -54,6 +55,8 @@ function toBenchJob(job: Job): BenchJob {
     title: job.title,
     employer: job.employer,
     jobUrl: job.jobUrl ?? null,
+    storedCategory: job.suitabilityCategory ?? null,
+    storedReason: job.suitabilityReason ?? null,
   };
 }
 
@@ -65,8 +68,9 @@ function toBenchJob(job: Job): BenchJob {
 export async function executeBenchRun(args: {
   run: BenchRun;
   sampleSize: number;
+  categories?: BenchSampleCategory[];
 }): Promise<void> {
-  const { run, sampleSize } = args;
+  const { run, sampleSize, categories } = args;
 
   try {
     const [settings, brief, configuredModel] = await Promise.all([
@@ -105,6 +109,7 @@ export async function executeBenchRun(args: {
     const sample = await jobsRepo.getRandomScoreableJobs({
       limit: sampleSize,
       minDescriptionChars: MIN_SCOREABLE_DESCRIPTION_CHARS,
+      ...(categories ? { categories } : {}),
     });
     setBenchRunJobs(run.id, sample.map(toBenchJob));
 

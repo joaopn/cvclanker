@@ -30,7 +30,8 @@ import type {
   LocationEvidence,
   LocationEvidenceEntry,
 } from "@shared/types/location";
-import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import type { BenchSampleCategory } from "@shared/types/scoring-bench";
+import { and, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import {
   isProviderInstanceSource,
   resolveSourceDisplayLabel,
@@ -822,6 +823,26 @@ export async function getUnscoredDiscoveredJobs(
 }
 
 /**
+ * "Scored as one of these, and/or never scored at all" as one SQL condition.
+ * The unscored half has to be an IS NULL test: `suitability_category IN (...)`
+ * is never true for NULL, so a request for unscored jobs alone would silently
+ * return nothing.
+ */
+function buildStoredCategoryFilter(categories: BenchSampleCategory[]) {
+  const scored = categories.filter(
+    (category): category is SuitabilityCategory => category !== "unscored",
+  );
+  const wantsUnscored = categories.includes("unscored");
+
+  const clauses = [
+    scored.length > 0 ? inArray(jobs.suitabilityCategory, scored) : undefined,
+    wantsUnscored ? isNull(jobs.suitabilityCategory) : undefined,
+  ].filter((clause) => clause !== undefined);
+
+  return clauses.length === 1 ? clauses[0] : or(...clauses);
+}
+
+/**
  * Draw a uniform random sample of jobs that are still alive (anything but
  * `closed`) and long enough to be worth judging.
  *
@@ -833,8 +854,20 @@ export async function getUnscoredDiscoveredJobs(
 export async function getRandomScoreableJobs(args: {
   limit: number;
   minDescriptionChars: number;
+  /**
+   * Restricts the draw to these saved fit categories, where "unscored" means a
+   * job with no category at all. Undefined means no restriction; an empty array
+   * means nothing qualifies, and is answered with an empty sample rather than
+   * being quietly read as "everything".
+   */
+  categories?: BenchSampleCategory[];
 }): Promise<Job[]> {
   if (args.limit <= 0) return [];
+  if (args.categories && args.categories.length === 0) return [];
+
+  const categoryFilter = args.categories
+    ? buildStoredCategoryFilter(args.categories)
+    : undefined;
 
   const rows = await db
     .select()
@@ -842,6 +875,7 @@ export async function getRandomScoreableJobs(args: {
     .where(
       and(
         ne(jobs.status, "closed"),
+        ...(categoryFilter ? [categoryFilter] : []),
         // SQLite's one-argument trim() strips SPACES only, so the whitespace
         // set is spelled out to match JS `.trim()` — a description padded with
         // newlines would otherwise pass here and then be rejected as too short

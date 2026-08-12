@@ -1,5 +1,5 @@
 // @vitest-environment node
-import type { BenchConfig, Job } from "@shared/types";
+import type { BenchConfig, BenchSampleCategory, Job } from "@shared/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const classifyJobMock = vi.hoisted(() => vi.fn());
@@ -54,17 +54,40 @@ import {
   resetBenchStoreForTests,
 } from "./store";
 
-const CONFIGS: BenchConfig[] = [
-  { id: "cfg-a", label: "A", model: "big", effort: null },
-  { id: "cfg-b", label: "B", model: "small", effort: "low" },
+const ALL_CATEGORIES: BenchSampleCategory[] = [
+  "great_fit",
+  "very_good_fit",
+  "good_fit",
+  "bad_fit",
+  "unscored",
 ];
 
-function job(id: string): Job {
+const CONFIGS: BenchConfig[] = [
+  {
+    id: "cfg-a",
+    label: "A",
+    model: "big",
+    effort: null,
+    inputCostPerMillion: null,
+    outputCostPerMillion: null,
+  },
+  {
+    id: "cfg-b",
+    label: "B",
+    model: "small",
+    effort: "low",
+    inputCostPerMillion: null,
+    outputCostPerMillion: null,
+  },
+];
+
+function job(id: string, overrides: Partial<Job> = {}): Job {
   return {
     id,
     title: `Job ${id}`,
     employer: "Acme",
     jobUrl: `https://example.test/${id}`,
+    ...overrides,
   } as unknown as Job;
 }
 
@@ -94,7 +117,7 @@ describe("executeBenchRun", () => {
       usage: { promptTokens: 100, completionTokens: 10 },
     });
 
-    const run = claimBenchRun(CONFIGS);
+    const run = claimBenchRun(CONFIGS, ALL_CATEGORIES);
     if (!run) throw new Error("claim failed");
     await executeBenchRun({ run, sampleSize: 2 });
 
@@ -113,7 +136,7 @@ describe("executeBenchRun", () => {
     getRandomScoreableJobsMock.mockResolvedValue([job("j1")]);
     classifyJobMock.mockResolvedValue({ category: "bad_fit", reason: "no" });
 
-    const run = claimBenchRun(CONFIGS);
+    const run = claimBenchRun(CONFIGS, ALL_CATEGORIES);
     if (!run) throw new Error("claim failed");
     await executeBenchRun({ run, sampleSize: 1 });
 
@@ -132,7 +155,7 @@ describe("executeBenchRun", () => {
       .mockRejectedValueOnce(new Error("model refused"))
       .mockResolvedValue({ category: "good_fit", reason: "ok" });
 
-    const run = claimBenchRun(CONFIGS);
+    const run = claimBenchRun(CONFIGS, ALL_CATEGORIES);
     if (!run) throw new Error("claim failed");
     await executeBenchRun({ run, sampleSize: 2 });
 
@@ -156,7 +179,7 @@ describe("executeBenchRun", () => {
       new FakeRateLimitStopError("session limit reached"),
     );
 
-    const run = claimBenchRun(CONFIGS);
+    const run = claimBenchRun(CONFIGS, ALL_CATEGORIES);
     if (!run) throw new Error("claim failed");
     await executeBenchRun({ run, sampleSize: 3 });
 
@@ -171,9 +194,19 @@ describe("executeBenchRun", () => {
     getRandomScoreableJobsMock.mockResolvedValue([job("j1")]);
     classifyJobMock.mockResolvedValue({ category: "good_fit", reason: "ok" });
 
-    const run = claimBenchRun([
-      { id: "cfg-blank", label: "Default", model: "", effort: null },
-    ]);
+    const run = claimBenchRun(
+      [
+        {
+          id: "cfg-blank",
+          label: "Default",
+          model: "",
+          effort: null,
+          inputCostPerMillion: null,
+          outputCostPerMillion: null,
+        },
+      ],
+      ALL_CATEGORIES,
+    );
     if (!run) throw new Error("claim failed");
     await executeBenchRun({ run, sampleSize: 1 });
 
@@ -194,10 +227,27 @@ describe("executeBenchRun", () => {
     getRandomScoreableJobsMock.mockResolvedValue([job("j1")]);
     classifyJobMock.mockResolvedValue({ category: "good_fit", reason: "ok" });
 
-    const run = claimBenchRun([
-      { id: "cfg-default", label: "Default", model: "m", effort: null },
-      { id: "cfg-low", label: "Low", model: "m", effort: "low" },
-    ]);
+    const run = claimBenchRun(
+      [
+        {
+          id: "cfg-default",
+          label: "Default",
+          model: "m",
+          effort: null,
+          inputCostPerMillion: null,
+          outputCostPerMillion: null,
+        },
+        {
+          id: "cfg-low",
+          label: "Low",
+          model: "m",
+          effort: "low",
+          inputCostPerMillion: null,
+          outputCostPerMillion: null,
+        },
+      ],
+      ALL_CATEGORIES,
+    );
     if (!run) throw new Error("claim failed");
     await executeBenchRun({ run, sampleSize: 1 });
 
@@ -213,9 +263,19 @@ describe("executeBenchRun", () => {
     getRandomScoreableJobsMock.mockResolvedValue([job("j1")]);
     classifyJobMock.mockResolvedValue({ category: "good_fit", reason: "ok" });
 
-    const run = claimBenchRun([
-      { id: "cfg-a", label: "A", model: "m", effort: null },
-    ]);
+    const run = claimBenchRun(
+      [
+        {
+          id: "cfg-a",
+          label: "A",
+          model: "m",
+          effort: null,
+          inputCostPerMillion: null,
+          outputCostPerMillion: null,
+        },
+      ],
+      ALL_CATEGORIES,
+    );
     if (!run) throw new Error("claim failed");
     await executeBenchRun({ run, sampleSize: 1 });
 
@@ -227,17 +287,60 @@ describe("executeBenchRun", () => {
     getPipelineStatusMock.mockReturnValue({ isRunning: true });
     getRandomScoreableJobsMock.mockResolvedValue([]);
 
-    const run = claimBenchRun(CONFIGS);
+    const run = claimBenchRun(CONFIGS, ALL_CATEGORIES);
     if (!run) throw new Error("claim failed");
     await executeBenchRun({ run, sampleSize: 1 });
 
     expect(resetRateLimitBudgetMock).not.toHaveBeenCalled();
   });
 
+  it("carries each sampled job's saved category and reason onto the run", async () => {
+    getRandomScoreableJobsMock.mockResolvedValue([
+      job("j1", {
+        suitabilityCategory: "good_fit",
+        suitabilityReason: "Scored last week.",
+      }),
+      job("j2"),
+    ]);
+    classifyJobMock.mockResolvedValue({ category: "bad_fit", reason: "no" });
+
+    const run = claimBenchRun(CONFIGS, ALL_CATEGORIES);
+    if (!run) throw new Error("claim failed");
+    await executeBenchRun({ run, sampleSize: 2 });
+
+    const sampled = getCurrentBenchRun()?.jobs;
+    expect(sampled?.[0].storedCategory).toBe("good_fit");
+    expect(sampled?.[0].storedReason).toBe("Scored last week.");
+    expect(sampled?.[1].storedCategory).toBeNull();
+  });
+
+  it("passes a category filter to the sampler, and omits it when absent", async () => {
+    getRandomScoreableJobsMock.mockResolvedValue([]);
+
+    const filtered = claimBenchRun(CONFIGS, ALL_CATEGORIES);
+    if (!filtered) throw new Error("claim failed");
+    await executeBenchRun({
+      run: filtered,
+      sampleSize: 3,
+      categories: ["bad_fit", "unscored"],
+    });
+    expect(getRandomScoreableJobsMock.mock.calls[0][0].categories).toEqual([
+      "bad_fit",
+      "unscored",
+    ]);
+
+    const unfiltered = claimBenchRun(CONFIGS, ALL_CATEGORIES);
+    if (!unfiltered) throw new Error("claim failed");
+    await executeBenchRun({ run: unfiltered, sampleSize: 3 });
+    expect("categories" in getRandomScoreableJobsMock.mock.calls[1][0]).toBe(
+      false,
+    );
+  });
+
   it("resets the rate-limit budget so an old latch does not fail the run", async () => {
     getRandomScoreableJobsMock.mockResolvedValue([]);
 
-    const run = claimBenchRun(CONFIGS);
+    const run = claimBenchRun(CONFIGS, ALL_CATEGORIES);
     if (!run) throw new Error("claim failed");
     await executeBenchRun({ run, sampleSize: 5 });
 
@@ -247,7 +350,7 @@ describe("executeBenchRun", () => {
   it("finishes cleanly when nothing in the database is scoreable", async () => {
     getRandomScoreableJobsMock.mockResolvedValue([]);
 
-    const run = claimBenchRun(CONFIGS);
+    const run = claimBenchRun(CONFIGS, ALL_CATEGORIES);
     if (!run) throw new Error("claim failed");
     await executeBenchRun({ run, sampleSize: 5 });
 
@@ -264,7 +367,7 @@ describe("executeBenchRun", () => {
       return { category: "good_fit", reason: "ok" };
     });
 
-    const run = claimBenchRun(CONFIGS);
+    const run = claimBenchRun(CONFIGS, ALL_CATEGORIES);
     if (!run) throw new Error("claim failed");
     await executeBenchRun({ run, sampleSize: 2 });
 
@@ -274,7 +377,7 @@ describe("executeBenchRun", () => {
   it("always finishes the run, even when the sample query throws", async () => {
     getRandomScoreableJobsMock.mockRejectedValue(new Error("db is gone"));
 
-    const run = claimBenchRun(CONFIGS);
+    const run = claimBenchRun(CONFIGS, ALL_CATEGORIES);
     if (!run) throw new Error("claim failed");
     await executeBenchRun({ run, sampleSize: 2 });
 
@@ -287,16 +390,16 @@ describe("executeBenchRun", () => {
 
 describe("claimBenchRun", () => {
   it("refuses a second run while one is active", () => {
-    expect(claimBenchRun(CONFIGS)).not.toBeNull();
-    expect(claimBenchRun(CONFIGS)).toBeNull();
+    expect(claimBenchRun(CONFIGS, ALL_CATEGORIES)).not.toBeNull();
+    expect(claimBenchRun(CONFIGS, ALL_CATEGORIES)).toBeNull();
   });
 
   it("allows a new run once the previous one finished", async () => {
     getRandomScoreableJobsMock.mockResolvedValue([]);
-    const first = claimBenchRun(CONFIGS);
+    const first = claimBenchRun(CONFIGS, ALL_CATEGORIES);
     if (!first) throw new Error("claim failed");
     await executeBenchRun({ run: first, sampleSize: 1 });
 
-    expect(claimBenchRun(CONFIGS)).not.toBeNull();
+    expect(claimBenchRun(CONFIGS, ALL_CATEGORIES)).not.toBeNull();
   });
 });
