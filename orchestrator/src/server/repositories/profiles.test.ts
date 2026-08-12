@@ -121,6 +121,100 @@ describe.sequential("profiles repository CRUD", () => {
     expect(updated?.config.scrapeMaxAgeDays).toBeNull();
   });
 
+  describe("scrape watermarks", () => {
+    let watermarksRepo: Awaited<typeof import("./source-scrape-watermarks")>;
+
+    const seed = async (profileId: string) => {
+      watermarksRepo = await import("./source-scrape-watermarks");
+      await watermarksRepo.recordScrapeWatermarks(
+        profileId,
+        ["jobspy"],
+        "2026-08-01T00:00:00.000Z",
+      );
+      expect(await watermarksRepo.getScrapeWatermarks(profileId)).toEqual(
+        new Map([["jobspy", "2026-08-01T00:00:00.000Z"]]),
+      );
+    };
+
+    it("clears them when a patch changes what the profile matches", async () => {
+      const created = await profilesRepo.createProfile({
+        name: "Coverage",
+        config: { searchTerms: ["a"], scrapeMaxAgeDays: 30 },
+      });
+      await seed(created.id);
+
+      await profilesRepo.updateProfile(created.id, {
+        config: { searchTerms: ["a", "b"] },
+      });
+
+      expect(await watermarksRepo.getScrapeWatermarks(created.id)).toEqual(
+        new Map(),
+      );
+    });
+
+    it("clears them when the max-age cap changes", async () => {
+      const created = await profilesRepo.createProfile({
+        name: "Cap change",
+        config: { scrapeMaxAgeDays: 7 },
+      });
+      await seed(created.id);
+
+      await profilesRepo.updateProfile(created.id, {
+        config: { scrapeMaxAgeDays: 60 },
+      });
+
+      expect(await watermarksRepo.getScrapeWatermarks(created.id)).toEqual(
+        new Map(),
+      );
+    });
+
+    it("keeps them for a patch that does not change coverage", async () => {
+      const created = await profilesRepo.createProfile({
+        name: "Volume only",
+        config: { searchTerms: ["a"], topN: 5 },
+      });
+      await seed(created.id);
+
+      await profilesRepo.updateProfile(created.id, {
+        name: "Renamed",
+        config: { topN: 25, searchTerms: ["a"], scrapeSinceLastRun: true },
+      });
+
+      expect(await watermarksRepo.getScrapeWatermarks(created.id)).toEqual(
+        new Map([["jobspy", "2026-08-01T00:00:00.000Z"]]),
+      );
+    });
+
+    it("clears them when the profile is deleted", async () => {
+      const created = await profilesRepo.createProfile({ name: "Doomed" });
+      await seed(created.id);
+
+      await profilesRepo.deleteProfile(created.id);
+
+      expect(await watermarksRepo.getScrapeWatermarks(created.id)).toEqual(
+        new Map(),
+      );
+    });
+
+    it("upserts a source's watermark in place", async () => {
+      const created = await profilesRepo.createProfile({ name: "Upsert" });
+      await seed(created.id);
+
+      await watermarksRepo.recordScrapeWatermarks(
+        created.id,
+        ["jobspy", "apify:abc"],
+        "2026-08-05T00:00:00.000Z",
+      );
+
+      expect(await watermarksRepo.getScrapeWatermarks(created.id)).toEqual(
+        new Map([
+          ["jobspy", "2026-08-05T00:00:00.000Z"],
+          ["apify:abc", "2026-08-05T00:00:00.000Z"],
+        ]),
+      );
+    });
+  });
+
   it("returns null when updating a missing profile", async () => {
     const updated = await profilesRepo.updateProfile("nope", { name: "X" });
     expect(updated).toBeNull();

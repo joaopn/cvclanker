@@ -28,6 +28,13 @@ export interface ProfileConfig {
   locationMatchStrictness: LocationMatchStrictness;
   /** null = no cap; each extractor keeps its own default. */
   scrapeMaxAgeDays: number | null;
+  /**
+   * Narrow each source's max job age to the time elapsed since that source
+   * last scraped successfully for this profile (rounded up to whole days, and
+   * never wider than `scrapeMaxAgeDays`). Cuts re-scraping the same postings
+   * on a continuously-running install.
+   */
+  scrapeSinceLastRun: boolean;
   blockedCompanyKeywords: string[];
   /** Run budget; `maxJobsPerTerm` is derived from this at run time. */
   runBudget: number;
@@ -76,6 +83,7 @@ export const profileConfigSchema = z.object({
   locationSearchScope: z.enum(LOCATION_SEARCH_SCOPE_VALUES),
   locationMatchStrictness: z.enum(LOCATION_MATCH_STRICTNESS_VALUES),
   scrapeMaxAgeDays: z.number().int().min(1).max(365).nullable(),
+  scrapeSinceLastRun: z.boolean(),
   blockedCompanyKeywords: z.array(z.string().trim().min(1).max(200)).max(200),
   runBudget: z.number().int().min(1).max(100_000),
   topN: z.number().int().min(1).max(10_000),
@@ -93,6 +101,7 @@ export function defaultProfileConfig(): ProfileConfig {
     locationSearchScope: "selected_only",
     locationMatchStrictness: "exact_only",
     scrapeMaxAgeDays: null,
+    scrapeSinceLastRun: false,
     blockedCompanyKeywords: [],
     runBudget: 500,
     topN: 10,

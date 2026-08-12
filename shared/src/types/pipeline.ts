@@ -26,6 +26,11 @@ export interface PipelineConfig {
   // to settings so no-profile / transitional runs keep working.
   searchTerms?: string[];
   scrapeMaxAgeDays?: number | null;
+  // The Search Profile backing this run. Identifies the scrape watermarks the
+  // "since last run" window is measured against; absent for body-only runs
+  // (no profile), where the feature is inert.
+  profileId?: string;
+  scrapeSinceLastRun?: boolean;
   blockedCompanyKeywords?: string[];
   enableCrawling?: boolean;
   enableScoring?: boolean;

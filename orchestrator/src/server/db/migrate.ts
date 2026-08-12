@@ -570,6 +570,18 @@ const migrations: string[] = [
      PRIMARY KEY (job_id, kind)
    )`,
 
+  // Per-(Search Profile × source) high-water mark of the last successful
+  // scrape, driving the profile's "scrape since the last run" window. No
+  // REFERENCES clause: the runtime connection never enables PRAGMA
+  // foreign_keys, so cleanup is explicit at the delete sites (profiles repo,
+  // db/clear.ts).
+  `CREATE TABLE IF NOT EXISTS source_scrape_watermarks (
+     profile_id TEXT NOT NULL,
+     source_key TEXT NOT NULL,
+     last_scraped_at TEXT NOT NULL,
+     PRIMARY KEY (profile_id, source_key)
+   )`,
+
   // Server-internal secrets (currently just the JWT signing secret).
   // Deliberately NOT settings-registry rows: registry values echo through
   // GET /api/settings, and a signing secret must have no read surface.

@@ -418,6 +418,25 @@ export const profiles = sqliteTable("profiles", {
   updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
 });
 
+// When a Search Profile last scraped a given source successfully, used by the
+// profile's "scrape since the last run" flag to narrow each source's max-age
+// window. `source_key` is the discovery task's source id: an extractor
+// manifest id, or `<providerId>:<instanceId>` for a provider instance. No
+// REFERENCES clause — the runtime connection never enables PRAGMA
+// foreign_keys, so cleanup is explicit at the delete sites (profiles repo,
+// db/clear.ts).
+export const sourceScrapeWatermarks = sqliteTable(
+  "source_scrape_watermarks",
+  {
+    profileId: text("profile_id").notNull(),
+    sourceKey: text("source_key").notNull(),
+    lastScrapedAt: text("last_scraped_at").notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.profileId, table.sourceKey] }),
+  }),
+);
+
 export const authSessions = sqliteTable(
   "auth_sessions",
   {

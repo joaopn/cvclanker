@@ -53,6 +53,14 @@ vi.mock("@server/extractors/registry", () => ({
   getExtractorRegistry: vi.fn(),
 }));
 
+vi.mock("@server/repositories/source-scrape-watermarks", () => ({
+  getScrapeWatermarks: vi.fn().mockResolvedValue(new Map()),
+}));
+
+vi.mock("@server/providers", () => ({
+  getProvider: vi.fn(),
+}));
+
 const baseConfig: PipelineConfig = {
   topN: 10,
   minSuitabilityCategory: "good_fit",
@@ -660,5 +668,240 @@ describe("discoverJobsStep", () => {
     expect(jobspyManifest.run).toHaveBeenCalledWith(
       expect.objectContaining({ searchTerms: ["rust developer"] }),
     );
+  });
+});
+
+describe("discoverJobsStep scrape-since-last-run window", () => {
+  const jobspySchema = {
+    fields: [
+      { key: "max_age_days", label: "Max job age (days)", type: "number" },
+    ],
+    globalMappings: [
+      {
+        globalField: "maxAgeDays",
+        sourceField: "max_age_days",
+        enabledByDefault: true,
+      },
+    ],
+  };
+
+  const makeJobspyManifest = () => ({
+    id: "jobspy",
+    displayName: "JobSpy",
+    providesSources: ["indeed", "linkedin", "glassdoor"],
+    configSchema: jobspySchema,
+    run: vi.fn().mockResolvedValue({ success: true, jobs: [] }),
+  });
+
+  async function mockRegistry(manifest: unknown) {
+    const registryModule = await import("@server/extractors/registry");
+    vi.mocked(registryModule.getExtractorRegistry).mockResolvedValue({
+      manifests: new Map([["jobspy", manifest as any]]),
+      manifestBySource: new Map([
+        ["indeed", manifest as any],
+        ["linkedin", manifest as any],
+        ["glassdoor", manifest as any],
+      ]),
+      availableSources: ["indeed", "linkedin", "glassdoor"],
+    } as any);
+  }
+
+  async function setWatermarks(entries: Array<[string, string]>) {
+    const watermarksModule = await import(
+      "@server/repositories/source-scrape-watermarks"
+    );
+    vi.mocked(watermarksModule.getScrapeWatermarks).mockResolvedValue(
+      new Map(entries),
+    );
+  }
+
+  const daysAgo = (days: number) =>
+    new Date(Date.now() - days * 86_400_000).toISOString();
+
+  const withFlag = (overrides: Partial<PipelineConfig> = {}) => ({
+    ...baseConfig,
+    sources: ["linkedin"] as PipelineConfig["sources"],
+    scrapeMaxAgeDays: 30,
+    profileId: "profile-1",
+    scrapeSinceLastRun: true,
+    ...overrides,
+  });
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    resetProgress();
+    await setWatermarks([]);
+  });
+
+  it("narrows the window to the days since the source last scraped", async () => {
+    const manifest = makeJobspyManifest();
+    await mockRegistry(manifest);
+    await setWatermarks([["jobspy", daysAgo(3)]]);
+
+    await discoverJobsStep({ mergedConfig: withFlag() });
+
+    expect(manifest.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settings: expect.objectContaining({ max_age_days: "3" }),
+      }),
+    );
+  });
+
+  it("keeps the configured window for a source with no watermark", async () => {
+    const manifest = makeJobspyManifest();
+    await mockRegistry(manifest);
+    await setWatermarks([["some-other-source", daysAgo(1)]]);
+
+    await discoverJobsStep({ mergedConfig: withFlag() });
+
+    expect(manifest.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settings: expect.objectContaining({ max_age_days: "30" }),
+      }),
+    );
+  });
+
+  it("never widens past the configured cap", async () => {
+    const manifest = makeJobspyManifest();
+    await mockRegistry(manifest);
+    await setWatermarks([["jobspy", daysAgo(90)]]);
+
+    await discoverJobsStep({ mergedConfig: withFlag() });
+
+    expect(manifest.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settings: expect.objectContaining({ max_age_days: "30" }),
+      }),
+    );
+  });
+
+  it("leaves the window alone when the flag is off", async () => {
+    const manifest = makeJobspyManifest();
+    await mockRegistry(manifest);
+    await setWatermarks([["jobspy", daysAgo(3)]]);
+
+    await discoverJobsStep({
+      mergedConfig: withFlag({ scrapeSinceLastRun: false }),
+    });
+
+    expect(manifest.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settings: expect.objectContaining({ max_age_days: "30" }),
+      }),
+    );
+  });
+
+  it("does not read watermarks for a run with no profile", async () => {
+    const manifest = makeJobspyManifest();
+    await mockRegistry(manifest);
+    const watermarksModule = await import(
+      "@server/repositories/source-scrape-watermarks"
+    );
+
+    await discoverJobsStep({
+      mergedConfig: withFlag({ profileId: undefined }),
+    });
+
+    expect(watermarksModule.getScrapeWatermarks).not.toHaveBeenCalled();
+  });
+
+  it("reports only the sources that scraped without error", async () => {
+    const registryModule = await import("@server/extractors/registry");
+    const jobspyManifest = makeJobspyManifest();
+    // One kept job, so the "every source failed" guard does not fire first.
+    jobspyManifest.run.mockResolvedValue({
+      success: true,
+      jobs: [
+        {
+          source: "linkedin",
+          title: "Engineer",
+          employer: "ACME",
+          jobUrl: "https://example.com/job",
+          location: "London, United Kingdom",
+          locationEvidence: {
+            location: "London, United Kingdom",
+            country: "united kingdom",
+            city: "London",
+            source: "location",
+          },
+        },
+      ],
+    });
+    const failingManifest = {
+      id: "hiringcafe",
+      displayName: "Hiring Cafe",
+      providesSources: ["hiringcafe"],
+      run: vi
+        .fn()
+        .mockResolvedValue({ success: false, jobs: [], error: "boom" }),
+    };
+    vi.mocked(registryModule.getExtractorRegistry).mockResolvedValue({
+      manifests: new Map([
+        ["jobspy", jobspyManifest as any],
+        ["hiringcafe", failingManifest as any],
+      ]),
+      manifestBySource: new Map([
+        ["linkedin", jobspyManifest as any],
+        ["hiringcafe", failingManifest as any],
+      ]),
+      availableSources: ["linkedin", "hiringcafe"],
+    } as any);
+
+    const result = await discoverJobsStep({
+      mergedConfig: withFlag({ sources: ["linkedin", "hiringcafe"] }),
+    });
+
+    expect(result.scrapedSources).toEqual(["jobspy"]);
+    expect(Date.parse(result.scrapeStartedAt)).not.toBeNaN();
+  });
+
+  it("narrows a provider instance against its own max-age override", async () => {
+    const registryModule = await import("@server/extractors/registry");
+    vi.mocked(registryModule.getExtractorRegistry).mockResolvedValue({
+      manifests: new Map(),
+      manifestBySource: new Map(),
+      availableSources: [],
+    } as any);
+
+    const instancesModule = await import(
+      "@server/repositories/provider-instances"
+    );
+    vi.mocked(instancesModule.getEnabledProviderInstances).mockResolvedValue([
+      {
+        id: "abc",
+        providerId: "apify",
+        actorRef: "acme/actor",
+        label: "ACME",
+        enabled: true,
+        inputTemplateJson: "{}",
+        outputMappingJson: "{}",
+        mappings: {},
+        maxAgeDays: 14,
+        updatedAt: "",
+      },
+    ] as any);
+
+    const providersModule = await import("@server/providers");
+    const run = vi.fn().mockResolvedValue({ success: true, jobs: [] });
+    vi.mocked(providersModule.getProvider).mockReturnValue({
+      id: "apify",
+      displayName: "Apify",
+      templates: [],
+      run,
+    } as any);
+
+    await setWatermarks([["apify:abc", daysAgo(2)]]);
+
+    const result = await discoverJobsStep({
+      mergedConfig: withFlag({ sources: [] }),
+    });
+
+    expect(run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        instance: expect.objectContaining({ maxAgeDays: 2 }),
+        runGlobals: expect.objectContaining({ maxAgeDays: "2" }),
+      }),
+    );
+    expect(result.scrapedSources).toEqual(["apify:abc"]);
   });
 });

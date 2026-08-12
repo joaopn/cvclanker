@@ -6,6 +6,7 @@ import { getAllJobUrls } from "@server/repositories/jobs";
 import * as providerInstancesRepo from "@server/repositories/provider-instances";
 import * as settingsRepo from "@server/repositories/settings";
 import * as sourceConfigsRepo from "@server/repositories/source-configs";
+import { getScrapeWatermarks } from "@server/repositories/source-scrape-watermarks";
 import { getEffectiveSettings } from "@server/services/settings";
 import { resolveSourceContextSettings } from "@server/services/source-configs/resolve";
 import { asyncPool } from "@server/utils/async-pool";
@@ -18,6 +19,7 @@ import {
   planLocationSource,
 } from "@shared/location-domain.js";
 import { formatCountryLabel } from "@shared/location-support.js";
+import { resolveScrapeWindowDays } from "@shared/scrape-window.js";
 import { serializeSearchCitiesSetting } from "@shared/search-cities.js";
 import type {
   CapturedRunJob,
@@ -100,11 +102,23 @@ export async function discoverJobsStep(args: {
 }): Promise<{
   discoveredJobs: CreateJobInput[];
   sourceErrors: string[];
+  /**
+   * Source keys that scraped without error this run, and the timestamp their
+   * watermark should carry. The caller advances the watermarks once the jobs
+   * are imported — see `recordScrapeWatermarks`.
+   */
+  scrapedSources: string[];
+  scrapeStartedAt: string;
 }> {
   logger.info("Running discovery step");
 
   const discoveredJobs: CreateJobInput[] = [];
   const sourceErrors: string[] = [];
+  // Taken before any source runs: a watermark must never be later than the
+  // request it stands for, or the next run's window starts after postings the
+  // previous run had not yet seen.
+  const scrapeStartedAt = new Date().toISOString();
+  const scrapedSources: string[] = [];
 
   const registry = await getExtractorRegistry();
 
@@ -166,6 +180,41 @@ export async function discoverJobsStep(args: {
       ? { maxAgeDays: String(args.mergedConfig.scrapeMaxAgeDays) }
       : {}),
   };
+
+  // "Scrape since the last run": each source's max-age window narrows to the
+  // days elapsed since it last scraped successfully for this Profile. Only
+  // ever narrower than the configured cap, so a source with no watermark (new
+  // source, cleared profile, first run) simply keeps the configured window.
+  const watermarkProfileId =
+    args.mergedConfig.scrapeSinceLastRun === true
+      ? args.mergedConfig.profileId
+      : undefined;
+  const scrapeWatermarks = watermarkProfileId
+    ? await getScrapeWatermarks(watermarkProfileId)
+    : new Map<string, string>();
+  const scrapeWindowNow = Date.parse(scrapeStartedAt);
+
+  /**
+   * Effective max job age for one source, or null to leave the configured
+   * window alone. `capDays` is what that source would otherwise use — the
+   * Profile's cap, or a provider instance's own override.
+   */
+  const scrapeWindowFor = (
+    sourceKey: string,
+    capDays: number | null | undefined,
+  ): number | null =>
+    watermarkProfileId
+      ? resolveScrapeWindowDays({
+          lastScrapedAt: scrapeWatermarks.get(sourceKey),
+          now: scrapeWindowNow,
+          capDays,
+        })
+      : null;
+
+  const runGlobalsFor = (windowDays: number | null): SourceConfigRunGlobals =>
+    windowDays === null
+      ? runGlobals
+      : { ...runGlobals, maxAgeDays: String(windowDays) };
 
   const sourcePlans = requestedSources.map((source) => ({
     source,
@@ -260,6 +309,19 @@ export async function discoverJobsStep(args: {
       }
       const apiToken = instance.providerId === "apify" ? apifyApiToken : "";
       const syntheticSource = `${instance.providerId}:${instance.id}`;
+      // A per-instance max age wins over the Profile's cap, so it is the cap
+      // the window narrows against. The narrowed value is written back onto
+      // both the instance and the run globals: `resolveMaxAgeDays` and the
+      // `{{maxAgeDays}}` placeholder both read the instance first.
+      const instanceWindow = scrapeWindowFor(
+        syntheticSource,
+        instance.maxAgeDays ?? args.mergedConfig.scrapeMaxAgeDays,
+      );
+      const effectiveInstance =
+        instanceWindow === null
+          ? instance
+          : { ...instance, maxAgeDays: instanceWindow };
+      const instanceRunGlobals = runGlobalsFor(instanceWindow);
       sourceTasks.push({
         source: syntheticSource,
         platforms: [syntheticSource],
@@ -268,8 +330,8 @@ export async function discoverJobsStep(args: {
         label: instance.label,
         run: async () => {
           const result = await provider.run({
-            instance,
-            runGlobals,
+            instance: effectiveInstance,
+            runGlobals: instanceRunGlobals,
             apiToken: apiToken || null,
             searchTerms,
             shouldCancel: args.shouldCancel,
@@ -324,7 +386,9 @@ export async function discoverJobsStep(args: {
         const perSourceSettings = resolveSourceContextSettings({
           schema: manifest.configSchema,
           row: row ?? { config: {}, mappings: {} },
-          runGlobals,
+          runGlobals: runGlobalsFor(
+            scrapeWindowFor(manifest.id, args.mergedConfig.scrapeMaxAgeDays),
+          ),
         });
 
         const result = await manifest.run({
@@ -389,7 +453,7 @@ export async function discoverJobsStep(args: {
   });
 
   if (args.shouldCancel?.()) {
-    return { discoveredJobs, sourceErrors };
+    return { discoveredJobs, sourceErrors, scrapedSources, scrapeStartedAt };
   }
 
   const discoveryConcurrency = (await getEffectiveSettings())
@@ -438,6 +502,13 @@ export async function discoverJobsStep(args: {
         }
         return;
       }
+
+      // Errorless completion is what advances the watermark, keyed on the task
+      // (one extractor manifest or one provider instance) rather than the
+      // platform ids it fans out to — that is the granularity the next run
+      // resolves its window at. A failed source keeps its old watermark, so
+      // its next window reaches back over everything it missed.
+      scrapedSources.push(sourceTask.source);
 
       for (const platform of sourceTask.platforms) {
         const platformJobs = taskResult.discoveredJobs.filter(
@@ -564,7 +635,12 @@ export async function discoverJobsStep(args: {
   }
 
   if (args.shouldCancel?.()) {
-    return { discoveredJobs: filteredDiscoveredJobs, sourceErrors };
+    return {
+      discoveredJobs: filteredDiscoveredJobs,
+      sourceErrors,
+      scrapedSources,
+      scrapeStartedAt,
+    };
   }
 
   if (filteredDiscoveredJobs.length === 0 && sourceErrors.length > 0) {
@@ -577,5 +653,10 @@ export async function discoverJobsStep(args: {
 
   progressHelpers.crawlingComplete(filteredDiscoveredJobs.length);
 
-  return { discoveredJobs: filteredDiscoveredJobs, sourceErrors };
+  return {
+    discoveredJobs: filteredDiscoveredJobs,
+    sourceErrors,
+    scrapedSources,
+    scrapeStartedAt,
+  };
 }

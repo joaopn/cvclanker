@@ -412,6 +412,10 @@ async function resolveProfileRunConfig(
       maxJobsPerTerm: resolvedMaxJobsPerTerm,
       searchTerms: resolvedSearchTerms,
       scrapeMaxAgeDays: profileConfig?.scrapeMaxAgeDays,
+      // The scrape watermarks the "since last run" window reads and advances
+      // are per-profile, so the flag is inert on a profile-less run.
+      profileId: profile?.id,
+      scrapeSinceLastRun: profileConfig?.scrapeSinceLastRun,
       blockedCompanyKeywords: profileConfig?.blockedCompanyKeywords,
       locationIntent,
       enableAutoTailoring: body.enableAutoTailoring,

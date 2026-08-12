@@ -20,6 +20,10 @@ export function clearDatabase(): { jobsDeleted: number; runsDeleted: number } {
     sqlite.prepare("DELETE FROM tasks").run();
     sqlite.prepare("DELETE FROM interviews").run();
     sqlite.prepare("DELETE FROM job_pdfs").run();
+    // Every job is gone, so no source may claim it has already covered a
+    // window — otherwise "scrape since the last run" would refuse to re-import
+    // what was just cleared.
+    sqlite.prepare("DELETE FROM source_scrape_watermarks").run();
     const jobsResult = sqlite.prepare("DELETE FROM jobs").run();
     const runsResult = sqlite.prepare("DELETE FROM pipeline_runs").run();
 

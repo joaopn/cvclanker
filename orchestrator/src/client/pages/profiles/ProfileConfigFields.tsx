@@ -48,6 +48,7 @@ export interface EditorForm {
   searchScope: LocationSearchScope;
   matchStrictness: LocationMatchStrictness;
   scrapeMaxAgeDays: string;
+  scrapeSinceLastRun: boolean;
   blockedKeywords: string[];
   blockedDraft: string;
   runBudget: string;
@@ -88,6 +89,7 @@ export function formFromConfig(
     matchStrictness: config.locationMatchStrictness,
     scrapeMaxAgeDays:
       config.scrapeMaxAgeDays === null ? "" : String(config.scrapeMaxAgeDays),
+    scrapeSinceLastRun: config.scrapeSinceLastRun,
     blockedKeywords: config.blockedCompanyKeywords,
     blockedDraft: "",
     runBudget: String(config.runBudget),
@@ -140,6 +142,7 @@ export function buildConfig(
     locationSearchScope: form.searchScope,
     locationMatchStrictness: form.matchStrictness,
     scrapeMaxAgeDays: parseMaxAge(form.scrapeMaxAgeDays),
+    scrapeSinceLastRun: form.scrapeSinceLastRun,
     blockedCompanyKeywords: form.blockedKeywords,
     runBudget: clampInt(form.runBudget, 50, 1000, 500),
     topN: clampInt(form.topN, 1, 50, 10),
@@ -326,6 +329,27 @@ export const ProfileConfigFields: React.FC<ProfileConfigFieldsProps> = ({
                 value={form.scrapeMaxAgeDays}
                 onChange={(value) => onChange({ scrapeMaxAgeDays: value })}
               />
+            </div>
+            <div className="space-y-1.5">
+              <label
+                htmlFor="profile-scrape-since-last-run"
+                className="flex cursor-pointer items-center gap-3 text-sm"
+              >
+                <Checkbox
+                  id="profile-scrape-since-last-run"
+                  checked={form.scrapeSinceLastRun}
+                  onCheckedChange={(checked) =>
+                    onChange({ scrapeSinceLastRun: checked === true })
+                  }
+                />
+                Only scrape since the last run
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Narrows each source's job age to the days elapsed since it last
+                scraped successfully for this profile, rounded up — never wider
+                than the cap above. A source that failed, or has not run yet,
+                still gets the full window.
+              </p>
             </div>
             <MinFitField
               value={form.minSuitabilityCategory}

@@ -21,6 +21,8 @@ vi.mock("./steps", () => ({
   discoverJobsStep: vi.fn(async () => ({
     discoveredJobs: [],
     sourceErrors: [],
+    scrapedSources: [],
+    scrapeStartedAt: "2026-01-01T00:00:00.000Z",
   })),
   importJobsStep: vi.fn(async () => ({
     created: 0,

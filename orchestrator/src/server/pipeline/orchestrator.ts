@@ -16,6 +16,7 @@ import { getDataDir } from "../config/dataDir";
 import * as jobsRepo from "../repositories/jobs";
 import * as pipelineRepo from "../repositories/pipeline";
 import * as settingsRepo from "../repositories/settings";
+import { recordScrapeWatermarks } from "../repositories/source-scrape-watermarks";
 import { llmAdjustContent } from "../services/cv";
 import { getActiveCvDocument } from "../services/cv-active";
 import { generatePdf } from "../services/pdf";
@@ -47,6 +48,34 @@ const DEFAULT_CONFIG: PipelineConfig = {
   enableImporting: true,
   enableAutoTailoring: false,
 };
+
+/**
+ * Persist the "last scraped" mark for every source that came back clean, so
+ * the profile's next run can narrow its max-age window to the elapsed time.
+ * Best-effort: a failed write only means the next run scrapes the full
+ * configured window, which is the pre-flag behaviour.
+ */
+async function advanceScrapeWatermarks(args: {
+  config: PipelineConfig;
+  scrapedSources: string[];
+  scrapeStartedAt: string;
+}): Promise<void> {
+  const { config, scrapedSources, scrapeStartedAt } = args;
+  if (config.scrapeSinceLastRun !== true) return;
+  if (!config.profileId || scrapedSources.length === 0) return;
+  try {
+    await recordScrapeWatermarks(
+      config.profileId,
+      scrapedSources,
+      scrapeStartedAt,
+    );
+  } catch (error) {
+    logger.warn("Failed to record scrape watermarks", {
+      profileId: config.profileId,
+      error,
+    });
+  }
+}
 
 async function resolveAutoTailoring(
   configValue: boolean | undefined,
@@ -172,10 +201,11 @@ export async function runPipeline(
 
       ensureNotCancelled();
       await persistResultSummary({ stage: "discovery" });
-      const { discoveredJobs, sourceErrors } = await discoverJobsStep({
-        mergedConfig,
-        shouldCancel: () => cancelRequestedAt !== null,
-      });
+      const { discoveredJobs, sourceErrors, scrapedSources, scrapeStartedAt } =
+        await discoverJobsStep({
+          mergedConfig,
+          shouldCancel: () => cancelRequestedAt !== null,
+        });
       await persistResultSummary({
         stage: "discovery",
         sourceErrors,
@@ -186,6 +216,15 @@ export async function runPipeline(
         discoveredJobs,
       });
       jobsDiscovered = created;
+
+      // Advanced only now: a source whose jobs were discovered but never
+      // imported (crash, cancellation) must keep its old watermark, or the
+      // next run's narrowed window skips straight past them.
+      await advanceScrapeWatermarks({
+        config: mergedConfig,
+        scrapedSources,
+        scrapeStartedAt,
+      });
 
       await persistResultSummary({ stage: "import" });
       await pipelineRepo.updatePipelineRun(pipelineRun.id, {

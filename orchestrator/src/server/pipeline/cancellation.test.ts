@@ -3,18 +3,26 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+type DiscoverResult = {
+  discoveredJobs: [];
+  sourceErrors: [];
+  scrapedSources: [];
+  scrapeStartedAt: string;
+};
+
 const stepState = vi.hoisted(() => {
-  let resolveDiscover:
-    | ((value: { discoveredJobs: []; sourceErrors: [] }) => void)
-    | null = null;
+  let resolveDiscover: ((value: DiscoverResult) => void) | null = null;
   return {
-    setResolver: (
-      fn: (value: { discoveredJobs: []; sourceErrors: [] }) => void,
-    ) => {
+    setResolver: (fn: (value: DiscoverResult) => void) => {
       resolveDiscover = fn;
     },
     resolveDiscover: () =>
-      resolveDiscover?.({ discoveredJobs: [], sourceErrors: [] }),
+      resolveDiscover?.({
+        discoveredJobs: [],
+        sourceErrors: [],
+        scrapedSources: [],
+        scrapeStartedAt: "2026-01-01T00:00:00.000Z",
+      }),
   };
 });
 
@@ -35,7 +43,7 @@ vi.mock("./steps", () => ({
   loadBriefStep: vi.fn(async () => ""),
   discoverJobsStep: vi.fn(
     () =>
-      new Promise<{ discoveredJobs: []; sourceErrors: [] }>((resolve) => {
+      new Promise<DiscoverResult>((resolve) => {
         stepState.setResolver(resolve);
       }),
   ),
