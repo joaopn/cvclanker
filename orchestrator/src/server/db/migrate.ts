@@ -593,6 +593,16 @@ const migrations: string[] = [
      created_at TEXT NOT NULL DEFAULT (datetime('now'))
    )`,
 
+  // Credentials for providers OTHER than the configured one. Not
+  // settings-registry rows: the registry has room for exactly one key/base-URL
+  // pair, belonging to whichever provider is configured.
+  `CREATE TABLE IF NOT EXISTS llm_provider_credentials (
+     provider TEXT PRIMARY KEY,
+     api_key TEXT,
+     base_url TEXT,
+     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+   )`,
+
   // LLM prompts. `content` is the live raw YAML document; `default_content`
   // is the baked image default so Reset needs no filesystem. Seeded/refreshed
   // from PROMPTS_DIR by the guarded JS block near the bottom of this file.

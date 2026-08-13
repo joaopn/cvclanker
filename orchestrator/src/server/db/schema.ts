@@ -204,6 +204,19 @@ export const runtimeSecrets = sqliteTable("runtime_secrets", {
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
 });
 
+// Credentials for providers OTHER than the configured one, so a provider can
+// be called without first being made the app's provider (the benchmark's
+// columns today; a cheap scoring pre-filter later). Deliberately not
+// settings-registry rows: the registry holds ONE key/base-URL pair, belonging
+// to whichever provider is configured, and a second one has nowhere to live
+// there. `api_key` is exposed only as a 4-character hint, never read back.
+export const llmProviderCredentials = sqliteTable("llm_provider_credentials", {
+  provider: text("provider").primaryKey(),
+  apiKey: text("api_key"),
+  baseUrl: text("base_url"),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
+
 // LLM prompts: `content` is the live raw YAML; `default_content` the baked
 // image default (Reset copies it over content, no filesystem involved).
 export const prompts = sqliteTable("prompts", {

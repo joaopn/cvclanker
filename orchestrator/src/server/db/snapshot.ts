@@ -119,6 +119,19 @@ function redactSecrets(d: Database.Database): void {
   if (hasRuntimeSecrets) {
     d.prepare("DELETE FROM runtime_secrets").run();
   }
+
+  // Per-provider API keys are secrets in a table of their own. The base URL is
+  // configuration rather than a credential, so the row survives with its key
+  // cleared — a restored snapshot keeps pointing at the right endpoint and asks
+  // only for the key back.
+  const hasProviderCredentials = d
+    .prepare(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'llm_provider_credentials'",
+    )
+    .get();
+  if (hasProviderCredentials) {
+    d.prepare("UPDATE llm_provider_credentials SET api_key = NULL").run();
+  }
 }
 
 export type ValidateResult =

@@ -46,27 +46,39 @@ export class LlmService {
   private readonly claudeCodeClient: ClaudeCodeClient;
 
   constructor(options: LlmServiceOptions = {}) {
-    const normalizedBaseUrl =
-      toStringOrNull(options.baseUrl) ||
-      toStringOrNull(process.env.LLM_BASE_URL) ||
-      null;
-    const resolvedProvider = normalizeProvider(
-      options.provider ?? process.env.LLM_PROVIDER ?? null,
-      normalizedBaseUrl,
+    const explicitBaseUrl = toStringOrNull(options.baseUrl);
+    const envBaseUrl = toStringOrNull(process.env.LLM_BASE_URL);
+    const envProvider = normalizeProvider(
+      toStringOrNull(process.env.LLM_PROVIDER),
+      envBaseUrl,
     );
+    // LLM_PROVIDER / LLM_BASE_URL / LLM_API_KEY describe ONE provider — the
+    // configured one, since the settings save path writes the overrides into
+    // them. A caller naming a different provider (a benchmark column, a cheap
+    // pre-filter) must not inherit them: that is how one vendor's key gets sent
+    // to another's endpoint. Callers that name no provider are asking for the
+    // configured one, so nothing changes for them.
+    const resolvedProvider = options.provider
+      ? normalizeProvider(options.provider, explicitBaseUrl ?? envBaseUrl)
+      : envProvider;
+    const inheritsEnv = resolvedProvider === envProvider;
+
+    const normalizedBaseUrl =
+      explicitBaseUrl || (inheritsEnv ? envBaseUrl : null) || null;
 
     const strategy = strategies[resolvedProvider];
     const baseUrl = normalizedBaseUrl || strategy.defaultBaseUrl;
 
     let apiKey =
       toStringOrNull(options.apiKey) ||
-      toStringOrNull(process.env.LLM_API_KEY) ||
+      (inheritsEnv ? toStringOrNull(process.env.LLM_API_KEY) : null) ||
       null;
 
     // Backwards-compat migration: OPENROUTER_API_KEY -> LLM_API_KEY.
     // This prevents users from losing access when upgrading (keys are often only shown once).
     if (
       !apiKey &&
+      inheritsEnv &&
       resolvedProvider === "openrouter" &&
       toStringOrNull(process.env.OPENROUTER_API_KEY)
     ) {
