@@ -102,6 +102,8 @@ describe("scoreJobSuitability failure handling", () => {
     await expect(scoreJobSuitability(job, "brief")).resolves.toEqual({
       category: "good_fit",
       reason: "Solid overlap.",
+      model: "stub-model",
+      effort: null,
     });
   });
 
@@ -120,6 +122,35 @@ describe("scoreJobSuitability failure handling", () => {
 
     expect(result.category).toBe("very_good_fit");
     expect(result.reason).toContain("missing salary");
+  });
+
+  it("reports the effort only when the configured provider has one", async () => {
+    getEffectiveSettingsMock.mockResolvedValue({
+      penalizeMissingSalary: { value: false },
+      scoringInstructions: { value: "" },
+      llmProvider: { value: "claude_code" },
+      claudeCodeEffort: "high",
+    });
+    callJsonMock.mockResolvedValue({
+      success: true,
+      data: { category: "good_fit", reason: "Fine." },
+    });
+
+    const onClaudeCode = await scoreJobSuitability(job, "brief");
+    expect(onClaudeCode.effort).toBe("high");
+
+    // Same saved effort, different provider: the CLI flag is never sent, so
+    // recording a level would claim a knob that was not turned.
+    getEffectiveSettingsMock.mockResolvedValue({
+      penalizeMissingSalary: { value: false },
+      scoringInstructions: { value: "" },
+      llmProvider: { value: "openai" },
+      claudeCodeEffort: "high",
+    });
+
+    const onOpenAi = await scoreJobSuitability(job, "brief");
+    expect(onOpenAi.effort).toBeNull();
+    expect(onOpenAi.model).toBe("stub-model");
   });
 
   it("refuses a description too short to judge before reading any setting", async () => {
@@ -269,6 +300,34 @@ describe("two-stage scoring", () => {
     // indistinguishable from one the main model actually read.
     expect(result.reason).toContain("Wrong stack.");
     expect(result.reason).toContain("cheap-model");
+    // The screen is what decided, so it is what gets recorded — naming the
+    // main model here would credit a call that never happened.
+    expect(result.model).toBe("cheap-model");
+    expect(result.effort).toBeNull();
+  });
+
+  it("records the screen's inherited effort when it runs on claude_code", async () => {
+    getEffectiveSettingsMock.mockResolvedValue({
+      ...SETTINGS_WITH_SCREEN,
+      scorerPrefilterProvider: { value: "claude_code" },
+      claudeCodeEffort: "medium",
+    });
+    resolveProviderCallMock.mockResolvedValue({
+      provider: "claude_code",
+      options: { provider: "claude_code" },
+      missingReason: null,
+    });
+    callJsonMock.mockResolvedValue({
+      success: true,
+      data: { category: "bad_fit", reason: "No." },
+    });
+
+    const result = await scoreJobSuitability(job, "brief", { prefilter: true });
+
+    // No per-screen override, so the CLI falls back to the saved effort — the
+    // record has to say the same thing the spawner did.
+    expect("effort" in callJsonMock.mock.calls[0][0]).toBe(false);
+    expect(result.effort).toBe("medium");
   });
 
   it("discards a non-bad screen verdict and lets the main model decide", async () => {
@@ -290,6 +349,7 @@ describe("two-stage scoring", () => {
     // The screen's verdict is thrown away wholesale — category AND reason.
     expect(result.category).toBe("good_fit");
     expect(result.reason).toBe("Main model was cooler.");
+    expect(result.model).toBe("stub-model");
   });
 
   it("falls through to the main model when the screen fails", async () => {

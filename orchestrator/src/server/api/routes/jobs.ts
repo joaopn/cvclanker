@@ -722,11 +722,13 @@ async function executeJobActionForJob(
           const brief = options.getBriefForRescore
             ? await options.getBriefForRescore()
             : await getActivePersonalBrief();
-          const { category, reason } = await scoreJobSuitability(updated, brief);
+          const scored = await scoreJobSuitability(updated, brief);
           updated =
             (await jobsRepo.updateJob(jobId, {
-              suitabilityCategory: category,
-              suitabilityReason: reason,
+              suitabilityCategory: scored.category,
+              suitabilityReason: scored.reason,
+              suitabilityModel: scored.model,
+              suitabilityEffort: scored.effort,
             })) ?? updated;
         } catch (error) {
           if (!(error instanceof JobNotScoreableError)) {
@@ -753,6 +755,8 @@ async function executeJobActionForJob(
       const updated = await jobsRepo.updateJob(jobId, {
         suitabilityCategory: null,
         suitabilityReason: null,
+        suitabilityModel: null,
+        suitabilityEffort: null,
       });
       if (!updated) {
         throw new AppError({
@@ -777,11 +781,13 @@ async function executeJobActionForJob(
       ? await options.getBriefForRescore()
       : await getActivePersonalBrief();
 
-    const { category, reason } = await scoreJobSuitability(job, brief);
+    const scored = await scoreJobSuitability(job, brief);
 
     const updated = await jobsRepo.updateJob(job.id, {
-      suitabilityCategory: category,
-      suitabilityReason: reason,
+      suitabilityCategory: scored.category,
+      suitabilityReason: scored.reason,
+      suitabilityModel: scored.model,
+      suitabilityEffort: scored.effort,
     });
     if (!updated) {
       throw new AppError({

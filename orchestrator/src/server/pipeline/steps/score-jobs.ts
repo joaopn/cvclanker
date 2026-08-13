@@ -5,6 +5,7 @@ import {
   JobNotScoreableError,
   JobScoringFailedError,
   LlmRateLimitStopError,
+  type SuitabilityResult,
   scoreJobSuitability,
 } from "@server/services/scorer";
 import { getEffectiveSettings } from "@server/services/settings";
@@ -85,15 +86,14 @@ export async function scoreJobsStep(args: {
         return;
       }
 
-      let category: SuitabilityCategory;
-      let reason: string;
+      let scored: SuitabilityResult;
       try {
         // The one path that opts into the cheap pre-filter: it classifies
         // everything discovery finds, which is the only place the saving is
         // worth the risk of a screen removing a job.
-        ({ category, reason } = await scoreJobSuitability(job, args.brief, {
+        scored = await scoreJobSuitability(job, args.brief, {
           prefilter: true,
-        }));
+        });
       } catch (error) {
         if (error instanceof LlmRateLimitStopError) {
           // Account-wide and temporary: every remaining job would hit the same
@@ -141,6 +141,7 @@ export async function scoreJobsStep(args: {
       }
       if (args.shouldCancel?.()) return;
 
+      const { category, reason } = scored;
       const shouldAutoSkip =
         job.status !== "applied" &&
         autoSkipCategory !== null &&
@@ -150,6 +151,8 @@ export async function scoreJobsStep(args: {
       await jobsRepo.updateJob(job.id, {
         suitabilityCategory: category,
         suitabilityReason: reason,
+        suitabilityModel: scored.model,
+        suitabilityEffort: scored.effort,
         ...(shouldAutoSkip ? { status: "skipped" } : {}),
       });
 
@@ -168,6 +171,8 @@ export async function scoreJobsStep(args: {
         ...job,
         suitabilityCategory: category,
         suitabilityReason: reason,
+        suitabilityModel: scored.model,
+        suitabilityEffort: scored.effort,
       });
     },
   });

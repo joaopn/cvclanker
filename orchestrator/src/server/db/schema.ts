@@ -141,6 +141,10 @@ export const jobs = sqliteTable("jobs", {
     enum: SUITABILITY_CATEGORIES,
   }),
   suitabilityReason: text("suitability_reason"),
+  // What produced the stored category. `suitabilityEffort` is the claude_code
+  // reasoning level the call ran at; every other provider records null.
+  suitabilityModel: text("suitability_model"),
+  suitabilityEffort: text("suitability_effort"),
   tailoredFields: text("tailored_fields", { mode: "json" })
     .notNull()
     .default(sql`('{}')`),

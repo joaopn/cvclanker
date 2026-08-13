@@ -213,6 +213,8 @@ export interface Job {
   closedAt: number | null;
   suitabilityCategory: SuitabilityCategory | null; // AI-generated categorical fit
   suitabilityReason: string | null; // AI explanation
+  suitabilityModel: string | null; // Model that produced the stored category; null on rows scored before it was recorded
+  suitabilityEffort: string | null; // Reasoning effort the call ran at (claude_code only); null when the provider has none
   tailoredFields: CvFieldOverrides; // Per-field override map; absent ids fall back to the field's original value
   cvFieldLocks: string[]; // Field ids the LLM tailoring + chat accept-edit paths must not modify
   tailoringMatched: string[] | null; // ATS keywords surfaced in tailoredFields
@@ -412,6 +414,8 @@ export interface UpdateJobInput {
   // Nullable so a score can be CLEARED, not just overwritten — the column has
   // always been nullable, only this input type was narrower.
   suitabilityReason?: string | null;
+  suitabilityModel?: string | null;
+  suitabilityEffort?: string | null;
   tailoredFields?: CvFieldOverrides;
   cvFieldLocks?: string[];
   tailoringMatched?: string[] | null;

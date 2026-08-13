@@ -156,13 +156,12 @@ manualJobsRouter.post("/import", async (req: Request, res: Response) => {
     (async () => {
       try {
         const brief = await getActivePersonalBrief();
-        const { category, reason } = await scoreJobSuitability(
-          processedJob,
-          brief,
-        );
+        const scored = await scoreJobSuitability(processedJob, brief);
         await jobsRepo.updateJob(processedJob.id, {
-          suitabilityCategory: category,
-          suitabilityReason: reason,
+          suitabilityCategory: scored.category,
+          suitabilityReason: scored.reason,
+          suitabilityModel: scored.model,
+          suitabilityEffort: scored.effort,
         });
       } catch (error) {
         if (error instanceof JobNotScoreableError) {
@@ -206,10 +205,12 @@ async function scoreJobAsync(jobId: string): Promise<void> {
   if (!job) return;
   const brief = await getActivePersonalBrief();
   try {
-    const { category, reason } = await scoreJobSuitability(job, brief);
+    const scored = await scoreJobSuitability(job, brief);
     await jobsRepo.updateJob(jobId, {
-      suitabilityCategory: category,
-      suitabilityReason: reason,
+      suitabilityCategory: scored.category,
+      suitabilityReason: scored.reason,
+      suitabilityModel: scored.model,
+      suitabilityEffort: scored.effort,
     });
   } catch (error) {
     if (error instanceof JobNotScoreableError) {

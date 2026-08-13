@@ -90,10 +90,17 @@ export class JobScoringFailedError extends AppError {
   }
 }
 
-interface SuitabilityResult {
+export interface SuitabilityResult {
   category: SuitabilityCategory;
   reason: string;
+  /** The model that actually produced `category` — the screen's when it decided. */
+  model: string;
+  /** The reasoning effort that call ran at; null on any provider without one. */
+  effort: ClaudeCodeEffortLevel | null;
 }
+
+/** What the salary penalty can change; the model/effort ride alongside it. */
+type PenalizedResult = Pick<SuitabilityResult, "category" | "reason">;
 
 type ScoringPreferences = {
   instructions: string;
@@ -143,7 +150,7 @@ function applySalaryPenalty(
   category: SuitabilityCategory,
   reason: string,
   settings: { penalizeMissingSalary: boolean },
-): SuitabilityResult {
+): PenalizedResult {
   if (!settings.penalizeMissingSalary || !isSalaryMissing(job.salary)) {
     return { category, reason };
   }
@@ -310,6 +317,13 @@ export async function scoreJobSuitability(
     penalizeMissingSalary: settings.penalizeMissingSalary.value,
   };
 
+  // What the CLI would run at with no per-call override — the env var the
+  // saved setting is written into. Only claude_code has the knob, so recording
+  // it for any other provider would claim a level that was never sent.
+  const configuredEffort = parseEffortLevel(settings.claudeCodeEffort);
+  const activeProvider = normalizeProviderValue(settings.llmProvider?.value);
+  const mainEffort = activeProvider === "claude_code" ? configuredEffort : null;
+
   const screen = options?.prefilter
     ? await resolvePrefilter(settings, model)
     : null;
@@ -333,12 +347,21 @@ export async function scoreJobSuitability(
       // discarded — the good model re-classifies from scratch and its answer
       // wins outright, so a generous screen costs money and never accuracy.
       if (first.category === "bad_fit") {
-        return applySalaryPenalty(
-          job,
-          first.category,
-          `${first.reason} ${prefilterNote(screen.model)}`,
-          penalty,
-        );
+        return {
+          ...applySalaryPenalty(
+            job,
+            first.category,
+            `${first.reason} ${prefilterNote(screen.model)}`,
+            penalty,
+          ),
+          model: screen.model,
+          // A blank per-screen effort means the screen inherited the saved one,
+          // exactly as the main call does — so record that, not null.
+          effort:
+            screen.provider === "claude_code"
+              ? (screen.effort ?? configuredEffort)
+              : null,
+        };
       }
     } catch (error) {
       // Fail OPEN. A rate limit is account-wide and the second call would hit
@@ -357,7 +380,11 @@ export async function scoreJobSuitability(
     instructions,
   });
 
-  return applySalaryPenalty(job, category, reason, penalty);
+  return {
+    ...applySalaryPenalty(job, category, reason, penalty),
+    model,
+    effort: mainEffort,
+  };
 }
 
 /**
@@ -370,6 +397,12 @@ async function resolvePrefilter(
   mainModel: string,
 ): Promise<{
   model: string;
+  provider: string;
+  /**
+   * The screen's OWN effort override, not its effective one — an unset value
+   * has to stay null here, because it is what the same-call short-circuit
+   * below compares and what decides whether `effort` is passed at all.
+   */
   effort: ClaudeCodeEffortLevel | null;
   llm: LlmServiceOptions;
 } | null> {
@@ -402,7 +435,7 @@ async function resolvePrefilter(
     return null;
   }
 
-  return { model, effort, llm: resolved.options };
+  return { model, provider: resolved.provider, effort, llm: resolved.options };
 }
 
 function parseEffortLevel(value: unknown): ClaudeCodeEffortLevel | null {

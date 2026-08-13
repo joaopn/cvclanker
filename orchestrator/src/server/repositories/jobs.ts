@@ -1023,6 +1023,8 @@ function mapRowToJob(row: typeof jobs.$inferSelect): Job {
     closedAt: row.closedAt ?? null,
     suitabilityCategory: row.suitabilityCategory ?? null,
     suitabilityReason: row.suitabilityReason,
+    suitabilityModel: row.suitabilityModel ?? null,
+    suitabilityEffort: row.suitabilityEffort ?? null,
     tailoredFields: parseFieldOverrides(row.tailoredFields),
     cvFieldLocks: parseStringList(row.cvFieldLocks) ?? [],
     tailoringMatched: parseStringList(row.tailoringMatched),
