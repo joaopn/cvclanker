@@ -139,14 +139,47 @@ describe("LlmService provider normalization", () => {
       expect(llm.getBaseUrl()).not.toBe("https://ambient.example.test");
     });
 
-    it("still takes an explicitly supplied key for another provider", () => {
+    it("still takes an explicitly supplied key for another provider", async () => {
       const llm = new LlmService({
         provider: "openrouter",
         apiKey: "or-explicit",
-        baseUrl: "https://openrouter.example.test",
+      });
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(new Response("{}", { status: 200 }));
+
+      await llm.validateCredentials();
+
+      const headers = (fetchSpy.mock.calls[0]?.[1]?.headers ?? {}) as Record<
+        string,
+        string
+      >;
+      expect(JSON.stringify(headers)).toContain("or-explicit");
+    });
+
+    it("ignores a caller-supplied base URL for a provider with a fixed endpoint", () => {
+      // The sharp edge behind the whole guard: the ambient key is lent on
+      // provider NAME, so honouring a caller's URL here would send the
+      // configured provider's key to a host of the caller's choosing.
+      const llm = new LlmService({
+        provider: "openai",
+        baseUrl: "https://attacker.example.test",
       });
 
-      expect(llm.getBaseUrl()).toBe("https://openrouter.example.test");
+      expect(llm.getProvider()).toBe("openai");
+      expect(llm.getBaseUrl()).not.toContain("attacker");
+      // Falls back to the operator's ambient URL, then the strategy default.
+      expect(llm.getBaseUrl()).toBe("https://ambient.example.test");
+    });
+
+    it("keeps honouring the ambient base URL for a fixed-endpoint provider", () => {
+      // LLM_BASE_URL is the operator's own configuration, at the same trust
+      // level as the key beside it — an install pointing openai at a proxy
+      // through the environment must not be silently redirected back to the
+      // vendor.
+      const llm = new LlmService({ provider: "openai" });
+
+      expect(llm.getBaseUrl()).toBe("https://ambient.example.test");
     });
   });
 

@@ -5,6 +5,7 @@
 import {
   CLAUDE_CODE_EFFORT_LEVELS,
   type ClaudeCodeEffortLevel,
+  LLM_BASE_URL_PROVIDER_IDS,
   LLM_PROVIDER_IDS,
 } from "@shared/settings-registry";
 
@@ -41,11 +42,11 @@ const PROVIDERS_WITH_API_KEY = new Set<LlmProviderId>([
   "gemini",
 ]);
 
-const PROVIDERS_WITH_BASE_URL = new Set<LlmProviderId>([
-  "lmstudio",
-  "ollama",
-  "openai_compatible",
-]);
+// Derived, not repeated: the server rejects a base URL for anything outside
+// this set, so a copy that drifted would render a field whose value is refused.
+const PROVIDERS_WITH_BASE_URL = new Set<LlmProviderId>(
+  LLM_BASE_URL_PROVIDER_IDS,
+);
 
 const PROVIDER_HINTS: Record<LlmProviderId, string> = {
   openrouter:
@@ -89,8 +90,7 @@ const PROVIDER_KEY_HELPERS: Record<
   },
 };
 
-const BASE_URL_PROVIDERS = ["lmstudio", "ollama", "openai_compatible"] as const;
-type BaseUrlProviderId = (typeof BASE_URL_PROVIDERS)[number];
+type BaseUrlProviderId = (typeof LLM_BASE_URL_PROVIDER_IDS)[number];
 
 const PROVIDER_BASE_URLS: Record<BaseUrlProviderId, string> = {
   lmstudio: "http://localhost:1234",

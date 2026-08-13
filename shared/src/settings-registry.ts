@@ -74,6 +74,28 @@ export const LLM_PROVIDER_IDS = [
 ] as const;
 export type LlmProviderIdValue = (typeof LLM_PROVIDER_IDS)[number];
 
+/**
+ * The only providers whose endpoint the user chooses. Everywhere else the base
+ * URL is fixed by the provider strategy, so accepting one would mean pointing
+ * that provider's API key at an arbitrary host — which is why this list gates
+ * the credential routes and `LlmService` itself, not just which field the
+ * settings form renders.
+ */
+export const LLM_BASE_URL_PROVIDER_IDS = [
+  "lmstudio",
+  "ollama",
+  "openai_compatible",
+] as const satisfies readonly LlmProviderIdValue[];
+
+export function providerUsesBaseUrl(
+  provider: string | null | undefined,
+): boolean {
+  if (!provider) return false;
+  return (LLM_BASE_URL_PROVIDER_IDS as readonly string[]).includes(
+    provider.trim().toLowerCase().replace(/-/g, "_"),
+  );
+}
+
 // Accepted values of the Claude Code CLI's `--effort` flag (verified against
 // v2.1.220 and v2.1.226 — an unknown value only warns and falls back to the
 // CLI default, so a future CLI changing this list degrades gracefully).

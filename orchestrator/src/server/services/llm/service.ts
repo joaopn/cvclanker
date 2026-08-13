@@ -1,4 +1,5 @@
 import { logger } from "@infra/logger";
+import { providerUsesBaseUrl } from "@shared/settings-registry";
 import { toStringOrNull } from "@shared/utils/type-conversion";
 import { ClaudeCodeClient } from "./claude-code/client";
 import { CodexClient } from "./codex/client";
@@ -63,8 +64,22 @@ export class LlmService {
       : envProvider;
     const inheritsEnv = resolvedProvider === envProvider;
 
+    // A CALLER-supplied base URL is honoured only for the providers whose
+    // endpoint the user chooses. For the rest it is fixed by the strategy, so an
+    // explicit one could only redirect that provider's API key elsewhere — and
+    // since the ambient key is lent on provider NAME, a caller naming the
+    // configured provider with a different URL would otherwise be handed it.
+    //
+    // The AMBIENT `LLM_BASE_URL` is deliberately still honoured for every
+    // provider: it is the operator's own configuration, at the same trust level
+    // as the key beside it, and an install pointing an openai deployment at a
+    // proxy through the environment must not have its traffic silently
+    // redirected back to the vendor on upgrade.
+    const explicitBaseUrlAllowed = providerUsesBaseUrl(resolvedProvider);
     const normalizedBaseUrl =
-      explicitBaseUrl || (inheritsEnv ? envBaseUrl : null) || null;
+      (explicitBaseUrlAllowed ? explicitBaseUrl : null) ||
+      (inheritsEnv ? envBaseUrl : null) ||
+      null;
 
     const strategy = strategies[resolvedProvider];
     const baseUrl = normalizedBaseUrl || strategy.defaultBaseUrl;

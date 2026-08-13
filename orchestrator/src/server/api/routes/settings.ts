@@ -34,6 +34,7 @@ import { normalizeProviderId } from "@server/services/llm/provider-credentials";
 import { LlmService } from "@server/services/llm/service";
 import { getEffectiveSettings } from "@server/services/settings";
 import { applySettingsUpdates } from "@server/services/settings-update";
+import { providerUsesBaseUrl } from "@shared/settings-registry";
 import { updateSettingsSchema } from "@shared/settings-schema";
 import { type Request, type Response, Router } from "express";
 import { z } from "zod";
@@ -148,10 +149,7 @@ async function resolveLlmConfig(input: {
   const inheritedApiKey = isConfiguredProvider
     ? storedApiKey?.trim() || null
     : null;
-  const usesBaseUrl =
-    provider === "lmstudio" ||
-    provider === "ollama" ||
-    provider === "openai_compatible";
+  const usesBaseUrl = providerUsesBaseUrl(provider);
   const hasExplicitBaseUrlOverride =
     input.baseUrl !== undefined && input.baseUrl !== null;
   const inheritedBaseUrl = isConfiguredProvider
@@ -256,7 +254,10 @@ const providerCredentialSchema = z.object({
   // `undefined` leaves a field alone, `null` clears it. That distinction is
   // what lets the form save a base URL without wiping a key it never showed.
   apiKey: z.string().trim().max(2000).nullable().optional(),
-  baseUrl: z.string().trim().max(2000).nullable().optional(),
+  // Same shape as the `llmBaseUrl` setting this parallels. It was laxer for one
+  // release, which let a malformed or non-HTTP value be stored and then used as
+  // the endpoint an API key is sent to.
+  baseUrl: z.union([z.string().trim().url().max(2000), z.null()]).optional(),
 });
 
 settingsRouter.put(
@@ -279,6 +280,18 @@ settingsRouter.put(
     }
 
     const input = providerCredentialSchema.parse(req.body ?? {});
+    // The UI only renders a base-URL field for the providers that have one, but
+    // the API has to enforce it: for every other provider the endpoint is fixed
+    // by its strategy, so storing one would mean sending that provider's key to
+    // a host of the caller's choosing.
+    if (input.baseUrl && !providerUsesBaseUrl(provider)) {
+      return fail(
+        res,
+        badRequest(
+          `${provider} has a fixed endpoint and does not take a base URL.`,
+        ),
+      );
+    }
     await upsertProviderCredential({
       provider,
       // An empty string is a clear, not a save: the field is rendered blank

@@ -77,15 +77,20 @@ describe.sequential("Per-provider LLM credentials", () => {
     await saveCredential("openrouter", { apiKey: "sk-or-original" });
 
     // A base-URL-only save must not wipe the key the form never displayed.
-    await saveCredential("openrouter", { baseUrl: "https://example.test" });
+    // Uses openai_compatible because openrouter's endpoint is fixed and a base
+    // URL for it is refused outright — see the guard tests below.
+    await saveCredential("openai_compatible", { apiKey: "sk-compat-key" });
+    await saveCredential("openai_compatible", {
+      baseUrl: "https://proxy.example.test",
+    });
     let listed = await (
       await fetch(`${baseUrl}/api/settings/llm-credentials`)
     ).json();
     let entry = listed.data.credentials.find(
-      (row: { provider: string }) => row.provider === "openrouter",
+      (row: { provider: string }) => row.provider === "openai_compatible",
     );
-    expect(entry.apiKeyHint).toBe("sk-o");
-    expect(entry.baseUrl).toBe("https://example.test");
+    expect(entry.apiKeyHint).toBe("sk-c");
+    expect(entry.baseUrl).toBe("https://proxy.example.test");
 
     await saveCredential("openrouter", { apiKey: null });
     listed = await (
@@ -95,6 +100,32 @@ describe.sequential("Per-provider LLM credentials", () => {
       (row: { provider: string }) => row.provider === "openrouter",
     );
     expect(entry.apiKeyHint).toBeNull();
+  });
+
+  it("refuses a base URL for a provider whose endpoint is fixed", async () => {
+    // Otherwise a stored base URL would become the host that provider's API
+    // key is sent to. The UI never offers the field for these, but the API is
+    // what has to enforce it.
+    for (const provider of ["openrouter", "openai", "gemini"]) {
+      const res = await saveCredential(provider, {
+        apiKey: "sk-x",
+        baseUrl: "https://attacker.example.test",
+      });
+      expect(res.status).toBe(400);
+    }
+
+    // ...and nothing was stored on the way to being refused.
+    const listed = await (
+      await fetch(`${baseUrl}/api/settings/llm-credentials`)
+    ).json();
+    expect(listed.data.credentials).toEqual([]);
+  });
+
+  it("refuses a base URL that is not a URL", async () => {
+    const res = await saveCredential("openai_compatible", {
+      baseUrl: "not-a-url",
+    });
+    expect(res.status).toBe(400);
   });
 
   it("refuses providers that authenticate through their own login", async () => {
