@@ -4,10 +4,14 @@ import {
   categoryCounts,
   configSubtitle,
   costMultiplier,
+  filterBinaryCrossings,
   findDisagreements,
   formatPercent,
+  projectedGateCostMultiplier,
+  projectedGateCostPerJob,
   STORED_COLUMN,
   STORED_COLUMN_ID,
+  screenLoss,
   summarizeConfig,
 } from "./scoring-bench";
 import type { BenchCell, BenchConfig, BenchJob } from "./types/scoring-bench";
@@ -425,5 +429,234 @@ describe("configSubtitle", () => {
     expect(configSubtitle(benchConfig("c", { model: "" }))).toBe(
       "provider default",
     );
+  });
+});
+
+describe("screening metrics", () => {
+  // Every case here reads as: could this column be used to throw jobs away
+  // before the baseline ever sees them, and what would that cost.
+  it("treats a great-vs-good split as a bad match though it is neither exact nor within one tier", () => {
+    const cells = [
+      cell({ jobId: "j1", configId: "ref", category: "great_fit" }),
+      cell({ jobId: "j1", configId: "cheap", category: "good_fit" }),
+    ];
+
+    const summary = summarizeConfig({
+      configId: "cheap",
+      referenceConfigId: "ref",
+      cells,
+    });
+
+    // The whole reason the column exists: the two columns disagree about the
+    // ranking and agree about survival, and a screen only acts on the latter.
+    expect(summary.agreement).toBe(0);
+    expect(summary.withinOneTier).toBe(0);
+    expect(summary.binaryAgreement).toBe(1);
+  });
+
+  it("separates loss of the top tiers from loss of good_fit", () => {
+    const cells = [
+      cell({ jobId: "j1", configId: "ref", category: "great_fit" }),
+      cell({ jobId: "j1", configId: "cheap", category: "bad_fit" }),
+      cell({ jobId: "j2", configId: "ref", category: "good_fit" }),
+      cell({ jobId: "j2", configId: "cheap", category: "bad_fit" }),
+      cell({ jobId: "j3", configId: "ref", category: "very_good_fit" }),
+      cell({ jobId: "j3", configId: "cheap", category: "very_good_fit" }),
+      cell({ jobId: "j4", configId: "ref", category: "bad_fit" }),
+      cell({ jobId: "j4", configId: "cheap", category: "bad_fit" }),
+    ];
+
+    const summary = summarizeConfig({
+      configId: "cheap",
+      referenceConfigId: "ref",
+      cells,
+    });
+    const loss = screenLoss(summary);
+
+    expect(loss.topComparable).toBe(2);
+    expect(loss.topLost).toBe(1);
+    expect(loss.topKeptRate).toBe(0.5);
+    expect(loss.goodComparable).toBe(1);
+    expect(loss.goodLost).toBe(1);
+    expect(loss.goodKeptRate).toBe(0);
+    expect(loss.badComparable).toBe(1);
+    expect(loss.badScreened).toBe(1);
+    expect(loss.badScreenedRate).toBe(1);
+    // j3 and j4 are the two the columns agree about on the bad/not-bad axis.
+    expect(summary.binaryAgreement).toBe(0.5);
+    expect(summary.passRate).toBe(0.25);
+  });
+
+  it("is directional — swapping the baseline changes what counts as lost", () => {
+    const cells = [
+      cell({ jobId: "j1", configId: "ref", category: "great_fit" }),
+      cell({ jobId: "j1", configId: "cheap", category: "bad_fit" }),
+      cell({ jobId: "j2", configId: "ref", category: "bad_fit" }),
+      cell({ jobId: "j2", configId: "cheap", category: "bad_fit" }),
+    ];
+
+    const asCandidate = screenLoss(
+      summarizeConfig({
+        configId: "cheap",
+        referenceConfigId: "ref",
+        cells,
+      }),
+    );
+    const asBaseline = screenLoss(
+      summarizeConfig({
+        configId: "ref",
+        referenceConfigId: "cheap",
+        cells,
+      }),
+    );
+
+    expect(asCandidate.topComparable).toBe(1);
+    expect(asCandidate.topLost).toBe(1);
+    // Read the other way round there are no top-tier jobs to lose at all: the
+    // cheap column called both jobs bad, so its "kept" bucket is empty.
+    expect(asBaseline.topComparable).toBe(0);
+    expect(asBaseline.topKeptRate).toBeNull();
+  });
+
+  it("counts pass-through over the column's own jobs and kept-rate only over shared ones", () => {
+    const cells = [
+      cell({ jobId: "j1", configId: "ref", category: "great_fit" }),
+      cell({ jobId: "j1", configId: "cheap", category: "great_fit" }),
+      // The baseline failed here, so it cannot be a loss — but it is still a
+      // job the screen would have stopped, which is a cost question.
+      cell({ jobId: "j2", configId: "ref", status: "error", error: "boom" }),
+      cell({ jobId: "j2", configId: "cheap", category: "bad_fit" }),
+    ];
+
+    const summary = summarizeConfig({
+      configId: "cheap",
+      referenceConfigId: "ref",
+      cells,
+    });
+
+    expect(summary.passRate).toBe(0.5);
+    expect(screenLoss(summary).topKeptRate).toBe(1);
+    expect(summary.comparable).toBe(1);
+  });
+
+  it("reports no screening rates for the baseline itself", () => {
+    const cells = [
+      cell({ jobId: "j1", configId: "ref", category: "great_fit" }),
+      cell({ jobId: "j2", configId: "ref", category: "bad_fit" }),
+    ];
+
+    const summary = summarizeConfig({
+      configId: "ref",
+      referenceConfigId: "ref",
+      cells,
+    });
+    const loss = screenLoss(summary);
+
+    expect(summary.binaryAgreement).toBeNull();
+    expect(loss.topKeptRate).toBeNull();
+    expect(loss.badScreenedRate).toBeNull();
+    // Pass-through is a property of the column alone, so it survives.
+    expect(summary.passRate).toBe(0.5);
+  });
+});
+
+describe("projectedGateCostPerJob", () => {
+  const gateCells = [
+    cell({
+      jobId: "j1",
+      configId: "cheap",
+      category: "good_fit",
+      promptTokens: 1000,
+      completionTokens: 100,
+    }),
+    cell({
+      jobId: "j2",
+      configId: "cheap",
+      category: "bad_fit",
+      promptTokens: 1000,
+      completionTokens: 100,
+    }),
+    cell({
+      jobId: "j1",
+      configId: "ref",
+      category: "good_fit",
+      promptTokens: 10000,
+      completionTokens: 1000,
+    }),
+    cell({
+      jobId: "j2",
+      configId: "ref",
+      category: "bad_fit",
+      promptTokens: 10000,
+      completionTokens: 1000,
+    }),
+  ];
+  const rates = { input: 1, output: 1 };
+
+  it("charges the screen for every job and the baseline only for the ones it passes", () => {
+    const candidate = summarizeConfig({
+      configId: "cheap",
+      referenceConfigId: "ref",
+      cells: gateCells,
+      rates,
+    });
+    const baseline = summarizeConfig({
+      configId: "ref",
+      referenceConfigId: "ref",
+      cells: gateCells,
+      rates,
+    });
+
+    expect(candidate.estimatedCostPerJob).toBeCloseTo(0.0011, 10);
+    expect(baseline.estimatedCostPerJob).toBeCloseTo(0.011, 10);
+    expect(candidate.passRate).toBe(0.5);
+    // 0.0011 for the screen + half of 0.011 for what survives it.
+    expect(projectedGateCostPerJob(candidate, baseline)).toBeCloseTo(
+      0.0066,
+      10,
+    );
+    expect(projectedGateCostMultiplier(candidate, baseline)).toBeCloseTo(
+      0.6,
+      10,
+    );
+  });
+
+  it("is null when either column carries no estimate", () => {
+    const unpriced = summarizeConfig({
+      configId: "cheap",
+      referenceConfigId: "ref",
+      cells: gateCells,
+    });
+    const baseline = summarizeConfig({
+      configId: "ref",
+      referenceConfigId: "ref",
+      cells: gateCells,
+      rates,
+    });
+
+    expect(projectedGateCostPerJob(unpriced, baseline)).toBeNull();
+    expect(projectedGateCostPerJob(baseline, unpriced)).toBeNull();
+    expect(projectedGateCostMultiplier(unpriced, baseline)).toBeNull();
+    expect(projectedGateCostPerJob(baseline, undefined)).toBeNull();
+  });
+});
+
+describe("filterBinaryCrossings", () => {
+  it("keeps only the disagreements a pre-filter could act on", () => {
+    const cells = [
+      // Ranked differently, but both columns would let it through.
+      cell({ jobId: "j1", configId: "ref", category: "great_fit" }),
+      cell({ jobId: "j1", configId: "cheap", category: "good_fit" }),
+      // One column would throw this away.
+      cell({ jobId: "j2", configId: "ref", category: "great_fit" }),
+      cell({ jobId: "j2", configId: "cheap", category: "bad_fit" }),
+    ];
+
+    const rows = findDisagreements({ jobs, configs, cells });
+
+    expect(rows.map((row) => row.job.id)).toEqual(["j1", "j2"]);
+    expect(filterBinaryCrossings(rows).map((row) => row.job.id)).toEqual([
+      "j2",
+    ]);
   });
 });

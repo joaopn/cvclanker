@@ -128,26 +128,51 @@ beforeEach(() => {
   vi.mocked(useScoringBench).mockReturnValue({ run: null, connected: true });
 });
 
-// Category labels now appear in three places — the sampling chips, the summary
-// table's column headers, and the grid's cells — so every assertion about a
-// category has to say which table it means.
-function summaryTable(): HTMLElement {
+// Category labels appear in four places — the sampling chips, the summary
+// table's column headers, the pre-filter table and the grid's cells — so every
+// assertion about a category has to say which table it means. The two captioned
+// tables are told apart by what their caption says, not by having one.
+function tableByCaption(prefix: string): HTMLElement {
   const table = Array.from(document.querySelectorAll("table")).find((entry) =>
-    entry.querySelector("caption"),
+    entry.querySelector("caption")?.textContent?.trim().startsWith(prefix),
   );
-  if (!table) throw new Error("summary table not rendered");
+  if (!table) throw new Error(`no table captioned "${prefix}"`);
   return table as HTMLElement;
 }
 
-/** Reads one cell of a summary row by its column heading. */
-function summaryCell(row: HTMLElement, columnLabel: string): string {
-  const headers = Array.from(summaryTable().querySelectorAll("thead th")).map(
-    (header) => header.textContent?.trim(),
+function summaryTable(): HTMLElement {
+  return tableByCaption("Summary —");
+}
+
+function prefilterTable(): HTMLElement {
+  return tableByCaption("As a pre-filter");
+}
+
+/** Reads one cell of a row by its column heading. */
+function cellByColumn(
+  table: HTMLElement,
+  row: HTMLElement,
+  columnLabel: string,
+): string {
+  const headers = Array.from(table.querySelectorAll("thead th")).map((header) =>
+    header.textContent?.trim(),
   );
   const index = headers.indexOf(columnLabel);
-  if (index === -1) throw new Error(`no summary column "${columnLabel}"`);
+  if (index === -1) throw new Error(`no column "${columnLabel}"`);
   const cells = Array.from(row.querySelectorAll("th, td"));
   return cells[index]?.textContent?.trim() ?? "";
+}
+
+function summaryCell(row: HTMLElement, columnLabel: string): string {
+  return cellByColumn(summaryTable(), row, columnLabel);
+}
+
+function rowByLabel(table: HTMLElement, label: string): HTMLElement {
+  const row = Array.from(table.querySelectorAll("tbody tr")).find((entry) =>
+    entry.querySelector("th[scope='row']")?.textContent?.includes(label),
+  );
+  if (!row) throw new Error(`no row for "${label}"`);
+  return row as HTMLElement;
 }
 
 function resultsGrid(): HTMLElement {
@@ -495,5 +520,96 @@ describe("ModelBenchmarkingPanel results", () => {
     expect(
       within(resultsGrid()).getByText("Backend Engineer"),
     ).toBeInTheDocument();
+  });
+});
+
+describe("ModelBenchmarkingPanel screening view", () => {
+  it("reports what each column would have thrown away before the baseline ran", () => {
+    // Baseline (cfg-a) rated j1 great and j2 good; the cheap column agreed on
+    // j2 and screened j1 out entirely.
+    vi.mocked(useScoringBench).mockReturnValue({
+      run: buildRun(),
+      connected: true,
+    });
+    renderPanel();
+
+    const table = prefilterTable();
+    const cheap = rowByLabel(table, "Cheap");
+
+    const topKept = cellByColumn(table, cheap, "Great + Very good kept");
+    expect(topKept).toContain("0%");
+    expect(topKept).toContain("1 of 1 lost");
+    expect(cellByColumn(table, cheap, "Good kept")).toContain("100%");
+    // The baseline called nothing bad, so there was no screening win to have.
+    expect(cellByColumn(table, cheap, "Bad screened")).toBe("—");
+    expect(cellByColumn(table, cheap, "Passes")).toBe("50%");
+
+    // The baseline is not measured against itself, but every other column is —
+    // including the database.
+    expect(() => rowByLabel(table, "Reference")).toThrow();
+    expect(
+      cellByColumn(table, rowByLabel(table, "Saved in database"), "Passes"),
+    ).toBe("100%");
+  });
+
+  it("scores bad-vs-not-bad separately from exact agreement", () => {
+    vi.mocked(useScoringBench).mockReturnValue({
+      run: buildRun(),
+      connected: true,
+    });
+    renderPanel();
+
+    const cheap = rowByLabel(summaryTable(), "Cheap");
+    // One of the two shared jobs was ranked differently AND crossed the line;
+    // the other matched outright.
+    expect(summaryCell(cheap, "Same")).toBe("50%");
+    expect(summaryCell(cheap, "Bad match")).toBe("50%");
+    expect(
+      summaryCell(rowByLabel(summaryTable(), "Reference"), "Bad match"),
+    ).toBe("—");
+  });
+
+  it("narrows the review list to the disagreements a screen could act on", () => {
+    const run = buildRun();
+    vi.mocked(useScoringBench).mockReturnValue({
+      run: {
+        ...run,
+        jobs: [
+          ...run.jobs,
+          {
+            id: "j3",
+            title: "Platform Engineer",
+            employer: "Initech",
+            jobUrl: null,
+            storedCategory: null,
+            storedReason: null,
+          },
+        ],
+        cells: [
+          ...run.cells,
+          // A ranking split with no bad_fit in it: a real disagreement that a
+          // pre-filter would never act on.
+          cell("j3", "cfg-a", { category: "great_fit", reason: "Strong." }),
+          cell("j3", "cfg-b", { category: "good_fit", reason: "Weaker." }),
+        ],
+      },
+      connected: true,
+    });
+    renderPanel();
+
+    expect(
+      screen.getByRole("button", { name: /review 2 disagreements/i }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /only bad/i }));
+
+    expect(
+      screen.getByRole("button", { name: /review 1 crossing/i }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /review 1 crossing/i }));
+    const dialog = within(screen.getByRole("dialog"));
+    expect(dialog.getByText("Backend Engineer")).toBeInTheDocument();
+    expect(dialog.queryByText("Platform Engineer")).not.toBeInTheDocument();
   });
 });

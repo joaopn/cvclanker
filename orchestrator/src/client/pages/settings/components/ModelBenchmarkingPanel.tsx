@@ -15,11 +15,15 @@ import {
   cellKey,
   configSubtitle,
   costMultiplier,
+  filterBinaryCrossings,
   findDisagreements,
   formatPercent,
   indexCells,
+  projectedGateCostMultiplier,
+  projectedGateCostPerJob,
   STORED_COLUMN,
   STORED_COLUMN_ID,
+  screenLoss,
   summarizeConfig,
 } from "@shared/scoring-bench";
 import {
@@ -46,6 +50,7 @@ import type React from "react";
 import { useMemo, useRef, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -119,6 +124,29 @@ function formatMultiplier(value: number | null): string {
   return `${value.toFixed(2)}×`;
 }
 
+/**
+ * A rate over the baseline's jobs, with the raw counts underneath: 98% over 4
+ * jobs and 98% over 400 are different facts, and only one of them is evidence.
+ */
+const ScreenCell: React.FC<{
+  rate: number | null;
+  count: number;
+  comparable: number;
+  noun: string;
+}> = ({ rate, count, comparable, noun }) => {
+  if (comparable === 0) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  return (
+    <>
+      <div>{formatPercent(rate)}</div>
+      <div className="text-xs font-normal text-muted-foreground">
+        {count} of {comparable} {noun}
+      </div>
+    </>
+  );
+};
+
 /** Empty or unparseable stays null — a price is absent, never zero. */
 function parseRate(raw: string): number | null {
   const trimmed = raw.trim();
@@ -156,6 +184,7 @@ export const ModelBenchmarkingPanel: React.FC<ModelBenchmarkingPanelProps> = ({
     null,
   );
   const [disagreementsOpen, setDisagreementsOpen] = useState(false);
+  const [crossingsOnly, setCrossingsOnly] = useState(false);
   const [sampleCategories, setSampleCategories] = useState<
     BenchSampleCategory[]
   >([...FIT_FILTER_VALUES]);
@@ -254,6 +283,27 @@ export const ModelBenchmarkingPanel: React.FC<ModelBenchmarkingPanelProps> = ({
       index: cellIndex,
     });
   }, [run, columns, allCells, cellIndex]);
+
+  const crossings = useMemo(
+    () => filterBinaryCrossings(disagreements),
+    [disagreements],
+  );
+  const reviewRows = crossingsOnly ? crossings : disagreements;
+
+  // The baseline is a column like any other, so it is summarised like one; what
+  // makes it the baseline is only that everything else is measured against it.
+  const candidateColumns = useMemo(
+    () =>
+      columns
+        .map((config, index) => ({ config, summary: summaries[index] }))
+        .filter(
+          (entry) =>
+            entry.config.id !== activeReferenceId &&
+            entry.summary !== undefined &&
+            entry.summary.comparable > 0,
+        ),
+    [columns, summaries, activeReferenceId],
+  );
 
   const pageCount = run ? Math.ceil(run.jobs.length / JOBS_PER_PAGE) : 0;
   // Results stream in and a new run replaces the sample, so the page can end up
@@ -646,7 +696,7 @@ export const ModelBenchmarkingPanel: React.FC<ModelBenchmarkingPanelProps> = ({
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
               <Label htmlFor="benchReference" className="text-xs">
-                Compare against
+                Baseline
               </Label>
               <Select
                 value={activeReferenceId ?? undefined}
@@ -664,16 +714,32 @@ export const ModelBenchmarkingPanel: React.FC<ModelBenchmarkingPanelProps> = ({
                 </SelectContent>
               </Select>
             </div>
-            {disagreements.length > 0 ? (
+            {reviewRows.length > 0 ? (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => setDisagreementsOpen(true)}
               >
-                Review {disagreements.length} disagreement
-                {disagreements.length === 1 ? "" : "s"}
+                Review {reviewRows.length}{" "}
+                {crossingsOnly ? "crossing" : "disagreement"}
+                {reviewRows.length === 1 ? "" : "s"}
               </Button>
+            ) : null}
+            {crossings.length > 0 || crossingsOnly ? (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="benchCrossingsOnly"
+                  checked={crossingsOnly}
+                  onCheckedChange={(value) => setCrossingsOnly(value === true)}
+                />
+                <Label
+                  htmlFor="benchCrossingsOnly"
+                  className="text-xs font-normal text-muted-foreground"
+                >
+                  Only bad ↔ not-bad ({crossings.length})
+                </Label>
+              </div>
             ) : null}
           </div>
 
@@ -711,6 +777,13 @@ export const ModelBenchmarkingPanel: React.FC<ModelBenchmarkingPanelProps> = ({
                     className="p-2 text-right font-medium whitespace-nowrap"
                   >
                     ±1 tier
+                  </th>
+                  <th
+                    scope="col"
+                    className="p-2 text-right font-medium whitespace-nowrap"
+                    title="Agreement on bad vs not-bad alone, whatever tier each column picked."
+                  >
+                    Bad match
                   </th>
                   <th
                     scope="col"
@@ -786,6 +859,11 @@ export const ModelBenchmarkingPanel: React.FC<ModelBenchmarkingPanelProps> = ({
                           : formatPercent(summary?.withinOneTier ?? null)}
                       </td>
                       <td className="p-2 text-right tabular-nums">
+                        {isReference
+                          ? "—"
+                          : formatPercent(summary?.binaryAgreement ?? null)}
+                      </td>
+                      <td className="p-2 text-right tabular-nums">
                         {isReference ? "—" : (summary?.comparable ?? 0)}
                       </td>
                       <td className="p-2 text-right tabular-nums">
@@ -832,6 +910,124 @@ export const ModelBenchmarkingPanel: React.FC<ModelBenchmarkingPanelProps> = ({
               </tbody>
             </table>
           </div>
+
+          {candidateColumns.length > 0 ? (
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full text-sm">
+                <caption className="border-b bg-muted/40 p-2 text-left text-xs font-medium text-muted-foreground">
+                  As a pre-filter for{" "}
+                  {columns.find((config) => config.id === activeReferenceId)
+                    ?.label ?? "the baseline"}{" "}
+                  — of the jobs the baseline classified, what each column would
+                  have thrown away before the baseline ever ran
+                </caption>
+                <thead>
+                  <tr className="border-b text-left">
+                    <th scope="col" className="p-2 font-medium">
+                      Configuration
+                    </th>
+                    <th
+                      scope="col"
+                      className="p-2 text-right font-medium whitespace-nowrap"
+                      title="Of the baseline's great and very good fits, how many this column also kept out of bad_fit. The number that decides whether a screen is usable."
+                    >
+                      Great + Very good kept
+                    </th>
+                    <th
+                      scope="col"
+                      className="p-2 text-right font-medium whitespace-nowrap"
+                      title="The same for the baseline's good fits, where a loss is a borderline call rather than a missed opportunity."
+                    >
+                      Good kept
+                    </th>
+                    <th
+                      scope="col"
+                      className="p-2 text-right font-medium whitespace-nowrap"
+                      title="Of the baseline's bad fits, how many this column also called bad — the work a screen actually saves."
+                    >
+                      Bad screened
+                    </th>
+                    <th
+                      scope="col"
+                      className="p-2 text-right font-medium whitespace-nowrap"
+                      title="Share of this column's own classified jobs it called non-bad, i.e. what would go on to the baseline model."
+                    >
+                      Passes
+                    </th>
+                    <th
+                      scope="col"
+                      className="p-2 text-right font-medium whitespace-nowrap"
+                    >
+                      Proj. cost/job
+                    </th>
+                    <th
+                      scope="col"
+                      className="p-2 text-right font-medium whitespace-nowrap"
+                    >
+                      Proj. × ref
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {candidateColumns.map(({ config, summary }) => {
+                    const loss = screenLoss(summary);
+                    return (
+                      <tr key={config.id} className="border-b last:border-b-0">
+                        <th scope="row" className="p-2 text-left font-normal">
+                          <div className="font-medium whitespace-nowrap">
+                            {config.label}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {configSubtitle(config)}
+                          </div>
+                        </th>
+                        <td className="p-2 text-right tabular-nums">
+                          <ScreenCell
+                            rate={loss.topKeptRate}
+                            count={loss.topLost}
+                            comparable={loss.topComparable}
+                            noun="lost"
+                          />
+                        </td>
+                        <td className="p-2 text-right tabular-nums">
+                          <ScreenCell
+                            rate={loss.goodKeptRate}
+                            count={loss.goodLost}
+                            comparable={loss.goodComparable}
+                            noun="lost"
+                          />
+                        </td>
+                        <td className="p-2 text-right tabular-nums">
+                          <ScreenCell
+                            rate={loss.badScreenedRate}
+                            count={loss.badScreened}
+                            comparable={loss.badComparable}
+                            noun="removed"
+                          />
+                        </td>
+                        <td className="p-2 text-right tabular-nums">
+                          {formatPercent(summary.passRate)}
+                        </td>
+                        <td className="p-2 text-right tabular-nums">
+                          {formatCost(
+                            projectedGateCostPerJob(summary, referenceSummary),
+                          )}
+                        </td>
+                        <td className="p-2 text-right tabular-nums">
+                          {formatMultiplier(
+                            projectedGateCostMultiplier(
+                              summary,
+                              referenceSummary,
+                            ),
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
 
           <div className="overflow-x-auto rounded-lg border">
             <table className="w-full text-sm">
@@ -939,18 +1135,33 @@ export const ModelBenchmarkingPanel: React.FC<ModelBenchmarkingPanelProps> = ({
             Claude Code counts cache reads as input, so its input figure reads
             high, and a provider that reports nothing shows "—". Est. cost
             prices this run's classified jobs at your rates; × ref compares cost
-            per job against the reference column. Compared is how many jobs both
-            that column and the reference classified — the denominator behind
-            Same and ±1 tier. The saved column is whatever is on the job today,
-            which may predate the current scoring policy.
+            per job against the baseline column. Compared is how many jobs both
+            that column and the baseline classified — the denominator behind
+            Same, ±1 tier and Bad match. The saved column is whatever is on the
+            job today, which may predate the current scoring policy.
           </p>
+          {candidateColumns.length > 0 ? (
+            <p className="text-xs text-muted-foreground">
+              The pre-filter table asks a different question: if a column
+              screened out its bad fits and only the survivors went to the
+              baseline, what would that cost. Kept rates are conditional on the
+              sample you drew — restrict the fit chips to Great and Very good
+              and the first column is measured directly, at full sample size.
+              Projected cost is a floor: a job the screen fails on has to fall
+              through to the baseline rather than be thrown away.
+            </p>
+          ) : null}
         </div>
       ) : null}
 
       <BenchDisagreementDialog
+        // Remounts on toggle so the walker restarts at the first row: the two
+        // lists are different sets, and keeping the old index would land the
+        // user on an unrelated job.
+        key={crossingsOnly ? "crossings" : "all"}
         open={disagreementsOpen}
         onOpenChange={setDisagreementsOpen}
-        rows={disagreements}
+        rows={reviewRows}
         configs={columns}
       />
     </SettingsSectionFrame>

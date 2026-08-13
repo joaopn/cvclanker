@@ -5,10 +5,47 @@
  */
 
 import {
+  SUITABILITY_CATEGORIES,
   SUITABILITY_CATEGORY_RANK,
   type SuitabilityCategory,
 } from "./types/jobs";
 import type { BenchCell, BenchConfig, BenchJob } from "./types/scoring-bench";
+
+/**
+ * The tiers whose loss decides whether a column can be used as a pre-filter.
+ * A screen's single power is to send a job to `bad_fit` and stop, so a wrongly
+ * screened `good_fit` is a borderline call, while a wrongly screened
+ * `great_fit` / `very_good_fit` is a job the user never sees at all. The two are
+ * reported separately because only the second one disqualifies a screen.
+ */
+export const TOP_FIT_CATEGORIES = [
+  "great_fit",
+  "very_good_fit",
+] as const satisfies readonly SuitabilityCategory[];
+
+/**
+ * One home for the four keys, so a fifth tier breaks the build here rather than
+ * being silently absent from a tally somewhere.
+ */
+function emptyCategoryTally(): Record<SuitabilityCategory, number> {
+  return { great_fit: 0, very_good_fit: 0, good_fit: 0, bad_fit: 0 };
+}
+
+function isBadFit(category: SuitabilityCategory): boolean {
+  return category === "bad_fit";
+}
+
+function sumOver(
+  tally: Record<SuitabilityCategory, number>,
+  categories: readonly SuitabilityCategory[],
+): number {
+  return categories.reduce((total, category) => total + tally[category], 0);
+}
+
+/** Null rather than NaN when nothing qualified — an absent rate is not 0%. */
+function rate(numerator: number, denominator: number): number | null {
+  return denominator > 0 ? numerator / denominator : null;
+}
 
 export interface ConfigSummary {
   configId: string;
@@ -25,6 +62,28 @@ export interface ConfigSummary {
   withinOneTier: number | null;
   /** Jobs both classified — the denominator behind the two rates above. */
   comparable: number;
+  /**
+   * Comparable jobs grouped by what the BASELINE said, and — of those — how
+   * many THIS column called `bad_fit`. Together they are the `bad_fit` column of
+   * the confusion matrix, which is the only part a pre-filter can act on, so
+   * every screening figure (`screenLoss`, `binaryAgreement`) derives from these
+   * two rather than being counted separately.
+   */
+  comparableByReferenceCategory: Record<SuitabilityCategory, number>;
+  calledBadByReferenceCategory: Record<SuitabilityCategory, number>;
+  /**
+   * Share of comparable jobs where this column and the baseline agreed on bad
+   * vs not-bad, whatever non-bad tier each chose. Null under the same
+   * conditions as `agreement`.
+   */
+  binaryAgreement: number | null;
+  /**
+   * Share of this column's OWN classified jobs that it called non-bad — what a
+   * pre-filter built on it would forward to the expensive model. The
+   * denominator is deliberately not `comparable`: this is a volume figure, and
+   * a job the baseline never classified still costs a second call.
+   */
+  passRate: number | null;
   /**
    * Mean input and output tokens per classified job, over the cells that
    * reported each. Null when the provider reported none (codex reports no usage
@@ -169,11 +228,17 @@ export function summarizeConfig(args: {
   let comparable = 0;
   let exact = 0;
   let withinOne = 0;
+  const comparableByReferenceCategory = emptyCategoryTally();
+  const calledBadByReferenceCategory = emptyCategoryTally();
   if (referenceConfigId !== null && referenceConfigId !== configId) {
     for (const cell of classifiedCells) {
       const reference = byKey.get(cellKey(cell.jobId, referenceConfigId));
       if (!reference?.category || !cell.category) continue;
       comparable += 1;
+      comparableByReferenceCategory[reference.category] += 1;
+      if (isBadFit(cell.category)) {
+        calledBadByReferenceCategory[reference.category] += 1;
+      }
       if (reference.category === cell.category) {
         exact += 1;
         withinOne += 1;
@@ -201,6 +266,19 @@ export function summarizeConfig(args: {
     ((args.rates?.input != null && promptValues.length === 0) ||
       (args.rates?.output != null && completionValues.length === 0));
 
+  // Derived from the tallies instead of counted beside them, so the binary view
+  // and the per-tier view cannot drift apart: a job matches when the baseline
+  // called it bad and this column did too, or when neither did.
+  const binaryMatches = SUITABILITY_CATEGORIES.reduce((total, category) => {
+    const inBucket = comparableByReferenceCategory[category];
+    const calledBad = calledBadByReferenceCategory[category];
+    return total + (isBadFit(category) ? calledBad : inBucket - calledBad);
+  }, 0);
+
+  const nonBadOwn = classifiedCells.filter(
+    (cell) => cell.category !== null && !isBadFit(cell.category),
+  ).length;
+
   return {
     configId,
     classified: classifiedCells.length,
@@ -208,6 +286,10 @@ export function summarizeConfig(args: {
     comparable,
     agreement: comparable > 0 ? exact / comparable : null,
     withinOneTier: comparable > 0 ? withinOne / comparable : null,
+    comparableByReferenceCategory,
+    calledBadByReferenceCategory,
+    binaryAgreement: rate(binaryMatches, comparable),
+    passRate: rate(nonBadOwn, classifiedCells.length),
     avgPromptTokens: mean(promptValues),
     avgCompletionTokens: mean(completionValues),
     estimatedCost: cost,
@@ -237,6 +319,92 @@ function estimateCost(args: {
     ((args.promptTokens ?? 0) * (rates.input ?? 0)) / 1_000_000 +
     ((args.completionTokens ?? 0) * (rates.output ?? 0)) / 1_000_000
   );
+}
+
+/**
+ * What using a column as a pre-filter in front of the baseline would cost the
+ * user, split by how much the loss matters. Read it as: of the jobs the
+ * baseline rated, how many would this column have thrown away before the
+ * baseline ever saw them.
+ */
+export interface ScreenLoss {
+  /** Baseline `great_fit` + `very_good_fit` among the comparable jobs. */
+  topComparable: number;
+  /** Of those, how many this column called `bad_fit` — the unacceptable loss. */
+  topLost: number;
+  topKeptRate: number | null;
+  /** The same three for baseline `good_fit`, where loss is a judgement call. */
+  goodComparable: number;
+  goodLost: number;
+  goodKeptRate: number | null;
+  /** Baseline `bad_fit`, and how much of it this column would remove — the win. */
+  badComparable: number;
+  badScreened: number;
+  badScreenedRate: number | null;
+}
+
+export function screenLoss(summary: ConfigSummary): ScreenLoss {
+  const comparable = summary.comparableByReferenceCategory;
+  const calledBad = summary.calledBadByReferenceCategory;
+
+  const topComparable = sumOver(comparable, TOP_FIT_CATEGORIES);
+  const topLost = sumOver(calledBad, TOP_FIT_CATEGORIES);
+  const goodComparable = comparable.good_fit;
+  const goodLost = calledBad.good_fit;
+  const badComparable = comparable.bad_fit;
+  const badScreened = calledBad.bad_fit;
+
+  return {
+    topComparable,
+    topLost,
+    topKeptRate: rate(topComparable - topLost, topComparable),
+    goodComparable,
+    goodLost,
+    goodKeptRate: rate(goodComparable - goodLost, goodComparable),
+    badComparable,
+    badScreened,
+    badScreenedRate: rate(badScreened, badComparable),
+  };
+}
+
+/**
+ * Cost per job of screening with this column and classifying the survivors with
+ * the baseline: every job pays the screen, and `passRate` of them pay the
+ * baseline as well. Null unless both columns carry a cost estimate — the point
+ * of the figure is the comparison, and a half-priced one would mislead.
+ *
+ * It is an optimistic floor by construction: a job the screen fails on falls
+ * through to the baseline (the screen must never delete jobs), so a column with
+ * a meaningful failure rate costs more in practice than this says.
+ */
+export function projectedGateCostPerJob(
+  candidate: ConfigSummary,
+  baseline: ConfigSummary | undefined,
+): number | null {
+  const screenCost = candidate.estimatedCostPerJob;
+  const baselineCost = baseline?.estimatedCostPerJob;
+  if (screenCost === null) return null;
+  if (baselineCost === undefined || baselineCost === null) return null;
+  if (candidate.passRate === null) return null;
+  return screenCost + candidate.passRate * baselineCost;
+}
+
+/** The same figure against classifying everything with the baseline. */
+export function projectedGateCostMultiplier(
+  candidate: ConfigSummary,
+  baseline: ConfigSummary | undefined,
+): number | null {
+  const projected = projectedGateCostPerJob(candidate, baseline);
+  const baselineCost = baseline?.estimatedCostPerJob;
+  if (projected === null) return null;
+  if (
+    baselineCost === undefined ||
+    baselineCost === null ||
+    baselineCost === 0
+  ) {
+    return null;
+  }
+  return projected / baselineCost;
 }
 
 /**
@@ -291,6 +459,27 @@ export function findDisagreements(args: {
 }
 
 /**
+ * The subset of disagreements that cross the bad / not-bad line. Those are the
+ * only ones a pre-filter could act on — a great_fit-vs-good_fit split changes
+ * the ranking but not whether the job survives — so reviewing them is how the
+ * jobs a screen would have thrown away actually get read.
+ */
+export function filterBinaryCrossings(
+  rows: DisagreementRow[],
+): DisagreementRow[] {
+  return rows.filter((row) => {
+    let sawBad = false;
+    let sawNonBad = false;
+    for (const cell of row.cells) {
+      if (cell.category === null) continue;
+      if (isBadFit(cell.category)) sawBad = true;
+      else sawNonBad = true;
+    }
+    return sawBad && sawNonBad;
+  });
+}
+
+/**
  * How many jobs each column put in each category. The summary reads down these
  * to answer "is the cheap model just harsher across the board?", which an
  * agreement percentage alone cannot show.
@@ -299,12 +488,7 @@ export function categoryCounts(
   cells: BenchCell[],
   configId: string,
 ): Record<SuitabilityCategory, number> {
-  const counts: Record<SuitabilityCategory, number> = {
-    great_fit: 0,
-    very_good_fit: 0,
-    good_fit: 0,
-    bad_fit: 0,
-  };
+  const counts = emptyCategoryTally();
   for (const cell of cells) {
     if (cell.configId !== configId || !cell.category) continue;
     counts[cell.category] += 1;
