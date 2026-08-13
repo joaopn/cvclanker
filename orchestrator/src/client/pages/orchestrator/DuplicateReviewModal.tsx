@@ -37,6 +37,10 @@ interface DuplicateReviewModalProps {
   // Refresh the duplicate list + the job list after a resolution.
   onResolved: () => void;
   pushUndo: (entry: { label: string; restore: () => Promise<void> }) => void;
+  // The `maxBulkActionJobs` setting. "Close all" is one bulk action, so a big
+  // backlog of duplicates can exceed it; the plan below batches rather than
+  // letting the server reject the whole thing.
+  maxBulkActionJobs: number;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -102,6 +106,52 @@ function chooseKeeper(jobs: JobListItem[]): string {
   return sorted[0]?.id ?? "";
 }
 
+/** The copies a group would close — everything but its chosen keeper. */
+function losersOf(
+  group: DuplicateJobGroup,
+  keeperByKey: Record<string, string>,
+): JobListItem[] {
+  // Fall back to the auto-pick: groups the user never stepped through are
+  // seeded on open, but a missing key must never make the whole group (keeper
+  // included) look like a loser.
+  const keeperId = keeperByKey[group.key] || chooseKeeper(group.jobs);
+  return group.jobs.filter((job) => job.id !== keeperId);
+}
+
+interface CloseAllPlan {
+  losers: JobListItem[];
+  /** Leading groups this batch covers — how far the wizard advances. */
+  groupCount: number;
+  /** True when the cap held groups back, so the button has to run again. */
+  capped: boolean;
+}
+
+/**
+ * What one "close all" press would do. Groups are taken whole and in order
+ * until the next one would breach `maxBulkActionJobs` — splitting a group
+ * across batches would leave copies behind that no longer read as duplicates.
+ * The first group is always taken, so the button can never be a no-op; a
+ * single group bigger than the cap is left to the server to refuse, exactly as
+ * the per-group button would.
+ */
+function planCloseAll(
+  groups: DuplicateJobGroup[],
+  keeperByKey: Record<string, string>,
+  maxBulkActionJobs: number,
+): CloseAllPlan {
+  const losers: JobListItem[] = [];
+  let groupCount = 0;
+  for (const group of groups) {
+    const next = losersOf(group, keeperByKey);
+    if (groupCount > 0 && losers.length + next.length > maxBulkActionJobs) {
+      break;
+    }
+    losers.push(...next);
+    groupCount += 1;
+  }
+  return { losers, groupCount, capped: groupCount < groups.length };
+}
+
 const FIT_LABEL: Record<string, string> = {
   great_fit: "Great fit",
   very_good_fit: "Very good fit",
@@ -115,6 +165,7 @@ export const DuplicateReviewModal: React.FC<DuplicateReviewModalProps> = ({
   groups,
   onResolved,
   pushUndo,
+  maxBulkActionJobs,
 }) => {
   // Snapshot the groups when the modal opens so the wizard is stable while the
   // job list refetches underneath; the parent refetches on close.
@@ -141,14 +192,27 @@ export const DuplicateReviewModal: React.FC<DuplicateReviewModalProps> = ({
   const group = localGroups[index] ?? null;
   const done = index >= total;
 
+  const remainingGroups = localGroups.slice(index);
+  const closeAllPlan = planCloseAll(
+    remainingGroups,
+    keeperByKey,
+    maxBulkActionJobs,
+  );
+
   const handleSkip = () => setIndex((i) => i + 1);
 
-  const handleCloseDuplicates = async () => {
-    if (!group) return;
-    const keeperId = keeperByKey[group.key];
-    const losers = group.jobs.filter((job) => job.id !== keeperId);
+  /**
+   * Close one batch of losers and advance past the groups it covered. Shared by
+   * the per-group button and "close all" so both report, undo and advance
+   * identically — only the size of the batch differs.
+   */
+  const closeLosers = async (
+    losers: JobListItem[],
+    buildLabel: (okCount: number) => string,
+    advanceBy: number,
+  ) => {
     if (losers.length === 0) {
-      setIndex((i) => i + 1);
+      setIndex((i) => i + advanceBy);
       return;
     }
     const snapshots = losers.map(snapshotJob);
@@ -164,7 +228,7 @@ export const DuplicateReviewModal: React.FC<DuplicateReviewModalProps> = ({
       const failCount = response.results.length - okCount;
 
       if (okCount > 0) {
-        const label = `Marked ${okCount} duplicate${okCount === 1 ? "" : "s"}`;
+        const label = buildLabel(okCount);
         toast.success(label);
         pushUndo({
           label,
@@ -180,12 +244,34 @@ export const DuplicateReviewModal: React.FC<DuplicateReviewModalProps> = ({
         );
       }
       onResolved();
-      setIndex((i) => i + 1);
+      setIndex((i) => i + advanceBy);
     } catch {
       toast.error("Failed to mark duplicates");
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleCloseDuplicates = async () => {
+    if (!group) return;
+    await closeLosers(
+      losersOf(group, keeperByKey),
+      (n) => `Marked ${n} duplicate${n === 1 ? "" : "s"}`,
+      1,
+    );
+  };
+
+  const handleCloseAll = async () => {
+    const { losers, groupCount } = closeAllPlan;
+    if (groupCount === 0) return;
+    await closeLosers(
+      losers,
+      (n) =>
+        `Marked ${n} duplicate${n === 1 ? "" : "s"} across ${groupCount} group${
+          groupCount === 1 ? "" : "s"
+        }`,
+      groupCount,
+    );
   };
 
   return (
@@ -272,6 +358,14 @@ export const DuplicateReviewModal: React.FC<DuplicateReviewModalProps> = ({
                 );
               })}
             </RadioGroup>
+
+            {remainingGroups.length > 1 && (
+              <p className="text-xs text-muted-foreground">
+                Close all keeps the selected copy here and the best-ranked copy
+                in each remaining group — furthest along the pipeline first,
+                then best fit, then newest.
+              </p>
+            )}
           </div>
         )}
 
@@ -287,13 +381,29 @@ export const DuplicateReviewModal: React.FC<DuplicateReviewModalProps> = ({
               >
                 Skip group
               </Button>
-              <Button onClick={handleCloseDuplicates} disabled={submitting}>
-                {(() => {
-                  const keeperId = keeperByKey[group.key];
-                  const k = group.jobs.filter((j) => j.id !== keeperId).length;
-                  return `Close ${k} as duplicate${k === 1 ? "" : "s"}`;
-                })()}
-              </Button>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {remainingGroups.length > 1 && (
+                  <Button
+                    variant="outline"
+                    onClick={handleCloseAll}
+                    disabled={submitting}
+                  >
+                    {(() => {
+                      const jobs = closeAllPlan.losers.length;
+                      const suffix = `(${jobs} job${jobs === 1 ? "" : "s"})`;
+                      return closeAllPlan.capped
+                        ? `Close ${closeAllPlan.groupCount} of ${remainingGroups.length} groups ${suffix}`
+                        : `Close all ${closeAllPlan.groupCount} groups ${suffix}`;
+                    })()}
+                  </Button>
+                )}
+                <Button onClick={handleCloseDuplicates} disabled={submitting}>
+                  {(() => {
+                    const k = losersOf(group, keeperByKey).length;
+                    return `Close ${k} as duplicate${k === 1 ? "" : "s"}`;
+                  })()}
+                </Button>
+              </div>
             </>
           )}
         </DialogFooter>

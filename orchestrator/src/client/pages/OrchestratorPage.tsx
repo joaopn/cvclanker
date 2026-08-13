@@ -798,6 +798,7 @@ export const OrchestratorPage: React.FC = () => {
           groups={duplicateGroups}
           onResolved={handleDuplicatesResolved}
           pushUndo={undoController.pushUndo}
+          maxBulkActionJobs={maxBulkActionJobs}
         />
 
         <BatchUrlImportSheet

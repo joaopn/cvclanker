@@ -62,7 +62,32 @@ const group = (): DuplicateJobGroup => ({
   ],
 });
 
-const renderModal = () => {
+// A second cluster, so the close-all path has more than one group to sweep.
+const otherGroup = (): DuplicateJobGroup => ({
+  key: "platform engineer globex",
+  title: "Platform Engineer",
+  employer: "Globex",
+  jobs: [
+    jobItem({
+      id: "g1",
+      title: "Platform Engineer",
+      employer: "Globex",
+      sourceLabel: "LinkedIn",
+      suitabilityCategory: "great_fit",
+    }),
+    jobItem({
+      id: "g2",
+      title: "Platform Engineer",
+      employer: "Globex",
+      sourceLabel: "Indeed",
+      suitabilityCategory: "good_fit",
+    }),
+  ],
+});
+
+const renderModal = (
+  options: { groups?: DuplicateJobGroup[]; maxBulkActionJobs?: number } = {},
+) => {
   const pushUndo = vi.fn(
     (_entry: { label: string; restore: () => Promise<void> }) => {},
   );
@@ -72,9 +97,10 @@ const renderModal = () => {
     <DuplicateReviewModal
       open
       onOpenChange={onOpenChange}
-      groups={[group()]}
+      groups={options.groups ?? [group()]}
       onResolved={onResolved}
       pushUndo={pushUndo}
+      maxBulkActionJobs={options.maxBulkActionJobs ?? 1000}
     />,
   );
   return { pushUndo, onResolved, onOpenChange };
@@ -138,5 +164,94 @@ describe("DuplicateReviewModal", () => {
     fireEvent.click(screen.getByRole("button", { name: /Skip group/i }));
     expect(runJobAction).not.toHaveBeenCalled();
     expect(screen.getByText(/Nothing left to review/i)).toBeInTheDocument();
+  });
+
+  describe("close all", () => {
+    it("is hidden when the current group is the only one left", () => {
+      renderModal();
+      expect(
+        screen.queryByRole("button", { name: /Close all/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("closes every remaining group's losers in one action", async () => {
+      const { pushUndo, onResolved } = renderModal({
+        groups: [group(), otherGroup()],
+      });
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: /Close all 2 groups \(2 jobs\)/i,
+        }),
+      );
+
+      await waitFor(() => expect(runJobAction).toHaveBeenCalledTimes(1));
+      // j2 (very_good_fit) and g1 (great_fit) are the auto-picked keepers.
+      expect(runJobAction).toHaveBeenCalledWith({
+        action: "mark_duplicated",
+        jobIds: ["j1", "g2"],
+      });
+      expect(pushUndo).toHaveBeenCalledTimes(1);
+      expect(onResolved).toHaveBeenCalled();
+      expect(screen.getByText(/Nothing left to review/i)).toBeInTheDocument();
+    });
+
+    it("honours a keeper the user changed on the visible group", async () => {
+      renderModal({ groups: [group(), otherGroup()] });
+      fireEvent.click(screen.getAllByRole("radio")[0]); // make j1 the keeper
+
+      fireEvent.click(screen.getByRole("button", { name: /Close all/i }));
+
+      await waitFor(() => expect(runJobAction).toHaveBeenCalledTimes(1));
+      expect(runJobAction).toHaveBeenCalledWith({
+        action: "mark_duplicated",
+        jobIds: ["j2", "g2"],
+      });
+    });
+
+    it("leaves a skipped group alone", async () => {
+      renderModal({ groups: [group(), otherGroup()] });
+      fireEvent.click(screen.getByRole("button", { name: /Skip group/i }));
+
+      // Only one group is left, so close-all is gone — the per-group button is
+      // the whole remainder, and the skipped group is not swept back in.
+      expect(
+        screen.queryByRole("button", { name: /Close all/i }),
+      ).not.toBeInTheDocument();
+      fireEvent.click(
+        screen.getByRole("button", { name: /Close 1 as duplicate/i }),
+      );
+
+      await waitFor(() => expect(runJobAction).toHaveBeenCalledTimes(1));
+      expect(runJobAction).toHaveBeenCalledWith({
+        action: "mark_duplicated",
+        jobIds: ["g2"],
+      });
+    });
+
+    it("batches whole groups under the bulk-action cap", async () => {
+      renderModal({
+        groups: [group(), otherGroup()],
+        maxBulkActionJobs: 1,
+      });
+
+      // Two groups, one loser each, cap of 1: the second group cannot join
+      // this batch, and the label says so rather than promising "all".
+      const button = screen.getByRole("button", {
+        name: /Close 1 of 2 groups \(1 job\)/i,
+      });
+      fireEvent.click(button);
+
+      await waitFor(() => expect(runJobAction).toHaveBeenCalledTimes(1));
+      expect(runJobAction).toHaveBeenCalledWith({
+        action: "mark_duplicated",
+        jobIds: ["j1"],
+      });
+      // Advanced by one group, not past everything — the second is still there.
+      expect(screen.getByText("Platform Engineer")).toBeInTheDocument();
+      expect(
+        screen.queryByText(/Nothing left to review/i),
+      ).not.toBeInTheDocument();
+    });
   });
 });
