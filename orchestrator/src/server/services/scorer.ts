@@ -14,9 +14,9 @@ import {
   DEFAULT_SCORING_INSTRUCTIONS,
 } from "@shared/settings-registry";
 import {
+  type Job,
   SUITABILITY_CATEGORIES,
   SUITABILITY_CATEGORY_RANK,
-  type Job,
   type SuitabilityCategory,
 } from "@shared/types";
 import { LlmService } from "./llm/service";
@@ -39,7 +39,11 @@ export class JobNotScoreableError extends AppError {
       status: 422,
       code: "UNPROCESSABLE_ENTITY",
       message: `Cannot score job — description is ${args.observed} chars (need ≥ ${args.required}). Re-fetch the URL or paste the full description.`,
-      details: { jobId: args.jobId, observed: args.observed, required: args.required },
+      details: {
+        jobId: args.jobId,
+        observed: args.observed,
+        required: args.required,
+      },
     });
     this.name = "JobNotScoreableError";
   }
