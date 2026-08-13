@@ -88,7 +88,12 @@ export async function scoreJobsStep(args: {
       let category: SuitabilityCategory;
       let reason: string;
       try {
-        ({ category, reason } = await scoreJobSuitability(job, args.brief));
+        // The one path that opts into the cheap pre-filter: it classifies
+        // everything discovery finds, which is the only place the saving is
+        // worth the risk of a screen removing a job.
+        ({ category, reason } = await scoreJobSuitability(job, args.brief, {
+          prefilter: true,
+        }));
       } catch (error) {
         if (error instanceof LlmRateLimitStopError) {
           // Account-wide and temporary: every remaining job would hit the same

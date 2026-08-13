@@ -101,6 +101,12 @@ export interface AppSettings {
   modelScorer: ModelResolved;
   modelTailoring: ModelResolved;
 
+  // Two-stage scoring. An empty model is the off switch; the provider is null
+  // for "the configured one", and the effort is claude_code-only.
+  scorerPrefilterModel: Resolved<string | null>;
+  scorerPrefilterProvider: Resolved<string | null>;
+  scorerPrefilterEffort: Resolved<string | null>;
+
   // Simple strings:
   defaultProfileId: string | null;
   userProfileName: string | null;

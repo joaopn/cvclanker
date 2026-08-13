@@ -10,6 +10,7 @@
 import { AppError } from "@infra/errors";
 import { logger } from "@infra/logger";
 import {
+  CLAUDE_CODE_EFFORT_LEVELS,
   type ClaudeCodeEffortLevel,
   DEFAULT_SCORING_INSTRUCTIONS,
 } from "@shared/settings-registry";
@@ -19,6 +20,7 @@ import {
   SUITABILITY_CATEGORY_RANK,
   type SuitabilityCategory,
 } from "@shared/types";
+import { resolveProviderCall } from "./llm/provider-credentials";
 import { LlmService } from "./llm/service";
 import type {
   JsonSchemaDefinition,
@@ -258,9 +260,33 @@ export async function classifyJob(
   return { category: rawCategory, reason, usage: result.usage };
 }
 
+/**
+ * Note appended to a category the cheap screen decided on its own. The salary
+ * penalty already writes into `reason` the same way, so this needs no column —
+ * and without it a `bad_fit` from a screen is indistinguishable from one the
+ * good model actually looked at.
+ */
+function prefilterNote(model: string): string {
+  return `Screened out by the pre-filter model (${model}); the main model did not review this job.`;
+}
+
 export async function scoreJobSuitability(
   job: Job,
   brief: string,
+  options?: {
+    /**
+     * Opt IN to the cheap pre-filter. Only the pipeline's scoring step does,
+     * for the same reason only it auto-skips: it is the path that classifies
+     * everything the scrapers find, and the screen can only ever REMOVE a job.
+     * Every user-initiated request — Recalculate match, a rescrape, a pasted
+     * URL — goes straight to the main model, which is also what makes them a
+     * reliable second opinion on anything the screen killed.
+     *
+     * Opt-in rather than opt-out on purpose: a new caller that forgets this
+     * gets the good model, not a silent screen.
+     */
+    prefilter?: boolean;
+  },
 ): Promise<SuitabilityResult> {
   // Re-checked here, ahead of the settings reads, purely to keep an unscoreable
   // job as cheap as it was before `classifyJob` was split out — a batch of them
@@ -279,15 +305,117 @@ export async function scoreJobSuitability(
     resolveLlmModel("scoring"),
     getEffectiveSettings(),
   ]);
+  const instructions = settings.scoringInstructions?.value ?? "";
+  const penalty = {
+    penalizeMissingSalary: settings.penalizeMissingSalary.value,
+  };
+
+  const screen = options?.prefilter
+    ? await resolvePrefilter(settings, model)
+    : null;
+
+  if (screen) {
+    try {
+      const first = await classifyJob(job, brief, {
+        model: screen.model,
+        instructions,
+        ...(screen.effort ? { effort: screen.effort } : {}),
+        llm: screen.llm,
+      });
+      logger.info("Pre-filter classified job", {
+        jobId: job.id,
+        provider: screen.llm.provider ?? null,
+        model: screen.model,
+        category: first.category,
+        forwarded: first.category !== "bad_fit",
+      });
+      // The screen's ONLY power: stop here on bad_fit. Anything else is
+      // discarded — the good model re-classifies from scratch and its answer
+      // wins outright, so a generous screen costs money and never accuracy.
+      if (first.category === "bad_fit") {
+        return applySalaryPenalty(
+          job,
+          first.category,
+          `${first.reason} ${prefilterNote(screen.model)}`,
+          penalty,
+        );
+      }
+    } catch (error) {
+      // Fail OPEN. A rate limit is account-wide and the second call would hit
+      // the same wall, so it propagates; anything else means the screen is
+      // broken, and a broken screen must never delete jobs.
+      if (error instanceof LlmRateLimitStopError) throw error;
+      logger.warn("Pre-filter failed; falling through to the main model", {
+        jobId: job.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   const { category, reason } = await classifyJob(job, brief, {
     model,
-    instructions: settings.scoringInstructions?.value ?? "",
+    instructions,
   });
 
-  return applySalaryPenalty(job, category, reason, {
-    penalizeMissingSalary: settings.penalizeMissingSalary.value,
-  });
+  return applySalaryPenalty(job, category, reason, penalty);
+}
+
+/**
+ * The screen's resolved configuration, or null when it is off — an empty model,
+ * or one that resolves to the very same provider/model/effort as the main call,
+ * which would just pay twice for one answer.
+ */
+async function resolvePrefilter(
+  settings: Awaited<ReturnType<typeof getEffectiveSettings>>,
+  mainModel: string,
+): Promise<{
+  model: string;
+  effort: ClaudeCodeEffortLevel | null;
+  llm: LlmServiceOptions;
+} | null> {
+  const model = settings.scorerPrefilterModel?.value?.trim() ?? "";
+  if (!model) return null;
+
+  const resolved = await resolveProviderCall(
+    settings.scorerPrefilterProvider?.value ?? null,
+  );
+  if (resolved.missingReason) {
+    // Configured but unusable: log once per call rather than failing the job,
+    // since the main model is about to answer anyway.
+    logger.warn("Pre-filter has no usable credential; skipping it", {
+      provider: resolved.provider,
+      reason: resolved.missingReason,
+    });
+    return null;
+  }
+
+  const effort =
+    resolved.provider === "claude_code"
+      ? parseEffortLevel(settings.scorerPrefilterEffort?.value)
+      : null;
+
+  const activeProvider = normalizeProviderValue(settings.llmProvider?.value);
+  const sameProvider =
+    settings.scorerPrefilterProvider?.value == null ||
+    resolved.provider === activeProvider;
+  if (sameProvider && model === mainModel && effort === null) {
+    return null;
+  }
+
+  return { model, effort, llm: resolved.options };
+}
+
+function parseEffortLevel(value: unknown): ClaudeCodeEffortLevel | null {
+  return typeof value === "string" &&
+    (CLAUDE_CODE_EFFORT_LEVELS as readonly string[]).includes(value)
+    ? (value as ClaudeCodeEffortLevel)
+    : null;
+}
+
+function normalizeProviderValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim()
+    ? value.trim().toLowerCase().replace(/-/g, "_")
+    : null;
 }
 
 async function buildScoringPrompt(

@@ -79,6 +79,9 @@ function buildEffectiveConfigSnapshot(args: {
     models: {
       scorer: args.settings.modelScorer.value,
       tailoring: args.settings.modelTailoring.value,
+      // Empty when off. A saved run that used a screen must say so, or it
+      // misreports what actually classified its jobs.
+      scorerPrefilter: args.settings.scorerPrefilterModel.value ?? "",
     },
   };
 }

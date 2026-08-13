@@ -9,10 +9,12 @@ import {
   getLlmProviderConfig,
   LLM_PROVIDER_LABELS,
   LLM_PROVIDERS,
+  type LlmProviderId,
   supportsLlmModelSuggestions,
 } from "@client/pages/settings/utils";
 import {
   CLAUDE_CODE_EFFORT_LEVELS,
+  type ClaudeCodeEffortLevel,
   getDefaultModelForProvider,
 } from "@shared/settings-registry";
 import type { UpdateSettingsInput } from "@shared/settings-schema.js";
@@ -28,6 +30,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+
+// Radix forbids an empty item value, so both "unset" states ride a sentinel
+// that maps back to null — null is what clears the override.
+const PREFILTER_SAME_PROVIDER = "same-as-above";
+const PREFILTER_DEFAULT_EFFORT = "cli-default";
 
 type ModelSettingsSectionProps = {
   values: ModelValues;
@@ -537,6 +544,135 @@ export const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
 
         <Separator />
 
+        <div className="space-y-3">
+          <div>
+            <div className="text-sm font-medium">Two-stage scoring</div>
+            <p className="text-xs text-muted-foreground">
+              Screen each newly discovered job with a cheap model first, and
+              send only the ones it does not call a bad fit to the scoring model
+              above. The prompt is unchanged, so the scoring model is still free
+              to call them bad. Leave the model empty to turn this off.
+            </p>
+          </div>
+
+          <SettingsInput
+            label="Pre-filter model"
+            inputProps={register("scorerPrefilterModel")}
+            placeholder="empty = off"
+            disabled={isLoading || isSaving}
+            error={errors.scorerPrefilterModel?.message as string | undefined}
+            current={values.prefilterModel || "off"}
+          />
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <label
+                htmlFor="scorerPrefilterProvider"
+                className="text-sm font-medium"
+              >
+                Pre-filter provider
+              </label>
+              <Controller
+                name="scorerPrefilterProvider"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    // Radix forbids an empty item value, so "same as the app's"
+                    // rides a sentinel that maps back to null.
+                    value={field.value ?? PREFILTER_SAME_PROVIDER}
+                    onValueChange={(value) =>
+                      field.onChange(
+                        value === PREFILTER_SAME_PROVIDER
+                          ? null
+                          : (value as LlmProviderId),
+                      )
+                    }
+                    disabled={isLoading || isSaving}
+                  >
+                    <SelectTrigger
+                      id="scorerPrefilterProvider"
+                      aria-label="Pre-filter provider"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={PREFILTER_SAME_PROVIDER}>
+                        Same as above
+                      </SelectItem>
+                      {LLM_PROVIDERS.map((entry) => (
+                        <SelectItem key={entry} value={entry}>
+                          {LLM_PROVIDER_LABELS[entry]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              <p className="text-xs text-muted-foreground">
+                A different provider needs its key under Provider Credentials —
+                the one above is never lent to it. Without a usable key the
+                screen is skipped and every job goes to the scoring model.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label
+                htmlFor="scorerPrefilterEffort"
+                className="text-sm font-medium"
+              >
+                Pre-filter effort
+              </label>
+              <Controller
+                name="scorerPrefilterEffort"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    value={field.value ?? PREFILTER_DEFAULT_EFFORT}
+                    onValueChange={(value) =>
+                      field.onChange(
+                        value === PREFILTER_DEFAULT_EFFORT
+                          ? null
+                          : (value as ClaudeCodeEffortLevel),
+                      )
+                    }
+                    disabled={isLoading || isSaving}
+                  >
+                    <SelectTrigger
+                      id="scorerPrefilterEffort"
+                      aria-label="Pre-filter effort"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={PREFILTER_DEFAULT_EFFORT}>
+                        CLI default
+                      </SelectItem>
+                      {CLAUDE_CODE_EFFORT_LEVELS.map((level) => (
+                        <SelectItem key={level} value={level}>
+                          {level}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              <p className="text-xs text-muted-foreground">
+                Claude Code only; ignored by every other provider.
+              </p>
+            </div>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Only the pipeline's scoring step uses the screen — Recalculate
+            match, a rescrape and a pasted URL always go to the scoring model,
+            so they stay a second opinion on anything it removed. A job it calls
+            a bad fit says so in its reason. If Auto-skip is also set to bad
+            fits, the cheap model can send a job straight to Skipped on its own.
+          </p>
+        </div>
+
+        <Separator />
+
         <div className="space-y-3 text-sm">
           <div className="text-xs text-muted-foreground">Resolved config</div>
           <div className="grid gap-x-4 gap-y-2 text-xs sm:grid-cols-[160px_1fr]">
@@ -560,6 +696,19 @@ export const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
             <div className="text-muted-foreground">Tailoring model</div>
             <div className="font-mono">
               {selectedTailoringModel ? tailoringModel : "inherits"}
+            </div>
+
+            <div className="text-muted-foreground">Pre-filter</div>
+            <div className="font-mono">
+              {values.prefilterModel
+                ? [
+                    values.prefilterProvider ?? selectedProvider,
+                    values.prefilterModel,
+                    values.prefilterEffort,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")
+                : "off"}
             </div>
           </div>
         </div>

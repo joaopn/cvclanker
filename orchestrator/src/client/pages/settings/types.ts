@@ -12,6 +12,10 @@ export type EffectiveDefault<T> = {
 export type ModelValues = EffectiveDefault<string> & {
   scorer: string;
   tailoring: string;
+  /** Two-stage scoring: empty model means the screen is off. */
+  prefilterModel: string;
+  prefilterProvider: string | null;
+  prefilterEffort: string | null;
   llmProvider: string;
   llmBaseUrl: string;
   llmApiKeyHint: string | null;

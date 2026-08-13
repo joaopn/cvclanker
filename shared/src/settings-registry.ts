@@ -604,6 +604,44 @@ export const settingsRegistry = {
     schema: z.string().trim().max(200),
   },
 
+  // --- Two-stage scoring: a cheap model screens bad fits out first ---
+  // Deliberately `typed`, not `model`: the `model` kind exists to feed
+  // resolveLlmModel's fallback chain, and this must NOT fall back to anything.
+  // An empty model is what turns the whole feature off, so a fallback would
+  // silently enable a screen the user never configured.
+  scorerPrefilterModel: {
+    kind: "typed" as const,
+    schema: z.string().trim().max(200),
+    default: (): string | null => null,
+    parse: parseNonEmptyStringOrNull,
+    serialize: (value: string | null | undefined): string | null =>
+      value ?? null,
+  },
+  // Null means "the same provider the app is configured with". A different one
+  // needs its key under Provider Credentials; the configured provider's is
+  // never lent to it.
+  scorerPrefilterProvider: {
+    kind: "typed" as const,
+    schema: z.enum(LLM_PROVIDER_IDS),
+    default: (): string | null => null,
+    parse: normalizeLlmProviderOrNull,
+    serialize: (value: string | null | undefined): string | null =>
+      value ?? null,
+  },
+  // claude_code only, like every other effort knob. Null leaves the flag off.
+  scorerPrefilterEffort: {
+    kind: "typed" as const,
+    schema: z.enum(CLAUDE_CODE_EFFORT_LEVELS),
+    default: (): ClaudeCodeEffortLevel | null => null,
+    parse: (raw: string | undefined): ClaudeCodeEffortLevel | null =>
+      raw && (CLAUDE_CODE_EFFORT_LEVELS as readonly string[]).includes(raw)
+        ? (raw as ClaudeCodeEffortLevel)
+        : null,
+    serialize: (
+      value: ClaudeCodeEffortLevel | null | undefined,
+    ): string | null => value ?? null,
+  },
+
   // --- Auth / session ---
   // Session-token lifetime. Default is deliberately null (= jwt.ts's built-in
   // 86400s fallback), NOT read from process.env: applyStoredEnvOverrides

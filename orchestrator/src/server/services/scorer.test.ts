@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const callJsonMock = vi.hoisted(() => vi.fn());
 const getEffectiveSettingsMock = vi.hoisted(() => vi.fn());
+const resolveProviderCallMock = vi.hoisted(() => vi.fn());
 
 vi.mock("./llm/service", () => ({
   LlmService: class {
@@ -24,6 +25,9 @@ vi.mock("./modelSelection", () => ({
 }));
 vi.mock("./settings", () => ({
   getEffectiveSettings: getEffectiveSettingsMock,
+}));
+vi.mock("./llm/provider-credentials", () => ({
+  resolveProviderCall: resolveProviderCallMock,
 }));
 
 import {
@@ -200,5 +204,188 @@ describe("classifyJob", () => {
       classifyJob(thinJob, "brief", { model: "m", instructions: "" }),
     ).rejects.toBeInstanceOf(JobNotScoreableError);
     expect(callJsonMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("two-stage scoring", () => {
+  const SETTINGS_WITH_SCREEN = {
+    penalizeMissingSalary: { value: false },
+    scoringInstructions: { value: "" },
+    llmProvider: { value: "openai" },
+    scorerPrefilterModel: { value: "cheap-model" },
+    scorerPrefilterProvider: { value: null },
+    scorerPrefilterEffort: { value: null },
+  };
+
+  beforeEach(() => {
+    resolveProviderCallMock.mockReset();
+    resolveProviderCallMock.mockImplementation(async (provider: unknown) => ({
+      provider: provider ?? "openai",
+      options: { provider: provider ?? "openai" },
+      missingReason: null,
+    }));
+  });
+
+  it("does not screen when no pre-filter model is configured", async () => {
+    // The default settings carry no pre-filter, so the pipeline path must be
+    // byte-identical to what it was before two-stage scoring existed.
+    callJsonMock.mockResolvedValue({
+      success: true,
+      data: { category: "good_fit", reason: "fine" },
+    });
+
+    await scoreJobSuitability(job, "brief", { prefilter: true });
+
+    expect(callJsonMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores the screen entirely for callers that did not opt in", async () => {
+    getEffectiveSettingsMock.mockResolvedValue(SETTINGS_WITH_SCREEN);
+    callJsonMock.mockResolvedValue({
+      success: true,
+      data: { category: "good_fit", reason: "fine" },
+    });
+
+    // No options at all — Recalculate match, a rescrape, a pasted URL.
+    await scoreJobSuitability(job, "brief");
+
+    expect(callJsonMock).toHaveBeenCalledTimes(1);
+    expect(callJsonMock.mock.calls[0][0].model).toBe("stub-model");
+  });
+
+  it("stops at the screen when it calls the job a bad fit", async () => {
+    getEffectiveSettingsMock.mockResolvedValue(SETTINGS_WITH_SCREEN);
+    callJsonMock.mockResolvedValue({
+      success: true,
+      data: { category: "bad_fit", reason: "Wrong stack." },
+    });
+
+    const result = await scoreJobSuitability(job, "brief", { prefilter: true });
+
+    expect(callJsonMock).toHaveBeenCalledTimes(1);
+    expect(callJsonMock.mock.calls[0][0].model).toBe("cheap-model");
+    expect(result.category).toBe("bad_fit");
+    // The reason has to say which model decided, or a screened-out job is
+    // indistinguishable from one the main model actually read.
+    expect(result.reason).toContain("Wrong stack.");
+    expect(result.reason).toContain("cheap-model");
+  });
+
+  it("discards a non-bad screen verdict and lets the main model decide", async () => {
+    getEffectiveSettingsMock.mockResolvedValue(SETTINGS_WITH_SCREEN);
+    callJsonMock
+      .mockResolvedValueOnce({
+        success: true,
+        data: { category: "great_fit", reason: "Screen liked it." },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: { category: "good_fit", reason: "Main model was cooler." },
+      });
+
+    const result = await scoreJobSuitability(job, "brief", { prefilter: true });
+
+    expect(callJsonMock).toHaveBeenCalledTimes(2);
+    expect(callJsonMock.mock.calls[1][0].model).toBe("stub-model");
+    // The screen's verdict is thrown away wholesale — category AND reason.
+    expect(result.category).toBe("good_fit");
+    expect(result.reason).toBe("Main model was cooler.");
+  });
+
+  it("falls through to the main model when the screen fails", async () => {
+    getEffectiveSettingsMock.mockResolvedValue(SETTINGS_WITH_SCREEN);
+    callJsonMock
+      .mockResolvedValueOnce({
+        success: false,
+        code: "unknown",
+        error: "screen exploded",
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: { category: "very_good_fit", reason: "Main model is fine." },
+      });
+
+    const result = await scoreJobSuitability(job, "brief", { prefilter: true });
+
+    // Fail OPEN: a broken screen must never delete jobs.
+    expect(callJsonMock).toHaveBeenCalledTimes(2);
+    expect(result.category).toBe("very_good_fit");
+  });
+
+  it("propagates a rate limit from the screen instead of paying twice", async () => {
+    getEffectiveSettingsMock.mockResolvedValue(SETTINGS_WITH_SCREEN);
+    callJsonMock.mockResolvedValue({
+      success: false,
+      code: "rate_limited",
+      error: "session limit",
+    });
+
+    await expect(
+      scoreJobSuitability(job, "brief", { prefilter: true }),
+    ).rejects.toBeInstanceOf(LlmRateLimitStopError);
+    // The second call would hit the same account-wide wall.
+    expect(callJsonMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips a screen that resolves to the very same call as the main model", async () => {
+    getEffectiveSettingsMock.mockResolvedValue({
+      ...SETTINGS_WITH_SCREEN,
+      scorerPrefilterModel: { value: "stub-model" },
+    });
+    callJsonMock.mockResolvedValue({
+      success: true,
+      data: { category: "good_fit", reason: "fine" },
+    });
+
+    await scoreJobSuitability(job, "brief", { prefilter: true });
+
+    // Same provider, same model, no effort — screening with it would pay twice
+    // for one answer.
+    expect(callJsonMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips the screen when its provider has no usable credential", async () => {
+    getEffectiveSettingsMock.mockResolvedValue({
+      ...SETTINGS_WITH_SCREEN,
+      scorerPrefilterProvider: { value: "openrouter" },
+    });
+    resolveProviderCallMock.mockResolvedValue({
+      provider: "openrouter",
+      options: { provider: "openrouter" },
+      missingReason: "No API key is saved for openrouter.",
+    });
+    callJsonMock.mockResolvedValue({
+      success: true,
+      data: { category: "good_fit", reason: "fine" },
+    });
+
+    const result = await scoreJobSuitability(job, "brief", { prefilter: true });
+
+    // Unusable screen means no screen — not a failed job.
+    expect(callJsonMock).toHaveBeenCalledTimes(1);
+    expect(callJsonMock.mock.calls[0][0].model).toBe("stub-model");
+    expect(result.category).toBe("good_fit");
+  });
+
+  it("calls the screen on its own provider, with its own effort", async () => {
+    getEffectiveSettingsMock.mockResolvedValue({
+      ...SETTINGS_WITH_SCREEN,
+      scorerPrefilterProvider: { value: "claude_code" },
+      scorerPrefilterEffort: { value: "low" },
+    });
+    resolveProviderCallMock.mockResolvedValue({
+      provider: "claude_code",
+      options: { provider: "claude_code" },
+      missingReason: null,
+    });
+    callJsonMock.mockResolvedValue({
+      success: true,
+      data: { category: "bad_fit", reason: "No." },
+    });
+
+    await scoreJobSuitability(job, "brief", { prefilter: true });
+
+    expect(callJsonMock).toHaveBeenCalledTimes(1);
+    expect(callJsonMock.mock.calls[0][0].effort).toBe("low");
   });
 });

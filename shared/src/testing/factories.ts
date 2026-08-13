@@ -155,6 +155,9 @@ export const createAppSettings = (
   overrides: Partial<AppSettings> = {},
 ): AppSettings => ({
   model: { value: "gpt-4o", default: "gpt-4o", override: null },
+  scorerPrefilterModel: { value: null, default: null, override: null },
+  scorerPrefilterProvider: { value: null, default: null, override: null },
+  scorerPrefilterEffort: { value: null, default: null, override: null },
   modelScorer: { value: "gpt-4o", override: null },
   modelTailoring: { value: "gpt-4o", override: null },
   llmProvider: { value: "openai", default: "openai", override: null },

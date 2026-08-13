@@ -83,6 +83,12 @@ export interface PipelineRunSourceLimitSnapshot {
 export interface PipelineRunModelSnapshot {
   scorer: string;
   tailoring: string;
+  /**
+   * The cheap model that screened bad fits out before the scorer saw them, or
+   * "" when the run did not use one. Optional because runs saved before
+   * two-stage scoring existed carry no such field.
+   */
+  scorerPrefilter?: string;
 }
 
 export interface PipelineRunSkippedSource {

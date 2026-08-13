@@ -63,6 +63,9 @@ import { Input } from "@/components/ui/input";
 const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
   model: "",
   modelScorer: "",
+  scorerPrefilterModel: "",
+  scorerPrefilterProvider: null,
+  scorerPrefilterEffort: null,
   modelTailoring: "",
   llmProvider: null,
   llmBaseUrl: "",
@@ -310,6 +313,9 @@ export const SECTION_FIELD_MAP: Record<
 
     "modelScorer",
     "modelTailoring",
+    "scorerPrefilterModel",
+    "scorerPrefilterProvider",
+    "scorerPrefilterEffort",
   ],
   chat: [
     "chatStyleTone",
@@ -388,6 +394,9 @@ const normalizeLlmProviderValue = (
 const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   model: null,
   modelScorer: null,
+  scorerPrefilterModel: null,
+  scorerPrefilterProvider: null,
+  scorerPrefilterEffort: null,
   modelTailoring: null,
   llmProvider: null,
   llmBaseUrl: null,
@@ -472,6 +481,17 @@ export const buildSectionResetPayload = (
 const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   model: data.model.override ?? "",
   modelScorer: data.modelScorer.override ?? "",
+  scorerPrefilterModel: data.scorerPrefilterModel.override ?? "",
+  // Normalized on the way in, like every other enum the form holds: a stored
+  // value outside the union (enum drift, a hand-edited row) would otherwise
+  // fail the zod resolver on the user's FIRST edit of any field and silently
+  // disable Save for the whole page.
+  scorerPrefilterProvider: data.scorerPrefilterProvider.override
+    ? normalizeLlmProvider(data.scorerPrefilterProvider.override)
+    : null,
+  scorerPrefilterEffort: normalizeClaudeCodeEffort(
+    data.scorerPrefilterEffort.override,
+  ),
   modelTailoring: data.modelTailoring.override ?? "",
   llmProvider: normalizeLlmProviderValue(
     data.llmProvider.override ?? data.llmProvider.value,
@@ -547,6 +567,9 @@ const getDerivedSettings = (settings: AppSettings | null) => {
       effective: settings?.model?.value ?? "",
       default: settings?.model?.default ?? "",
       scorer: settings?.modelScorer?.value ?? "",
+      prefilterModel: settings?.scorerPrefilterModel?.value ?? "",
+      prefilterProvider: settings?.scorerPrefilterProvider?.value ?? null,
+      prefilterEffort: settings?.scorerPrefilterEffort?.value ?? null,
       tailoring: settings?.modelTailoring?.value ?? "",
       llmProvider: settings?.llmProvider?.value ?? "",
       llmBaseUrl: settings?.llmBaseUrl?.value ?? "",
@@ -871,6 +894,11 @@ export const SettingsPage: React.FC = () => {
             ? normalizeString(data.modelTailoring)
             : null
           : normalizeString(data.modelTailoring),
+        // Not tied to the provider dropdown the way the model overrides are:
+        // an empty model IS the off switch, and null clears the override.
+        scorerPrefilterModel: normalizeString(data.scorerPrefilterModel),
+        scorerPrefilterProvider: data.scorerPrefilterProvider ?? null,
+        scorerPrefilterEffort: data.scorerPrefilterEffort ?? null,
         showSponsorInfo: nullIfSame(
           data.showSponsorInfo,
           display.showSponsorInfo.default,
