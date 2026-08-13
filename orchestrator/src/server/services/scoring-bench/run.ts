@@ -9,6 +9,11 @@ import { logger } from "@infra/logger";
 import { getPipelineStatus } from "@server/pipeline/index";
 import * as jobsRepo from "@server/repositories/jobs";
 import { getActivePersonalBrief } from "@server/services/brief";
+import {
+  normalizeProviderId,
+  type ResolvedProviderCall,
+  resolveProviderCall,
+} from "@server/services/llm/provider-credentials";
 import { resetRateLimitBudget } from "@server/services/llm/rate-limit-budget";
 import { resolveLlmModel } from "@server/services/modelSelection";
 import {
@@ -21,6 +26,7 @@ import { asyncPool } from "@server/utils/async-pool";
 import {
   CLAUDE_CODE_EFFORT_LEVELS,
   type ClaudeCodeEffortLevel,
+  getDefaultModelForProvider,
 } from "@shared/settings-registry";
 import type {
   BenchCell,
@@ -95,15 +101,61 @@ export async function executeBenchRun(args: {
     // uses today", and on claude_code a blank effort means the saved
     // `claudeCodeEffort` (which reaches the CLI through the environment). Both
     // are resolved here so the grid's column headers cannot claim otherwise.
-    const configuredEffort =
-      settings.llmProvider?.value === "claude_code"
-        ? parseEffortLevel(settings.claudeCodeEffort)
-        : null;
-    const resolvedConfigs = run.configs.map((config) => ({
-      ...config,
-      model: config.model.trim() || configuredModel,
-      effort: config.effort ?? configuredEffort,
-    }));
+    const configuredProvider =
+      normalizeProviderId(settings.llmProvider?.value) ?? "openrouter";
+    const configuredEffort = parseEffortLevel(settings.claudeCodeEffort);
+
+    // One resolution per DISTINCT provider: each carries its own credentials,
+    // and looking them up per cell would re-read the same row N times.
+    const providerCalls = new Map<string, ResolvedProviderCall>();
+    for (const config of run.configs) {
+      const provider =
+        normalizeProviderId(config.provider) ?? configuredProvider;
+      if (!providerCalls.has(provider)) {
+        providerCalls.set(provider, await resolveProviderCall(provider));
+      }
+    }
+
+    // A provider with no usable credential is refused before the sample is
+    // drawn: every one of its cells would fail identically, and burning the
+    // other columns' calls to discover that helps nobody. A key that is present
+    // but wrong is NOT pre-flighted — that would mean trusting each provider's
+    // validation endpoint to be reachable, and a custom proxy failing it must
+    // not block a run that would have worked.
+    const unusable = [...providerCalls.values()].filter(
+      (call) => call.missingReason,
+    );
+    if (unusable.length > 0) {
+      finishBenchRun(
+        run.id,
+        "stopped",
+        unusable.map((call) => call.missingReason).join(" "),
+      );
+      return;
+    }
+
+    const resolvedConfigs = run.configs.map((config) => {
+      const provider =
+        normalizeProviderId(config.provider) ?? configuredProvider;
+      // A blank model means "the default for the provider this column runs
+      // on" — which is the scoring model only when that IS the app's provider.
+      const model =
+        config.model.trim() ||
+        (provider === configuredProvider
+          ? configuredModel
+          : getDefaultModelForProvider(provider));
+      return {
+        ...config,
+        provider,
+        model,
+        // Effort is a claude_code knob; a column on any other provider records
+        // null rather than a level that was never sent.
+        effort:
+          provider === "claude_code"
+            ? (config.effort ?? configuredEffort)
+            : null,
+      };
+    });
     setBenchRunConfigs(run.id, resolvedConfigs);
 
     const sample = await jobsRepo.getRandomScoreableJobs({
@@ -148,6 +200,9 @@ export async function executeBenchRun(args: {
             model: config.model,
             instructions,
             ...(config.effort ? { effort: config.effort } : {}),
+            ...(providerCalls.get(config.provider)?.options
+              ? { llm: providerCalls.get(config.provider)?.options }
+              : {}),
           });
           recordBenchCell(run.id, {
             ...blankCell(job.id, config.id, "done"),

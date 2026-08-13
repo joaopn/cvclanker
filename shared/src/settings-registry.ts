@@ -57,6 +57,23 @@ export const DEFAULT_CODEX_MODEL = "";
 // contract as Codex, so no model id is pinned here to rot.
 export const DEFAULT_CLAUDE_CODE_MODEL = "";
 
+/**
+ * Every LLM provider the app can talk to. One list, because it is now consumed
+ * by more than the provider setting: the benchmark validates a per-column
+ * provider against it, and the client's label/hint tables key off it.
+ */
+export const LLM_PROVIDER_IDS = [
+  "openrouter",
+  "lmstudio",
+  "ollama",
+  "openai",
+  "openai_compatible",
+  "gemini",
+  "codex",
+  "claude_code",
+] as const;
+export type LlmProviderIdValue = (typeof LLM_PROVIDER_IDS)[number];
+
 // Accepted values of the Claude Code CLI's `--effort` flag (verified against
 // v2.1.220 and v2.1.226 — an unknown value only warns and falls back to the
 // CLI default, so a future CLI changing this list degrades gracefully).
@@ -180,18 +197,7 @@ export const settingsRegistry = {
     envKey: "LLM_PROVIDER",
     schema: z.preprocess(
       (v) => (typeof v === "string" ? normalizeLlmProviderOrNull(v) : v),
-      z
-        .enum([
-          "openrouter",
-          "lmstudio",
-          "ollama",
-          "openai",
-          "openai_compatible",
-          "gemini",
-          "codex",
-          "claude_code",
-        ])
-        .nullable(),
+      z.enum(LLM_PROVIDER_IDS).nullable(),
     ),
     default: (): string =>
       typeof process !== "undefined"

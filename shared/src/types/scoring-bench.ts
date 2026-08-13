@@ -14,12 +14,22 @@ export type BenchSampleCategory = SuitabilityCategory | "unscored";
  * model against itself is the only way to tell a real disagreement apart from
  * sampling noise.
  *
- * There is no provider field: a benchmark runs entirely on the configured
- * provider, so the only credentials involved are the ones already saved.
+ * A column names its own provider, so a cheap API model and a subscription CLI
+ * can sit in the same table. Credentials are resolved server-side per provider
+ * and never travel in this type.
  */
 export interface BenchConfig {
   id: string;
   label: string;
+  /**
+   * Which provider runs this column. Resolved server-side like `model`: a
+   * request may omit it to mean "the provider the app is configured with", and
+   * a run always records the one it actually called.
+   *
+   * Credentials come from what is saved for THAT provider — the configured
+   * provider's key is never lent to another.
+   */
+  provider: string;
   /**
    * Resolved server-side before the first call: a request may leave this blank
    * to mean "whatever model scoring uses today", but a run always records the
@@ -28,7 +38,9 @@ export interface BenchConfig {
   model: string;
   /**
    * claude_code only, and likewise resolved: null on a stored run means no
-   * `--effort` flag was sent, NOT "some default we didn't look up".
+   * `--effort` flag was sent, NOT "some default we didn't look up". A column on
+   * any other provider always carries null, because no other provider has the
+   * knob.
    */
   effort: ClaudeCodeEffortLevel | null;
   /**
@@ -100,6 +112,8 @@ export interface StartBenchRunInput {
   categories?: BenchSampleCategory[];
   configs: Array<{
     label: string;
+    /** Omitted means the configured provider. */
+    provider?: string | null;
     /** Blank means "the model scoring uses today"; the server resolves it. */
     model: string;
     effort?: ClaudeCodeEffortLevel | null;

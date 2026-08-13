@@ -51,6 +51,7 @@ function buildRun(overrides: Partial<BenchRun> = {}): BenchRun {
       {
         id: "cfg-a",
         label: "Reference",
+        provider: "openai",
         model: "big",
         effort: null,
         inputCostPerMillion: 3,
@@ -59,6 +60,7 @@ function buildRun(overrides: Partial<BenchRun> = {}): BenchRun {
       {
         id: "cfg-b",
         label: "Cheap",
+        provider: "gemini",
         model: "small",
         effort: null,
         inputCostPerMillion: 0.3,
@@ -216,6 +218,9 @@ describe("ModelBenchmarkingPanel", () => {
       configs: [
         {
           label: "Reference",
+          // Null, not a provider id: the row is left on "Configured", and the
+          // server is the one that resolves what that means.
+          provider: null,
           model: "big",
           effort: null,
           inputCostPerMillion: null,
@@ -223,6 +228,7 @@ describe("ModelBenchmarkingPanel", () => {
         },
         {
           label: "Candidate",
+          provider: null,
           model: "small",
           effort: null,
           inputCostPerMillion: null,
@@ -442,6 +448,26 @@ describe("ModelBenchmarkingPanel sampling filter", () => {
     await waitFor(() => {
       expect(api.startScoringBenchRun).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("ModelBenchmarkingPanel providers", () => {
+  it("gives every row its own provider control, defaulting to the configured one", () => {
+    renderPanel();
+
+    const selects = screen.getAllByLabelText("Provider");
+    expect(selects).toHaveLength(2);
+    // Both rows start on the sentinel, which the payload sends as null.
+    for (const select of selects) {
+      expect(select).toHaveTextContent(/configured/i);
+    }
+  });
+
+  it("shows the effort control only where the row's provider has one", () => {
+    // The app is on openai here, so a row inheriting it gets no effort control
+    // — effort is a claude_code flag and nothing else honours it.
+    renderPanel();
+    expect(screen.queryByLabelText("Effort")).not.toBeInTheDocument();
   });
 });
 

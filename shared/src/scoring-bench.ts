@@ -138,6 +138,9 @@ export const STORED_COLUMN_ID = "__stored__";
 export const STORED_COLUMN: BenchConfig = {
   id: STORED_COLUMN_ID,
   label: "Saved in database",
+  // No provider and no model: whatever scored these jobs happened in the past,
+  // possibly under a configuration that no longer exists.
+  provider: "",
   model: "",
   effort: null,
   // No rates: what a past run cost is not something this screen can know.
@@ -172,8 +175,11 @@ export function buildStoredCells(jobs: BenchJob[]): BenchCell[] {
  */
 export function configSubtitle(config: BenchConfig): string {
   if (config.id === STORED_COLUMN_ID) return "saved on the job";
-  const model = config.model || "provider default";
-  return config.effort ? `${model} · ${config.effort}` : model;
+  const parts = [config.provider, config.model || "provider default"].filter(
+    (part) => Boolean(part),
+  );
+  if (config.effort) parts.push(config.effort);
+  return parts.join(" · ");
 }
 
 export function indexCells(cells: BenchCell[]): Map<string, BenchCell> {

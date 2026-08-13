@@ -5,21 +5,15 @@
 import {
   CLAUDE_CODE_EFFORT_LEVELS,
   type ClaudeCodeEffortLevel,
+  LLM_PROVIDER_IDS,
 } from "@shared/settings-registry";
 
 export const formatSecretHint = (hint: string | null) =>
   hint ? `${hint}********` : "Not set";
 
-export const LLM_PROVIDERS = [
-  "openrouter",
-  "lmstudio",
-  "ollama",
-  "openai",
-  "openai_compatible",
-  "gemini",
-  "codex",
-  "claude_code",
-] as const;
+// The one list, from the registry — a second copy here drifted the moment a
+// provider was added in only one place.
+export const LLM_PROVIDERS = LLM_PROVIDER_IDS;
 
 export type LlmProviderId = (typeof LLM_PROVIDERS)[number];
 export const LLM_MODEL_SUGGESTION_PROVIDERS = [

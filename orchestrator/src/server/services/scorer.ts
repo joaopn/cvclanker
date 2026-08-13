@@ -20,7 +20,11 @@ import {
   type SuitabilityCategory,
 } from "@shared/types";
 import { LlmService } from "./llm/service";
-import type { JsonSchemaDefinition, LlmTokenUsage } from "./llm/types";
+import type {
+  JsonSchemaDefinition,
+  LlmServiceOptions,
+  LlmTokenUsage,
+} from "./llm/types";
 import { resolveLlmModel } from "./modelSelection";
 import { loadPrompt } from "./prompts";
 import { getEffectiveSettings } from "./settings";
@@ -177,6 +181,11 @@ export async function classifyJob(
     model: string;
     instructions: string;
     effort?: ClaudeCodeEffortLevel;
+    /**
+     * Which provider to call, with its own credentials. Omitted — every caller
+     * but the benchmark — resolves from the environment exactly as before.
+     */
+    llm?: LlmServiceOptions;
   },
 ): Promise<{
   category: SuitabilityCategory;
@@ -196,7 +205,7 @@ export async function classifyJob(
     instructions: config.instructions,
   });
 
-  const llm = new LlmService();
+  const llm = new LlmService(config.llm ?? {});
   const messages: Array<{ role: "system" | "user"; content: string }> = [];
   if (prompt.system) {
     messages.push({ role: "system", content: prompt.system });

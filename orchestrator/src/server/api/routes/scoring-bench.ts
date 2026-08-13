@@ -18,7 +18,10 @@ import {
   requestBenchCancel,
   subscribeToBenchRun,
 } from "@server/services/scoring-bench/store";
-import { CLAUDE_CODE_EFFORT_LEVELS } from "@shared/settings-registry";
+import {
+  CLAUDE_CODE_EFFORT_LEVELS,
+  LLM_PROVIDER_IDS,
+} from "@shared/settings-registry";
 import {
   type BenchConfig,
   type BenchStreamEvent,
@@ -43,6 +46,11 @@ const startRunSchema = z.object({
     .array(
       z.object({
         label: z.string().trim().max(120).optional(),
+        // Which provider runs this column. Omitted means the configured one.
+        // An unknown value is rejected rather than silently collapsing to a
+        // default, because a column that ran somewhere other than it claims is
+        // exactly the conclusion this feature must not produce.
+        provider: z.enum(LLM_PROVIDER_IDS).nullish(),
         // Blank is allowed and means "whatever model scoring uses today" — on
         // claude_code the configured model is legitimately empty (the CLI
         // picks), which is exactly the case where comparing efforts alone
@@ -70,6 +78,7 @@ scoringBenchRouter.post("/runs", (req: Request, res: Response) => {
   const configs: BenchConfig[] = parsed.data.configs.map((config, index) => ({
     id: randomUUID(),
     label: config.label?.trim() || `Config ${index + 1}`,
+    provider: config.provider ?? "",
     model: config.model,
     effort: config.effort ?? null,
     inputCostPerMillion: config.inputCostPerMillion ?? null,

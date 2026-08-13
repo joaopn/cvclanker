@@ -10,6 +10,11 @@ import {
 import { BenchDisagreementDialog } from "@client/pages/settings/components/BenchDisagreementDialog";
 import { SettingsSectionFrame } from "@client/pages/settings/components/SettingsSectionFrame";
 import {
+  LLM_PROVIDER_LABELS,
+  LLM_PROVIDERS,
+  normalizeLlmProvider,
+} from "@client/pages/settings/utils";
+import {
   buildStoredCells,
   categoryCounts,
   cellKey,
@@ -73,6 +78,8 @@ type ModelBenchmarkingPanelProps = {
 type ConfigDraft = {
   key: string;
   label: string;
+  /** Empty means "the configured provider" — resolved server-side. */
+  provider: string;
   model: string;
   effort: ClaudeCodeEffortLevel | null;
   /** Kept as typed text: an empty box means "no estimate", not zero. */
@@ -86,13 +93,17 @@ const JOBS_PER_PAGE = 20;
 // Radix SelectItem forbids an empty value, so "let the CLI decide" rides a
 // sentinel and maps back to null — same trick as the effort control in Models.
 const CLI_DEFAULT_EFFORT = "cli-default";
+// Same reason: "" means "whatever the app is configured with", which the server
+// resolves, so it needs a sentinel to survive a Select.
+const CONFIGURED_PROVIDER = "configured";
 
 let draftCounter = 0;
-function newDraft(model = "", label = ""): ConfigDraft {
+function newDraft(model = "", label = "", provider = ""): ConfigDraft {
   draftCounter += 1;
   return {
     key: `draft-${draftCounter}`,
     label,
+    provider,
     model,
     effort: null,
     inputCost: "",
@@ -196,7 +207,10 @@ export const ModelBenchmarkingPanel: React.FC<ModelBenchmarkingPanelProps> = ({
     setPage(0);
   }
 
-  const supportsEffort = provider === "claude_code";
+  // Effort is a claude_code knob, and each row now names its own provider — so
+  // the control follows the ROW, not the app's configured provider.
+  const supportsEffort = (draft: ConfigDraft): boolean =>
+    (draft.provider || provider) === "claude_code";
   const isRunning = run?.status === "running";
 
   const startMutation = useMutation({
@@ -325,7 +339,8 @@ export const ModelBenchmarkingPanel: React.FC<ModelBenchmarkingPanelProps> = ({
     const configs = drafts.map((draft) => ({
       label: draft.label.trim(),
       model: draft.model.trim(),
-      effort: supportsEffort ? draft.effort : null,
+      provider: draft.provider || null,
+      effort: supportsEffort(draft) ? draft.effort : null,
       inputCostPerMillion: parseRate(draft.inputCost),
       outputCostPerMillion: parseRate(draft.outputCost),
     }));
@@ -471,6 +486,55 @@ export const ModelBenchmarkingPanel: React.FC<ModelBenchmarkingPanelProps> = ({
               </div>
               <div className="space-y-1">
                 <Label
+                  htmlFor={`benchProvider-${draft.key}`}
+                  className={index === 0 ? undefined : "sr-only"}
+                >
+                  Provider
+                </Label>
+                <Select
+                  value={draft.provider || CONFIGURED_PROVIDER}
+                  onValueChange={(value) =>
+                    setDrafts((prev) =>
+                      prev.map((entry) =>
+                        entry.key === draft.key
+                          ? {
+                              ...entry,
+                              provider:
+                                value === CONFIGURED_PROVIDER ? "" : value,
+                              // A provider swap invalidates the effort: it is a
+                              // claude_code flag, and carrying it across would
+                              // label a column with a knob it never used.
+                              effort:
+                                value === "claude_code" ? entry.effort : null,
+                            }
+                          : entry,
+                      ),
+                    )
+                  }
+                  disabled={isRunning}
+                >
+                  <SelectTrigger
+                    id={`benchProvider-${draft.key}`}
+                    className="w-44"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={CONFIGURED_PROVIDER}>
+                      {provider
+                        ? `Configured (${LLM_PROVIDER_LABELS[normalizeLlmProvider(provider)]})`
+                        : "Configured provider"}
+                    </SelectItem>
+                    {LLM_PROVIDERS.map((entry) => (
+                      <SelectItem key={entry} value={entry}>
+                        {LLM_PROVIDER_LABELS[entry]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label
                   htmlFor={`benchModel-${draft.key}`}
                   className={index === 0 ? undefined : "sr-only"}
                 >
@@ -493,7 +557,7 @@ export const ModelBenchmarkingPanel: React.FC<ModelBenchmarkingPanelProps> = ({
                   className="w-64"
                 />
               </div>
-              {supportsEffort ? (
+              {supportsEffort(draft) ? (
                 <div className="space-y-1">
                   <Label
                     htmlFor={`benchEffort-${draft.key}`}
