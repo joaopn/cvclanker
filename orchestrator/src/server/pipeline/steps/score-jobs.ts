@@ -10,9 +10,9 @@ import {
 import { getEffectiveSettings } from "@server/services/settings";
 import { asyncPool } from "@server/utils/async-pool";
 import {
+  type Job,
   SUITABILITY_CATEGORIES,
   SUITABILITY_CATEGORY_RANK,
-  type Job,
   type SuitabilityCategory,
 } from "@shared/types";
 import { progressHelpers, updateProgress } from "../progress";
@@ -31,11 +31,11 @@ export async function scoreJobsStep(args: {
   brief: string;
   shouldCancel?: () => boolean;
 }): Promise<{ unprocessedJobs: Job[]; scoredJobs: ScoredJob[] }> {
-  const enableJobScoringRaw =
-    await settingsRepo.getSetting("enableJobScoring");
-  const scoringEnabled = enableJobScoringRaw === null
-    ? true
-    : enableJobScoringRaw === "1" || enableJobScoringRaw === "true";
+  const enableJobScoringRaw = await settingsRepo.getSetting("enableJobScoring");
+  const scoringEnabled =
+    enableJobScoringRaw === null
+      ? true
+      : enableJobScoringRaw === "1" || enableJobScoringRaw === "true";
 
   if (!scoringEnabled) {
     logger.info("Scoring step disabled by setting");
