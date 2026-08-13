@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClaudeCodeClient } from "./claude-code/client";
 import { CodexClient } from "./codex/client";
+import { strategies } from "./providers";
 import {
   consumeRateLimitRetry,
   isRateLimitStopped,
@@ -67,6 +68,86 @@ describe("LlmService provider normalization", () => {
 
     expect(llm.getProvider()).toBe("codex");
     expect(llm.getBaseUrl()).toBe("");
+  });
+
+  describe("ambient credentials belong to the configured provider", () => {
+    const saved = {
+      provider: process.env.LLM_PROVIDER,
+      apiKey: process.env.LLM_API_KEY,
+      baseUrl: process.env.LLM_BASE_URL,
+    };
+
+    beforeEach(() => {
+      process.env.LLM_PROVIDER = "openai";
+      process.env.LLM_API_KEY = "openai-ambient-key";
+      process.env.LLM_BASE_URL = "https://ambient.example.test";
+    });
+
+    afterEach(() => {
+      for (const [key, value] of Object.entries({
+        LLM_PROVIDER: saved.provider,
+        LLM_API_KEY: saved.apiKey,
+        LLM_BASE_URL: saved.baseUrl,
+      })) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    });
+
+    it("inherits them when no provider is named", () => {
+      const llm = new LlmService();
+
+      expect(llm.getProvider()).toBe("openai");
+      expect(llm.getBaseUrl()).toBe("https://ambient.example.test");
+    });
+
+    it("inherits them when the named provider IS the configured one", async () => {
+      const llm = new LlmService({ provider: "openai" });
+
+      // A missing key is reported without any request; getting past that is
+      // how the inherited key makes itself visible.
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(new Response("{}", { status: 200 }));
+      await llm.validateCredentials();
+
+      expect(fetchSpy).toHaveBeenCalled();
+      const headers = (fetchSpy.mock.calls[0]?.[1]?.headers ?? {}) as Record<
+        string,
+        string
+      >;
+      expect(JSON.stringify(headers)).toContain("openai-ambient-key");
+    });
+
+    it("withholds the key from a DIFFERENT provider instead of substituting it", async () => {
+      const llm = new LlmService({ provider: "openrouter" });
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+      const result = await llm.validateCredentials();
+
+      expect(result.valid).toBe(false);
+      expect(result.message).toBe("LLM API key is missing.");
+      // Nothing was sent anywhere — which is the whole point.
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("withholds the base URL from a different provider too", () => {
+      const llm = new LlmService({ provider: "ollama" });
+
+      expect(llm.getProvider()).toBe("ollama");
+      expect(llm.getBaseUrl()).toBe(strategies.ollama.defaultBaseUrl);
+      expect(llm.getBaseUrl()).not.toBe("https://ambient.example.test");
+    });
+
+    it("still takes an explicitly supplied key for another provider", () => {
+      const llm = new LlmService({
+        provider: "openrouter",
+        apiKey: "or-explicit",
+        baseUrl: "https://openrouter.example.test",
+      });
+
+      expect(llm.getBaseUrl()).toBe("https://openrouter.example.test");
+    });
   });
 
   it("retries codex JSON parsing failures and succeeds on a later attempt", async () => {

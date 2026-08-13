@@ -8,6 +8,12 @@ import { asyncRoute, fail, ok } from "@infra/http";
 import { logger } from "@infra/logger";
 import { getRequestId } from "@infra/request-context";
 import { getPipelineStatus } from "@server/pipeline/index";
+import {
+  deleteProviderCredential,
+  getProviderCredential,
+  listProviderCredentials,
+  upsertProviderCredential,
+} from "@server/repositories/llm-provider-credentials";
 import { getSetting } from "@server/repositories/settings";
 import {
   getClaudeCodeCliStatus,
@@ -24,11 +30,13 @@ import {
   getCodexDeviceAuthSnapshot,
   startCodexDeviceAuth,
 } from "@server/services/llm/codex/login";
+import { normalizeProviderId } from "@server/services/llm/provider-credentials";
 import { LlmService } from "@server/services/llm/service";
 import { getEffectiveSettings } from "@server/services/settings";
 import { applySettingsUpdates } from "@server/services/settings-update";
 import { updateSettingsSchema } from "@shared/settings-schema";
 import { type Request, type Response, Router } from "express";
+import { z } from "zod";
 
 export const settingsRouter = Router();
 
@@ -120,21 +128,46 @@ async function resolveLlmConfig(input: {
   const provider = normalizeLlmProviderValue(
     input.provider?.trim() || storedProvider?.trim() || undefined,
   );
+  // The stored key belongs to the configured provider. Lending it to a
+  // different one would send that vendor a key issued by another — which used
+  // to happen on every provider-dropdown change, since the model probe fires
+  // with an empty key field. A provider the user has recorded a credential for
+  // uses that; anything else is probed unauthenticated, which fails honestly.
+  // The active provider is the stored one, or — with no override saved — the
+  // environment's, matching the registry default. Comparing against the stored
+  // value alone would treat an env-configured install as having no configured
+  // provider, and stop lending its own key to itself.
+  const activeProvider =
+    normalizeLlmProviderValue(storedProvider?.trim() || undefined) ??
+    normalizeLlmProviderValue(process.env.LLM_PROVIDER) ??
+    "openrouter";
+  const isConfiguredProvider =
+    provider !== undefined && provider === activeProvider;
+  const recorded =
+    provider === undefined ? null : await getProviderCredential(provider);
+  const inheritedApiKey = isConfiguredProvider
+    ? storedApiKey?.trim() || null
+    : null;
   const usesBaseUrl =
     provider === "lmstudio" ||
     provider === "ollama" ||
     provider === "openai_compatible";
   const hasExplicitBaseUrlOverride =
     input.baseUrl !== undefined && input.baseUrl !== null;
+  const inheritedBaseUrl = isConfiguredProvider
+    ? storedBaseUrl?.trim() || undefined
+    : undefined;
   const baseUrl = usesBaseUrl
     ? hasExplicitBaseUrlOverride
       ? input.baseUrl?.trim() || getDefaultValidationBaseUrl(provider)
-      : storedBaseUrl?.trim() || getDefaultValidationBaseUrl(provider)
+      : recorded?.baseUrl?.trim() ||
+        inheritedBaseUrl ||
+        getDefaultValidationBaseUrl(provider)
     : undefined;
 
   return {
     provider,
-    apiKey: input.apiKey?.trim() || storedApiKey?.trim() || null,
+    apiKey: input.apiKey?.trim() || recorded?.apiKey?.trim() || inheritedApiKey,
     baseUrl,
   };
 }
@@ -205,6 +238,72 @@ settingsRouter.patch(
     await applySettingsUpdates(input);
     const data = await getEffectiveSettings();
     ok(res, data);
+  }),
+);
+
+/**
+ * Credentials for providers other than the configured one. The key is never
+ * returned — a hint is, so the user can tell a saved key from an absent one.
+ */
+settingsRouter.get(
+  "/llm-credentials",
+  asyncRoute(async (_req: Request, res: Response) => {
+    ok(res, { credentials: await listProviderCredentials() });
+  }),
+);
+
+const providerCredentialSchema = z.object({
+  // `undefined` leaves a field alone, `null` clears it. That distinction is
+  // what lets the form save a base URL without wiping a key it never showed.
+  apiKey: z.string().trim().max(2000).nullable().optional(),
+  baseUrl: z.string().trim().max(2000).nullable().optional(),
+});
+
+settingsRouter.put(
+  "/llm-credentials/:provider",
+  asyncRoute(async (req: Request, res: Response) => {
+    const provider = normalizeProviderId(req.params.provider);
+    if (!provider) {
+      return fail(
+        res,
+        badRequest(`Unknown LLM provider: ${req.params.provider}`),
+      );
+    }
+    if (provider === "claude_code" || provider === "codex") {
+      return fail(
+        res,
+        badRequest(
+          `${provider} authenticates through its own login, not an API key.`,
+        ),
+      );
+    }
+
+    const input = providerCredentialSchema.parse(req.body ?? {});
+    await upsertProviderCredential({
+      provider,
+      // An empty string is a clear, not a save: the field is rendered blank
+      // whenever a key is stored, so "" must never overwrite it with nothing.
+      ...(input.apiKey === undefined ? {} : { apiKey: input.apiKey || null }),
+      ...(input.baseUrl === undefined
+        ? {}
+        : { baseUrl: input.baseUrl || null }),
+    });
+    ok(res, { credentials: await listProviderCredentials() });
+  }),
+);
+
+settingsRouter.delete(
+  "/llm-credentials/:provider",
+  asyncRoute(async (req: Request, res: Response) => {
+    const provider = normalizeProviderId(req.params.provider);
+    if (!provider) {
+      return fail(
+        res,
+        badRequest(`Unknown LLM provider: ${req.params.provider}`),
+      );
+    }
+    await deleteProviderCredential(provider);
+    ok(res, { credentials: await listProviderCredentials() });
   }),
 );
 

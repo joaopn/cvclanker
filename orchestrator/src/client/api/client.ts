@@ -33,6 +33,7 @@ import type {
   JobStatus,
   JobsListResponse,
   JobsRevisionResponse,
+  LlmProviderCredentialSummary,
   LocationMatchStrictness,
   LocationSearchScope,
   ManualJobDraft,
@@ -1298,6 +1299,40 @@ export async function validateLlm(input: {
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export async function getLlmProviderCredentials(): Promise<
+  LlmProviderCredentialSummary[]
+> {
+  const data = await fetchApi<{ credentials: LlmProviderCredentialSummary[] }>(
+    "/settings/llm-credentials",
+  );
+  return data.credentials;
+}
+
+/**
+ * Omitting a field leaves it alone; passing null clears it. The key is never
+ * read back, so the form sends one only when the user typed a new one.
+ */
+export async function saveLlmProviderCredential(
+  provider: string,
+  input: { apiKey?: string | null; baseUrl?: string | null },
+): Promise<LlmProviderCredentialSummary[]> {
+  const data = await fetchApi<{ credentials: LlmProviderCredentialSummary[] }>(
+    `/settings/llm-credentials/${encodeURIComponent(provider)}`,
+    { method: "PUT", body: JSON.stringify(input) },
+  );
+  return data.credentials;
+}
+
+export async function deleteLlmProviderCredential(
+  provider: string,
+): Promise<LlmProviderCredentialSummary[]> {
+  const data = await fetchApi<{ credentials: LlmProviderCredentialSummary[] }>(
+    `/settings/llm-credentials/${encodeURIComponent(provider)}`,
+    { method: "DELETE" },
+  );
+  return data.credentials;
 }
 
 export async function getLlmModels(input?: {

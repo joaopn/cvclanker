@@ -196,7 +196,10 @@ export function validateSnapshot(path: string): ValidateResult {
  * place. The process must restart afterward to re-open the connection and run
  * idempotent migrations.
  */
-export function applyRestore(stagingPath: string, targetPath = liveDbPath()): void {
+export function applyRestore(
+  stagingPath: string,
+  targetPath = liveDbPath(),
+): void {
   for (const sidecar of [`${targetPath}-wal`, `${targetPath}-shm`]) {
     if (existsSync(sidecar)) rmSync(sidecar, { force: true });
   }

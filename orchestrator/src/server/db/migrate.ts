@@ -767,14 +767,10 @@ try {
     }
     sqlite.exec("DROP TABLE source_configs");
     sqlite.exec("ALTER TABLE source_configs_new RENAME TO source_configs");
-    console.log(
-      "✅ source_configs collapsed per-platform → per-extractor",
-    );
+    console.log("✅ source_configs collapsed per-platform → per-extractor");
   }
 
-  const getSetting = sqlite.prepare(
-    "SELECT value FROM settings WHERE key = ?",
-  );
+  const getSetting = sqlite.prepare("SELECT value FROM settings WHERE key = ?");
   const readSetting = (key: string): string | null => {
     const row = getSetting.get(key) as { value: string } | undefined;
     return row?.value ?? null;
@@ -1208,7 +1204,8 @@ try {
         workplaceTypes.length > 0
           ? workplaceTypes
           : ["remote", "hybrid", "onsite"],
-      locationSearchScope: readSetting("locationSearchScope") ?? "selected_only",
+      locationSearchScope:
+        readSetting("locationSearchScope") ?? "selected_only",
       locationMatchStrictness:
         readSetting("locationMatchStrictness") ?? "exact_only",
       scrapeMaxAgeDays: parseIntOrNull(readSetting("scrapeMaxAgeDays")),
@@ -1217,7 +1214,8 @@ try {
       ),
       runBudget: 500,
       topN: 10,
-      minSuitabilityCategory: readSetting("minSuitabilityCategory") ?? "good_fit",
+      minSuitabilityCategory:
+        readSetting("minSuitabilityCategory") ?? "good_fit",
       enabledSourceIds,
       providerInstanceIds,
     };

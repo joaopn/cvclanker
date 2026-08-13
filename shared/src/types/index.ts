@@ -6,6 +6,7 @@ export * from "./cv-content";
 export * from "./cv-document";
 export * from "./extractors";
 export * from "./jobs";
+export * from "./llm-credentials";
 export * from "./location";
 export * from "./pipeline";
 export * from "./profile";

@@ -36,6 +36,7 @@ describe("buildSectionResetPayload", () => {
   it("no section reset can touch onboarding-completion or profile-identity keys", () => {
     const sections = [
       "model",
+      "provider-credentials",
       "model-benchmarking",
       "chat",
       "context-limits",
@@ -57,6 +58,7 @@ describe("buildSectionResetPayload", () => {
 
   it("sections without settings fields produce an empty payload (button hidden)", () => {
     expect(buildSectionResetPayload("model-benchmarking")).toEqual({});
+    expect(buildSectionResetPayload("provider-credentials")).toEqual({});
     expect(buildSectionResetPayload("prompts")).toEqual({});
     expect(buildSectionResetPayload("user-profiles")).toEqual({});
     expect(buildSectionResetPayload("danger-zone")).toEqual({});

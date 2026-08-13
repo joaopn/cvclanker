@@ -13,6 +13,7 @@ import { ModelBenchmarkingPanel } from "@client/pages/settings/components/ModelB
 import { ModelSettingsSection } from "@client/pages/settings/components/ModelSettingsSection";
 import { PipelineSettingsSection } from "@client/pages/settings/components/PipelineSettingsSection";
 import { PromptsPanel } from "@client/pages/settings/components/PromptsPanel";
+import { ProviderCredentialsSection } from "@client/pages/settings/components/ProviderCredentialsSection";
 import { UserProfilesPanel } from "@client/pages/settings/components/UserProfilesPanel";
 import {
   type LlmProviderId,
@@ -115,6 +116,7 @@ type LlmProviderValue = LlmProviderId | null;
 
 type SettingsSectionId =
   | "model"
+  | "provider-credentials"
   | "model-benchmarking"
   | "chat"
   | "context-limits"
@@ -163,6 +165,21 @@ const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
           "ollama",
           "codex",
           "claude",
+        ],
+      },
+      {
+        id: "provider-credentials",
+        label: "Provider Credentials",
+        description:
+          "Keys for providers other than the configured one, so their models can be benchmarked.",
+        searchTerms: [
+          "api key",
+          "credential",
+          "provider",
+          "openrouter",
+          "openai",
+          "gemini",
+          "base url",
         ],
       },
       {
@@ -339,8 +356,10 @@ export const SECTION_FIELD_MAP: Record<
     "maxCoverLetterUploadBytes",
     "maxExpandedLatexBytes",
   ],
-  // Benchmarking owns no settings key — it runs an in-memory comparison, so it
-  // has nothing to reset and no dirty state to badge.
+  // Neither benchmarking nor per-provider credentials own a settings key: one
+  // runs an in-memory comparison, the other has its own table. Both have
+  // nothing to reset and no dirty state to badge.
+  "provider-credentials": [],
   "model-benchmarking": [],
   "user-profiles": [],
   prompts: [],
@@ -1194,6 +1213,14 @@ export const SettingsPage: React.FC = () => {
           isLoading={isLoading}
           isSaving={isSaving}
           layoutMode="panel"
+        />
+      );
+      break;
+    case "provider-credentials":
+      activeSectionContent = (
+        <ProviderCredentialsSection
+          layoutMode="panel"
+          configuredProvider={model.llmProvider || null}
         />
       );
       break;

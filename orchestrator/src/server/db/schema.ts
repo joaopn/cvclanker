@@ -391,9 +391,7 @@ export const providerInstances = sqliteTable(
     templateId: text("template_id"),
     enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
     inputTemplateJson: text("input_template_json").notNull(),
-    outputMappingJson: text("output_mapping_json")
-      .notNull()
-      .default("{}"),
+    outputMappingJson: text("output_mapping_json").notNull().default("{}"),
     mappingsJson: text("mappings_json", { mode: "json" })
       .notNull()
       .default(sql`('{}')`),

@@ -487,8 +487,7 @@ export class LlmService {
     const model = normalizeModelForProvider(this.provider, rawModel);
 
     const promptChars = messages.reduce(
-      (sum, m) =>
-        sum + (typeof m.content === "string" ? m.content.length : 0),
+      (sum, m) => sum + (typeof m.content === "string" ? m.content.length : 0),
       0,
     );
 
