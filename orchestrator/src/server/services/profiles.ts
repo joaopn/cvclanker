@@ -16,16 +16,14 @@ export type DeleteProfileResult =
  * A stale pointer silently falls through to (2).
  */
 export async function getDefaultProfile(): Promise<Profile | null> {
-  // getAllProfiles is ordered updated_at DESC, so [0] is most-recent.
-  const profiles = await profilesRepo.getAllProfiles();
-  if (profiles.length === 0) return null;
-
   const pointer = await settingsRepo.getSetting(DEFAULT_PROFILE_ID_KEY);
   if (pointer) {
-    const match = profiles.find((profile) => profile.id === pointer);
+    const match = await profilesRepo.getProfile(pointer);
     if (match) return match;
   }
-  return profiles[0];
+  // Asked for explicitly: `getAllProfiles` is alphabetical, so its `[0]` is the
+  // first name, not the last-touched profile.
+  return await profilesRepo.getMostRecentProfile();
 }
 
 /** Set the default-profile pointer. Returns the profile, or null if missing. */

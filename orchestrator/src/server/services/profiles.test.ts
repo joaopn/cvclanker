@@ -60,21 +60,25 @@ describe.sequential("profiles service", () => {
       expect(resolved?.id).toBe("a");
     });
 
+    // Names deliberately make alphabetical order DISAGREE with recency: the
+    // list is alphabetical now, so a fallback that read `getAllProfiles()[0]`
+    // would answer "Alpha" and these would catch it. With the old
+    // "Older"/"Newer" fixtures both orders agreed and proved nothing.
     it("falls back to the most-recently-updated profile when no pointer is set", async () => {
-      await insertProfile("older", "Older", "2025-01-01T00:00:00.000Z");
-      await insertProfile("newer", "Newer", "2025-06-01T00:00:00.000Z");
+      await insertProfile("alpha", "Alpha", "2025-01-01T00:00:00.000Z");
+      await insertProfile("zulu", "Zulu", "2025-06-01T00:00:00.000Z");
 
       const resolved = await service.getDefaultProfile();
-      expect(resolved?.id).toBe("newer");
+      expect(resolved?.id).toBe("zulu");
     });
 
     it("falls back to most-recent when the pointer is stale", async () => {
-      await insertProfile("older", "Older", "2025-01-01T00:00:00.000Z");
-      await insertProfile("newer", "Newer", "2025-06-01T00:00:00.000Z");
+      await insertProfile("alpha", "Alpha", "2025-01-01T00:00:00.000Z");
+      await insertProfile("zulu", "Zulu", "2025-06-01T00:00:00.000Z");
       await settingsRepo.setSetting("defaultProfileId", "ghost");
 
       const resolved = await service.getDefaultProfile();
-      expect(resolved?.id).toBe("newer");
+      expect(resolved?.id).toBe("zulu");
     });
   });
 

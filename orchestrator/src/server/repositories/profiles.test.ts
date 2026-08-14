@@ -72,24 +72,57 @@ describe.sequential("profiles repository CRUD", () => {
     expect(all[0].id).toBe(created.id);
   });
 
-  it("orders getAllProfiles by updated_at descending", async () => {
+  async function seedProfile(id: string, name: string, updatedAt: string) {
     await db.insert(schema.profiles).values({
-      id: "older",
-      name: "Older",
+      id,
+      name,
       configJson: {},
-      createdAt: "2025-01-01T00:00:00.000Z",
-      updatedAt: "2025-01-01T00:00:00.000Z",
+      createdAt: updatedAt,
+      updatedAt,
     });
-    await db.insert(schema.profiles).values({
-      id: "newer",
-      name: "Newer",
-      configJson: {},
-      createdAt: "2025-06-01T00:00:00.000Z",
-      updatedAt: "2025-06-01T00:00:00.000Z",
-    });
+  }
+
+  it("orders getAllProfiles alphabetically, not by recency", async () => {
+    // Names chosen so alphabetical and recency DISAGREE — with "Older"/"Newer"
+    // the two orders coincide and the assertion would prove nothing.
+    await seedProfile("zulu", "Zulu", "2025-06-01T00:00:00.000Z");
+    await seedProfile("alpha", "Alpha", "2025-01-01T00:00:00.000Z");
 
     const all = await profilesRepo.getAllProfiles();
-    expect(all.map((p) => p.id)).toEqual(["newer", "older"]);
+    expect(all.map((p) => p.id)).toEqual(["alpha", "zulu"]);
+  });
+
+  it("sorts case-insensitively and numerically", async () => {
+    await seedProfile("p10", "profile 10", "2025-01-01T00:00:00.000Z");
+    await seedProfile("p2", "Profile 2", "2025-01-01T00:00:00.000Z");
+    await seedProfile("b", "banana", "2025-01-01T00:00:00.000Z");
+
+    const all = await profilesRepo.getAllProfiles();
+    // Lowercase "banana" before "Profile", and 2 before 10 — a plain string
+    // sort would give ["Profile 2", "banana", "profile 10"].
+    expect(all.map((p) => p.id)).toEqual(["b", "p2", "p10"]);
+  });
+
+  it("keeps a profile in place when it is edited", async () => {
+    // The whole point: editing bumps updated_at, and that must not move the row.
+    await seedProfile("alpha", "Alpha", "2025-01-01T00:00:00.000Z");
+    await seedProfile("zulu", "Zulu", "2025-01-02T00:00:00.000Z");
+
+    await profilesRepo.updateProfile("alpha", { config: { topN: 7 } });
+
+    const all = await profilesRepo.getAllProfiles();
+    expect(all.map((p) => p.id)).toEqual(["alpha", "zulu"]);
+  });
+
+  it("getMostRecentProfile still reports the last-touched profile", async () => {
+    await seedProfile("alpha", "Alpha", "2025-01-01T00:00:00.000Z");
+    await seedProfile("zulu", "Zulu", "2025-06-01T00:00:00.000Z");
+
+    expect((await profilesRepo.getMostRecentProfile())?.id).toBe("zulu");
+  });
+
+  it("getMostRecentProfile returns null with no profiles", async () => {
+    expect(await profilesRepo.getMostRecentProfile()).toBeNull();
   });
 
   it("merges config patches over the existing blob on update", async () => {

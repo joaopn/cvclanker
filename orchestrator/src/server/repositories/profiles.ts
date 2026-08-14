@@ -59,12 +59,45 @@ function mapRow(row: ProfileDbRow): Profile {
   };
 }
 
+/**
+ * Display order: by name, case-insensitively, with embedded numbers compared
+ * numerically ("Profile 2" before "Profile 10") and the id as a tiebreaker so
+ * two identically-named profiles never swap places between reads.
+ *
+ * Sorted in JS rather than SQL on purpose — SQLite's `COLLATE NOCASE` and
+ * `lower()` only fold ASCII, so an accented name would sort as if it were
+ * unrelated. The list is a handful of rows and already fully materialised.
+ */
+function byDisplayName(a: Profile, b: Profile): number {
+  const byName = a.name.localeCompare(b.name, undefined, {
+    sensitivity: "base",
+    numeric: true,
+  });
+  return byName !== 0 ? byName : a.id.localeCompare(b.id);
+}
+
+/**
+ * Every profile, in a STABLE alphabetical order — editing one must not move it
+ * in the list. Callers wanting "the one touched most recently" must ask for it
+ * explicitly via `getMostRecentProfile`; `[0]` no longer means that.
+ */
 export async function getAllProfiles(): Promise<Profile[]> {
-  const rows = await db
+  const rows = await db.select().from(profiles);
+  return rows.map(mapRow).sort(byDisplayName);
+}
+
+/**
+ * The most-recently-updated profile, or null when none exist. Sole consumer is
+ * the default-profile resolver's fallback, which used to read `getAllProfiles`
+ * `[0]` back when that list was ordered `updated_at DESC`.
+ */
+export async function getMostRecentProfile(): Promise<Profile | null> {
+  const [row] = await db
     .select()
     .from(profiles)
-    .orderBy(desc(profiles.updatedAt));
-  return rows.map(mapRow);
+    .orderBy(desc(profiles.updatedAt))
+    .limit(1);
+  return row ? mapRow(row) : null;
 }
 
 export async function getProfile(id: string): Promise<Profile | null> {

@@ -25,9 +25,12 @@ export type UseSelectedProfileResult = {
  * single default.
  *
  * `selectedProfileId` mirrors the server resolver: an explicit local pick, else
- * the persisted default, else the most-recent profile (getProfiles is ordered
- * updated_at DESC), else null. There is no hydrate effect, so a local pick
- * wins over an external default change until remount — intended.
+ * the persisted default, else the first listed profile, else null. The server
+ * already resolves `defaultProfileId` to the most-recently-updated profile when
+ * no pointer is set, so that third arm is only reachable with an empty list —
+ * the alphabetical list order does not decide anything here. There is no
+ * hydrate effect, so a local pick wins over an external default change until
+ * remount — intended.
  */
 export function useSelectedProfile(): UseSelectedProfileResult {
   const queryClient = useQueryClient();
