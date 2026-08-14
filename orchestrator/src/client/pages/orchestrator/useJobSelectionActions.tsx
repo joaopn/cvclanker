@@ -13,6 +13,7 @@ import type { FilterTab } from "./constants";
 import { JobActionProgressToast } from "./JobActionProgressToast";
 import {
   canClearScore,
+  canDelete,
   canMarkClosed,
   canMoveToBacklog,
   canMoveToInbox,
@@ -38,6 +39,7 @@ const jobActionLabel: Record<JobAction, string> = {
   mark_closed: "Closing applications...",
   mark_duplicated: "Marking duplicates...",
   reopen: "Reopening...",
+  delete: "Deleting jobs...",
 };
 
 const jobActionSuccessLabel: Record<JobAction, string> = {
@@ -52,9 +54,12 @@ const jobActionSuccessLabel: Record<JobAction, string> = {
   mark_closed: "applications closed",
   mark_duplicated: "duplicates closed",
   reopen: "jobs reopened",
+  delete: "jobs deleted",
 };
 
 // Triage status moves whose prior {status, outcome, closedAt} can be restored.
+// `delete` is excluded because nothing can restore it — a PATCH cannot recreate
+// a row, so listing it would render an Undo button that silently does nothing.
 // Tailor (move_to_ready), rescore and clear_score are excluded — they create or
 // destroy PDFs/scores that a status-revert can't cleanly undo (clear_score
 // drops the suitability reason, which nothing here retains).
@@ -140,6 +145,10 @@ export function useJobSelectionActions({
   );
   const canReopenSelected = useMemo(
     () => canReopen(selectedJobs),
+    [selectedJobs],
+  );
+  const canDeleteSelected = useMemo(
+    () => canDelete(selectedJobs),
     [selectedJobs],
   );
 
@@ -445,6 +454,7 @@ export function useJobSelectionActions({
     canMoveToInboxSelected,
     canMarkClosedSelected,
     canReopenSelected,
+    canDeleteSelected,
     jobActionInFlight,
     toggleSelectJob,
     toggleSelectAll,

@@ -23,6 +23,7 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     outcome?: string | null;
     closedAt?: number | null;
     jobUrl?: string;
+    tailoringFailureReason?: string | null;
   }) {
     const { db, schema } = await import("@server/db/index");
     await db.insert(schema.jobs).values({
@@ -48,6 +49,7 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
         | "other"
         | null,
       closedAt: overrides.closedAt ?? null,
+      tailoringFailureReason: overrides.tailoringFailureReason ?? null,
     });
   }
 
@@ -574,5 +576,102 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     expect(body.data.failed).toBe(1);
     expect(body.data.results[0].ok).toBe(false);
     expect(body.data.results[0].error.message).toMatch(/not clearable/i);
+  });
+
+  it("delete removes the row outright, from any status", async () => {
+    await seedJob({ id: "job-del-1", status: "discovered" });
+    await seedJob({ id: "job-del-2", status: "applied" });
+
+    const { body } = await postAction({
+      action: "delete",
+      jobIds: ["job-del-1", "job-del-2"],
+    });
+
+    expect(body.data.succeeded).toBe(2);
+    const { db, schema } = await import("@server/db/index");
+    const rows = await db.select({ id: schema.jobs.id }).from(schema.jobs);
+    expect(rows).toHaveLength(0);
+  });
+
+  it("delete sweeps the rows hanging off the job", async () => {
+    // PRAGMA foreign_keys is never enabled, so nothing cascades — if these are
+    // not swept by hand they become unreachable rows no later delete can find.
+    await seedJob({ id: "job-del-3", status: "discovered" });
+    const { db, schema } = await import("@server/db/index");
+    await db.insert(schema.jobNotes).values({
+      id: "note-1",
+      jobId: "job-del-3",
+      title: "Note",
+      content: "Body",
+    });
+    await db.insert(schema.jobChatThreads).values({
+      id: "thread-1",
+      jobId: "job-del-3",
+    });
+    await db.insert(schema.jobChatMessages).values({
+      id: "msg-1",
+      threadId: "thread-1",
+      jobId: "job-del-3",
+      role: "user",
+      content: "hi",
+    });
+    await db.insert(schema.jobPdfs).values({
+      jobId: "job-del-3",
+      kind: "resume",
+      data: Buffer.from("pdf"),
+    });
+
+    const { body } = await postAction({
+      action: "delete",
+      jobIds: ["job-del-3"],
+    });
+
+    expect(body.data.succeeded).toBe(1);
+    expect(await db.select().from(schema.jobNotes)).toHaveLength(0);
+    expect(await db.select().from(schema.jobChatThreads)).toHaveLength(0);
+    expect(await db.select().from(schema.jobChatMessages)).toHaveLength(0);
+    expect(await db.select().from(schema.jobPdfs)).toHaveLength(0);
+  });
+
+  it("delete refuses a job that is actively being tailored", async () => {
+    await seedJob({ id: "job-del-4", status: "processing" });
+
+    const { body } = await postAction({
+      action: "delete",
+      jobIds: ["job-del-4"],
+    });
+
+    expect(body.data.failed).toBe(1);
+    expect(body.data.results[0].ok).toBe(false);
+    expect(body.data.results[0].error.message).toMatch(/being tailored/i);
+    const { db, schema } = await import("@server/db/index");
+    expect(await db.select().from(schema.jobs)).toHaveLength(1);
+  });
+
+  it("delete accepts a FAILED tailor, which sits at the same status", async () => {
+    await seedJob({
+      id: "job-del-5",
+      status: "processing",
+      tailoringFailureReason: "tectonic exited 1",
+    });
+
+    const { body } = await postAction({
+      action: "delete",
+      jobIds: ["job-del-5"],
+    });
+
+    expect(body.data.succeeded).toBe(1);
+  });
+
+  it("delete reports a missing job without failing its siblings", async () => {
+    await seedJob({ id: "job-del-6", status: "discovered" });
+
+    const { body } = await postAction({
+      action: "delete",
+      jobIds: ["job-del-6", "job-does-not-exist"],
+    });
+
+    expect(body.data.succeeded).toBe(1);
+    expect(body.data.failed).toBe(1);
   });
 });

@@ -1,6 +1,17 @@
 import type { JobOutcome } from "@shared/types.js";
 import { AnimatePresence, motion } from "framer-motion";
 import type React from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import type { FilterTab } from "./constants";
 import { MarkClosedPopover } from "./MarkClosedPopover";
@@ -18,6 +29,7 @@ interface FloatingJobActionsBarProps {
   canMoveToInboxSelected: boolean;
   canMarkClosedSelected: boolean;
   canReopenSelected: boolean;
+  canDeleteSelected: boolean;
   jobActionInFlight: boolean;
   onMoveToReady: () => void;
   onSkipSelected: () => void;
@@ -29,6 +41,7 @@ interface FloatingJobActionsBarProps {
   onMoveToInbox: () => void;
   onMarkClosed: (outcome: JobOutcome) => void;
   onReopen: () => void;
+  onDelete: () => void;
   onClear: () => void;
 }
 
@@ -47,6 +60,7 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
   canMoveToInboxSelected,
   canMarkClosedSelected,
   canReopenSelected,
+  canDeleteSelected,
   jobActionInFlight,
   onMoveToReady,
   onSkipSelected,
@@ -58,6 +72,7 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
   onMoveToInbox,
   onMarkClosed,
   onReopen,
+  onDelete,
   onClear,
 }) => {
   const buttonClass = "w-full sm:w-auto";
@@ -382,6 +397,44 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
             </div>
             <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
               {renderTabButtons()}
+              {/* Deliberately outside the per-tab switch: deleting is valid
+                  wherever a row can be selected, and every tab should offer the
+                  same escape hatch. */}
+              {canDeleteSelected && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      className={buttonClass}
+                      disabled={jobActionInFlight}
+                    >
+                      Delete
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        Delete {selectedCount} {jobOrJobs(selectedCount)}?
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This removes {selectedCount === 1 ? "it" : "them"} from
+                        the database for good, along with any generated PDFs,
+                        notes and chat history. It cannot be undone, and the{" "}
+                        {selectedCount === 1 ? "job" : "jobs"} will be
+                        re-imported if a later scrape finds the same posting.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={onDelete}>
+                        Delete {selectedCount} {jobOrJobs(selectedCount)}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
               <Button
                 type="button"
                 size="sm"

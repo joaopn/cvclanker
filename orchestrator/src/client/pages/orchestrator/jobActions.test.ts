@@ -3,6 +3,7 @@ import type { JobActionResponse } from "@shared/types.js";
 import { describe, expect, it } from "vitest";
 import {
   canClearScore,
+  canDelete,
   canMoveToReady,
   canRescore,
   canRescrape,
@@ -163,5 +164,44 @@ describe("jobActions", () => {
     };
 
     expect(Array.from(getFailedJobIds(response))).toEqual(["job-2", "job-3"]);
+  });
+
+  describe("canDelete", () => {
+    it("allows every status a row can actually sit in", () => {
+      for (const status of [
+        "discovered",
+        "ready",
+        "applied",
+        "in_progress",
+        "backlog",
+        "stale",
+        "skipped",
+        "closed",
+      ] as const) {
+        expect(canDelete([createJob({ id: "1", status })])).toBe(true);
+      }
+    });
+
+    it("refuses a live tailor but allows a failed one", () => {
+      const running = createJob({
+        id: "1",
+        status: "processing",
+        tailoringFailureReason: null,
+      });
+      const failed = createJob({
+        id: "2",
+        status: "processing",
+        tailoringFailureReason: "tectonic exited 1",
+      });
+
+      expect(canDelete([running])).toBe(false);
+      expect(canDelete([failed])).toBe(true);
+      // Mixed selection: one live tailor is enough to hide the button.
+      expect(canDelete([failed, running])).toBe(false);
+    });
+
+    it("is false for an empty selection", () => {
+      expect(canDelete([])).toBe(false);
+    });
   });
 });

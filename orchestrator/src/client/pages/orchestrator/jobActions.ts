@@ -110,6 +110,20 @@ export function canReopen(jobs: JobListItem[]): boolean {
   );
 }
 
+/**
+ * Deleting is offered from every status — it is the "get this out of my
+ * database" escape hatch, and a confirmation dialog stands in for the guards
+ * the other actions use. The single exception mirrors the server: a row being
+ * tailored right now has a detached background run still writing to it. A
+ * failed tailor (same status, reason set) is deletable.
+ */
+export function canDelete(jobs: JobListItem[]): boolean {
+  return (
+    jobs.length > 0 &&
+    jobs.every((job) => job.status !== "processing" || isFailedProcessing(job))
+  );
+}
+
 export function getFailedJobIds(response: JobActionResponse): Set<string> {
   const failedIds = response.results
     .filter((result) => !result.ok)

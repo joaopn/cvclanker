@@ -40,7 +40,15 @@ import { deleteOrphanedJobPdfs } from "./job-pdfs";
 import { getAllProviderInstances } from "./provider-instances";
 import { db, schema } from "../db/index";
 
-const { jobNotes, jobs } = schema;
+const {
+  interviews,
+  jobChatMessages,
+  jobChatRuns,
+  jobChatThreads,
+  jobNotes,
+  jobs,
+  tasks,
+} = schema;
 
 type AppliedDuplicateMatchCandidate = {
   id: string;
@@ -887,6 +895,42 @@ export async function getRandomScoreableJobs(args: {
     .limit(args.limit);
 
   return rows.map(mapRowToJob);
+}
+
+/**
+ * Delete ONE job outright, with everything hanging off it.
+ *
+ * `PRAGMA foreign_keys` is never enabled on the runtime connection, so the
+ * `REFERENCES ... ON DELETE CASCADE` clauses in the schema are documentation,
+ * not behaviour — every child row has to be swept here by hand. Missing one
+ * leaves invisible rows that no screen can reach and no later delete will find.
+ *
+ * The job row goes FIRST on purpose: if a later statement failed, the user
+ * would be left with exactly what they asked for (the job gone) plus some
+ * unreachable child rows, rather than a job still sitting in the list with its
+ * notes and chat history silently destroyed.
+ *
+ * Returns false when no row matched — the caller maps that to a 404.
+ */
+export async function deleteJobById(jobId: string): Promise<boolean> {
+  const result = await db.delete(jobs).where(eq(jobs.id, jobId)).run();
+  if (result.changes === 0) return false;
+
+  // Chat lives in three tables, all carrying job_id.
+  await db.delete(jobChatMessages).where(eq(jobChatMessages.jobId, jobId));
+  await db.delete(jobChatRuns).where(eq(jobChatRuns.jobId, jobId));
+  await db.delete(jobChatThreads).where(eq(jobChatThreads.jobId, jobId));
+  await db.delete(jobNotes).where(eq(jobNotes.jobId, jobId));
+  // Legacy tables from the stripped kanban: nothing writes them today, but they
+  // are still keyed on the job, so a delete that skipped them would strand rows
+  // the moment anything revives them.
+  await db.delete(tasks).where(eq(tasks.applicationId, jobId));
+  await db.delete(interviews).where(eq(interviews.applicationId, jobId));
+  // Same self-healing sweep the other two delete paths use — it also picks up
+  // any PDF orphaned by an earlier failure.
+  await deleteOrphanedJobPdfs();
+
+  return true;
 }
 
 /**

@@ -175,6 +175,10 @@ const jobActionRequestSchema = z.discriminatedUnion("action", [
     jobIds: z.array(z.string().min(1)).min(1),
   }),
   z.object({
+    action: z.literal("delete"),
+    jobIds: z.array(z.string().min(1)).min(1),
+  }),
+  z.object({
     action: z.literal("reopen"),
     jobIds: z.array(z.string().min(1)).min(1),
   }),
@@ -622,6 +626,34 @@ async function executeJobActionForJob(
       }
 
       return { jobId, ok: true, job: updated };
+    }
+
+    if (action === "delete") {
+      // The one status that must not be deleted: a row actively being tailored
+      // has a detached background run still holding it. A FAILED tailor also
+      // sits at `processing` but carries a reason, and deleting one is exactly
+      // what a user giving up on it would want — so the guard keys on the
+      // reason, not on the status alone.
+      if (job.status === "processing" && job.tailoringFailureReason == null) {
+        throw badRequest(
+          "Job is being tailored right now — wait for it to finish, or skip it first.",
+          { jobId, status: job.status },
+        );
+      }
+
+      const deleted = await jobsRepo.deleteJobById(jobId);
+      if (!deleted) {
+        throw new AppError({
+          status: 404,
+          code: "NOT_FOUND",
+          message: "Job not found",
+        });
+      }
+
+      // The row it WAS. Every action result carries the job, and the client
+      // only reads ids off this one — it has already been refetched away by the
+      // time the list re-renders.
+      return { jobId, ok: true, job };
     }
 
     if (action === "mark_duplicated") {

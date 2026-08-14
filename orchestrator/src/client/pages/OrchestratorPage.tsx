@@ -337,6 +337,7 @@ export const OrchestratorPage: React.FC = () => {
     canMoveToInboxSelected,
     canMarkClosedSelected,
     canReopenSelected,
+    canDeleteSelected,
     jobActionInFlight,
     toggleSelectJob,
     toggleSelectAll,
@@ -778,6 +779,7 @@ export const OrchestratorPage: React.FC = () => {
           canMoveToInboxSelected={canMoveToInboxSelected}
           canMarkClosedSelected={canMarkClosedSelected}
           canReopenSelected={canReopenSelected}
+          canDeleteSelected={canDeleteSelected}
           jobActionInFlight={jobActionInFlight !== null}
           onMoveToReady={() => void runJobAction("move_to_ready")}
           onSkipSelected={() => void runJobAction("skip")}
@@ -789,6 +791,7 @@ export const OrchestratorPage: React.FC = () => {
           onMoveToInbox={() => void runJobAction("move_to_inbox")}
           onMarkClosed={(outcome) => void runMarkClosedAction(outcome)}
           onReopen={() => void runJobAction("reopen")}
+          onDelete={() => void runJobAction("delete")}
           onClear={clearSelection}
         />
 
