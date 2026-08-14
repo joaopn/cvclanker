@@ -97,9 +97,15 @@ export function useSkipJobMutation() {
 export function useRescoreJobMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.rescoreJob(id),
-    onSuccess: async (_data, id) => {
-      await invalidateJobData(queryClient, id);
+    // The unscreened call stays one-argument: `api.rescoreJob(id, undefined)`
+    // would still send the same request, but it breaks every strict
+    // `toHaveBeenCalledWith(id)` assertion pinning this path.
+    mutationFn: (input: { id: string; prefilter?: boolean }) =>
+      input.prefilter
+        ? api.rescoreJob(input.id, { prefilter: true })
+        : api.rescoreJob(input.id),
+    onSuccess: async (_data, input) => {
+      await invalidateJobData(queryClient, input.id);
     },
   });
 }

@@ -7,12 +7,15 @@ export function useRescoreJob(onJobUpdated: () => void | Promise<void>) {
   const rescoreMutation = useRescoreJobMutation();
 
   const rescoreJob = useCallback(
-    async (jobId?: string | null) => {
+    async (jobId?: string | null, options?: { prefilter?: boolean }) => {
       if (!jobId) return;
 
       try {
         setIsRescoring(true);
-        await rescoreMutation.mutateAsync(jobId);
+        await rescoreMutation.mutateAsync({
+          id: jobId,
+          ...(options?.prefilter ? { prefilter: true } : {}),
+        });
         toast.success("Match recalculated");
         await onJobUpdated();
       } catch (error) {

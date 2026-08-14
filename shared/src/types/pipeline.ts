@@ -307,7 +307,6 @@ export type JobActionRequest =
   | {
       action:
         | "skip"
-        | "rescore"
         | "clear_score"
         | "rescrape"
         | "move_to_backlog"
@@ -323,6 +322,20 @@ export type JobActionRequest =
       jobIds: string[];
       options?: {
         force?: boolean;
+      };
+    }
+  | {
+      action: "rescore";
+      jobIds: string[];
+      options?: {
+        /**
+         * Opt this request into the cheap pre-filter. Omitted — the default for
+         * every manual rescore — goes straight to the scoring model, which is
+         * what keeps a manual rescore a genuine second opinion on anything the
+         * screen removed. The UI offers it as its own button, so a screened
+         * rescore is always something the user asked for by name.
+         */
+        prefilter?: boolean;
       };
     }
   | {

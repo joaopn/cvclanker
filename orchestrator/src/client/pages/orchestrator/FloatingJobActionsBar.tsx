@@ -30,10 +30,13 @@ interface FloatingJobActionsBarProps {
   canMarkClosedSelected: boolean;
   canReopenSelected: boolean;
   canDeleteSelected: boolean;
+  /** A pre-filter model is configured, so the screened variant is on offer. */
+  hasScorerPrefilter: boolean;
   jobActionInFlight: boolean;
   onMoveToReady: () => void;
   onSkipSelected: () => void;
   onRescoreSelected: () => void;
+  onScreenRescoreSelected: () => void;
   onClearScoreSelected: () => void;
   onRescrapeSelected: () => void;
   onMoveToBacklog: () => void;
@@ -61,10 +64,12 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
   canMarkClosedSelected,
   canReopenSelected,
   canDeleteSelected,
+  hasScorerPrefilter,
   jobActionInFlight,
   onMoveToReady,
   onSkipSelected,
   onRescoreSelected,
+  onScreenRescoreSelected,
   onClearScoreSelected,
   onRescrapeSelected,
   onMoveToBacklog,
@@ -91,6 +96,42 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
     >
       Rescrape
     </Button>
+  ) : null;
+
+  // Recalculate the fit for the selection. Identical in every tab that offers
+  // it, so it lives here rather than being spelled out four times.
+  //
+  // Two buttons once a pre-filter model is configured: the plain one always
+  // goes to the scoring model — which is what makes a manual rescore a real
+  // second opinion on anything the screen removed — and the screened one opts
+  // this request into the cheap model first. Neither auto-skips.
+  const rescoreButtons = canRescoreSelected ? (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className={buttonClass}
+        disabled={jobActionInFlight}
+        onClick={onRescoreSelected}
+        title="Score with the scoring model."
+      >
+        Recalculate match
+      </Button>
+      {hasScorerPrefilter && (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className={buttonClass}
+          disabled={jobActionInFlight}
+          onClick={onScreenRescoreSelected}
+          title="Run the cheap pre-filter model first; only jobs it does not call a bad fit reach the scoring model."
+        >
+          Screen first
+        </Button>
+      )}
+    </>
   ) : null;
 
   // Per-tab button rendering. Each branch returns the buttons that make
@@ -126,18 +167,7 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
                 Move to Backlog
               </Button>
             )}
-            {canRescoreSelected && (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className={buttonClass}
-                disabled={jobActionInFlight}
-                onClick={onRescoreSelected}
-              >
-                Recalculate match
-              </Button>
-            )}
+            {rescoreButtons}
             {canClearScoreSelected && (
               <Button
                 type="button"
@@ -181,18 +211,7 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
                 Tailor {selectedCount} {jobOrJobs(selectedCount)}
               </Button>
             )}
-            {canRescoreSelected && (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className={buttonClass}
-                disabled={jobActionInFlight}
-                onClick={onRescoreSelected}
-              >
-                Recalculate match
-              </Button>
-            )}
+            {rescoreButtons}
             {canSkipSelected && (
               <Button
                 type="button"
@@ -247,18 +266,7 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
                 Tailor {selectedCount} {jobOrJobs(selectedCount)}
               </Button>
             )}
-            {canRescoreSelected && (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className={buttonClass}
-                disabled={jobActionInFlight}
-                onClick={onRescoreSelected}
-              >
-                Recalculate match
-              </Button>
-            )}
+            {rescoreButtons}
             {rescrapeButton}
             {canSkipSelected && (
               <Button
@@ -363,18 +371,7 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
                 Tailor {selectedCount} {jobOrJobs(selectedCount)}
               </Button>
             )}
-            {canRescoreSelected && (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className={buttonClass}
-                disabled={jobActionInFlight}
-                onClick={onRescoreSelected}
-              >
-                Recalculate match
-              </Button>
-            )}
+            {rescoreButtons}
             {rescrapeButton}
           </>
         );

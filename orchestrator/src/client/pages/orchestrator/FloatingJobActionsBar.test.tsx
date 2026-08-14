@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { FloatingJobActionsBar } from "./FloatingJobActionsBar";
@@ -24,10 +24,12 @@ function renderBar(
       canMarkClosedSelected={false}
       canReopenSelected={false}
       canDeleteSelected
+      hasScorerPrefilter={false}
       jobActionInFlight={false}
       onMoveToReady={noop}
       onSkipSelected={noop}
       onRescoreSelected={noop}
+      onScreenRescoreSelected={noop}
       onClearScoreSelected={noop}
       onRescrapeSelected={noop}
       onMoveToBacklog={noop}
@@ -84,5 +86,72 @@ describe("FloatingJobActionsBar delete", () => {
     expect(
       screen.queryByRole("button", { name: "Delete" }),
     ).not.toBeInTheDocument();
+  });
+
+  describe("screened rescore", () => {
+    it("offers only the plain button when no pre-filter is configured", () => {
+      renderBar({ canRescoreSelected: true, hasScorerPrefilter: false });
+
+      expect(
+        screen.getByRole("button", { name: "Recalculate match" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Screen first" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("offers both behaviours as separate buttons once one is", () => {
+      const onRescoreSelected = vi.fn();
+      const onScreenRescoreSelected = vi.fn();
+      renderBar({
+        canRescoreSelected: true,
+        hasScorerPrefilter: true,
+        onRescoreSelected,
+        onScreenRescoreSelected,
+      });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Recalculate match" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Screen first" }));
+
+      // Separate handlers: the plain button must never route through the screen.
+      expect(onRescoreSelected).toHaveBeenCalledTimes(1);
+      expect(onScreenRescoreSelected).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows neither when the selection cannot be rescored", () => {
+      renderBar({ canRescoreSelected: false, hasScorerPrefilter: true });
+
+      expect(
+        screen.queryByRole("button", { name: "Recalculate match" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Screen first" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("carries both buttons onto every tab that offers rescoring", () => {
+      // They were four copy-pasted blocks before; one shared fragment now.
+      for (const activeTab of [
+        "inbox",
+        "tailoring",
+        "backlog",
+        "all",
+      ] as const) {
+        renderBar({
+          activeTab,
+          canRescoreSelected: true,
+          hasScorerPrefilter: true,
+        });
+        expect(
+          screen.getByRole("button", { name: "Recalculate match" }),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByRole("button", { name: "Screen first" }),
+        ).toBeInTheDocument();
+        cleanup();
+      }
+    });
   });
 });

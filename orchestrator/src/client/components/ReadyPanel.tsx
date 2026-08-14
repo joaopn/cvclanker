@@ -6,6 +6,7 @@ import {
   Edit2,
   ExternalLink,
   FileText,
+  Filter,
   Loader2,
   MoreHorizontal,
   RefreshCcw,
@@ -101,7 +102,11 @@ export const ReadyPanel: React.FC<ReadyPanelProps> = ({
   const [isMovingBackToInbox, setIsMovingBackToInbox] = useState(false);
   const [showDescription, setShowDescription] = useState(false);
   const { isRescoring, rescoreJob } = useRescoreJob(onJobUpdated);
-  const { cvSourceFormat, renderMarkdownInJobDescriptions } = useSettings();
+  const {
+    cvSourceFormat,
+    renderMarkdownInJobDescriptions,
+    hasScorerPrefilter,
+  } = useSettings();
   const { pushUndo, undo } = useUndo();
   const previousJobIdRef = useRef<string | null>(null);
   const markAsAppliedMutation = useMarkAsAppliedMutation();
@@ -232,6 +237,11 @@ export const ReadyPanel: React.FC<ReadyPanelProps> = ({
 
   const handleRescore = useCallback(
     () => rescoreJob(job?.id),
+    [job?.id, rescoreJob],
+  );
+
+  const handleScreenRescore = useCallback(
+    () => rescoreJob(job?.id, { prefilter: true }),
     [job?.id, rescoreJob],
   );
 
@@ -516,6 +526,16 @@ export const ReadyPanel: React.FC<ReadyPanelProps> = ({
                 />
                 {isRescoring ? "Recalculating..." : "Recalculate fit"}
               </DropdownMenuItem>
+
+              {hasScorerPrefilter ? (
+                <DropdownMenuItem
+                  onSelect={handleScreenRescore}
+                  disabled={isRescoring}
+                >
+                  <Filter className="mr-2 h-4 w-4" />
+                  Screen first, then recalculate
+                </DropdownMenuItem>
+              ) : null}
 
               <DropdownMenuSeparator />
 

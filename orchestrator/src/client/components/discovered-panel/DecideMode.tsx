@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Archive,
   Edit2,
+  Filter,
   Loader2,
   RefreshCcw,
   Sparkles,
@@ -28,6 +29,9 @@ interface DecideModeProps {
   onSkip: () => void;
   isSkipping: boolean;
   onRescore: () => void;
+  onScreenRescore: () => void;
+  /** A pre-filter model is configured, so the screened variant is on offer. */
+  hasScorerPrefilter: boolean;
   isRescoring: boolean;
   onEditDetails: () => void;
   onMoveToBacklog: () => void;
@@ -40,6 +44,8 @@ export const DecideMode: React.FC<DecideModeProps> = ({
   onSkip,
   isSkipping,
   onRescore,
+  onScreenRescore,
+  hasScorerPrefilter,
   isRescoring,
   onEditDetails,
   onMoveToBacklog,
@@ -188,6 +194,19 @@ export const DecideMode: React.FC<DecideModeProps> = ({
               }
             />
             {isRescoring ? "Recalculating..." : "Recalculate match"}
+          </Button>
+        ) : null}
+        {job.status !== "processing" && hasScorerPrefilter ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onScreenRescore}
+            disabled={isRescoring}
+            title="Run the cheap pre-filter model first; only jobs it does not call a bad fit reach the scoring model."
+            className="flex-1 h-8 gap-2 text-xs text-muted-foreground hover:text-foreground justify-center"
+          >
+            <Filter className="h-3.5 w-3.5" />
+            Screen first
           </Button>
         ) : null}
       </div>

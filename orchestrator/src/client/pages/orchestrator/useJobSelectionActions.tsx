@@ -429,6 +429,21 @@ export function useJobSelectionActions({
     [selectedJobIds, runStreamingAction],
   );
 
+  /**
+   * The screened variant of `rescore`. Its own dispatcher rather than an
+   * argument on `runJobAction`, which builds a bare `{action, jobIds}` — and
+   * because screening is something the user picks by name, never a default.
+   */
+  const runScreenedRescoreAction = useCallback(async () => {
+    const jobIds = Array.from(selectedJobIds);
+    if (jobIds.length === 0) return;
+    await runStreamingAction({
+      action: "rescore",
+      jobIds,
+      options: { prefilter: true },
+    });
+  }, [selectedJobIds, runStreamingAction]);
+
   const runMarkClosedAction = useCallback(
     async (outcome: JobOutcome) => {
       const jobIds = Array.from(selectedJobIds);
@@ -460,6 +475,7 @@ export function useJobSelectionActions({
     toggleSelectAll,
     clearSelection,
     runJobAction,
+    runScreenedRescoreAction,
     runMarkClosedAction,
   };
 }

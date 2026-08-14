@@ -804,15 +804,28 @@ export async function processJob(
   return getSingleJobFromActionResult(result, idOrIds);
 }
 
-export async function rescoreJob(ids: string[]): Promise<JobActionResponse>;
-export async function rescoreJob(id: string): Promise<Job>;
+/** Screening is opt-in: absent means "go straight to the scoring model". */
+export type RescoreOptions = { prefilter?: boolean };
+
+export async function rescoreJob(
+  ids: string[],
+  options?: RescoreOptions,
+): Promise<JobActionResponse>;
+export async function rescoreJob(
+  id: string,
+  options?: RescoreOptions,
+): Promise<Job>;
 export async function rescoreJob(
   idOrIds: string | string[],
+  options?: RescoreOptions,
 ): Promise<Job | JobActionResponse> {
   const jobIds = toJobIdList(idOrIds);
   const result = await runJobAction({
     action: "rescore",
     jobIds,
+    // Omitted rather than sent as `{prefilter: false}` so an unscreened rescore
+    // puts exactly the bytes on the wire it always did.
+    ...(options?.prefilter ? { options: { prefilter: true } } : {}),
   });
   if (Array.isArray(idOrIds)) return result;
   return getSingleJobFromActionResult(result, idOrIds);

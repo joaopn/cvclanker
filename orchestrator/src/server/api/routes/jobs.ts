@@ -133,6 +133,11 @@ const jobActionRequestSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("rescore"),
     jobIds: z.array(z.string().min(1)).min(1),
+    options: z
+      .object({
+        prefilter: z.boolean().optional(),
+      })
+      .optional(),
   }),
   z.object({
     action: z.literal("clear_score"),
@@ -310,6 +315,12 @@ type JobActionExecutionOptions = {
   requestOrigin?: string | null;
   markClosedOutcome?: JobOutcome;
   rescrapeScoringEnabled?: boolean;
+  /**
+   * `rescore` only: run the cheap pre-filter before the scoring model. Off
+   * unless the request asked for it by name — a manual rescore is the second
+   * opinion on whatever the screen removed, so it must never screen by default.
+   */
+  rescorePrefilter?: boolean;
 };
 
 function createSharedRescoreBriefLoader(): () => Promise<string> {
@@ -813,7 +824,13 @@ async function executeJobActionForJob(
       ? await options.getBriefForRescore()
       : await getActivePersonalBrief();
 
-    const scored = await scoreJobSuitability(job, brief);
+    // Screening is opt-in per request and the UI asks for it by its own button;
+    // a plain rescore stays the second opinion on whatever the screen removed.
+    // Neither arm auto-skips — that lives in the pipeline's scoring step only,
+    // so a screened rescore can write `bad_fit` but never moves the job.
+    const scored = await scoreJobSuitability(job, brief, {
+      prefilter: options?.rescorePrefilter === true,
+    });
 
     const updated = await jobsRepo.updateJob(job.id, {
       suitabilityCategory: scored.category,
@@ -1073,7 +1090,10 @@ jobsRouter.post("/actions", async (req: Request, res: Response) => {
       parsed.action === "rescrape" ? await isJobScoringEnabled() : false;
     const executionOptions: JobActionExecutionOptions = {
       ...(parsed.action === "rescore"
-        ? { getBriefForRescore: createSharedRescoreBriefLoader() }
+        ? {
+            getBriefForRescore: createSharedRescoreBriefLoader(),
+            rescorePrefilter: parsed.options?.prefilter === true,
+          }
         : {}),
       ...(parsed.action === "rescrape"
         ? {
@@ -1175,7 +1195,10 @@ jobsRouter.post("/actions/stream", async (req: Request, res: Response) => {
     action === "rescrape" ? await isJobScoringEnabled() : false;
   const executionOptions: JobActionExecutionOptions = {
     ...(parsed.data.action === "rescore"
-      ? { getBriefForRescore: createSharedRescoreBriefLoader() }
+      ? {
+          getBriefForRescore: createSharedRescoreBriefLoader(),
+          rescorePrefilter: parsed.data.options?.prefilter === true,
+        }
       : {}),
     ...(parsed.data.action === "rescrape"
       ? {

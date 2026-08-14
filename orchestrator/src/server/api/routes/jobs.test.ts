@@ -1,6 +1,6 @@
 // @vitest-environment node
 import type { Server } from "node:http";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startServer, stopServer } from "./test-utils";
 
 describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
@@ -673,5 +673,73 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
 
     expect(body.data.succeeded).toBe(1);
     expect(body.data.failed).toBe(1);
+  });
+
+  describe("rescore screening", () => {
+    async function scorerMock() {
+      const scorer = await import("@server/services/scorer");
+      return vi.mocked(scorer.scoreJobSuitability);
+    }
+
+    it("goes straight to the scoring model by default", async () => {
+      await seedJob({ id: "job-rs-1", status: "discovered" });
+      const scoreJobSuitability = await scorerMock();
+      scoreJobSuitability.mockResolvedValue({
+        category: "good_fit",
+        reason: "fine",
+        model: "big-model",
+        effort: null,
+      });
+
+      await postAction({ action: "rescore", jobIds: ["job-rs-1"] });
+
+      // The whole point of the default: a manual rescore is the second opinion
+      // on anything the screen removed, so it must not screen.
+      expect(scoreJobSuitability).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "job-rs-1" }),
+        expect.any(String),
+        { prefilter: false },
+      );
+    });
+
+    it("opts into the screen when the request asks for it", async () => {
+      await seedJob({ id: "job-rs-2", status: "discovered" });
+      const scoreJobSuitability = await scorerMock();
+      scoreJobSuitability.mockResolvedValue({
+        category: "bad_fit",
+        reason: "screened out",
+        model: "cheap-model",
+        effort: null,
+      });
+
+      const { body } = await postAction({
+        action: "rescore",
+        jobIds: ["job-rs-2"],
+        options: { prefilter: true },
+      });
+
+      expect(scoreJobSuitability).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "job-rs-2" }),
+        expect.any(String),
+        { prefilter: true },
+      );
+      // A screened rescore may write bad_fit, but it never moves the job —
+      // auto-skip lives in the pipeline's scoring step alone.
+      expect(body.data.results[0].job.status).toBe("discovered");
+      expect(body.data.results[0].job.suitabilityCategory).toBe("bad_fit");
+    });
+
+    it("rejects a non-boolean prefilter", async () => {
+      const res = await fetch(`${baseUrl}/api/jobs/actions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "rescore",
+          jobIds: ["job-rs-3"],
+          options: { prefilter: "yes" },
+        }),
+      });
+      expect(res.status).toBe(400);
+    });
   });
 });

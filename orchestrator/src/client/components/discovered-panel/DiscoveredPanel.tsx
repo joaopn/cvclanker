@@ -1,6 +1,7 @@
 import * as api from "@client/api";
 import { useSkipJobMutation } from "@client/hooks/queries/useJobMutations";
 import { useRescoreJob } from "@client/hooks/useRescoreJob";
+import { useSettings } from "@client/hooks/useSettings";
 import type { Job } from "@shared/types.js";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
@@ -30,6 +31,7 @@ export const DiscoveredPanel: React.FC<DiscoveredPanelProps> = ({
   const previousJobIdRef = useRef<string | null>(null);
   const skipJobMutation = useSkipJobMutation();
   const { isRescoring, rescoreJob } = useRescoreJob(onJobUpdated);
+  const { hasScorerPrefilter } = useSettings();
 
   useEffect(() => {
     const currentJobId = job?.id ?? null;
@@ -80,6 +82,7 @@ export const DiscoveredPanel: React.FC<DiscoveredPanelProps> = ({
   };
 
   const handleRescore = () => rescoreJob(job?.id);
+  const handleScreenRescore = () => rescoreJob(job?.id, { prefilter: true });
 
   const flipStatus = async (
     status: "discovered" | "backlog",
@@ -124,6 +127,8 @@ export const DiscoveredPanel: React.FC<DiscoveredPanelProps> = ({
         onSkip={handleSkip}
         isSkipping={isSkipping}
         onRescore={handleRescore}
+        onScreenRescore={handleScreenRescore}
+        hasScorerPrefilter={hasScorerPrefilter}
         isRescoring={isRescoring}
         onEditDetails={() => setIsEditDetailsOpen(true)}
         onMoveToBacklog={handleMoveToBacklog}

@@ -207,8 +207,12 @@ export const OrchestratorPage: React.FC = () => {
     [navigateWithContext, activeTab],
   );
 
-  const { settings, inboxStaleThresholdDays, maxBulkActionJobs } =
-    useSettings();
+  const {
+    settings,
+    inboxStaleThresholdDays,
+    maxBulkActionJobs,
+    hasScorerPrefilter,
+  } = useSettings();
   const effectiveStaleThresholdDays =
     staleThresholdDays ?? inboxStaleThresholdDays;
   // Facets narrow (and their bar renders) only on FACET_TABS; a Tier-2 facet
@@ -343,6 +347,7 @@ export const OrchestratorPage: React.FC = () => {
     toggleSelectAll,
     clearSelection,
     runJobAction,
+    runScreenedRescoreAction,
     runMarkClosedAction,
   } = useJobSelectionActions({
     activeJobs,
@@ -780,10 +785,12 @@ export const OrchestratorPage: React.FC = () => {
           canMarkClosedSelected={canMarkClosedSelected}
           canReopenSelected={canReopenSelected}
           canDeleteSelected={canDeleteSelected}
+          hasScorerPrefilter={hasScorerPrefilter}
           jobActionInFlight={jobActionInFlight !== null}
           onMoveToReady={() => void runJobAction("move_to_ready")}
           onSkipSelected={() => void runJobAction("skip")}
           onRescoreSelected={() => void runJobAction("rescore")}
+          onScreenRescoreSelected={() => void runScreenedRescoreAction()}
           onClearScoreSelected={() => void runJobAction("clear_score")}
           onRescrapeSelected={() => void runJobAction("rescrape")}
           onMoveToBacklog={() => void runJobAction("move_to_backlog")}
