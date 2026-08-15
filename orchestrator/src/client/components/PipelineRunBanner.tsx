@@ -2,6 +2,7 @@ import * as api from "@client/api";
 import type {
   CapturedRunJob,
   JobSource,
+  PipelineProfileRunStats,
   PipelineProgressEvent,
   PipelineSourceStats,
   RunJobBucket,
@@ -9,6 +10,8 @@ import type {
 import { useQuery } from "@tanstack/react-query";
 import {
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Loader2,
   AlertTriangle,
@@ -193,8 +196,16 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
     source: string;
     bucket: RunJobBucket;
     label: string;
+    profileId?: string;
+    profileName?: string;
   } | null>(null);
+  // Which profile's page the user paged to by hand. Null means "follow the
+  // profile that is running", so a chain left alone always shows live results.
+  const [pinnedProfileIndex, setPinnedProfileIndex] = useState<number | null>(
+    null,
+  );
   const lastStartedAtRef = useRef<string | undefined>(undefined);
+  const lastChainKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isRunning) return;
@@ -228,6 +239,20 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
     [progress],
   );
 
+  // One page per profile a multi-profile chain has reached; empty for a plain
+  // single run, which keeps rendering `sourceStats` directly.
+  const profileRuns: PipelineProfileRunStats[] = progress?.profileRuns ?? [];
+  // A new chain is a different first profile. Keying the reset on the whole
+  // list would clear the user's page every time the chain adds one. Done in
+  // render behind a ref rather than in an effect: the ref makes it idempotent
+  // under StrictMode, and it lands before paint, so the page never flashes the
+  // old chain's selection.
+  const chainKey = profileRuns[0]?.profile.id ?? null;
+  if (lastChainKeyRef.current !== chainKey) {
+    lastChainKeyRef.current = chainKey;
+    if (pinnedProfileIndex !== null) setPinnedProfileIndex(null);
+  }
+
   if (dismissed) return null;
   if (!isRunning && !progress) return null;
 
@@ -254,8 +279,31 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
       step !== "cancelled" &&
       step !== "failed");
 
-  const sourceStats = progress?.sourceStats ?? [];
+  const activeProfileIndex = profileRun?.index ?? null;
+  const displayedPage =
+    profileRuns.find(
+      (page) => page.profile.index === pinnedProfileIndex, // the user's choice
+    ) ??
+    profileRuns.find((page) => page.profile.index === activeProfileIndex) ??
+    profileRuns.at(-1) ??
+    null;
+  const displayedPageIndex = displayedPage
+    ? profileRuns.indexOf(displayedPage)
+    : -1;
+  // A single run has no pages, so it is always looking at its own live results.
+  const isLivePage =
+    displayedPage == null || displayedPage.profile.index === activeProfileIndex;
+
+  const sourceStats = displayedPage
+    ? displayedPage.sourceStats
+    : (progress?.sourceStats ?? []);
   const anyFailures = sourceStats.some((row) => row.status === "failed");
+  // Failures are held back while the page in view is still filling in, but a
+  // finished profile's page shows them right away even though the chain runs on.
+  const showFailureCount = anyFailures && (!isActive || !isLivePage);
+  // A per-source re-run reconciles into ONE flat funnel and resolves its config
+  // from the default profile, so it can neither target a page nor keep them.
+  const rerunSource = profileRuns.length > 0 ? undefined : onRerunSource;
 
   return (
     <div className="border-b bg-background/60 backdrop-blur">
@@ -274,21 +322,79 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
                 >
                   {stepLabels[step]}
                 </Badge>
-                {profileRun && (
-                  <Badge
-                    variant="outline"
-                    className="max-w-[16rem] border-primary/20 bg-primary/10 text-primary"
-                  >
-                    <span className="truncate">
-                      Profile {profileRun.index} of {profileRun.total} ·{" "}
-                      {profileRun.name}
-                    </span>
-                  </Badge>
+                {displayedPage ? (
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      aria-label="Previous profile"
+                      disabled={displayedPageIndex <= 0}
+                      onClick={() =>
+                        setPinnedProfileIndex(
+                          profileRuns[displayedPageIndex - 1]?.profile.index ??
+                            null,
+                        )
+                      }
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Badge
+                      variant="outline"
+                      className="max-w-[16rem] border-primary/20 bg-primary/10 text-primary"
+                    >
+                      <span className="truncate">
+                        Profile {displayedPage.profile.index} of{" "}
+                        {displayedPage.profile.total} ·{" "}
+                        {displayedPage.profile.name}
+                      </span>
+                    </Badge>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      aria-label="Next profile"
+                      disabled={displayedPageIndex >= profileRuns.length - 1}
+                      onClick={() =>
+                        setPinnedProfileIndex(
+                          profileRuns[displayedPageIndex + 1]?.profile.index ??
+                            null,
+                        )
+                      }
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    {isActive && pinnedProfileIndex !== null && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => setPinnedProfileIndex(null)}
+                      >
+                        Follow live
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  profileRun && (
+                    <Badge
+                      variant="outline"
+                      className="max-w-[16rem] border-primary/20 bg-primary/10 text-primary"
+                    >
+                      <span className="truncate">
+                        Profile {profileRun.index} of {profileRun.total} ·{" "}
+                        {profileRun.name}
+                      </span>
+                    </Badge>
+                  )
                 )}
                 <span className="truncate text-xs text-muted-foreground">
                   {isConnected ? "Live" : "Connecting…"}
                 </span>
-                {anyFailures && (step === "completed" || step === "failed") && (
+                {showFailureCount && (
                   <span className="inline-flex items-center gap-1 text-xs text-destructive">
                     <AlertTriangle className="h-3.5 w-3.5" />
                     {
@@ -354,7 +460,7 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
                           <TableHead className="w-24 text-right">
                             Duration
                           </TableHead>
-                          {onRerunSource && <TableHead className="w-16" />}
+                          {rerunSource && <TableHead className="w-16" />}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -362,13 +468,15 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
                           <SourceRow
                             key={row.id}
                             row={row}
-                            onRerun={!isActive ? onRerunSource : undefined}
-                            showRerunColumn={!!onRerunSource}
+                            onRerun={!isActive ? rerunSource : undefined}
+                            showRerunColumn={!!rerunSource}
                             onShowJobs={(bucket) =>
                               setJobsView({
                                 source: row.id,
                                 bucket,
                                 label: row.label,
+                                profileId: displayedPage?.profile.id,
+                                profileName: displayedPage?.profile.name,
                               })
                             }
                           />
@@ -377,6 +485,12 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
                     </Table>
                   </div>
                 </>
+              )}
+
+              {displayedPage && sourceStats.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No sources have reported for this profile yet.
+                </p>
               )}
 
               {step === "failed" &&
@@ -522,12 +636,23 @@ function formatDatePosted(value?: string): string {
 }
 
 const RunJobsDialog: React.FC<{
-  view: { source: string; bucket: RunJobBucket; label: string };
+  view: {
+    source: string;
+    bucket: RunJobBucket;
+    label: string;
+    profileId?: string;
+    profileName?: string;
+  };
   onClose: () => void;
 }> = ({ view, onClose }) => {
   const query = useQuery({
-    queryKey: ["pipeline-run-jobs", view.source, view.bucket],
-    queryFn: () => api.getRunJobs(view.source, view.bucket),
+    queryKey: [
+      "pipeline-run-jobs",
+      view.source,
+      view.bucket,
+      view.profileId ?? null,
+    ],
+    queryFn: () => api.getRunJobs(view.source, view.bucket, view.profileId),
   });
 
   const jobs: CapturedRunJob[] = query.data?.jobs ?? [];
@@ -544,6 +669,7 @@ const RunJobsDialog: React.FC<{
         <DialogHeader>
           <DialogTitle>
             {`${BUCKET_LABELS[view.bucket]} — ${view.label}`}
+            {view.profileName ? ` · ${view.profileName}` : ""}
           </DialogTitle>
           <DialogDescription>
             {query.isLoading

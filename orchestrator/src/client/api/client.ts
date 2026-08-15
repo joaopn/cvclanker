@@ -1045,8 +1045,10 @@ export async function runPipeline(config?: {
 export async function getRunJobs(
   source: string,
   bucket: RunJobBucket,
+  profileId?: string,
 ): Promise<RunJobsResponse> {
   const params = new URLSearchParams({ source, bucket });
+  if (profileId) params.set("profileId", profileId);
   return fetchApi<RunJobsResponse>(`/pipeline/run-jobs?${params.toString()}`);
 }
 

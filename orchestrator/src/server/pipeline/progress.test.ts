@@ -1,10 +1,12 @@
 // @vitest-environment node
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   getProgress,
   progressHelpers,
+  resetProfileRunStats,
   resetProgress,
+  setActiveProfileRun,
   subscribeToProgress,
 } from "./progress";
 
@@ -155,5 +157,115 @@ describe("pipeline progress source-stats tracking", () => {
 
     // At least one snapshot included the newly-created row.
     expect(Math.max(...received)).toBe(1);
+  });
+});
+
+describe("per-profile funnel pages", () => {
+  const profile = (id: string, index: number, total = 2) => ({
+    id,
+    name: `Profile ${id}`,
+    index,
+    total,
+  });
+
+  /** What one profile of a chain does to progress state, start to finish. */
+  function runProfile(source: string, scraped: number) {
+    // Every profile runs its own `runPipeline`, which resets progress first —
+    // that reset is exactly what used to destroy the previous profile's table.
+    resetProgress();
+    progressHelpers.startCrawling(1);
+    progressHelpers.startSource(source, 0, 1, { platforms: [source] });
+    progressHelpers.recordSourceJobsCounts(source, { scraped });
+    progressHelpers.complete(scraped, 0);
+  }
+
+  beforeEach(() => {
+    setActiveProfileRun(null);
+    resetProfileRunStats();
+    resetProgress();
+  });
+
+  afterEach(() => {
+    setActiveProfileRun(null);
+    resetProfileRunStats();
+    resetProgress();
+  });
+
+  it("keeps one page per profile instead of overwriting the table", () => {
+    setActiveProfileRun(profile("a", 1));
+    runProfile("hiringcafe", 7);
+    setActiveProfileRun(profile("b", 2));
+    runProfile("workingnomads", 3);
+
+    const pages = getProgress().profileRuns ?? [];
+    expect(pages.map((page) => page.profile.id)).toEqual(["a", "b"]);
+    expect(pages[0]?.sourceStats.map((row) => row.id)).toEqual(["hiringcafe"]);
+    expect(pages[0]?.sourceStats[0]?.jobsScraped).toBe(7);
+    // The live rows only ever hold the profile that is running.
+    expect(getProgress().sourceStats.map((row) => row.id)).toEqual([
+      "workingnomads",
+    ]);
+  });
+
+  it("retains a failed source's error on its own page", () => {
+    setActiveProfileRun(profile("a", 1));
+    resetProgress();
+    progressHelpers.startCrawling(1);
+    progressHelpers.startSource("hiringcafe", 0, 1, {
+      platforms: ["hiringcafe"],
+    });
+    progressHelpers.markSourceFailed("hiringcafe", "429 from upstream");
+    progressHelpers.complete(0, 0);
+
+    setActiveProfileRun(profile("b", 2));
+    runProfile("workingnomads", 1);
+
+    const pageA = (getProgress().profileRuns ?? [])[0];
+    expect(pageA?.sourceStats[0]).toMatchObject({
+      status: "failed",
+      error: "429 from upstream",
+    });
+  });
+
+  it("gives a profile its own empty page rather than the previous one's rows", () => {
+    setActiveProfileRun(profile("a", 1));
+    runProfile("hiringcafe", 5);
+    // A profile the singleton guard rejects never resets or emits anything, so
+    // the live rows still belong to the profile before it.
+    setActiveProfileRun(profile("b", 2));
+    setActiveProfileRun(null);
+    progressHelpers.sequenceFinished({
+      status: "completed",
+      message: "Multi-profile run complete (1/2 profiles)",
+      detail: "1 of 2 profiles completed, 1 failed",
+    });
+
+    const pages = getProgress().profileRuns ?? [];
+    expect(pages[1]?.profile.id).toBe("b");
+    expect(pages[1]?.sourceStats).toEqual([]);
+    expect(pages[0]?.sourceStats.map((row) => row.id)).toEqual(["hiringcafe"]);
+  });
+
+  it("drops the pages when a run outside a chain starts", () => {
+    setActiveProfileRun(profile("a", 1));
+    runProfile("hiringcafe", 5);
+    setActiveProfileRun(null);
+
+    resetProgress();
+
+    expect(getProgress().profileRuns).toEqual([]);
+  });
+
+  it("keeps the pages across each profile's own reset inside the chain", () => {
+    setActiveProfileRun(profile("a", 1));
+    runProfile("hiringcafe", 5);
+    setActiveProfileRun(profile("b", 2));
+    // The reset at the head of profile b's run must not take page a with it.
+    resetProgress();
+
+    expect((getProgress().profileRuns ?? []).map((p) => p.profile.id)).toEqual([
+      "a",
+      "b",
+    ]);
   });
 });

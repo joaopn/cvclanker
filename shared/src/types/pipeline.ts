@@ -240,6 +240,13 @@ export interface PipelineProgressEvent {
    * 1-based.
    */
   profileRun?: PipelineProfileRun | null;
+  /**
+   * One page of funnel rows per profile a multi-profile chain has reached, in
+   * run order. `sourceStats` only ever holds the CURRENT profile's rows —
+   * every profile resets them — so without this the banner would end a chain
+   * showing nothing but the last profile's results. Empty for a single run.
+   */
+  profileRuns?: PipelineProfileRunStats[];
 }
 
 export interface PipelineProfileRun {
@@ -247,6 +254,12 @@ export interface PipelineProfileRun {
   name: string;
   index: number;
   total: number;
+}
+
+/** One profile's funnel rows, retained after the chain moves on to the next. */
+export interface PipelineProfileRunStats {
+  profile: PipelineProfileRun;
+  sourceStats: PipelineSourceStats[];
 }
 
 export type PipelineMetricQuality =

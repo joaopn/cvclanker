@@ -71,6 +71,49 @@ const baseEvent: PipelineProgressEvent = {
   ],
 };
 
+const sourceRow = (
+  id: string,
+  label: string,
+  overrides: Partial<PipelineProgressEvent["sourceStats"][number]> = {},
+): PipelineProgressEvent["sourceStats"][number] => ({
+  id,
+  label,
+  status: "completed",
+  jobsScraped: 0,
+  jobsImported: 0,
+  jobsReposted: 0,
+  jobsDuplicated: 0,
+  jobsFiltered: 0,
+  jobsRejected: 0,
+  ...overrides,
+});
+
+/** A chain on its second profile: page 1 finished, page 2 is still crawling. */
+const chainEvent: PipelineProgressEvent = {
+  ...baseEvent,
+  profileRun: { id: "p2", name: "Berlin", index: 2, total: 2 },
+  sourceStats: [
+    sourceRow("workingnomads", "Working Nomads", { status: "running" }),
+  ],
+  profileRuns: [
+    {
+      profile: { id: "p1", name: "Vienna", index: 1, total: 2 },
+      sourceStats: [
+        sourceRow("hiringcafe", "Hiring Cafe", {
+          status: "failed",
+          error: "429 from upstream",
+        }),
+      ],
+    },
+    {
+      profile: { id: "p2", name: "Berlin", index: 2, total: 2 },
+      sourceStats: [
+        sourceRow("workingnomads", "Working Nomads", { status: "running" }),
+      ],
+    },
+  ],
+};
+
 describe("PipelineRunBanner", () => {
   beforeEach(() => {
     lastHandlers.current = null;
@@ -152,5 +195,85 @@ describe("PipelineRunBanner", () => {
       lastHandlers.current?.onMessage(nextRun);
     });
     expect(screen.getByText("LinkedIn")).toBeInTheDocument();
+  });
+
+  it("follows the running profile and pages back to an earlier one", () => {
+    render(<PipelineRunBanner isRunning />);
+    act(() => {
+      lastHandlers.current?.onMessage(chainEvent);
+    });
+
+    // Follows the profile that is running.
+    expect(screen.getByText("Profile 2 of 2 · Berlin")).toBeInTheDocument();
+    expect(screen.getByText("Working Nomads")).toBeInTheDocument();
+    expect(screen.queryByText("Hiring Cafe")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /previous profile/i }));
+
+    // The earlier profile's table — the one a chain used to throw away — with
+    // its failed source and the error it failed on.
+    expect(screen.getByText("Profile 1 of 2 · Vienna")).toBeInTheDocument();
+    expect(screen.getByText("Hiring Cafe")).toBeInTheDocument();
+    expect(screen.getByText("429 from upstream")).toBeInTheDocument();
+    expect(screen.queryByText("Working Nomads")).not.toBeInTheDocument();
+  });
+
+  it("stays on the pinned page when the chain moves on, until Follow live", () => {
+    render(<PipelineRunBanner isRunning />);
+    act(() => {
+      lastHandlers.current?.onMessage(chainEvent);
+    });
+    fireEvent.click(screen.getByRole("button", { name: /previous profile/i }));
+
+    // A later event from the running profile must not yank the user's page.
+    act(() => {
+      lastHandlers.current?.onMessage({
+        ...chainEvent,
+        message: "still crawling",
+      });
+    });
+    expect(screen.getByText("Profile 1 of 2 · Vienna")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /follow live/i }));
+    expect(screen.getByText("Profile 2 of 2 · Berlin")).toBeInTheDocument();
+  });
+
+  it("hides the per-source re-run button while the banner shows pages", () => {
+    const onRerunSource = vi.fn();
+    const { rerender } = render(
+      <PipelineRunBanner isRunning onRerunSource={onRerunSource} />,
+    );
+    act(() => {
+      lastHandlers.current?.onMessage({
+        ...chainEvent,
+        step: "completed",
+        profileRun: null,
+      });
+    });
+    rerender(
+      <PipelineRunBanner isRunning={false} onRerunSource={onRerunSource} />,
+    );
+
+    // A re-run resolves its config from the default profile and reconciles into
+    // one flat funnel, so it can neither target a page nor preserve them.
+    expect(
+      screen.queryByRole("button", { name: /re-run/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the re-run button on a single-profile run", () => {
+    const onRerunSource = vi.fn();
+    const { rerender } = render(
+      <PipelineRunBanner isRunning onRerunSource={onRerunSource} />,
+    );
+    act(() => {
+      lastHandlers.current?.onMessage({ ...baseEvent, step: "completed" });
+    });
+    rerender(
+      <PipelineRunBanner isRunning={false} onRerunSource={onRerunSource} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /re-run LinkedIn/i }));
+    expect(onRerunSource).toHaveBeenCalledWith("linkedin");
   });
 });

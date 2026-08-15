@@ -136,6 +136,9 @@ pipelineRouter.get("/runs", async (_req: Request, res: Response) => {
 
 const runJobsQuerySchema = z.object({
   source: z.string().min(1),
+  // Which profile's page the count was clicked on. Absent for an ordinary
+  // single-profile run, whose captures live in the unscoped store.
+  profileId: z.string().min(1).optional(),
   bucket: z.enum(
     RUN_JOB_BUCKETS as [
       (typeof RUN_JOB_BUCKETS)[number],
@@ -150,11 +153,11 @@ const runJobsQuerySchema = z.object({
  */
 pipelineRouter.get("/run-jobs", (req: Request, res: Response) => {
   try {
-    const { source, bucket } = runJobsQuerySchema.parse(req.query);
+    const { source, bucket, profileId } = runJobsQuerySchema.parse(req.query);
     const response: RunJobsResponse = {
       source,
       bucket,
-      jobs: getRunJobs(source, bucket),
+      jobs: getRunJobs(source, bucket, profileId ?? ""),
     };
     ok(res, response);
   } catch (error) {

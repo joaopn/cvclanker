@@ -6,12 +6,17 @@ import {
 } from "@shared/extractors";
 import type {
   PipelineProfileRun,
+  PipelineProfileRunStats,
   PipelineProgressEvent,
   PipelineProgressStep,
   PipelineSourceStats,
   PipelineSourceStatus,
 } from "@shared/types";
-import { resetRunJobCaptureForSource } from "./run-job-capture";
+import {
+  resetAllRunJobCaptures,
+  resetRunJobCaptureForSource,
+  setRunCaptureScope,
+} from "./run-job-capture";
 
 /**
  * Pipeline progress tracking with Server-Sent Events.
@@ -225,19 +230,57 @@ function aggregateCrawlingStats() {
  */
 let activeProfileRun: PipelineProfileRun | null = null;
 
+/**
+ * One retained page of funnel rows per profile a chain has reached, keyed by
+ * 1-based profile index. `sourceStatsByPlatform` is wiped by every profile's
+ * own `runPipeline`, so without this the banner would finish a chain knowing
+ * only the last profile's counts and failed sources.
+ */
+const profileRunStats = new Map<number, PipelineProfileRunStats>();
+
+function buildProfileRunStats(): PipelineProfileRunStats[] {
+  return [...profileRunStats.values()].sort(
+    (left, right) => left.profile.index - right.profile.index,
+  );
+}
+
+/** Drop every retained page. Called when a new chain starts. */
+export function resetProfileRunStats(): void {
+  profileRunStats.clear();
+  resetAllRunJobCaptures();
+}
+
 export function setActiveProfileRun(value: PipelineProfileRun | null): void {
   activeProfileRun = value;
+  // Captured jobs follow the page they belong to, so a click on page 1's count
+  // reads page 1's jobs rather than whichever profile ran last.
+  setRunCaptureScope(value?.id ?? "");
+  if (value) {
+    // Seed the page empty rather than letting the first stamp inherit whatever
+    // is still in the live map: the outgoing profile's rows are not cleared
+    // until this profile's `runPipeline` calls `resetProgress`, and a profile
+    // the singleton guard rejects never gets that far.
+    profileRunStats.set(value.index, { profile: value, sourceStats: [] });
+  }
 }
 
 /**
  * Update the current progress and notify all listeners.
  */
 export function updateProgress(update: Partial<PipelineProgress>): void {
+  const sourceStats = buildSourceStats();
+  if (activeProfileRun) {
+    profileRunStats.set(activeProfileRun.index, {
+      profile: activeProfileRun,
+      sourceStats,
+    });
+  }
   currentProgress = {
     ...currentProgress,
     ...update,
-    sourceStats: buildSourceStats(),
+    sourceStats,
     profileRun: activeProfileRun,
+    profileRuns: buildProfileRunStats(),
   };
 
   // Notify all listeners
@@ -288,6 +331,15 @@ export function resetProgress(options?: {
     sourceStatsByPlatform.clear();
     sourceRowFallbackCounter = 0;
   }
+  // A run outside a chain owns the whole banner, so it drops any pages an
+  // earlier chain left behind. Inside a chain this must NOT fire: each profile
+  // resets its own live rows while the pages accumulate. Captured jobs go with
+  // the pages, except on a per-source re-run, whose whole point is that the
+  // sources it does not touch keep their rows AND their captures.
+  if (activeProfileRun === null && profileRunStats.size > 0) {
+    profileRunStats.clear();
+    if (!options?.preserveSourceStats) resetAllRunJobCaptures();
+  }
   currentProgress = {
     step: "idle",
     message: "Ready",
@@ -305,6 +357,7 @@ export function resetProgress(options?: {
     // what a mid-sequence re-subscribe would otherwise see — an untagged "idle"
     // that reads as "no run in progress" between two profiles.
     profileRun: activeProfileRun,
+    profileRuns: buildProfileRunStats(),
   };
 }
 

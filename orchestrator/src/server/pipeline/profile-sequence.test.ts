@@ -15,6 +15,8 @@ import { resetRateLimitBudget } from "../services/llm/rate-limit-budget";
 import { runProfileSequence } from "./profile-sequence";
 import {
   getProgress,
+  progressHelpers,
+  resetProfileRunStats,
   resetProgress,
   setActiveProfileRun,
   subscribeToProgress,
@@ -65,6 +67,7 @@ beforeEach(() => {
 afterEach(() => {
   endProfileSequence();
   setActiveProfileRun(null);
+  resetProfileRunStats();
   resetProgress();
 });
 
@@ -125,6 +128,41 @@ describe("runProfileSequence", () => {
     expect(terminal?.step).toBe("completed");
     expect(terminal?.profileRun ?? null).toBeNull();
     expect(terminal?.detail).toBe("2 of 2 profiles completed");
+  });
+
+  it("ends the chain carrying one funnel page per profile", async () => {
+    // Without the pages, the last profile's run would be the only one whose
+    // sources, counts and errors survived to the end of the chain.
+    orchestratorMock.runPipeline.mockImplementation(
+      async (config: { searchTerms: string[] }) => {
+        const source = config.searchTerms[0] === "a" ? "hiringcafe" : "jobspy";
+        resetProgress();
+        progressHelpers.startCrawling(1);
+        progressHelpers.startSource(source, 0, 1, { platforms: [source] });
+        progressHelpers.complete(0, 0);
+        return ok;
+      },
+    );
+
+    await runProfileSequence([entry("a"), entry("b")]);
+
+    const pages = getProgress().profileRuns ?? [];
+    expect(pages.map((page) => page.profile.id)).toEqual(["a", "b"]);
+    expect(pages[0]?.sourceStats.map((row) => row.id)).toEqual(["hiringcafe"]);
+    expect(pages[1]?.sourceStats.map((row) => row.id)).toEqual(["jobspy"]);
+  });
+
+  it("starts a chain with no pages left over from the previous one", async () => {
+    await runProfileSequence([entry("a"), entry("b")]);
+    expect(getProgress().profileRuns).toHaveLength(2);
+
+    endProfileSequence();
+    tryBeginProfileSequence();
+    await runProfileSequence([entry("c")]);
+
+    expect((getProgress().profileRuns ?? []).map((p) => p.profile.id)).toEqual([
+      "c",
+    ]);
   });
 
   it("releases the sequence claim BEFORE emitting the aggregate", async () => {

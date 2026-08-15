@@ -2,7 +2,11 @@ import { logger } from "@infra/logger";
 import type { PipelineConfig } from "@shared/types";
 import { isRateLimitStopped } from "../services/llm/rate-limit-budget";
 import { requestPipelineCancel, runPipeline } from "./orchestrator";
-import { progressHelpers, setActiveProfileRun } from "./progress";
+import {
+  progressHelpers,
+  resetProfileRunStats,
+  setActiveProfileRun,
+} from "./progress";
 import {
   endProfileSequence,
   isProfileSequenceCancelRequested,
@@ -37,6 +41,11 @@ export async function runProfileSequence(
   let stopped = 0;
   let cancelled = false;
   let rateLimited = false;
+
+  // Start the banner's pages empty. `resetProgress` can't do it: by the time
+  // the first profile's run reaches it the chain has already claimed the
+  // active-profile slot, which is exactly the signal that says "keep pages".
+  resetProfileRunStats();
 
   try {
     for (const [index, entry] of entries.entries()) {
