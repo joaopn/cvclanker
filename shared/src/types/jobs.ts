@@ -211,6 +211,7 @@ export interface Job {
   status: JobStatus;
   outcome: JobOutcome | null;
   closedAt: number | null;
+  profileId: string | null; // Search Profile whose run first discovered the row; null on manual imports and on everything discovered before attribution shipped
   suitabilityCategory: SuitabilityCategory | null; // AI-generated categorical fit
   suitabilityReason: string | null; // AI explanation
   suitabilityModel: string | null; // Model that produced the stored category; null on rows scored before it was recorded
@@ -283,6 +284,7 @@ export type JobListItem = Pick<
   | "status"
   | "outcome"
   | "closedAt"
+  | "profileId"
   | "suitabilityCategory"
   | "tailoringFailureReason"
   | "appliedDuplicateMatch"
@@ -318,6 +320,13 @@ export interface DuplicateJobGroupsResponse {
 
 export interface CreateJobInput {
   source: JobSource;
+  /**
+   * Search Profile that discovered this row. Stamped by the import step from
+   * the running profile; absent on manual imports. Written on INSERT only —
+   * a URL collision leaves the existing row's attribution alone, so a job
+   * keeps the profile that found it first.
+   */
+  profileId?: string | null;
   title: string;
   employer: string;
   employerUrl?: string;

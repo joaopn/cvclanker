@@ -313,6 +313,13 @@ const migrations: string[] = [
   `ALTER TABLE jobs ADD COLUMN suitability_model TEXT`,
   `ALTER TABLE jobs ADD COLUMN suitability_effort TEXT`,
 
+  // Which Search Profile's run discovered the row (null for manual imports and
+  // for everything that predates attribution). Same defensive-ALTER-before-
+  // rebuild pattern as the columns above — the rebuild's INSERT SELECT
+  // references it, so legacy DBs need the column first. Idempotent via the
+  // duplicate-column-name skip.
+  `ALTER TABLE jobs ADD COLUMN profile_id TEXT`,
+
   // Canonical jobs-table rebuild. Originally added in 5d to drop unused
   // columns (tailored_summary/headline/skills, tracer_links_enabled,
   // sponsor_match_*); 5g extended it with the new status + outcome enums and
@@ -367,6 +374,7 @@ const migrations: string[] = [
     status TEXT NOT NULL DEFAULT 'discovered' CHECK(status IN ('discovered', 'selected', 'processing', 'ready', 'applied', 'in_progress', 'backlog', 'stale', 'skipped', 'closed')),
     outcome TEXT CHECK(outcome IS NULL OR outcome IN ('rejected', 'withdrawn', 'ghosted', 'duplicated', 'other')),
     closed_at INTEGER,
+    profile_id TEXT,
     suitability_category TEXT CHECK(suitability_category IS NULL OR suitability_category IN ('great_fit', 'very_good_fit', 'good_fit', 'bad_fit')),
     suitability_reason TEXT,
     suitability_model TEXT,
@@ -401,7 +409,7 @@ const migrations: string[] = [
     work_from_home_type, title, employer, employer_url, job_url,
     application_link, disciplines, deadline, salary, location,
     location_evidence, degree_required, starting, job_description, status,
-    outcome, closed_at, suitability_category, suitability_reason,
+    outcome, closed_at, profile_id, suitability_category, suitability_reason,
     suitability_model, suitability_effort, tailored_fields,
     cv_field_locks,
     tailoring_matched, tailoring_skipped, cv_document_id,
@@ -429,7 +437,7 @@ const migrations: string[] = [
       WHEN outcome IN ('offer_accepted', 'offer_declined') THEN 'other'
       ELSE outcome
     END AS outcome,
-    closed_at, suitability_category, suitability_reason,
+    closed_at, profile_id, suitability_category, suitability_reason,
     suitability_model, suitability_effort,
     tailored_fields,
     COALESCE(cv_field_locks, '[]') AS cv_field_locks,

@@ -214,6 +214,7 @@ export async function runPipeline(
       ensureNotCancelled();
       const { created, reposted, rejected } = await importJobsStep({
         discoveredJobs,
+        profileId: mergedConfig.profileId,
       });
       jobsDiscovered = created;
 

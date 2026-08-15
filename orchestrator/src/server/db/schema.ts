@@ -132,6 +132,12 @@ export const jobs = sqliteTable("jobs", {
     .default("discovered"),
   outcome: text("outcome", { enum: APPLICATION_OUTCOMES }),
   closedAt: integer("closed_at", { mode: "number" }),
+  // Search Profile whose run first discovered this row. Written on INSERT
+  // only, so a URL collision keeps the original attribution. No REFERENCES
+  // clause — the runtime connection never enables PRAGMA foreign_keys, and a
+  // deleted profile deliberately leaves its jobs attributed to an id the
+  // client can no longer name (they simply match no profile chip).
+  profileId: text("profile_id"),
   // 5g repost tracking. `repostedAt` set whenever an import collision
   // observes a forward `datePosted` shift; `repostCount` is incremented
   // alongside. Backlog rows re-promote to `discovered` on the same shift.

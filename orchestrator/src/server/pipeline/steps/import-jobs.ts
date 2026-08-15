@@ -6,6 +6,10 @@ import { captureRunJobs, toCapturedRunJob } from "../run-job-capture";
 
 export async function importJobsStep(args: {
   discoveredJobs: CreateJobInput[];
+  // Search Profile driving this run, stamped onto every row this import
+  // creates. Undefined for runs with no profile (API callers passing raw
+  // config), which leaves those rows unattributed.
+  profileId?: string;
 }): Promise<{
   created: number;
   skipped: number;
@@ -16,11 +20,16 @@ export async function importJobsStep(args: {
 
   const groups = new Map<string, CreateJobInput[]>();
   for (const job of args.discoveredJobs) {
+    // Attribution rides the insert, so a URL collision keeps whichever
+    // profile discovered the row first.
+    const attributed: CreateJobInput = args.profileId
+      ? { ...job, profileId: args.profileId }
+      : job;
     const bucket = groups.get(job.source);
     if (bucket) {
-      bucket.push(job);
+      bucket.push(attributed);
     } else {
-      groups.set(job.source, [job]);
+      groups.set(job.source, [attributed]);
     }
   }
 
