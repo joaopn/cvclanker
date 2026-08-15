@@ -62,6 +62,8 @@ const SHARED_BADGE_HUES = [
   "--badge-cyan",
   "--badge-purple",
   "--badge-neutral",
+  "--badge-teal",
+  "--badge-pink",
 ] as const;
 
 const css = readFileSync(resolve(process.cwd(), "src/index.css"), "utf8");

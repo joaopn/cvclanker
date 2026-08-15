@@ -19,9 +19,6 @@ import {
   appliedDuplicateIndicator,
   defaultStatusToken,
   emptyStateCopy,
-  FIT_FILTER_CHIP_CLASS,
-  FIT_FILTER_LABELS,
-  FIT_FILTER_VALUES,
   statusTokens,
   UNTAILORED_CHIP_TABS,
 } from "./constants";
@@ -42,17 +39,19 @@ interface JobListPanelProps {
   onSelectJob: (jobId: string) => void;
   onToggleSelectJob: (jobId: string, options?: { range?: boolean }) => void;
   onToggleSelectAll: (checked: boolean) => void;
+  // Kept for the empty state only — the chips themselves live on `filterBar`.
   fitFilter?: FitFilterValue[];
   onFitFilterChange?: (value: FitFilterValue[]) => void;
   untailoredOnly?: boolean;
   onUntailoredOnlyChange?: (value: boolean) => void;
-  // Ephemeral facet-filter bar, rendered under the select-all row on the tabs
-  // that support it. A plain ReactNode so this panel stays decoupled from the
-  // facet internals (same pattern as closedFilterChips / staleControlBar).
-  facetBar?: ReactNode;
-  // True when a facet with a non-blank value is narrowing the list — drives the
-  // "no jobs match your filters" empty-state copy.
-  facetsActive?: boolean;
+  // The filter bar (family tickboxes, "+ Filter", and one badge row per
+  // enabled family), rendered under the select-all row on the tabs that
+  // support it. A plain ReactNode so this panel stays decoupled from the
+  // filter internals (same pattern as closedFilterChips / staleControlBar).
+  filterBar?: ReactNode;
+  // True when a facet, profile or job-title selection is narrowing the list —
+  // drives the "no jobs match your filters" empty-state copy.
+  filtersActive?: boolean;
   primaryEmptyStateAction?: EmptyStateAction;
   secondaryEmptyStateAction?: EmptyStateAction;
   emptyStateMessage?: string;
@@ -62,18 +61,6 @@ interface JobListPanelProps {
 }
 
 const ROW_ESTIMATE = 84;
-
-// Tabs that surface the fit-tag filter chips. The filter itself is applied
-// globally in useFilteredJobs; these are the tabs where the chips are visible
-// and clearable.
-const FIT_CHIP_TABS: FilterTab[] = [
-  "inbox",
-  "tailoring",
-  "live",
-  "interviewing",
-  "backlog",
-  "stale",
-];
 
 export const JobListPanel = forwardRef<VirtualListHandle, JobListPanelProps>(
   (
@@ -91,8 +78,8 @@ export const JobListPanel = forwardRef<VirtualListHandle, JobListPanelProps>(
       onFitFilterChange,
       untailoredOnly,
       onUntailoredOnlyChange,
-      facetBar,
-      facetsActive,
+      filterBar,
+      filtersActive,
       primaryEmptyStateAction,
       secondaryEmptyStateAction,
       emptyStateMessage,
@@ -145,8 +132,6 @@ export const JobListPanel = forwardRef<VirtualListHandle, JobListPanelProps>(
     const allSelected =
       activeJobs.length > 0 &&
       activeJobs.every((job) => selectedJobIds.has(job.id));
-    const showFitChips =
-      FIT_CHIP_TABS.includes(activeTab) && !!fitFilter && !!onFitFilterChange;
     const showUntailoredChip =
       UNTAILORED_CHIP_TABS.includes(activeTab) && !!onUntailoredOnlyChange;
 
@@ -159,56 +144,23 @@ export const JobListPanel = forwardRef<VirtualListHandle, JobListPanelProps>(
           disabled={activeJobs.length === 0}
           aria-label="Select all filtered jobs"
         />
-        {showFitChips || showUntailoredChip ? (
+        {showUntailoredChip && onUntailoredOnlyChange ? (
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-            {showFitChips && fitFilter && onFitFilterChange
-              ? FIT_FILTER_VALUES.map((value) => {
-                  const active = fitFilter.includes(value);
-                  const classes = FIT_FILTER_CHIP_CLASS[value];
-                  return (
-                    <Button
-                      key={value}
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className={cn(
-                        "h-7 px-2 text-xs font-medium",
-                        active ? classes.active : classes.inactive,
-                      )}
-                      aria-pressed={active}
-                      onClick={() =>
-                        onFitFilterChange(
-                          active
-                            ? fitFilter.filter((entry) => entry !== value)
-                            : FIT_FILTER_VALUES.filter(
-                                (entry) =>
-                                  fitFilter.includes(entry) || entry === value,
-                              ),
-                        )
-                      }
-                    >
-                      {FIT_FILTER_LABELS[value]}
-                    </Button>
-                  );
-                })
-              : null}
-            {showUntailoredChip && onUntailoredOnlyChange ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className={cn(
-                  "h-7 px-2 text-xs font-medium",
-                  untailoredOnly
-                    ? "bg-status-warn/20 text-status-warn-text border border-status-warn/40 hover:bg-status-warn/25"
-                    : "text-status-warn-text/80 hover:bg-status-warn/10 hover:text-status-warn-text border border-transparent",
-                )}
-                aria-pressed={!!untailoredOnly}
-                onClick={() => onUntailoredOnlyChange(!untailoredOnly)}
-              >
-                Untailored
-              </Button>
-            ) : null}
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className={cn(
+                "h-7 px-2 text-xs font-medium",
+                untailoredOnly
+                  ? "bg-status-warn/20 text-status-warn-text border border-status-warn/40 hover:bg-status-warn/25"
+                  : "text-status-warn-text/80 hover:bg-status-warn/10 hover:text-status-warn-text border border-transparent",
+              )}
+              aria-pressed={!!untailoredOnly}
+              onClick={() => onUntailoredOnlyChange(!untailoredOnly)}
+            >
+              Untailored
+            </Button>
           </div>
         ) : (
           <div className="flex-1" />
@@ -219,14 +171,19 @@ export const JobListPanel = forwardRef<VirtualListHandle, JobListPanelProps>(
       </div>
     );
 
-    const facetBarRow = facetBar ? (
+    const filterBarRow = filterBar ? (
       <div className="shrink-0 border-b border-border/40 px-4 py-2">
-        {facetBar}
+        {filterBar}
       </div>
     ) : null;
 
     if (activeJobs.length === 0) {
-      const fitFilterActive = !!fitFilter && fitFilter.length > 0;
+      // Only claim the fit filter is to blame when it is the ONLY thing
+      // narrowing — with Fit ticked by default, a fit chip plus a profile or
+      // title badge is the common case, and offering "Clear fit filter" there
+      // sends the user to a button that still leaves the list empty.
+      const fitFilterActive =
+        !!fitFilter && fitFilter.length > 0 && !filtersActive;
       return (
         <div className="flex min-w-0 flex-col rounded-xl border border-border bg-card shadow-sm">
           {closedFilterChips ? (
@@ -238,13 +195,13 @@ export const JobListPanel = forwardRef<VirtualListHandle, JobListPanelProps>(
             <div className="shrink-0">{staleControlBar}</div>
           ) : null}
           {listHeader}
-          {facetBarRow}
+          {filterBarRow}
           <div className="flex flex-col items-center justify-center gap-4 px-6 py-12 text-center">
             <div className="text-base font-semibold">No jobs found</div>
             <p className="max-w-md text-sm text-muted-foreground">
               {fitFilterActive
                 ? "No jobs match the active fit filter. Click a highlighted chip above to clear it."
-                : facetsActive
+                : filtersActive
                   ? "No jobs match your filters. Adjust or clear the filters above."
                   : (emptyStateMessage ?? emptyStateCopy[activeTab])}
             </p>
@@ -256,7 +213,7 @@ export const JobListPanel = forwardRef<VirtualListHandle, JobListPanelProps>(
               >
                 Clear fit filter
               </Button>
-            ) : facetsActive ? null : (
+            ) : filtersActive ? null : (
               (primaryEmptyStateAction || secondaryEmptyStateAction) && (
                 <div className="flex flex-col items-center justify-center gap-2 sm:flex-row">
                   {primaryEmptyStateAction && (
@@ -295,7 +252,7 @@ export const JobListPanel = forwardRef<VirtualListHandle, JobListPanelProps>(
         ) : null}
         <div className="flex min-h-0 flex-1 flex-col">
           {listHeader}
-          {facetBarRow}
+          {filterBarRow}
           <div
             ref={(el) => {
               scrollRef.current = el;

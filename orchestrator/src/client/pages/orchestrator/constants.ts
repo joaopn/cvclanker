@@ -63,6 +63,62 @@ export const FIT_FILTER_CHIP_CLASS: Record<
   },
 };
 
+/**
+ * The badge-filter families the Manage view can show. Each is switched on by
+ * its own tickbox on the filter bar's control row (the row that also carries
+ * the "+ Filter" button); the enabled families render one badge row each, in
+ * this order. Only `fit` is on by default, which reproduces the behaviour
+ * that predates the tickboxes.
+ */
+export const JOB_FILTER_CHIP_TYPES = ["fit", "profile", "title"] as const;
+export type JobFilterChipType = (typeof JOB_FILTER_CHIP_TYPES)[number];
+
+export const JOB_FILTER_CHIP_LABELS: Record<JobFilterChipType, string> = {
+  fit: "Fit",
+  profile: "Profile",
+  title: "Job title",
+};
+
+export const DEFAULT_JOB_FILTER_CHIP_TYPES: readonly JobFilterChipType[] = [
+  "fit",
+];
+
+/**
+ * Sentinel profile-badge value matching rows with no attribution: manual
+ * imports, and everything discovered before the profile column existed. Same
+ * shape as `unscored` in the fit family — without it, an install's entire
+ * pre-existing backlog is unreachable from this filter, since a NULL
+ * `profileId` matches no real profile.
+ */
+export const UNATTRIBUTED_PROFILE_ID = "__unattributed__";
+export const UNATTRIBUTED_PROFILE_LABEL = "Unattributed";
+
+/**
+ * Profile and job-title badges each carry ONE hardcoded colour for the whole
+ * family — unlike the fit chips, whose colour encodes the category. Same
+ * opaque color-mix construction as `statusTokens` / `FIT_FILTER_CHIP_CLASS`:
+ * a fixed hue flattened over the per-theme `--badge-base`, never a translucent
+ * tint and never a semantic token.
+ *
+ * Both hues are ones no status or fit chip already owns, so a badge in this
+ * bar can't be misread as a status: teal is free (cyan belongs to
+ * `in_progress`), and pink is new. Pick from the unclaimed hues if a third
+ * family is ever added.
+ */
+export const PROFILE_FILTER_CHIP_CLASS = {
+  active:
+    "bg-[color-mix(in_oklab,var(--badge-base)_80%,var(--badge-teal))] text-teal-200 border border-[color:color-mix(in_oklab,var(--badge-base)_60%,var(--badge-teal))] hover:bg-[color-mix(in_oklab,var(--badge-base)_75%,var(--badge-teal))]",
+  inactive:
+    "text-[#2dd4bf] hover:bg-[color-mix(in_oklab,var(--badge-base)_90%,var(--badge-teal))] hover:text-teal-200 border border-transparent",
+};
+
+export const TITLE_FILTER_CHIP_CLASS = {
+  active:
+    "bg-[color-mix(in_oklab,var(--badge-base)_80%,var(--badge-pink))] text-pink-200 border border-[color:color-mix(in_oklab,var(--badge-base)_60%,var(--badge-pink))] hover:bg-[color-mix(in_oklab,var(--badge-base)_75%,var(--badge-pink))]",
+  inactive:
+    "text-[#f472b6] hover:bg-[color-mix(in_oklab,var(--badge-base)_90%,var(--badge-pink))] hover:text-pink-200 border border-transparent",
+};
+
 export const orderedSources: ExtractorSourceId[] = [
   ...PIPELINE_EXTRACTOR_SOURCE_IDS,
 ].sort(
@@ -292,6 +348,78 @@ export const tabs: Array<{
 // these tabs, so it can never sit hidden-and-active on a tab whose header
 // doesn't render the bar (the B2 trap).
 export const FACET_TABS: FilterTab[] = ["inbox", "backlog", "stale", "all"];
+
+// Tabs that surface the fit-tag filter chips. The fit predicate itself is
+// still applied GLOBALLY in useFilteredJobs — unlike the profile and job-title
+// families, it is not co-gated — so these are only the tabs where the chips
+// are visible and clearable. (Moved here from JobListPanel when the chips
+// became one family among several on the shared filter bar.)
+//
+// `all` joined the list with the filter bar: the bar advertises itself as the
+// place your filters live, so a tab that renders it while fit narrows the list
+// from nowhere reads as a bug. `closed` renders no bar at all and is therefore
+// the one tab left where an active `?fit=` narrows invisibly; its empty state
+// still offers the "Clear fit filter" escape hatch.
+export const FIT_CHIP_TABS: FilterTab[] = [
+  "inbox",
+  "tailoring",
+  "live",
+  "interviewing",
+  "backlog",
+  "stale",
+  "all",
+];
+
+// Tabs that render the filter bar at all — the union of the tabs that carry
+// fit chips and the tabs that carry the facet "+ Filter" button. Only Closed
+// is excluded, matching the pre-existing visibility of both controls. The
+// profile and job-title families are offered on every tab in this set, and
+// useFilteredJobs is handed empty selections elsewhere, so neither can sit
+// hidden-and-active on a tab whose header doesn't render its row.
+export const FILTER_BAR_TABS: FilterTab[] = [
+  "inbox",
+  "tailoring",
+  "live",
+  "interviewing",
+  "backlog",
+  "stale",
+  "all",
+];
+
+/**
+ * The badge families `tab` offers. Fit keeps its historical visibility; the
+ * profile and job-title families are offered wherever the bar renders.
+ */
+export function filterChipTypesForTab(tab: FilterTab): JobFilterChipType[] {
+  if (!FILTER_BAR_TABS.includes(tab)) return [];
+  return JOB_FILTER_CHIP_TYPES.filter(
+    (type) => type !== "fit" || FIT_CHIP_TABS.includes(tab),
+  );
+}
+
+/**
+ * Whether `type`'s badge row is on screen. This is the ONE expression that
+ * decides it, and the PROFILE and TITLE families must narrow the list by
+ * exactly the families it returns true for — the render gate and the
+ * narrowing gate being the same call is what stops either from filtering a tab
+ * that can neither show nor clear its badges.
+ *
+ * FIT is the exception, and deliberately so: its predicate stays global (an
+ * `?fit=` link narrows wherever you land), so this governs its ROW only.
+ * `FIT_CHIP_TABS` now covers every tab that renders the bar, which leaves
+ * `closed` as the only place the two can disagree.
+ *
+ * Caveat this does not cover: on desktop the whole list panel — bar included —
+ * can be collapsed, which hides every family's badges while they keep
+ * narrowing. That predates this bar and applies equally to the facet chips.
+ */
+export function isFilterFamilyActive(
+  availableTypes: JobFilterChipType[],
+  enabledTypes: readonly JobFilterChipType[],
+  type: JobFilterChipType,
+): boolean {
+  return availableTypes.includes(type) && enabledTypes.includes(type);
+}
 
 // The "Untailored" toggle lives on the Tailoring tab ONLY: it narrows the
 // workspace to the not-yet-tailored rows (`processing`, which includes failed

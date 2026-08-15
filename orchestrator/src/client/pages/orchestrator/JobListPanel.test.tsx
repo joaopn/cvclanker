@@ -159,7 +159,7 @@ describe("JobListPanel", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the facet bar and a facet-active empty state", () => {
+  it("renders the filter bar and a filters-active empty state", () => {
     render(
       <JobListPanel
         isLoading={false}
@@ -171,12 +171,12 @@ describe("JobListPanel", () => {
         onSelectJob={vi.fn()}
         onToggleSelectJob={vi.fn()}
         onToggleSelectAll={vi.fn()}
-        facetBar={<div>FACET_BAR_SLOT</div>}
-        facetsActive
+        filterBar={<div>FILTER_BAR_SLOT</div>}
+        filtersActive
       />,
     );
 
-    expect(screen.getByText("FACET_BAR_SLOT")).toBeInTheDocument();
+    expect(screen.getByText("FILTER_BAR_SLOT")).toBeInTheDocument();
     expect(
       screen.getByText(
         "No jobs match your filters. Adjust or clear the filters above.",
@@ -184,8 +184,62 @@ describe("JobListPanel", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the fit-filter chips on the stale tab and reports a toggle", () => {
+  it("stops blaming the fit filter when another family is also narrowing", () => {
+    // Fit is ticked by default, so fit + a profile badge is the common case.
+    // Offering "Clear fit filter" there sends the user to a button that leaves
+    // the list just as empty.
+    render(
+      <JobListPanel
+        isLoading={false}
+        jobs={[]}
+        activeJobs={[]}
+        selectedJobId={null}
+        selectedJobIds={new Set()}
+        activeTab="inbox"
+        onSelectJob={vi.fn()}
+        onToggleSelectJob={vi.fn()}
+        onToggleSelectAll={vi.fn()}
+        fitFilter={["good_fit"]}
+        onFitFilterChange={vi.fn()}
+        filterBar={<div>FILTER_BAR_SLOT</div>}
+        filtersActive
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "No jobs match your filters. Adjust or clear the filters above.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Clear fit filter" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("still offers the fit escape hatch when fit is the only filter", () => {
     const onFitFilterChange = vi.fn();
+    render(
+      <JobListPanel
+        isLoading={false}
+        jobs={[]}
+        activeJobs={[]}
+        selectedJobId={null}
+        selectedJobIds={new Set()}
+        activeTab="inbox"
+        onSelectJob={vi.fn()}
+        onToggleSelectJob={vi.fn()}
+        onToggleSelectAll={vi.fn()}
+        fitFilter={["good_fit"]}
+        onFitFilterChange={onFitFilterChange}
+        filterBar={<div>FILTER_BAR_SLOT</div>}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear fit filter" }));
+    expect(onFitFilterChange).toHaveBeenCalledWith([]);
+  });
+
+  it("renders the filter bar alongside the stale controls with rows present", () => {
     const jobs = createJobs(2);
 
     render(
@@ -199,53 +253,46 @@ describe("JobListPanel", () => {
         onSelectJob={vi.fn()}
         onToggleSelectJob={vi.fn()}
         onToggleSelectAll={vi.fn()}
-        fitFilter={[]}
-        onFitFilterChange={onFitFilterChange}
-        // Stale always ships these two alongside the chips in production, so
-        // render them here rather than testing the chips in isolation.
+        // Stale always ships both bars in production, so render them together
+        // rather than testing either in isolation.
         staleControlBar={<div>STALE_CONTROL_BAR_SLOT</div>}
-        facetBar={<div>FACET_BAR_SLOT</div>}
+        filterBar={<div>FILTER_BAR_SLOT</div>}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Great fit" }));
-
-    expect(onFitFilterChange).toHaveBeenCalledWith(["great_fit"]);
-    expect(
-      screen.getByRole("button", { name: "Unscored" }),
-    ).toBeInTheDocument();
     expect(screen.getByText("STALE_CONTROL_BAR_SLOT")).toBeInTheDocument();
-    expect(screen.getByText("FACET_BAR_SLOT")).toBeInTheDocument();
+    expect(screen.getByText("FILTER_BAR_SLOT")).toBeInTheDocument();
   });
 
-  it.each([
-    "closed",
-    "all",
-  ] as const)("hides the fit-filter chips on the %s tab", (activeTab) => {
+  it("keeps the Untailored toggle in the header on the tailoring tab only", () => {
+    const onUntailoredOnlyChange = vi.fn();
     const jobs = createJobs(2);
+    const props = {
+      isLoading: false,
+      jobs,
+      activeJobs: jobs,
+      selectedJobId: null,
+      selectedJobIds: new Set<string>(),
+      onSelectJob: vi.fn(),
+      onToggleSelectJob: vi.fn(),
+      onToggleSelectAll: vi.fn(),
+      untailoredOnly: false,
+      onUntailoredOnlyChange,
+    };
 
-    render(
-      <JobListPanel
-        isLoading={false}
-        jobs={jobs}
-        activeJobs={jobs}
-        selectedJobId={null}
-        selectedJobIds={new Set()}
-        activeTab={activeTab}
-        onSelectJob={vi.fn()}
-        onToggleSelectJob={vi.fn()}
-        onToggleSelectAll={vi.fn()}
-        fitFilter={[]}
-        onFitFilterChange={vi.fn()}
-      />,
+    const { unmount } = render(
+      <JobListPanel {...props} activeTab="tailoring" />,
     );
+    fireEvent.click(screen.getByRole("button", { name: "Untailored" }));
+    expect(onUntailoredOnlyChange).toHaveBeenCalledWith(true);
+    unmount();
 
-    // Positive control: the header rendered, the chips specifically did not.
+    render(<JobListPanel {...props} activeTab="inbox" />);
     expect(
       screen.getByLabelText("Select all filtered jobs"),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Great fit" }),
+      screen.queryByRole("button", { name: "Untailored" }),
     ).not.toBeInTheDocument();
   });
 

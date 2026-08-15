@@ -159,6 +159,8 @@
   --badge-cyan: oklch(71.5% 0.143 215.221); /* cyan-500 */
   --badge-purple: oklch(60.6% 0.25 292.717); /* violet-500 */
   --badge-neutral: oklch(55.3% 0.013 58.071); /* stone-500 */
+  --badge-teal: oklch(70.4% 0.14 182.503); /* teal-500 */
+  --badge-pink: oklch(65.6% 0.241 354.308); /* pink-500 */
   /* The -text companions are defined ONCE here and re-resolve per palette
      because every [data-theme] block overrides the base vars on the same
      <html> element — this topology breaks if a palette ever moves to a

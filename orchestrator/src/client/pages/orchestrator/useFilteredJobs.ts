@@ -9,6 +9,7 @@ import type {
   JobSort,
   SalaryFilter,
 } from "./constants";
+import { UNATTRIBUTED_PROFILE_ID } from "./constants";
 import { type ActiveFacet, buildFacetPredicates } from "./facets/registry";
 import {
   compareJobs,
@@ -38,6 +39,16 @@ export const useFilteredJobs = (
   fitFilter: FitFilterValue[],
   untailoredOnly: boolean,
   activeFacets: ActiveFacet[] = [],
+  // Search Profile ids and job-title terms picked from the badge rows. Both
+  // OR within themselves and AND with every other filter. Empty = no
+  // narrowing; the caller passes empty arrays on tabs that don't render the
+  // rows, so neither can sit hidden-and-active.
+  profileFilter: string[] = [],
+  titleFilter: string[] = [],
+  // Ids of the Search Profiles that still exist. A row attributed to a deleted
+  // profile matches no badge, so it counts as unattributed — otherwise those
+  // rows are reachable from no profile selection at all.
+  knownProfileIds: string[] = [],
 ) =>
   useMemo(() => {
     let filtered = [...jobs];
@@ -106,6 +117,37 @@ export const useFilteredJobs = (
         if (job.suitabilityCategory == null) return set.has("unscored");
         return set.has(job.suitabilityCategory);
       });
+    }
+
+    // Search Profile badges. A row with no attribution (manual import, or
+    // discovered before attribution shipped) matches only the explicit
+    // "Unattributed" sentinel — the same shape as `unscored` in the fit
+    // family, so those rows stay reachable.
+    if (profileFilter.length > 0) {
+      const set = new Set(profileFilter);
+      const known = new Set(knownProfileIds);
+      filtered = filtered.filter((job) => {
+        // Unattributed covers both "never had a profile" and "had one that has
+        // since been deleted" — in both cases no profile badge names the row.
+        if (job.profileId == null || !known.has(job.profileId)) {
+          return set.has(UNATTRIBUTED_PROFILE_ID);
+        }
+        return set.has(job.profileId);
+      });
+    }
+
+    // Job-title badges: case-insensitive substring match of the profile search
+    // terms against the job's title.
+    if (titleFilter.length > 0) {
+      const terms = titleFilter
+        .map((term) => term.trim().toLowerCase())
+        .filter(Boolean);
+      if (terms.length > 0) {
+        filtered = filtered.filter((job) => {
+          const title = job.title.toLowerCase();
+          return terms.some((term) => title.includes(term));
+        });
+      }
     }
 
     // Ephemeral facet filters (Company / Title / Location / …). Each active
@@ -181,6 +223,9 @@ export const useFilteredJobs = (
     fitFilter,
     untailoredOnly,
     activeFacets,
+    profileFilter,
+    titleFilter,
+    knownProfileIds,
   ]);
 
 const matchesDateDimension = (

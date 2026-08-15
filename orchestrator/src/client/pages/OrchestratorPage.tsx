@@ -19,13 +19,22 @@ import { BatchUrlImportSheet } from "./orchestrator/BatchUrlImportSheet";
 import { ClosedFilterChips } from "./orchestrator/ClosedFilterChips";
 import { CompanyJobsDialog } from "./orchestrator/CompanyJobsDialog";
 import { CompanyPanelProvider } from "./orchestrator/CompanyPanelContext";
-import { FACET_TABS, type FilterTab, tabs } from "./orchestrator/constants";
+import {
+  FACET_TABS,
+  FILTER_BAR_TABS,
+  type FilterTab,
+  filterChipTypesForTab,
+  isFilterFamilyActive,
+  tabs,
+  UNATTRIBUTED_PROFILE_ID,
+} from "./orchestrator/constants";
 import { DuplicateReviewModal } from "./orchestrator/DuplicateReviewModal";
 import { FacetBar } from "./orchestrator/FacetBar";
 import { FloatingJobActionsBar } from "./orchestrator/FloatingJobActionsBar";
 import type { ActiveFacet } from "./orchestrator/facets/registry";
 import { JobCommandBar } from "./orchestrator/JobCommandBar";
 import { JobDetailPanel } from "./orchestrator/JobDetailPanel";
+import { JobFilterBar } from "./orchestrator/JobFilterBar";
 import { JobListPanel } from "./orchestrator/JobListPanel";
 import {
   JobListSplitter,
@@ -39,6 +48,7 @@ import { StaleControlBar } from "./orchestrator/StaleControlBar";
 import { useDuplicateGroups } from "./orchestrator/useDuplicateGroups";
 import { useFacetFilters } from "./orchestrator/useFacetFilters";
 import { useFilteredJobs } from "./orchestrator/useFilteredJobs";
+import { useJobFilterChips } from "./orchestrator/useJobFilterChips";
 import { useJobSelectionActions } from "./orchestrator/useJobSelectionActions";
 import { useKeyboardShortcuts } from "./orchestrator/useKeyboardShortcuts";
 import { useOrchestratorData } from "./orchestrator/useOrchestratorData";
@@ -59,6 +69,18 @@ import {
 // Stable empty reference for tabs that don't surface the facet bar, so the
 // useFilteredJobs memo isn't busted by a fresh [] each render.
 const EMPTY_ACTIVE_FACETS: ActiveFacet[] = [];
+// Same, for the profile / job-title badge selections on tabs without the bar.
+const EMPTY_CHIP_FILTER: string[] = [];
+
+// Keep only the picks still offered as a badge, returning the original array
+// when nothing was dropped so the useFilteredJobs memo isn't busted.
+function keepOfferedChips(selected: string[], offered: string[]): string[] {
+  if (selected.length === 0) return EMPTY_CHIP_FILTER;
+  const available = new Set(offered);
+  const kept = selected.filter((value) => available.has(value));
+  if (kept.length === selected.length) return selected;
+  return kept.length === 0 ? EMPTY_CHIP_FILTER : kept;
+}
 
 // Whether a job of `status` is part of `tab`'s visible list. Mirrors
 // useFilteredJobs — needed here so a selected row isn't nulled out / dropped on
@@ -101,6 +123,19 @@ export const OrchestratorPage: React.FC = () => {
     resetFilters,
   } = useOrchestratorFilters();
   const facetFilters = useFacetFilters();
+  // Switching the Fit family off has to clear the URL-owned fit selection, or
+  // it would keep narrowing the list with its chips hidden.
+  const clearFitFilter = useCallback(() => setFitFilter([]), [setFitFilter]);
+  const filterChips = useJobFilterChips({ clearFitFilter });
+  // Reset clears the URL-owned filters AND the ephemeral ones, so the button
+  // doesn't leave the list narrowed by badges it never mentioned.
+  const clearChipSelections = filterChips.clearSelections;
+  const clearFacets = facetFilters.clearFacets;
+  const handleResetFilters = useCallback(() => {
+    resetFilters();
+    clearChipSelections();
+    clearFacets();
+  }, [resetFilters, clearChipSelections, clearFacets]);
 
   const activeTab = useMemo(() => {
     const validTabs: FilterTab[] = [
@@ -218,6 +253,9 @@ export const OrchestratorPage: React.FC = () => {
   // Facets narrow (and their bar renders) only on FACET_TABS; a Tier-2 facet
   // active there makes the inbox fetch the full job payload.
   const facetsEnabledForTab = FACET_TABS.includes(activeTab);
+  // The filter bar (family tickboxes + badge rows) renders on a wider set than
+  // the facets — everything except Closed.
+  const filterBarEnabledForTab = FILTER_BAR_TABS.includes(activeTab);
   const needsFullView = facetsEnabledForTab && facetFilters.requiresFullView;
   const {
     jobs,
@@ -279,15 +317,94 @@ export const OrchestratorPage: React.FC = () => {
 
   const { profiles, selectedProfileIds, toggleProfile } = useSelectedProfile();
 
+  // The job-title badges are the union of every Search Profile's search terms,
+  // deduped case-insensitively (first spelling wins) and sorted so the row is
+  // stable as profiles are edited.
+  const profileSearchTitles = useMemo(() => {
+    const byKey = new Map<string, string>();
+    for (const profile of profiles) {
+      for (const term of profile.config.searchTerms) {
+        const trimmed = term.trim();
+        if (!trimmed) continue;
+        const key = trimmed.toLowerCase();
+        if (!byKey.has(key)) byKey.set(key, trimmed);
+      }
+    }
+    return [...byKey.values()].sort((left, right) =>
+      left.localeCompare(right, undefined, { sensitivity: "base" }),
+    );
+  }, [profiles]);
+
+  const availableFilterChipTypes = useMemo(
+    () => filterChipTypesForTab(activeTab),
+    [activeTab],
+  );
+
   const activeFacetsForTab = facetsEnabledForTab
     ? facetFilters.activeFacets
     : EMPTY_ACTIVE_FACETS;
+  // Narrow by exactly the families whose row is on screen — same call the bar
+  // renders from — and drop any pick whose badge is no longer offered (a
+  // profile deleted, a search term edited away). A selection with no chip left
+  // to click would otherwise narrow the list with nothing to clear it.
+  const knownProfileIds = useMemo(
+    () => profiles.map((profile) => profile.id),
+    [profiles],
+  );
+  const profileFilterForTab = useMemo(
+    () =>
+      keepOfferedChips(
+        isFilterFamilyActive(
+          availableFilterChipTypes,
+          filterChips.enabledTypes,
+          "profile",
+        )
+          ? filterChips.profileFilter
+          : EMPTY_CHIP_FILTER,
+        // Exactly what the row renders: with no profiles the bar shows a hint
+        // instead of chips, so nothing is offered and a stale pick stops
+        // narrowing rather than becoming unclickable.
+        knownProfileIds.length === 0
+          ? EMPTY_CHIP_FILTER
+          : [...knownProfileIds, UNATTRIBUTED_PROFILE_ID],
+      ),
+    [
+      availableFilterChipTypes,
+      filterChips.enabledTypes,
+      filterChips.profileFilter,
+      knownProfileIds,
+    ],
+  );
+  const titleFilterForTab = useMemo(
+    () =>
+      keepOfferedChips(
+        isFilterFamilyActive(
+          availableFilterChipTypes,
+          filterChips.enabledTypes,
+          "title",
+        )
+          ? filterChips.titleFilter
+          : EMPTY_CHIP_FILTER,
+        profileSearchTitles,
+      ),
+    [
+      availableFilterChipTypes,
+      filterChips.enabledTypes,
+      filterChips.titleFilter,
+      profileSearchTitles,
+    ],
+  );
   // Only a facet with a non-blank value actually narrows the list — that is
   // what drives the "no jobs match your filters" empty state (an empty chip
-  // filters nothing).
-  const facetsActive =
-    facetsEnabledForTab &&
-    facetFilters.activeFacets.some((facet) => facet.value.trim().length > 0);
+  // filters nothing). The profile / job-title badges narrow as soon as one is
+  // picked, so they count the moment their arrays are non-empty.
+  const filtersActive =
+    (facetsEnabledForTab &&
+      facetFilters.activeFacets.some(
+        (facet) => facet.value.trim().length > 0,
+      )) ||
+    profileFilterForTab.length > 0 ||
+    titleFilterForTab.length > 0;
 
   const activeJobs = useFilteredJobs(
     jobs,
@@ -301,6 +418,9 @@ export const OrchestratorPage: React.FC = () => {
     fitFilter,
     untailoredOnly,
     activeFacetsForTab,
+    profileFilterForTab,
+    titleFilterForTab,
+    knownProfileIds,
   );
   const setActiveTab = useCallback(
     (newTab: FilterTab) => {
@@ -635,7 +755,7 @@ export const OrchestratorPage: React.FC = () => {
                 sourcesWithJobs={sourcesWithJobs}
                 sort={sort}
                 onSortChange={setSort}
-                onResetFilters={resetFilters}
+                onResetFilters={handleResetFilters}
                 filteredCount={activeJobs.length}
               />
 
@@ -698,18 +818,35 @@ export const OrchestratorPage: React.FC = () => {
                     onFitFilterChange={setFitFilter}
                     untailoredOnly={untailoredOnly}
                     onUntailoredOnlyChange={setUntailoredOnly}
-                    facetBar={
-                      facetsEnabledForTab ? (
-                        <FacetBar
-                          activeFacets={facetFilters.activeFacets}
-                          onAddFacet={facetFilters.addFacet}
-                          onRemoveFacet={facetFilters.removeFacet}
-                          onSetFacetValue={facetFilters.setFacetValue}
-                          onClearFacets={facetFilters.clearFacets}
+                    filterBar={
+                      filterBarEnabledForTab ? (
+                        <JobFilterBar
+                          availableTypes={availableFilterChipTypes}
+                          enabledTypes={filterChips.enabledTypes}
+                          onToggleType={filterChips.toggleType}
+                          fitFilter={fitFilter}
+                          onFitFilterChange={setFitFilter}
+                          profiles={profiles}
+                          profileFilter={filterChips.profileFilter}
+                          onToggleProfile={filterChips.toggleProfileFilter}
+                          titles={profileSearchTitles}
+                          titleFilter={filterChips.titleFilter}
+                          onToggleTitle={filterChips.toggleTitleFilter}
+                          facetBar={
+                            facetsEnabledForTab ? (
+                              <FacetBar
+                                activeFacets={facetFilters.activeFacets}
+                                onAddFacet={facetFilters.addFacet}
+                                onRemoveFacet={facetFilters.removeFacet}
+                                onSetFacetValue={facetFilters.setFacetValue}
+                                onClearFacets={facetFilters.clearFacets}
+                              />
+                            ) : undefined
+                          }
                         />
                       ) : undefined
                     }
-                    facetsActive={facetsActive}
+                    filtersActive={filtersActive}
                     primaryEmptyStateAction={primaryEmptyStateAction}
                     secondaryEmptyStateAction={secondaryEmptyStateAction}
                     emptyStateMessage={emptyStateMessage}

@@ -52,7 +52,10 @@ export function useSelectedProfile(): UseSelectedProfileResult {
     },
   });
 
-  const profiles = query.data?.profiles ?? [];
+  // Memoised for the same reason as fallbackIds below: the `?? []` arm hands
+  // out a fresh array on every render while the query has no data, which busts
+  // any consumer memo that depends on the list.
+  const profiles = useMemo(() => query.data?.profiles ?? [], [query.data]);
   const fallbackId =
     query.data?.defaultProfileId ?? query.data?.profiles[0]?.id ?? null;
   // Memoised: this is the untouched-dropdown path, and a fresh array each
