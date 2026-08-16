@@ -57,6 +57,10 @@ vi.mock("@server/pipeline/index", () => {
     isProfileSequenceActive: vi.fn(() => false),
     requestProfileSequenceCancel: vi.fn(),
     isProfileSequenceCancelRequested: vi.fn(() => false),
+    // "No page for that profile" is the shape an ordinary run sees, so every
+    // pre-existing test stays on the flat-funnel path.
+    targetProfileRunPage: vi.fn(() => false),
+    clearProfileRunPageTarget: vi.fn(),
     subscribeToProgress: vi.fn((listener: (data: unknown) => void) => {
       listener(progress);
       return () => {};

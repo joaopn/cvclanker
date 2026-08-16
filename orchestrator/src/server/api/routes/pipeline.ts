@@ -15,6 +15,7 @@ import {
   getExtractorRegistry,
 } from "@server/extractors/registry";
 import {
+  clearProfileRunPageTarget,
   endProfileSequence,
   getPipelineStatus,
   isProfileSequenceActive,
@@ -24,6 +25,7 @@ import {
   runPipeline,
   runProfileSequence,
   subscribeToProgress,
+  targetProfileRunPage,
   tryBeginProfileSequence,
 } from "@server/pipeline/index";
 import { getRunJobs } from "@server/pipeline/run-job-capture";
@@ -663,11 +665,34 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
       return fail(res, resolved.error);
     }
 
+    // A per-source re-run fired from one page of a multi-profile run reconciles
+    // into THAT page — its funnel rows and its captured jobs — instead of into
+    // whichever profile ran last. No page for this profile (an ordinary run, or
+    // a chain the process has forgotten) leaves the flat funnel untouched.
+    // Claimed only after every failure path above, so a rejected request never
+    // leaves the banner aimed at a page. Skipped outright while a run is in
+    // flight: `runPipeline` would reject this one on its singleton guard, and
+    // seeding the page's rows first would have replaced the LIVE run's funnel.
+    // Nothing awaits between here and `runPipeline` setting that flag, so the
+    // check cannot go stale.
+    const pageScoped =
+      body.partial === true &&
+      body.profileId !== undefined &&
+      !getPipelineStatus().isRunning
+        ? targetProfileRunPage(body.profileId)
+        : false;
+
     // Start pipeline in background
     runWithRequestContext({}, () => {
-      runPipeline(resolved.config).catch((error) => {
-        logger.error("Background pipeline run failed", error);
-      });
+      runPipeline(resolved.config)
+        .catch((error) => {
+          logger.error("Background pipeline run failed", error);
+        })
+        // Chained onto the CAUGHT promise, so it never rejects: an uncaught
+        // `.finally` here would be an unhandled rejection on a failing run.
+        .finally(() => {
+          if (pageScoped) clearProfileRunPageTarget();
+        });
     });
     ok(res, { message: "Pipeline started" });
   } catch (error) {

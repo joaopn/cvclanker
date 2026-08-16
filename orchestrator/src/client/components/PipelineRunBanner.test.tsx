@@ -169,26 +169,6 @@ describe("PipelineRunBanner", () => {
     expect(screen.getByText("Complete")).toBeInTheDocument();
   });
 
-  it("stops showing the stream indicator once the run is over", () => {
-    const { rerender } = render(<PipelineRunBanner isRunning />);
-    act(() => {
-      lastHandlers.current?.onMessage(baseEvent);
-    });
-    expect(screen.getByText("Live")).toBeInTheDocument();
-
-    act(() => {
-      lastHandlers.current?.onMessage({ ...baseEvent, step: "completed" });
-    });
-    rerender(<PipelineRunBanner isRunning={false} />);
-
-    // The banner outlives the run, but the stream it reports on does not: the
-    // subscription is torn down with the run, so a "Connecting…" left up here
-    // reads as a broken connection that will never come back.
-    expect(screen.getByText("Complete")).toBeInTheDocument();
-    expect(screen.queryByText("Connecting…")).not.toBeInTheDocument();
-    expect(screen.queryByText("Live")).not.toBeInTheDocument();
-  });
-
   it("hides after the user dismisses it", () => {
     render(<PipelineRunBanner isRunning />);
     act(() => {
@@ -258,7 +238,27 @@ describe("PipelineRunBanner", () => {
     expect(screen.getByText("Profile 2 of 2 · Berlin")).toBeInTheDocument();
   });
 
-  it("hides the per-source re-run button while the banner shows pages", () => {
+  it("stops showing the stream indicator once the run is over", () => {
+    const { rerender } = render(<PipelineRunBanner isRunning />);
+    act(() => {
+      lastHandlers.current?.onMessage(baseEvent);
+    });
+    expect(screen.getByText("Live")).toBeInTheDocument();
+
+    act(() => {
+      lastHandlers.current?.onMessage({ ...baseEvent, step: "completed" });
+    });
+    rerender(<PipelineRunBanner isRunning={false} />);
+
+    // The banner outlives the run, but the stream it reports on does not: the
+    // subscription is torn down with the run, so a "Connecting…" left up here
+    // reads as a broken connection that will never come back.
+    expect(screen.getByText("Complete")).toBeInTheDocument();
+    expect(screen.queryByText("Connecting…")).not.toBeInTheDocument();
+    expect(screen.queryByText("Live")).not.toBeInTheDocument();
+  });
+
+  it("re-runs a failed source against the profile whose page it sits on", () => {
     const onRerunSource = vi.fn();
     const { rerender } = render(
       <PipelineRunBanner isRunning onRerunSource={onRerunSource} />,
@@ -274,8 +274,23 @@ describe("PipelineRunBanner", () => {
       <PipelineRunBanner isRunning={false} onRerunSource={onRerunSource} />,
     );
 
-    // A re-run resolves its config from the default profile and reconciles into
-    // one flat funnel, so it can neither target a page nor preserve them.
+    // The chain ended on page 2; the failure to retry is back on page 1.
+    fireEvent.click(screen.getByRole("button", { name: /previous profile/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /re-run Hiring Cafe/i }),
+    );
+
+    expect(onRerunSource).toHaveBeenCalledWith("hiringcafe", "p1");
+  });
+
+  it("offers no re-run while the chain is still running", () => {
+    const onRerunSource = vi.fn();
+    render(<PipelineRunBanner isRunning onRerunSource={onRerunSource} />);
+    act(() => {
+      lastHandlers.current?.onMessage(chainEvent);
+    });
+
+    // Profile 2 is mid-crawl: a partial run started now would collide with it.
     expect(
       screen.queryByRole("button", { name: /re-run/i }),
     ).not.toBeInTheDocument();

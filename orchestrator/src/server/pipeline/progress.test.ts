@@ -2,12 +2,14 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  clearProfileRunPageTarget,
   getProgress,
   progressHelpers,
   resetProfileRunStats,
   resetProgress,
   setActiveProfileRun,
   subscribeToProgress,
+  targetProfileRunPage,
 } from "./progress";
 
 describe("pipeline progress source-stats tracking", () => {
@@ -267,5 +269,133 @@ describe("per-profile funnel pages", () => {
       "a",
       "b",
     ]);
+  });
+});
+
+describe("per-source re-run aimed at one page", () => {
+  const profile = (id: string, index: number, total = 2) => ({
+    id,
+    name: `Profile ${id}`,
+    index,
+    total,
+  });
+
+  /**
+   * A finished two-profile chain. Profile a scraped Working Nomads fine and had
+   * Hiring Cafe fail; profile b ran clean. The live rows therefore belong to
+   * profile b — which is exactly what a re-run aimed at page a must not use.
+   */
+  function runFinishedChain() {
+    setActiveProfileRun(profile("a", 1));
+    resetProgress();
+    progressHelpers.startCrawling(2);
+    progressHelpers.startSource("workingnomads", 0, 2, {
+      platforms: ["workingnomads"],
+    });
+    progressHelpers.recordSourceJobsCounts("workingnomads", { scraped: 3 });
+    progressHelpers.markSourceCompleted("workingnomads");
+    progressHelpers.startSource("hiringcafe", 1, 2, {
+      platforms: ["hiringcafe"],
+    });
+    progressHelpers.markSourceFailed("hiringcafe", "429 from upstream");
+    progressHelpers.complete(3, 0);
+
+    setActiveProfileRun(profile("b", 2));
+    resetProgress();
+    progressHelpers.startCrawling(1);
+    progressHelpers.startSource("startupjobs", 0, 1, {
+      platforms: ["startupjobs"],
+    });
+    progressHelpers.recordSourceJobsCounts("startupjobs", { scraped: 9 });
+    progressHelpers.complete(9, 0);
+
+    setActiveProfileRun(null);
+    progressHelpers.sequenceFinished({
+      status: "completed",
+      message: "Multi-profile run complete (2/2 profiles)",
+      detail: "2 of 2 profiles completed",
+    });
+  }
+
+  /** What a per-source re-run does to progress state, start to finish. */
+  function rerunSource(source: string, scraped: number) {
+    resetProgress({ preserveSourceStats: true });
+    progressHelpers.startCrawling(1, { preserveSourceStats: true });
+    progressHelpers.startSource(source, 0, 1, { platforms: [source] });
+    progressHelpers.recordSourceJobsCounts(source, { scraped });
+    progressHelpers.markSourceCompleted(source);
+    progressHelpers.complete(scraped, 0);
+  }
+
+  beforeEach(() => {
+    setActiveProfileRun(null);
+    resetProfileRunStats();
+    resetProgress();
+  });
+
+  afterEach(() => {
+    setActiveProfileRun(null);
+    resetProfileRunStats();
+    resetProgress();
+  });
+
+  it("reconciles into the page it was fired from, not the profile that ran last", () => {
+    runFinishedChain();
+
+    expect(targetProfileRunPage("a")).toBe(true);
+    rerunSource("hiringcafe", 11);
+
+    const pages = getProgress().profileRuns ?? [];
+    expect(pages.map((page) => page.profile.id)).toEqual(["a", "b"]);
+    // The re-run source refreshes in place: new counts, failure cleared. Rows
+    // keep the banner's fixed platform order, not the order they ran in.
+    expect(pages[0]?.sourceStats).toEqual([
+      expect.objectContaining({
+        id: "hiringcafe",
+        status: "completed",
+        jobsScraped: 11,
+        error: undefined,
+      }),
+      expect.objectContaining({ id: "workingnomads", jobsScraped: 3 }),
+    ]);
+    // …and the page it was NOT fired from is left exactly as the chain left it.
+    expect(pages[1]?.sourceStats).toEqual([
+      expect.objectContaining({ id: "startupjobs", jobsScraped: 9 }),
+    ]);
+  });
+
+  it("leaves its events untagged, so its terminal ends the run", () => {
+    runFinishedChain();
+    targetProfileRunPage("a");
+
+    // `profileRun` is the client's "a chain is still going" signal. A re-run is
+    // the whole run, so a tagged terminal here would hang the client forever.
+    resetProgress({ preserveSourceStats: true });
+    expect(getProgress().profileRun).toBeNull();
+    progressHelpers.startCrawling(1, { preserveSourceStats: true });
+    expect(getProgress().profileRun).toBeNull();
+    progressHelpers.complete(0, 0);
+    expect(getProgress().profileRun).toBeNull();
+    expect(getProgress().step).toBe("completed");
+  });
+
+  it("declines a profile that has no page and leaves the funnel alone", () => {
+    runFinishedChain();
+
+    expect(targetProfileRunPage("never-ran")).toBe(false);
+    expect(getProgress().sourceStats.map((row) => row.id)).toEqual([
+      "startupjobs",
+    ]);
+  });
+
+  it("gives the pages back up once the re-run that held them is done", () => {
+    runFinishedChain();
+    targetProfileRunPage("a");
+    rerunSource("hiringcafe", 1);
+    clearProfileRunPageTarget();
+
+    // The next ordinary run owns the whole banner again.
+    resetProgress();
+    expect(getProgress().profileRuns).toEqual([]);
   });
 });

@@ -14,7 +14,7 @@ export type UsePipelineControlsResult = {
   isCancelling: boolean;
   runPipelineNow: (profileIds?: string[]) => Promise<void>;
   handleCancelPipeline: () => Promise<void>;
-  handleRerunSource: (source: JobSource) => Promise<void>;
+  handleRerunSource: (source: JobSource, profileId?: string) => Promise<void>;
 };
 
 export function usePipelineControls(
@@ -116,17 +116,20 @@ export function usePipelineControls(
   }, [isCancelling, isPipelineRunning]);
 
   const handleRerunSource = useCallback(
-    async (source: JobSource) => {
+    async (source: JobSource, profileId?: string) => {
       // Re-run a single source scoped to just this one, reconciled into the
       // existing banner funnel. The rest of the run config (location, terms,
-      // budget) is resolved server-side from the default Profile. Built-in
-      // extractors go through `sources`; provider instances through
-      // `providerInstanceIds` — each path suppresses the other.
+      // budget) is resolved server-side from `profileId` — the Search Profile
+      // whose page the row was clicked on — and from the default Profile when
+      // the banner has no pages. Built-in extractors go through `sources`;
+      // provider instances through `providerInstanceIds` — each path suppresses
+      // the other.
       const isExtractor = isExtractorSourceId(source);
       const colonIndex = source.indexOf(":");
       const instanceId = colonIndex > 0 ? source.slice(colonIndex + 1) : source;
 
       await startPipelineRun({
+        profileId,
         sources: isExtractor ? [source] : [],
         providerInstanceIds: isExtractor ? [] : [instanceId],
         partial: true,

@@ -56,7 +56,10 @@ interface PipelineRunBannerProps {
   isRunning: boolean;
   // Re-run a single source (built-in extractor or provider instance) using the
   // current saved run settings. Omit to hide the per-row re-run button.
-  onRerunSource?: (source: JobSource) => void;
+  // `profileId` names the Search Profile whose page the row belongs to, so the
+  // re-run resolves its config from that profile and reconciles into that page;
+  // omitted on a single run, which has no pages.
+  onRerunSource?: (source: JobSource, profileId?: string) => void;
 }
 
 export const stepLabels: Record<PipelineProgressEvent["step"], string> = {
@@ -301,9 +304,16 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
   // Failures are held back while the page in view is still filling in, but a
   // finished profile's page shows them right away even though the chain runs on.
   const showFailureCount = anyFailures && (!isActive || !isLivePage);
-  // A per-source re-run reconciles into ONE flat funnel and resolves its config
-  // from the default profile, so it can neither target a page nor keep them.
-  const rerunSource = profileRuns.length > 0 ? undefined : onRerunSource;
+  // A re-run fired from a page carries that page's Search Profile, so it
+  // resolves the same run config the page was scraped with and reconciles back
+  // into the page. The second argument is OMITTED rather than passed as
+  // `undefined` on a single run, which has no pages and keeps resolving its
+  // config from the default profile.
+  const handleRerunSource = (source: JobSource) => {
+    if (!onRerunSource) return;
+    if (displayedPage) onRerunSource(source, displayedPage.profile.id);
+    else onRerunSource(source);
+  };
 
   return (
     <div className="border-b bg-background/60 backdrop-blur">
@@ -466,7 +476,7 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
                           <TableHead className="w-24 text-right">
                             Duration
                           </TableHead>
-                          {rerunSource && <TableHead className="w-16" />}
+                          {onRerunSource && <TableHead className="w-16" />}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -474,8 +484,12 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
                           <SourceRow
                             key={row.id}
                             row={row}
-                            onRerun={!isActive ? rerunSource : undefined}
-                            showRerunColumn={!!rerunSource}
+                            onRerun={
+                              !isActive && onRerunSource
+                                ? handleRerunSource
+                                : undefined
+                            }
+                            showRerunColumn={!!onRerunSource}
                             onShowJobs={(bucket) =>
                               setJobsView({
                                 source: row.id,

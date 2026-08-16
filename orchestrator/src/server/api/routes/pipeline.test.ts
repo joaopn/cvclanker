@@ -620,6 +620,56 @@ describe.sequential("Pipeline API routes", () => {
     );
   });
 
+  it("aims a per-source re-run at the page of the profile it names", async () => {
+    const { runPipeline, targetProfileRunPage } = await import(
+      "@server/pipeline/index"
+    );
+    const profileId = await createProfile(baseUrl, {
+      searchTerms: ["ml engineer"],
+      searchCountry: "germany",
+      enabledSourceIds: ["test-linkedin"],
+    });
+
+    const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        profileId,
+        sources: ["linkedin"],
+        providerInstanceIds: [],
+        partial: true,
+      }),
+    });
+    const body = await res.json();
+
+    expect(body.ok).toBe(true);
+    // The page the row was clicked on owns both the funnel it reconciles into
+    // and the Search Profile the run config is resolved from.
+    expect(targetProfileRunPage).toHaveBeenCalledWith(profileId);
+    expect(runPipeline).toHaveBeenCalledWith(
+      expect.objectContaining({ profileId, partial: true }),
+    );
+  });
+
+  it("does not aim a full run at a page", async () => {
+    const { targetProfileRunPage } = await import("@server/pipeline/index");
+    const profileId = await createProfile(baseUrl, {
+      searchTerms: ["ml engineer"],
+      searchCountry: "germany",
+      enabledSourceIds: ["test-linkedin"],
+    });
+
+    const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId }),
+    });
+
+    expect((await res.json()).ok).toBe(true);
+    // A full run owns the whole banner and drops the pages, as it always has.
+    expect(targetProfileRunPage).not.toHaveBeenCalled();
+  });
+
   it("rejects a body-provided source whose extractor is disabled", async () => {
     // Symmetric with provider instances, which already 400 on a disabled id.
     const { runPipeline } = await import("@server/pipeline/index");
