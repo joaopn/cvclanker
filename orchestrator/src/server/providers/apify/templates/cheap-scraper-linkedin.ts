@@ -4,9 +4,9 @@ import {
   getSearchTerms,
   joinSalary,
   pickString,
-  resolveCities,
   resolveDerivedMaxJobs,
   resolveMaxAgeDays,
+  resolveSearchLocations,
   stripHtml,
 } from "./mapper-helpers";
 
@@ -31,7 +31,7 @@ export const cheapScraperLinkedinTemplate: ProviderActorTemplate = {
   actorRef: "cheap_scraper/linkedin-job-scraper",
   displayName: "LinkedIn Jobs Scraper (cheap_scraper)",
   description:
-    "cheap_scraper/linkedin-job-scraper. Keyword-and-location search built automatically from your configured search terms + location — no LinkedIn URLs to paste. The global max-job-age-to-scrape setting is bucketed into the LinkedIn date filter (24h / 7d / 30d, rounded up). Pay-per-result: the actor enforces a minimum of 150 results per run, so the effective cap is max(150, your run budget). Duplicate postings are skipped by job id.",
+    "cheap_scraper/linkedin-job-scraper. Keyword-and-location search built automatically from your configured search terms + location — no LinkedIn URLs to paste. Each city is sent qualified with your selected country, because LinkedIn resolves a bare city name to whichever one it ranks highest (a plain `Cambridge` returns Toronto-area jobs). The global max-job-age-to-scrape setting is bucketed into the LinkedIn date filter (24h / 7d / 30d, rounded up). Pay-per-result: the actor enforces a minimum of 150 results per run, so the effective cap is max(150, your run budget). Duplicate postings are skipped by job id.",
   defaultInputTemplate: JSON.stringify(
     {
       saveOnlyUniqueItems: true,
@@ -50,9 +50,7 @@ export const cheapScraperLinkedinTemplate: ProviderActorTemplate = {
         ? (base as Record<string, unknown>)
         : {};
     const terms = getSearchTerms(context);
-    const cities = resolveCities(context.runGlobals);
-    const country = (context.runGlobals.country ?? "").trim();
-    const locations = cities.length > 0 ? cities : country ? [country] : [];
+    const locations = resolveSearchLocations(context.runGlobals);
     const maxAgeDays = resolveMaxAgeDays(
       context.runGlobals,
       context.instance.maxAgeDays,

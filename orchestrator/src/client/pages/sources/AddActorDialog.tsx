@@ -267,7 +267,7 @@ export function AddActorDialog({
 
           <div className="space-y-2">
             <Label htmlFor="add-actor-max-jobs">
-              Max jobs per search (optional)
+              Max jobs per run (optional)
             </Label>
             <Input
               id="add-actor-max-jobs"
@@ -285,9 +285,10 @@ export function AddActorDialog({
               className="max-w-[12rem]"
             />
             <p className="text-xs text-muted-foreground">
-              Caps jobs scraped per search, overriding the run-budget
-              calculation (also available as <code>{"{{maxJobs}}"}</code>).
-              Blank = derive from the run budget.
+              Caps jobs scraped per run for this actor, split across the
+              searches it makes, overriding the run-budget calculation (also
+              available as <code>{"{{maxJobs}}"}</code>). Blank = derive from
+              the run budget.
             </p>
           </div>
 

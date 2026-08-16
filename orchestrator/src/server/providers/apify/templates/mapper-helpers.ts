@@ -1,5 +1,13 @@
+import {
+  formatCountryLabel,
+  normalizeCountryKey,
+} from "@shared/location-support.js";
 import { parseSearchCitiesSetting } from "@shared/search-cities.js";
 import type { ProviderRunContext } from "../../types";
+
+// Country keys that name no single geography. Qualifying a city with one of
+// them produces nonsense ("London, Worldwide"), so the city goes out bare.
+const NON_GEOGRAPHIC_COUNTRY_KEYS = new Set(["worldwide", "usa/ca"]);
 
 export function getSearchTerms(context: ProviderRunContext): string[] {
   return context.searchTerms
@@ -11,6 +19,46 @@ export function resolveCities(
   runGlobals: ProviderRunContext["runGlobals"],
 ): string[] {
   return parseSearchCitiesSetting(runGlobals.city);
+}
+
+/** Does this city string already end in the run's country? */
+function namesCountry(city: string, countryKey: string): boolean {
+  const tail = city.split(",").pop()?.trim() ?? "";
+  return normalizeCountryKey(tail) === countryKey;
+}
+
+/**
+ * The locations a LinkedIn-backed actor should search, one per configured city.
+ *
+ * Cities go out QUALIFIED with the run's country ("Cambridge, United Kingdom")
+ * because LinkedIn resolves a bare city name to whichever one it ranks highest,
+ * not to the one in the country you asked for: `location=Cambridge` answers
+ * with Cambridge, Ontario and returns Toronto-area jobs, which the pipeline's
+ * location filter then discards — paid for, on a per-result actor, and
+ * crowding out the cities that would have matched. A city that already names
+ * the country is left alone, so "Toronto, Canada" does not become
+ * "Toronto, Canada, Canada".
+ *
+ * With no cities configured the country itself is the single location. With
+ * neither, the list is empty and the caller decides what an unscoped search
+ * means for its actor.
+ */
+export function resolveSearchLocations(
+  runGlobals: ProviderRunContext["runGlobals"],
+): string[] {
+  const cities = resolveCities(runGlobals);
+  const countryKey = normalizeCountryKey(runGlobals.country ?? "");
+  const countryLabel =
+    countryKey && !NON_GEOGRAPHIC_COUNTRY_KEYS.has(countryKey)
+      ? formatCountryLabel(countryKey)
+      : "";
+
+  if (cities.length === 0) return countryLabel ? [countryLabel] : [];
+  if (!countryLabel) return cities;
+
+  return cities.map((city) =>
+    namesCountry(city, countryKey) ? city : `${city}, ${countryLabel}`,
+  );
 }
 
 // Effective max job age in days: the per-instance override when set, else the

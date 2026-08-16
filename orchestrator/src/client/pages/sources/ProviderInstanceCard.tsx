@@ -266,7 +266,7 @@ export function ProviderInstanceCard({
 
           <div className="space-y-2">
             <Label htmlFor={`max-jobs-${instance.id}`}>
-              Max jobs per search (optional)
+              Max jobs per run (optional)
             </Label>
             <Input
               id={`max-jobs-${instance.id}`}
@@ -284,10 +284,11 @@ export function ProviderInstanceCard({
               className="max-w-[12rem]"
             />
             <p className="text-xs text-muted-foreground">
-              Caps jobs scraped per search (per city, else country) for this
-              actor, overriding the run-budget calculation. Blank = derive from
-              the run budget. Floored at 10 (the actor's minimum). Available to
-              the input template as <code>{"{{maxJobs}}"}</code>.
+              Caps jobs scraped per run for this actor, split evenly across the
+              searches it makes (one per city, else country), overriding the
+              run-budget calculation. Blank = derive from the run budget.
+              Floored at 10 (the actor's minimum). Available to the input
+              template as <code>{"{{maxJobs}}"}</code>.
             </p>
           </div>
 

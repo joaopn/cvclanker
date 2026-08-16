@@ -1,6 +1,6 @@
-import { parseSearchCitiesSetting } from "@shared/search-cities.js";
 import type { CreateJobInput, JobSource } from "@shared/types";
 import type { ProviderActorTemplate, ProviderRunContext } from "../../types";
+import { resolveSearchLocations } from "./mapper-helpers";
 
 // The curious_coder actor rejects count < 10 and silently caps a missing
 // count at 10 — so an under-sized count is the source of "only 10 jobs back".
@@ -49,9 +49,7 @@ function buildLinkedInSearchUrls(
 ): string[] {
   const keywords = terms.map((term) => `"${term}"`).join(" OR ");
 
-  const cities = parseSearchCitiesSetting(runGlobals.city);
-  const country = (runGlobals.country ?? "").trim();
-  const locations = cities.length > 0 ? cities : country ? [country] : [];
+  const locations = resolveSearchLocations(runGlobals);
   const locationList = locations.length > 0 ? locations : [""];
 
   const postedWithinSeconds = postedWithinSecondsFor(maxAgeDays);
@@ -79,16 +77,21 @@ function buildLinkedInSearchUrls(
 }
 
 /**
- * Resolve the per-URL `count` (jobs to scrape per location).
- *  - When the instance sets an explicit `maxJobs`, that IS the per-search cap
- *    (the exposed override) — used verbatim, not multiplied by term count.
+ * Resolve the actor's budget for the whole run.
+ *
+ * This used to be the per-URL `count`, but on 2026-08-08 the actor moved that
+ * meaning to `limitPerSource` and kept `count` only as a GLOBAL max. The number
+ * computed here is therefore the run total; `buildInput` divides it across the
+ * search URLs to get the per-URL cap.
+ *
+ *  - When the instance sets an explicit `maxJobs`, that IS the budget (the
+ *    exposed override) — used verbatim, not multiplied by term count.
  *  - Otherwise it's budget-derived: `maxJobsPerTerm` is a per-(term × source)
  *    budget, but the URL builder OR-joins every term into ONE query per
  *    location, so the count is multiplied by the term count or the joined
  *    query returns only a single term's worth (≈ the actor's 10-job floor).
- *    Mirrors the "per (joined-query × location)" semantics shift.
  */
-function resolveLinkedInCount(
+function resolveLinkedInRunBudget(
   runGlobals: ProviderRunContext["runGlobals"],
   termCount: number,
   instanceMaxJobs?: number,
@@ -148,7 +151,7 @@ export const linkedinJobsScraperTemplate: ProviderActorTemplate = {
   actorRef: "curious_coder/linkedin-jobs-scraper",
   displayName: "LinkedIn Jobs Scraper (curious_coder)",
   description:
-    "curious_coder/linkedin-jobs-scraper. Search URLs and result count are built automatically from your configured search terms + location (one URL per city, else the country) — you no longer paste LinkedIn URLs here, and any `urls`/`count` you set are ignored/overridden. The per-URL count scales with your run budget × number of search terms (the actor enforces a minimum of 10). The global max-job-age-to-scrape setting is applied via the LinkedIn f_TPR date filter on the built URLs when set. Set scrapeCompany=true if you want company-side fields populated (costs more CUs).",
+    "curious_coder/linkedin-jobs-scraper. Search URLs and result count are built automatically from your configured search terms + location (one URL per city, else the country) — you no longer paste LinkedIn URLs here, and any `urls`/`count` you set are ignored/overridden. Each city is searched qualified with your selected country, because LinkedIn resolves a bare city name to whichever one it ranks highest (a plain `Cambridge` returns Toronto-area jobs). The run budget scales with your run budget × number of search terms (the actor enforces a minimum of 10) and is split evenly across those city searches. The global max-job-age-to-scrape setting is applied via the LinkedIn f_TPR date filter on the built URLs when set. Set scrapeCompany=true if you want company-side fields populated (costs more CUs).",
   defaultInputTemplate: JSON.stringify(
     {
       scrapeCompany: false,
@@ -175,13 +178,25 @@ export const linkedinJobsScraperTemplate: ProviderActorTemplate = {
       context.runGlobals,
       context.instance.maxAgeDays,
     );
+    const urls = buildLinkedInSearchUrls(terms, context.runGlobals, maxAgeDays);
+    const runBudget = resolveLinkedInRunBudget(
+      context.runGlobals,
+      terms.length,
+      context.instance.maxJobs,
+    );
     return {
       ...baseObj,
-      urls: buildLinkedInSearchUrls(terms, context.runGlobals, maxAgeDays),
-      count: resolveLinkedInCount(
-        context.runGlobals,
-        terms.length,
-        context.instance.maxJobs,
+      urls,
+      // Both caps are sent on purpose. Since 2026-08-08 `count` is the actor's
+      // GLOBAL run max (kept for backward compatibility) and `limitPerSource`
+      // is the per-URL one, so this pins the same total spend on either build
+      // while splitting it evenly across the cities. Sending only `count`
+      // lets the first URL in the list consume the entire run — which is how
+      // one mis-resolved city starves every city after it.
+      count: runBudget,
+      limitPerSource: Math.max(
+        1,
+        Math.ceil(runBudget / Math.max(1, urls.length)),
       ),
     };
   },
