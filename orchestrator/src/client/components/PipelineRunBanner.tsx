@@ -391,9 +391,15 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
                     </Badge>
                   )
                 )}
-                <span className="truncate text-xs text-muted-foreground">
-                  {isConnected ? "Live" : "Connecting…"}
-                </span>
+                {/* The stream indicator describes a subscription that only
+                    exists while a run is on. The banner outlives the run, and
+                    leaving this up parked a permanent "Connecting…" beside the
+                    final state — the stream had not dropped, it was closed. */}
+                {isRunning && (
+                  <span className="truncate text-xs text-muted-foreground">
+                    {isConnected ? "Live" : "Connecting…"}
+                  </span>
+                )}
                 {showFailureCount && (
                   <span className="inline-flex items-center gap-1 text-xs text-destructive">
                     <AlertTriangle className="h-3.5 w-3.5" />

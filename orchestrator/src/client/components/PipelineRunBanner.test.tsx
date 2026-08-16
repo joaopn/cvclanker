@@ -169,6 +169,26 @@ describe("PipelineRunBanner", () => {
     expect(screen.getByText("Complete")).toBeInTheDocument();
   });
 
+  it("stops showing the stream indicator once the run is over", () => {
+    const { rerender } = render(<PipelineRunBanner isRunning />);
+    act(() => {
+      lastHandlers.current?.onMessage(baseEvent);
+    });
+    expect(screen.getByText("Live")).toBeInTheDocument();
+
+    act(() => {
+      lastHandlers.current?.onMessage({ ...baseEvent, step: "completed" });
+    });
+    rerender(<PipelineRunBanner isRunning={false} />);
+
+    // The banner outlives the run, but the stream it reports on does not: the
+    // subscription is torn down with the run, so a "Connecting…" left up here
+    // reads as a broken connection that will never come back.
+    expect(screen.getByText("Complete")).toBeInTheDocument();
+    expect(screen.queryByText("Connecting…")).not.toBeInTheDocument();
+    expect(screen.queryByText("Live")).not.toBeInTheDocument();
+  });
+
   it("hides after the user dismisses it", () => {
     render(<PipelineRunBanner isRunning />);
     act(() => {
