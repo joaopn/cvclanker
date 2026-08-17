@@ -1365,5 +1365,35 @@ try {
   process.exit(1);
 }
 
+// The borderline-indeed Apify template was removed. An instance still pointing
+// at it cannot run — the provider returns "Unknown Apify template id" and the
+// source reports Failed on every run — so disable it rather than leaving that
+// error to repeat. The row is kept, not deleted: it holds the user's own label
+// and caps, and it stays visible on the Sources page so they can remove it (or
+// re-point it) deliberately.
+try {
+  const orphaned = sqlite
+    .prepare(
+      "SELECT id, label FROM provider_instances WHERE template_id = ? AND enabled = 1",
+    )
+    .all("borderline-indeed") as Array<{ id: string; label: string }>;
+
+  if (orphaned.length > 0) {
+    sqlite
+      .prepare(
+        "UPDATE provider_instances SET enabled = 0 WHERE template_id = ? AND enabled = 1",
+      )
+      .run("borderline-indeed");
+    console.log(
+      `⚠️ disabled ${orphaned.length} provider instance(s) using the removed borderline-indeed template: ${orphaned
+        .map((row) => row.label)
+        .join(", ")} — delete them on the Sources page`,
+    );
+  }
+} catch (error) {
+  console.error("❌ borderline-indeed instance cleanup failed:", error);
+  process.exit(1);
+}
+
 sqlite.close();
 console.log("🎉 Database migrations complete!");
