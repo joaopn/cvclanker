@@ -335,6 +335,19 @@ export const ProfileConfigFields: React.FC<ProfileConfigFieldsProps> = ({
                 onChange={(value) => onChange({ scrapeMaxAgeDays: value })}
               />
             </div>
+            <p className="text-xs text-muted-foreground">
+              Max job age is sent to each source, and they honour it
+              differently. JobSpy and the LinkedIn Jobs Scraper (curious_coder)
+              take it exactly. The LinkedIn Jobs Scraper (cheap_scraper) only
+              accepts 24 hours, 7 days or 30 days and offers no newest-first
+              sort, so anything in between rounds up — a 2-day window buys a
+              week of postings on an actor that bills per result. Hiring Cafe
+              filters on the date it indexed a posting rather than the date it
+              was published, so its freshness is approximate: postings it
+              estimates to be older than this window are dropped during the
+              scrape. startup.jobs and Working Nomads ignore this setting
+              entirely.
+            </p>
             <div className="space-y-1.5">
               <label
                 htmlFor="profile-scrape-since-last-run"

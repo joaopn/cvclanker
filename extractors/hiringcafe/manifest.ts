@@ -36,7 +36,7 @@ const hiringcafeConfigSchema: SourceConfigSchema = {
       type: "number",
       default: "",
       description:
-        "Only request postings fetched in the last N days (maps to Hiring Cafe's dateFetchedPastNDays). Leave blank to use the default 30-day window.",
+        "Only request postings fetched in the last N days (maps to Hiring Cafe's dateFetchedPastNDays). That is the date Hiring Cafe indexed a posting, not the date it was published, so postings whose estimated publish date is older than this window are dropped during the scrape — its freshness is approximate either way. Leave blank to use the default 30-day window.",
     },
   ],
   globalMappings: [
