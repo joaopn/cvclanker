@@ -37,6 +37,14 @@ export function LocationScopeField({
           );
         })}
       </RadioGroup>
+      {value !== "selected_only" ? (
+        <p className="text-xs text-muted-foreground">
+          The remote-worldwide half applies only to sources that report whether
+          a job is remote: JobSpy (LinkedIn / Indeed / Glassdoor), startup.jobs
+          and Working Nomads. The Apify LinkedIn actors and Hiring Cafe do not
+          report it, so for those only your selected locations are kept.
+        </p>
+      ) : null}
     </div>
   );
 }
