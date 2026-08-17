@@ -15,6 +15,10 @@ import {
 } from "./country-map.js";
 import { createDefaultSearchState } from "./default-search-state.js";
 import { asRecord, BASE_URL, fetchJobDescription } from "./detail.js";
+import {
+  isWithinPublishWindow,
+  PUBLISH_DATE_TOLERANCE_DAYS,
+} from "./freshness.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CVCLANKER_PROGRESS_PREFIX = "CVCLANKER_PROGRESS ";
@@ -665,6 +669,7 @@ async function run(): Promise<void> {
 
   const allJobs: ExtractedJob[] = [];
   const seen = new Set<string>();
+  let staleDroppedRun = 0;
 
   try {
     const initializePage = async () => {
@@ -731,6 +736,7 @@ async function run(): Promise<void> {
       let pageNo = 0;
       let termCollected = 0;
       let termTarget = maxJobsPerTerm;
+      let staleDroppedTerm = 0;
 
       while (pageNo < PAGE_LIMIT) {
         let pageResult: SsrSearchPage;
@@ -765,6 +771,19 @@ async function run(): Promise<void> {
 
           const mapped = mapHiringCafeJob(rawJob);
           if (!mapped) continue;
+
+          // `dateFetchedPastNDays` filters on hiring.cafe's INDEX date, so a
+          // 7-day search returns postings months old. Drop those here, before
+          // they cost a detail fetch and an LLM scoring call downstream.
+          if (
+            !isWithinPublishWindow({
+              estimatedPublishDate: mapped.datePosted,
+              windowDays: dateFetchedPastNDays,
+            })
+          ) {
+            staleDroppedTerm += 1;
+            continue;
+          }
 
           const dedupeKey = mapped.sourceJobId || mapped.jobUrl;
           if (seen.has(dedupeKey)) continue;
@@ -810,6 +829,17 @@ async function run(): Promise<void> {
         pageNo += 1;
       }
 
+      // Extractor-side drops are invisible to the pipeline's funnel counts, so
+      // say how many postings the publish-date window removed and what it cost
+      // in extra pages — otherwise a term that pages hard for few jobs reads as
+      // hiring.cafe running dry.
+      if (staleDroppedTerm > 0) {
+        staleDroppedRun += staleDroppedTerm;
+        console.log(
+          `Hiring Cafe: dropped ${staleDroppedTerm} posting(s) estimated older than ${dateFetchedPastNDays}d (+${PUBLISH_DATE_TOLERANCE_DAYS}d tolerance) for term '${searchTerm}' over ${pageNo + 1} page(s); kept ${termCollected}`,
+        );
+      }
+
       emitProgress({
         event: "term_complete",
         termIndex,
@@ -825,7 +855,9 @@ async function run(): Promise<void> {
   await mkdir(dirname(outputPath), { recursive: true });
   await writeFile(outputPath, `${JSON.stringify(allJobs, null, 2)}\n`, "utf-8");
 
-  console.log(`Hiring Cafe extractor wrote ${allJobs.length} jobs`);
+  console.log(
+    `Hiring Cafe extractor wrote ${allJobs.length} jobs (dropped ${staleDroppedRun} outside the ${dateFetchedPastNDays}d publish-date window)`,
+  );
 }
 
 run().catch((error: unknown) => {
