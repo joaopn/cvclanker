@@ -13,7 +13,11 @@ import {
   normalizeCountryKey,
   resolveHiringCafeCountryLocation,
 } from "./country-map.js";
-import { createDefaultSearchState } from "./default-search-state.js";
+import {
+  createDefaultSearchState,
+  type HiringCafeSortBy,
+  resolveSortBy,
+} from "./default-search-state.js";
 import { asRecord, BASE_URL, fetchJobDescription } from "./detail.js";
 import {
   isWithinPublishWindow,
@@ -353,6 +357,7 @@ function createCitySearchState(args: {
   dateFetchedPastNDays: number;
   context: CityLocationContext;
   workplaceTypes: HiringCafeWorkplaceType[];
+  sortBy: HiringCafeSortBy;
 }): Record<string, unknown> {
   return {
     locations: [
@@ -500,7 +505,7 @@ function createCitySearchState(args: {
     searchModeSelectedCompany: null,
     departments: [],
     restrictedSearchAttributes: [],
-    sortBy: "default",
+    sortBy: args.sortBy,
     technologyKeywordsQuery: "",
     requirementsKeywordsQuery: "",
     companyPublicOrPrivate: "all",
@@ -640,10 +645,18 @@ async function run(): Promise<void> {
     process.env.HIRING_CAFE_MAX_JOBS_PER_TERM,
     DEFAULT_MAX_JOBS_PER_TERM,
   );
-  const dateFetchedPastNDays = parsePositiveInt(
+  // Zero means "the caller configured no max age" — run.ts only sets the env
+  // var when the profile did. The distinction drives the sort, so resolve the
+  // configured value first and fall back to the default window after.
+  const configuredMaxAgeDays = parsePositiveInt(
     process.env.HIRING_CAFE_DATE_FETCHED_PAST_N_DAYS,
-    DEFAULT_DATE_FETCHED_PAST_N_DAYS,
+    0,
   );
+  const dateFetchedPastNDays =
+    configuredMaxAgeDays > 0
+      ? configuredMaxAgeDays
+      : DEFAULT_DATE_FETCHED_PAST_N_DAYS;
+  const sortBy = resolveSortBy(configuredMaxAgeDays);
   const locationQuery = process.env.HIRING_CAFE_LOCATION_QUERY?.trim() ?? "";
   const locationRadiusMiles = parsePositiveInt(
     process.env.HIRING_CAFE_LOCATION_RADIUS_MILES,
@@ -724,12 +737,14 @@ async function run(): Promise<void> {
             dateFetchedPastNDays,
             context: cityLocationContext,
             workplaceTypes,
+            sortBy,
           })
         : createDefaultSearchState({
             searchQuery: searchTerm,
             location: countryLocation,
             dateFetchedPastNDays,
             workplaceTypes,
+            sortBy,
           });
       const encodedSearchState = encodeSearchState(searchState);
 
