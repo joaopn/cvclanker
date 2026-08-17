@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  locationCountryUnspecified,
   matchesRequestedCity,
   matchesRequestedCountry,
   parseSearchCitiesSetting,
@@ -94,5 +95,64 @@ describe("search-cities", () => {
     ).toBe(true);
     expect(matchesRequestedCountry("Bengaluru, India", "croatia")).toBe(false);
     expect(matchesRequestedCountry(undefined, "croatia")).toBe(false);
+  });
+
+  it("matches an ISO alpha-2 country code in the location tail", () => {
+    expect(matchesRequestedCountry("Wien, W, AT", "austria")).toBe(true);
+    expect(matchesRequestedCountry("Toronto, ON, CA", "canada")).toBe(true);
+    expect(matchesRequestedCountry("London, ENG, GB", "united kingdom")).toBe(
+      true,
+    );
+    expect(matchesRequestedCountry("london, eng, gb", "uk")).toBe(true);
+
+    expect(matchesRequestedCountry("Toronto, ON, CA", "austria")).toBe(false);
+    // The tail is the country code, so a state code that collides with another
+    // country's alpha-2 must not match it.
+    expect(matchesRequestedCountry("Chicago, IL, US", "israel")).toBe(false);
+  });
+
+  it("requires three segments before reading a tail as a country code", () => {
+    // "City, ST" is a US state, not a country: DE is Delaware here, not Germany.
+    expect(matchesRequestedCountry("Wilmington, DE", "germany")).toBe(false);
+    expect(matchesRequestedCountry("Wenatchee, WA", "spain")).toBe(false);
+    expect(matchesRequestedCountry("AT", "austria")).toBe(false);
+  });
+
+  it("treats a location that names no country as country-unspecified", () => {
+    expect(locationCountryUnspecified(["Greater Reading Area"])).toBe(true);
+    expect(locationCountryUnspecified(["Utrecht Area"])).toBe(true);
+    expect(locationCountryUnspecified(["Brabantine City Row"])).toBe(true);
+    expect(locationCountryUnspecified(["Amsterdam Area", "Amsterdam"])).toBe(
+      true,
+    );
+    // A non-geographic candidate rides alongside a real one without hiding it.
+    expect(locationCountryUnspecified(["Amsterdam Area", "remote"])).toBe(true);
+  });
+
+  it("does not treat a named or coded country as unspecified", () => {
+    expect(locationCountryUnspecified(["Toronto, Ontario, Canada"])).toBe(
+      false,
+    );
+    expect(locationCountryUnspecified(["Washington, United States"])).toBe(
+      false,
+    );
+    expect(locationCountryUnspecified(["London, England, UK"])).toBe(false);
+    expect(locationCountryUnspecified(["Wenatchee, WA"])).toBe(false);
+    expect(locationCountryUnspecified(["Toronto, ON, CA"])).toBe(false);
+    // One country-naming candidate is enough to decide the whole set.
+    expect(
+      locationCountryUnspecified([
+        "Amsterdam Area",
+        "Toronto, Ontario, Canada",
+      ]),
+    ).toBe(false);
+  });
+
+  it("does not treat a placeless location as country-unspecified", () => {
+    expect(locationCountryUnspecified([])).toBe(false);
+    expect(locationCountryUnspecified(["Remote"])).toBe(false);
+    expect(locationCountryUnspecified(["Remote - Worldwide"])).toBe(false);
+    expect(locationCountryUnspecified(["Anywhere"])).toBe(false);
+    expect(locationCountryUnspecified([""])).toBe(false);
   });
 });

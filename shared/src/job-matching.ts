@@ -1,4 +1,5 @@
 import {
+  locationCountryUnspecified,
   matchesRequestedCity,
   matchesRequestedCountry,
   shouldApplyStrictCityFilter,
@@ -152,9 +153,16 @@ export function matchJobLocationIntent(
     return { matched: true, reasonCode: "unfiltered", priority: 0 };
   }
 
-  const countryMatched = candidates.some((candidate) =>
-    matchesRequestedCountry(candidate, selectedCountry),
-  );
+  // A location that names no country at all ("Greater Reading Area", "Utrecht
+  // Area") is not evidence of a MISmatch: the only country the scrape asked for
+  // is the selected one, so an unqualified metro name is taken to be inside it.
+  // A location that DOES name a country ("Toronto, Ontario, Canada"), or carries
+  // a trailing region code ("Wenatchee, WA"), is still judged on that name —
+  // which is what keeps out-of-country rows rejected.
+  const countryMatched =
+    candidates.some((candidate) =>
+      matchesRequestedCountry(candidate, selectedCountry),
+    ) || locationCountryUnspecified(candidates);
 
   // A directly-named city is sufficient on its own. Job postings frequently
   // list one or more cities ("Vienna or Graz or Munich or …") without
