@@ -68,7 +68,7 @@ describe("linkedinJobsScraperTemplate.buildInput", () => {
     expect(input.urls).toEqual([expect.stringContaining("location=Canada")]);
   });
 
-  it("splits the run budget across the search URLs", () => {
+  it("caps each search at maxJobs and scales the run total by city count", () => {
     const input = buildInput({
       runGlobals: {
         city: "London|Cambridge|Exeter",
@@ -77,29 +77,31 @@ describe("linkedinJobsScraperTemplate.buildInput", () => {
       instance: { maxJobs: 900 },
     });
 
-    // `count` is the actor's global run max; `limitPerSource` the per-URL one.
-    expect(input.count).toBe(900);
-    expect(input.limitPerSource).toBe(300);
+    // `limitPerSource` is the actor's per-URL cap; `count` its global run max,
+    // which therefore has to carry the total the per-search cap implies.
+    expect(input.limitPerSource).toBe(900);
+    expect(input.count).toBe(2700);
   });
 
-  it("keeps the per-URL cap at or above 1 for a tiny budget", () => {
+  it("costs one search's worth when no cities are configured", () => {
     const input = buildInput({
-      runGlobals: { city: "A|B|C|D|E|F|G|H|I|J|K|L", country: "ireland" },
-      instance: { maxJobs: 10 },
+      runGlobals: { city: "", country: "ireland" },
+      instance: { maxJobs: 900 },
     });
 
-    expect(input.count).toBe(10);
-    expect(input.limitPerSource).toBe(1);
+    expect(input.urls).toHaveLength(1);
+    expect(input.limitPerSource).toBe(900);
+    expect(input.count).toBe(900);
   });
 
-  it("derives the budget from the run budget and term count when unset", () => {
+  it("derives the per-search cap from the run budget and term count when unset", () => {
     const input = buildInput({
       runGlobals: { city: "Dublin", country: "ireland", maxJobsPerTerm: "11" },
       searchTerms: ["a", "b", "c"],
     });
 
-    expect(input.count).toBe(33);
     expect(input.limitPerSource).toBe(33);
+    expect(input.count).toBe(33);
   });
 
   it("overrides a stale location-pinned url and count from the stored input", () => {
@@ -120,7 +122,7 @@ describe("linkedinJobsScraperTemplate.buildInput", () => {
     expect(input.urls).toEqual([
       expect.stringContaining("location=Madrid%2C%20Spain"),
     ]);
-    expect(input.count).toBe(100);
+    expect(input.limitPerSource).toBe(100);
     // Per-instance knobs from the stored input survive.
     expect(input.scrapeCompany).toBe(false);
   });

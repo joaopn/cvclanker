@@ -77,21 +77,23 @@ function buildLinkedInSearchUrls(
 }
 
 /**
- * Resolve the actor's budget for the whole run.
+ * Resolve the cap for ONE search — that is, one city URL (or the country URL
+ * when no cities are configured).
  *
- * This used to be the per-URL `count`, but on 2026-08-08 the actor moved that
- * meaning to `limitPerSource` and kept `count` only as a GLOBAL max. The number
- * computed here is therefore the run total; `buildInput` divides it across the
- * search URLs to get the per-URL cap.
+ * Per-search is the deliberate meaning of the exposed `maxJobs` knob: it fixes
+ * how deep each city is scraped, so the run total is this number times the
+ * number of search URLs. It rides on the actor's `limitPerSource`; `count`
+ * carries the resulting global total, since the 2026-08-08 input change
+ * demoted `count` to a run-wide max.
  *
- *  - When the instance sets an explicit `maxJobs`, that IS the budget (the
- *    exposed override) — used verbatim, not multiplied by term count.
+ *  - When the instance sets an explicit `maxJobs`, that IS the per-search cap
+ *    (the exposed override) — used verbatim, not multiplied by term count.
  *  - Otherwise it's budget-derived: `maxJobsPerTerm` is a per-(term × source)
  *    budget, but the URL builder OR-joins every term into ONE query per
  *    location, so the count is multiplied by the term count or the joined
  *    query returns only a single term's worth (≈ the actor's 10-job floor).
  */
-function resolveLinkedInRunBudget(
+function resolveLinkedInPerSearchCap(
   runGlobals: ProviderRunContext["runGlobals"],
   termCount: number,
   instanceMaxJobs?: number,
@@ -151,7 +153,7 @@ export const linkedinJobsScraperTemplate: ProviderActorTemplate = {
   actorRef: "curious_coder/linkedin-jobs-scraper",
   displayName: "LinkedIn Jobs Scraper (curious_coder)",
   description:
-    "curious_coder/linkedin-jobs-scraper. Search URLs and result count are built automatically from your configured search terms + location (one URL per city, else the country) — you no longer paste LinkedIn URLs here, and any `urls`/`count` you set are ignored/overridden. Each city is searched qualified with your selected country, because LinkedIn resolves a bare city name to whichever one it ranks highest (a plain `Cambridge` returns Toronto-area jobs). The run budget scales with your run budget × number of search terms (the actor enforces a minimum of 10) and is split evenly across those city searches. The global max-job-age-to-scrape setting is applied via the LinkedIn f_TPR date filter on the built URLs when set. Set scrapeCompany=true if you want company-side fields populated (costs more CUs).",
+    "curious_coder/linkedin-jobs-scraper. Search URLs and result count are built automatically from your configured search terms + location (one URL per city, else the country) — you no longer paste LinkedIn URLs here, and any `urls`/`count` you set are ignored/overridden. Each city is searched qualified with your selected country, because LinkedIn resolves a bare city name to whichever one it ranks highest (a plain `Cambridge` returns Toronto-area jobs). Each city search is capped at the instance's max-jobs value (or your run budget × number of search terms when that is blank; the actor enforces a minimum of 10), so the run total scales with the number of cities you configure. The global max-job-age-to-scrape setting is applied via the LinkedIn f_TPR date filter on the built URLs when set. Set scrapeCompany=true if you want company-side fields populated (costs more CUs).",
   defaultInputTemplate: JSON.stringify(
     {
       scrapeCompany: false,
@@ -179,7 +181,7 @@ export const linkedinJobsScraperTemplate: ProviderActorTemplate = {
       context.instance.maxAgeDays,
     );
     const urls = buildLinkedInSearchUrls(terms, context.runGlobals, maxAgeDays);
-    const runBudget = resolveLinkedInRunBudget(
+    const perSearch = resolveLinkedInPerSearchCap(
       context.runGlobals,
       terms.length,
       context.instance.maxJobs,
@@ -187,17 +189,17 @@ export const linkedinJobsScraperTemplate: ProviderActorTemplate = {
     return {
       ...baseObj,
       urls,
-      // Both caps are sent on purpose. Since 2026-08-08 `count` is the actor's
-      // GLOBAL run max (kept for backward compatibility) and `limitPerSource`
-      // is the per-URL one, so this pins the same total spend on either build
-      // while splitting it evenly across the cities. Sending only `count`
-      // lets the first URL in the list consume the entire run — which is how
-      // one mis-resolved city starves every city after it.
-      count: runBudget,
-      limitPerSource: Math.max(
-        1,
-        Math.ceil(runBudget / Math.max(1, urls.length)),
-      ),
+      // Both caps are sent on purpose. Since 2026-08-08 `limitPerSource` is
+      // the actor's per-URL cap and `count` is only a GLOBAL run max (kept for
+      // backward compatibility), so `count` has to carry the total the
+      // per-search cap implies — otherwise it would throttle the run to one
+      // city's worth. On an older pinned build `limitPerSource` is unknown and
+      // `count` alone still caps the run at that same total.
+      //
+      // Cost note: the run total scales with the number of configured cities.
+      // One city costs `maxJobs`; six cost six times that.
+      count: perSearch * Math.max(1, urls.length),
+      limitPerSource: perSearch,
     };
   },
   mapItem(item, context): CreateJobInput | null {
