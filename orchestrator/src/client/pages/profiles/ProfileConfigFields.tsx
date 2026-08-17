@@ -280,6 +280,11 @@ export const ProfileConfigFields: React.FC<ProfileConfigFieldsProps> = ({
                 onValuesChange={(value) => onChange({ cityValues: value })}
                 placeholder='e.g. "London"'
                 removeLabelPrefix="Remove city"
+                helperText={
+                  form.cityValues.length === 0
+                    ? "No cities: the whole country is searched, as one search per source."
+                    : "Each city is searched separately, so the city list multiplies what a paid source costs. Clear it to search the whole country instead."
+                }
               />
             </div>
             <WorkplaceTypesField
