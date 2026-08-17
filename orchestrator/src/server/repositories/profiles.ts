@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { changesScrapeCoverage } from "@shared/scrape-window.js";
 import {
   type CreateProfileInput,
   defaultProfileConfig,
@@ -15,39 +16,6 @@ import { getEnabledExtractorIds } from "./source-configs";
 import { clearScrapeWatermarks } from "./source-scrape-watermarks";
 
 const { profiles } = schema;
-
-/**
- * Config fields that change WHAT a run would have matched. A scrape watermark
- * only licenses a narrower window because the previous run already covered the
- * older postings — which stops being true the moment the profile looks for
- * something else, or widens its own max-age cap. Editing any of these drops
- * the profile's watermarks so its next run scrapes the full window again.
- *
- * Deliberately excluded: source selection (a newly-ticked source has no
- * watermark of its own, and an un-ticked one keeps a mark it will not read),
- * and the volume knobs (runBudget / topN), which cap how much a run
- * takes rather than how far back it looks.
- */
-const COVERAGE_SHAPING_FIELDS = [
-  "searchTerms",
-  "searchCountry",
-  "searchCities",
-  "workplaceTypes",
-  "locationSearchScope",
-  "locationMatchStrictness",
-  "scrapeMaxAgeDays",
-] as const satisfies ReadonlyArray<keyof ProfileConfig>;
-
-function changesScrapeCoverage(
-  existing: ProfileConfig,
-  patch: Partial<ProfileConfig>,
-): boolean {
-  return COVERAGE_SHAPING_FIELDS.some(
-    (field) =>
-      field in patch &&
-      JSON.stringify(patch[field]) !== JSON.stringify(existing[field]),
-  );
-}
 
 function mapRow(row: ProfileDbRow): Profile {
   return {

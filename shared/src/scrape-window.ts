@@ -1,3 +1,5 @@
+import type { ProfileConfig } from "./types/profile.js";
+
 /**
  * "Scrape since the last run": narrow a source's max-job-age window to the
  * time actually elapsed since that source last scraped successfully, so a
@@ -59,4 +61,41 @@ export function resolveScrapeWindowDays(args: ScrapeWindowArgs): number | null {
     days = Math.min(days, Math.floor(capDays));
   }
   return Math.max(1, Math.min(SCRAPE_WINDOW_MAX_DAYS, days));
+}
+
+/**
+ * The Search Profile fields that shape WHAT a run would have covered, as
+ * opposed to how much of it a run takes. Changing one invalidates every
+ * watermark: a narrowed window is only safe while the previous run looked for
+ * the same things.
+ *
+ * Deliberately excluded: source selection (a newly-ticked source has no
+ * watermark of its own, and an un-ticked one keeps a mark it will not read),
+ * and the volume knobs (runBudget / topN), which cap how much a run takes
+ * rather than how far back it looks.
+ *
+ * One list, two consumers: the repository clears the watermarks, and the
+ * profile editor tells the user its next run will scrape the full window
+ * again. A second copy would drift into a silent lie in one of the two.
+ */
+export const SCRAPE_COVERAGE_FIELDS = [
+  "searchTerms",
+  "searchCountry",
+  "searchCities",
+  "workplaceTypes",
+  "locationSearchScope",
+  "locationMatchStrictness",
+  "scrapeMaxAgeDays",
+] as const satisfies ReadonlyArray<keyof ProfileConfig>;
+
+/** Whether a patch changes what a run would cover, i.e. drops the watermarks. */
+export function changesScrapeCoverage(
+  existing: ProfileConfig,
+  patch: Partial<ProfileConfig>,
+): boolean {
+  return SCRAPE_COVERAGE_FIELDS.some(
+    (field) =>
+      field in patch &&
+      JSON.stringify(patch[field]) !== JSON.stringify(existing[field]),
+  );
 }

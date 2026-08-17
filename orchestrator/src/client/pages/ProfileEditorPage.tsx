@@ -2,6 +2,7 @@ import * as api from "@client/api";
 import { PageHeader, PageMain } from "@client/components/layout";
 import { queryKeys } from "@client/lib/queryKeys";
 import { toast } from "@client/lib/toast";
+import { changesScrapeCoverage } from "@shared/scrape-window.js";
 import { defaultProfileConfig } from "@shared/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Save, Target } from "lucide-react";
@@ -63,14 +64,40 @@ export function ProfileEditorPage() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!form) throw new Error("Form not ready");
-      const config = buildConfig(form, existing?.config ?? defaultProfileConfig());
+      const config = buildConfig(
+        form,
+        existing?.config ?? defaultProfileConfig(),
+      );
       const name = form.name.trim();
-      return id
-        ? api.updateProfile(id, { name, config })
-        : api.createProfile({ name, config });
+      // Changing what a run covers drops this profile's scrape watermarks
+      // server-side. That is correct — a narrowed window is only safe while the
+      // previous run looked for the same things — but it silently costs the
+      // next run its narrowing, so say so instead of leaving it to be
+      // rediscovered from a funnel that suddenly re-buys a full window.
+      const resetsScrapeWindow =
+        !isNew &&
+        existing !== null &&
+        existing !== undefined &&
+        config.scrapeSinceLastRun &&
+        changesScrapeCoverage(existing.config, config);
+      const saved = id
+        ? await api.updateProfile(id, { name, config })
+        : await api.createProfile({ name, config });
+      return { saved, resetsScrapeWindow };
     },
-    onSuccess: () => {
-      toast.success(id ? "Profile saved" : "Profile created");
+    onSuccess: ({ resetsScrapeWindow }) => {
+      const message = id ? "Profile saved" : "Profile created";
+      // Call the bare 1-arg form when there is nothing to add: the toast
+      // wrapper forwards its second argument, and a trailing `undefined`
+      // breaks every `toHaveBeenCalledWith(message)` assertion.
+      if (resetsScrapeWindow) {
+        toast.success(message, {
+          description:
+            'Search coverage changed, so "only scrape since the last run" starts over — the next run scrapes the full max-age window on every source.',
+        });
+      } else {
+        toast.success(message);
+      }
       queryClient.invalidateQueries({ queryKey: queryKeys.profiles.all });
       navigate("/profiles");
     },

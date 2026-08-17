@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { resolveScrapeWindowDays } from "./scrape-window";
+import {
+  changesScrapeCoverage,
+  resolveScrapeWindowDays,
+} from "./scrape-window";
+import { defaultProfileConfig } from "./types/profile";
 
 const DAY_MS = 86_400_000;
 const NOW = Date.parse("2026-08-12T12:00:00.000Z");
@@ -109,5 +113,33 @@ describe("resolveScrapeWindowDays", () => {
         capDays: null,
       }),
     ).toBe(4);
+  });
+});
+
+describe("changesScrapeCoverage", () => {
+  const existing = defaultProfileConfig();
+
+  it("reports the fields that change what a run would cover", () => {
+    expect(changesScrapeCoverage(existing, { searchTerms: ["new term"] })).toBe(
+      true,
+    );
+    expect(changesScrapeCoverage(existing, { searchCountry: "canada" })).toBe(
+      true,
+    );
+    expect(changesScrapeCoverage(existing, { scrapeMaxAgeDays: 14 })).toBe(
+      true,
+    );
+  });
+
+  it("ignores volume knobs, source selection, and unchanged values", () => {
+    expect(changesScrapeCoverage(existing, { runBudget: 999 })).toBe(false);
+    expect(changesScrapeCoverage(existing, { topN: 1 })).toBe(false);
+    expect(
+      changesScrapeCoverage(existing, { enabledSourceIds: ["jobspy"] }),
+    ).toBe(false);
+    expect(
+      changesScrapeCoverage(existing, { searchTerms: existing.searchTerms }),
+    ).toBe(false);
+    expect(changesScrapeCoverage(existing, {})).toBe(false);
   });
 });
