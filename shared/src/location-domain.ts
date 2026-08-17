@@ -4,12 +4,7 @@ import {
   normalizeCountryKey,
 } from "./location-support.js";
 import { normalizeStringArray } from "./normalize-string-array.js";
-import {
-  matchesRequestedCity,
-  matchesRequestedCountry,
-  parseSearchCitiesSetting,
-  shouldApplyStrictCityFilter,
-} from "./search-cities.js";
+import { parseSearchCitiesSetting } from "./search-cities.js";
 import type { JobSource } from "./types/jobs.js";
 import { normalizeWhitespace } from "./utils/string.js";
 
@@ -330,18 +325,6 @@ function createDefaultSupportedCountryKeys(
     default:
       return null;
   }
-}
-
-function buildEvidenceLocationText(
-  evidence: Pick<LocationEvidence, "location" | "city" | "country">,
-): string | undefined {
-  if (evidence.location) return evidence.location;
-
-  const parts = [evidence.city, evidence.country].filter(
-    (value): value is string => Boolean(value),
-  );
-  if (parts.length === 0) return undefined;
-  return parts.join(", ");
 }
 
 function describeSelectedGeography(
@@ -687,147 +670,6 @@ export function getCompatibleSourcesForLocationIntent(
   intent: LocationIntentInput | LocationIntent,
 ): Array<JobSource | string> {
   return planLocationSources({ intent, sources }).compatibleSources;
-}
-
-export function matchLocationIntent(
-  intent: LocationIntentInput | LocationIntent,
-  evidence:
-    | LocationEvidenceInput
-    | LocationEvidence
-    | readonly LocationEvidenceEntry[],
-): LocationMatchResult {
-  const normalizedIntent = normalizeLocationIntent(intent);
-  const normalizedEvidence = normalizeLocationEvidence(evidence);
-  const evidenceLocation = buildEvidenceLocationText(normalizedEvidence);
-  const selectedCountry = normalizedIntent.selectedCountry;
-  const requestedCities = normalizedIntent.cityLocations;
-  const allowRemoteWorldwide =
-    normalizedIntent.workplaceTypes.includes("remote") &&
-    normalizedIntent.geoScope !== "selected_only";
-
-  if (!selectedCountry) {
-    return {
-      matched: true,
-      matchedBy: "unfiltered",
-      reasonCode: "unfiltered",
-      priority: 0,
-      intent: normalizedIntent,
-      evidence: normalizedEvidence,
-      countryMatched: true,
-      cityMatched: true,
-      remoteMatched: false,
-      reasons: ["No selected country was provided."],
-    };
-  }
-
-  const countryMatched =
-    normalizedEvidence.country !== null
-      ? normalizeCountryKey(normalizedEvidence.country) === selectedCountry
-      : matchesRequestedCountry(evidenceLocation, selectedCountry);
-
-  if (countryMatched) {
-    if (requestedCities.length === 0) {
-      return {
-        matched: true,
-        matchedBy: "selected_location",
-        reasonCode: "selected_location",
-        priority: 1,
-        intent: normalizedIntent,
-        evidence: normalizedEvidence,
-        countryMatched: true,
-        cityMatched: true,
-        remoteMatched: false,
-        reasons: [
-          `Selected country ${formatCountryLabel(selectedCountry)} matched.`,
-        ],
-      };
-    }
-
-    const cityMatched = requestedCities.some((requestedCity) => {
-      const strict = shouldApplyStrictCityFilter(
-        requestedCity,
-        selectedCountry,
-      );
-      if (!strict) return true;
-      return (
-        matchesRequestedCity(evidenceLocation, requestedCity) ||
-        matchesRequestedCity(
-          normalizedEvidence.city ?? undefined,
-          requestedCity,
-        )
-      );
-    });
-
-    if (cityMatched || normalizedIntent.matchStrictness === "flexible") {
-      return {
-        matched: true,
-        matchedBy: "selected_location",
-        reasonCode: "selected_location",
-        priority: 1,
-        intent: normalizedIntent,
-        evidence: normalizedEvidence,
-        countryMatched: true,
-        cityMatched,
-        remoteMatched: false,
-        reasons: cityMatched
-          ? [
-              `Selected country ${formatCountryLabel(selectedCountry)} matched.`,
-              "Requested city matched.",
-            ]
-          : [
-              `Selected country ${formatCountryLabel(selectedCountry)} matched.`,
-              "City did not match exactly, but flexible matching was allowed.",
-            ],
-      };
-    }
-  }
-
-  if (allowRemoteWorldwide && normalizedEvidence.isRemote) {
-    return {
-      matched: true,
-      matchedBy: "remote_worldwide",
-      reasonCode: "remote_worldwide",
-      priority: 0,
-      intent: normalizedIntent,
-      evidence: normalizedEvidence,
-      countryMatched,
-      cityMatched: false,
-      remoteMatched: true,
-      reasons: ["Remote jobs worldwide are allowed for this intent."],
-    };
-  }
-
-  const reasons: string[] = [];
-  reasons.push(
-    countryMatched
-      ? `Selected country ${formatCountryLabel(selectedCountry)} matched.`
-      : `Selected country ${formatCountryLabel(selectedCountry)} did not match.`,
-  );
-
-  if (requestedCities.length > 0 && countryMatched) {
-    reasons.push("Requested city did not match.");
-  }
-
-  if (allowRemoteWorldwide && !normalizedEvidence.isRemote) {
-    reasons.push(
-      "Remote jobs worldwide were allowed, but the job was not remote.",
-    );
-  } else if (!allowRemoteWorldwide) {
-    reasons.push("Remote jobs worldwide are not allowed for this intent.");
-  }
-
-  return {
-    matched: false,
-    matchedBy: "no_match",
-    reasonCode: "no_match",
-    priority: 0,
-    intent: normalizedIntent,
-    evidence: normalizedEvidence,
-    countryMatched,
-    cityMatched: false,
-    remoteMatched: false,
-    reasons,
-  };
 }
 
 export function describeLocationIntent(

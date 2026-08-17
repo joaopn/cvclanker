@@ -2,6 +2,7 @@ import { createLocationIntentFromLegacyInputs } from "@shared/location-domain.js
 import type { PipelineConfig } from "@shared/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getProgress, resetProgress } from "../progress";
+import { getRunJobs, resetRunJobCapture } from "../run-job-capture";
 import { discoverJobsStep } from "./discover-jobs";
 
 vi.mock("@server/repositories/settings", () => ({
@@ -403,6 +404,67 @@ describe("discoverJobsStep", () => {
 
     expect(result.discoveredJobs).toHaveLength(1);
     expect(result.discoveredJobs[0]?.location).toBe("Zagreb, Croatia");
+  });
+
+  it("captures which location check rejected each job", async () => {
+    const registryModule = await import("@server/extractors/registry");
+    resetRunJobCapture();
+
+    const jobspyManifest = {
+      id: "jobspy",
+      displayName: "JobSpy",
+      providesSources: ["indeed", "linkedin", "glassdoor"],
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        jobs: [
+          {
+            source: "linkedin",
+            title: "Engineer - Toronto",
+            employer: "ACME Canada",
+            location: "Toronto, Ontario, Canada",
+            jobUrl: "https://example.com/ca-1",
+          },
+          {
+            source: "linkedin",
+            title: "Engineer - Leeds",
+            employer: "ACME UK",
+            location: "Leeds, England, United Kingdom",
+            jobUrl: "https://example.com/uk-1",
+          },
+        ],
+      }),
+    };
+
+    vi.mocked(registryModule.getExtractorRegistry).mockResolvedValue({
+      manifests: new Map([["jobspy", jobspyManifest as any]]),
+      manifestBySource: new Map([
+        ["indeed", jobspyManifest as any],
+        ["linkedin", jobspyManifest as any],
+        ["glassdoor", jobspyManifest as any],
+      ]),
+      availableSources: ["indeed", "linkedin", "glassdoor"],
+    } as any);
+
+    const result = await discoverJobsStep({
+      mergedConfig: {
+        ...baseConfig,
+        sources: ["linkedin"],
+        locationIntent: createLocationIntentFromLegacyInputs({
+          selectedCountry: "united kingdom",
+          searchCities: "London",
+        }),
+      },
+    });
+
+    expect(result.discoveredJobs).toHaveLength(0);
+    const rejected = getRunJobs("linkedin", "rejected");
+    expect(rejected.map((job) => [job.title, job.reason]).sort()).toEqual([
+      [
+        "Engineer - Leeds",
+        "location mismatch: in United Kingdom, but not in a selected city",
+      ],
+      ["Engineer - Toronto", "location mismatch: outside United Kingdom"],
+    ]);
   });
 
   it("keeps jobs that only expose structured location evidence", async () => {

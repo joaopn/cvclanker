@@ -30,7 +30,6 @@ export {
   type LocationSourceCapabilitiesInput,
   type LocationSourcePlan,
   type LocationWorkplaceType,
-  matchLocationIntent,
   normalizeLocationCountryKey,
   normalizeLocationEvidence,
   normalizeLocationGeoScope,

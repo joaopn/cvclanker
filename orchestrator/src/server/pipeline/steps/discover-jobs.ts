@@ -11,7 +11,10 @@ import { getEffectiveSettings } from "@server/services/settings";
 import { resolveSourceContextSettings } from "@server/services/source-configs/resolve";
 import { asyncPool } from "@server/utils/async-pool";
 import type { ExtractorSourceId } from "@shared/extractors";
-import { matchJobLocationIntent } from "@shared/job-matching.js";
+import {
+  describeLocationRejection,
+  matchJobLocationIntent,
+} from "@shared/job-matching.js";
 import {
   buildLocationEvidence as buildSharedLocationEvidence,
   createLocationIntentFromLegacyInputs,
@@ -550,6 +553,11 @@ export async function discoverJobsStep(args: {
   }
 
   const locationFilterReasonCounts: Record<string, number> = {};
+  // Which check failed, per job, so the banner's Rejected list can say so. The
+  // reason has to be captured HERE — by the time the rows are attributed back
+  // to their source the match result is gone, and "location mismatch" alone is
+  // undiagnosable from the UI.
+  const locationDropReasons = new Map<CreateJobInput, string>();
   const locationFilteredJobs = discoveredJobs.filter((job) => {
     const evidence =
       job.locationEvidence ??
@@ -566,6 +574,10 @@ export async function discoverJobsStep(args: {
     const reasonCode = match.reasonCode;
     locationFilterReasonCounts[reasonCode] =
       (locationFilterReasonCounts[reasonCode] ?? 0) + 1;
+    locationDropReasons.set(
+      job,
+      describeLocationRejection(reasonCode, locationIntent),
+    );
     return false;
   });
   const locationFilteredOutCount =
@@ -605,7 +617,7 @@ export async function discoverJobsStep(args: {
     if (blockedKept.has(job)) continue;
     const reason = locationKept.has(job)
       ? "blocked company"
-      : "location mismatch";
+      : (locationDropReasons.get(job) ?? "location mismatch");
     const list = droppedBySource.get(job.source) ?? [];
     list.push(toCapturedRunJob(job, reason));
     droppedBySource.set(job.source, list);

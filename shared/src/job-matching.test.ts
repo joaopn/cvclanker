@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { matchJobLocationIntent } from "./job-matching";
+import {
+  describeLocationRejection,
+  matchJobLocationIntent,
+} from "./job-matching";
 import { createLocationIntent } from "./location-domain";
 
 const intentFor = (overrides: Parameters<typeof createLocationIntent>[0]) =>
@@ -126,5 +129,48 @@ describe("matchJobLocationIntent", () => {
         uk,
       ).matched,
     ).toBe(false);
+  });
+  it("names the check that failed on a reject", () => {
+    const uk = intentFor({
+      selectedCountry: "united kingdom",
+      cityLocations: ["London", "Cambridge"],
+    });
+
+    expect(
+      matchJobLocationIntent({ location: "Toronto, Ontario, Canada" }, uk)
+        .reasonCode,
+    ).toBe("no_country_match");
+    // In the country, but not in a city the profile listed.
+    expect(
+      matchJobLocationIntent({ location: "Leeds, England, United Kingdom" }, uk)
+        .reasonCode,
+    ).toBe("no_city_match");
+
+    const countryOnly = intentFor({ selectedCountry: "united kingdom" });
+    expect(
+      matchJobLocationIntent(
+        { location: "Toronto, Ontario, Canada" },
+        countryOnly,
+      ).reasonCode,
+    ).toBe("no_country_match");
+  });
+
+  it("describes a rejection in one readable line", () => {
+    const uk = intentFor({
+      selectedCountry: "united kingdom",
+      cityLocations: ["London"],
+    });
+
+    expect(describeLocationRejection("no_country_match", uk)).toBe(
+      "location mismatch: outside United Kingdom",
+    );
+    expect(describeLocationRejection("no_city_match", uk)).toBe(
+      "location mismatch: in United Kingdom, but not in a selected city",
+    );
+    // An accept code has no rejection to describe; the generic line is the
+    // honest fallback rather than a sentence claiming a specific failure.
+    expect(describeLocationRejection("selected_location", uk)).toBe(
+      "location mismatch",
+    );
   });
 });

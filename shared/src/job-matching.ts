@@ -1,3 +1,4 @@
+import { formatCountryLabel } from "./location-support.js";
 import {
   locationCountryUnspecified,
   matchesRequestedCity,
@@ -129,6 +130,35 @@ export function getJobLocationCandidates(job: {
   return out;
 }
 
+/**
+ * Why a job was kept or dropped. The two reject codes name the check that
+ * failed, so the run banner's Rejected list can say which one it was instead of
+ * a bare "location mismatch" that has to be diagnosed against the database.
+ */
+export type LocationMatchReasonCode =
+  | "unfiltered"
+  | "selected_location"
+  | "remote_worldwide"
+  | "no_country_match"
+  | "no_city_match";
+
+/** One line a person can read in the run banner's Rejected column. */
+export function describeLocationRejection(
+  reasonCode: LocationMatchReasonCode,
+  intent: LocationIntent,
+): string {
+  const country = intent.selectedCountry
+    ? formatCountryLabel(intent.selectedCountry)
+    : "the selected country";
+  if (reasonCode === "no_city_match") {
+    return `location mismatch: in ${country}, but not in a selected city`;
+  }
+  if (reasonCode === "no_country_match") {
+    return `location mismatch: outside ${country}`;
+  }
+  return "location mismatch";
+}
+
 export function matchJobLocationIntent(
   job: {
     location?: string | null;
@@ -143,7 +173,7 @@ export function matchJobLocationIntent(
   intent: LocationIntent,
 ): {
   matched: boolean;
-  reasonCode: string;
+  reasonCode: LocationMatchReasonCode;
   priority: 0 | 1;
 } {
   const candidates = getJobLocationCandidates(job);
@@ -207,5 +237,12 @@ export function matchJobLocationIntent(
     return { matched: true, reasonCode: "remote_worldwide", priority: 0 };
   }
 
-  return { matched: false, reasonCode: "no_match", priority: 0 };
+  // Name the check that actually failed. A country match reaching here means
+  // cities were requested, none matched, and strictness is exact_only — every
+  // other country-matched path has already returned.
+  return {
+    matched: false,
+    reasonCode: countryMatched ? "no_city_match" : "no_country_match",
+    priority: 0,
+  };
 }
