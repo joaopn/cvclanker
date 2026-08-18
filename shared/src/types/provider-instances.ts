@@ -55,4 +55,10 @@ export interface ProviderActorTemplateSummary {
   description: string;
   defaultInputTemplate: string;
   defaultMappings: Partial<Record<SourceConfigGlobalField, boolean>>;
+  /**
+   * What this actor actually does with a max job age, shown next to the field
+   * that sets it. Actors honour it very differently — exactly, or bucketed and
+   * rounded up — and the difference costs money on a pay-per-result actor.
+   */
+  maxAgeNote?: string;
 }

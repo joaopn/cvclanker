@@ -40,6 +40,8 @@ export const cheapScraperLinkedinTemplate: ProviderActorTemplate = {
     null,
     2,
   ),
+  maxAgeNote:
+    "This actor only accepts 24 hours, 7 days or 30 days and offers no newest-first sort, so anything in between rounds UP: a 2-day window buys a week of postings, on an actor that bills per result.",
   defaultMappings: {
     maxJobsPerTerm: true,
     maxAgeDays: true,

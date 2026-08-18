@@ -24,6 +24,11 @@ export interface ProviderActorTemplate {
   defaultInputTemplate: string;
   defaultMappings: Partial<Record<SourceConfigGlobalField, boolean>>;
   /**
+   * What this actor does with a max job age, in one sentence, shown beside the
+   * per-instance field. Omitted for actors with no opinion (freeform).
+   */
+  maxAgeNote?: string;
+  /**
    * Lower bounds for numeric placeholders this actor enforces server-side
    * (e.g. curious_coder/linkedin-jobs-scraper rejects count < 10). Clamped
    * during input substitution so a small maxJobsPerTerm never 400s the run.

@@ -59,6 +59,7 @@ providerInstancesRouter.get("/", async (_req: Request, res: Response) => {
         description: template.description,
         defaultInputTemplate: template.defaultInputTemplate,
         defaultMappings: template.defaultMappings,
+        maxAgeNote: template.maxAgeNote,
       })),
       instances: instances.filter((row) => row.providerId === provider.id),
     }));

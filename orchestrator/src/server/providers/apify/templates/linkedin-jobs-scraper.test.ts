@@ -134,4 +134,7 @@ describe("linkedinJobsScraperTemplate.buildInput", () => {
 
     expect((input.urls as string[])[0]).toContain("f_TPR=r604800");
   });
+  it("carries a max-age note saying the window is honoured exactly", () => {
+    expect(linkedinJobsScraperTemplate.maxAgeNote).toMatch(/f_TPR/);
+  });
 });

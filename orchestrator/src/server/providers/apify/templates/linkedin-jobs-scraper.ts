@@ -161,6 +161,8 @@ export const linkedinJobsScraperTemplate: ProviderActorTemplate = {
     null,
     2,
   ),
+  maxAgeNote:
+    "Sent exactly, as LinkedIn's f_TPR recency filter (seconds), so any number of days is honoured as-is.",
   defaultMappings: {
     maxJobsPerTerm: true,
     maxAgeDays: true,

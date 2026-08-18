@@ -87,4 +87,10 @@ describe("cheapScraperLinkedinTemplate.buildInput", () => {
       }).publishedAt,
     ).toBe("r604800");
   });
+  it("carries a max-age note, since its window is bucketed and rounds up", () => {
+    // The bucketing is a vendor limit we cannot fix; the field that sets it has
+    // to say so, or a 2-day window silently buys a week on a per-result actor.
+    expect(cheapScraperLinkedinTemplate.maxAgeNote).toMatch(/24 hours/);
+    expect(cheapScraperLinkedinTemplate.maxAgeNote).toMatch(/rounds UP/);
+  });
 });

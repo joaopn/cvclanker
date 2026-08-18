@@ -316,9 +316,9 @@ export function ProviderInstanceCard({
             <p className="text-xs text-muted-foreground">
               Only scrape postings newer than this many days, overriding the
               global "Max job age to scrape" setting for this actor. Blank = use
-              the global setting (or no limit if it's unset). For LinkedIn it's
-              applied via the f_TPR date filter; freeform actors can reference it
-              as <code>{"{{maxAgeDays}}"}</code>.
+              the global setting (or no limit if it's unset).{" "}
+              {template?.maxAgeNote ??
+                "A freeform actor gets it as the {{maxAgeDays}} placeholder, and only honours it if its input template uses it."}
             </p>
           </div>
 
