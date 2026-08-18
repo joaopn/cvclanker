@@ -14,6 +14,7 @@ Copy `.env.example` to `.env` and fill in what you need — all optional.
 | `BASIC_AUTH_PASSWORD` | *(unset)* | Password for optional login. |
 | `JWT_SECRET` | *(DB-managed)* | Pin the session-signing secret externally (≥32 chars). If unset, it's managed in the database. |
 | `JWT_EXPIRY_SECONDS` | `86400` | Baseline session lifetime (24h); the Settings UI overrides it. |
+| `LLM_REQUEST_TIMEOUT_MS` | `300000` | Baseline ceiling on one LLM request (5 min), so a stalled provider can't freeze a pipeline run; the Settings UI overrides it. |
 | `JOBSPY_IS_REMOTE` | `0` | Set `1` to filter jobspy sources (Indeed/LinkedIn/Glassdoor) to remote-only. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | *(unset)* | Token for the Claude Code provider, minted with `claude setup-token`. The Settings UI value overrides it. |
 

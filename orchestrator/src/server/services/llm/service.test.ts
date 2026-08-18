@@ -417,3 +417,152 @@ describe("LlmService rate-limit budget", () => {
     expect(isRateLimitStopped()).toBe(true);
   });
 });
+
+describe("LlmService request deadline", () => {
+  const savedTimeout = process.env.LLM_REQUEST_TIMEOUT_MS;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (savedTimeout === undefined) {
+      delete process.env.LLM_REQUEST_TIMEOUT_MS;
+    } else {
+      process.env.LLM_REQUEST_TIMEOUT_MS = savedTimeout;
+    }
+  });
+
+  /** A provider that accepts the request and then never answers. */
+  function mockStalledFetch(): void {
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      (_input, init) =>
+        new Promise((_resolve, reject) => {
+          const signal = (init as RequestInit | undefined)?.signal;
+          signal?.addEventListener(
+            "abort",
+            () => {
+              reject(
+                new DOMException("This operation was aborted", "AbortError"),
+              );
+            },
+            { once: true },
+          );
+        }),
+    );
+  }
+
+  it("gives up on a request that never answers", async () => {
+    // Without this the await is unbounded, and one stalled call holds the
+    // scoring pool — and with it the whole pipeline run — open forever.
+    process.env.LLM_REQUEST_TIMEOUT_MS = "60";
+    mockStalledFetch();
+
+    const llm = new LlmService({ provider: "openai", apiKey: "k" });
+    const result = await llm.callJson({
+      model: "gpt-5.4-mini",
+      messages: [{ role: "user", content: "hi" }],
+      jsonSchema: SCHEMA,
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toContain("timed out after 60ms");
+      // Not a rate limit: a timeout must not latch the global budget and
+      // stop every other call in the process.
+      expect(result.code).toBe("unknown");
+    }
+  });
+
+  it("prefers an explicit per-call timeout over the configured one", async () => {
+    process.env.LLM_REQUEST_TIMEOUT_MS = "600000";
+    mockStalledFetch();
+
+    const llm = new LlmService({ provider: "openai", apiKey: "k" });
+    const result = await llm.callJson({
+      model: "gpt-5.4-mini",
+      messages: [{ role: "user", content: "hi" }],
+      jsonSchema: SCHEMA,
+      timeoutMs: 60,
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error).toContain("timed out after 60ms");
+  });
+
+  it("reports a caller's cancellation as a cancellation, not a timeout", async () => {
+    process.env.LLM_REQUEST_TIMEOUT_MS = "600000";
+    mockStalledFetch();
+
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 20);
+
+    const llm = new LlmService({ provider: "openai", apiKey: "k" });
+    const result = await llm.callJson({
+      model: "gpt-5.4-mini",
+      messages: [{ role: "user", content: "hi" }],
+      jsonSchema: SCHEMA,
+      signal: controller.signal,
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).not.toContain("timed out after");
+      expect(result.error).toContain("aborted");
+    }
+  });
+
+  it("spends the deadline per attempt rather than across the retries", async () => {
+    // A stall is exactly what a retry is for, so each attempt gets the full
+    // budget — a shared one would make every retry after a slow first
+    // attempt fail instantly without ever reaching the provider.
+    process.env.LLM_REQUEST_TIMEOUT_MS = "60";
+    mockStalledFetch();
+
+    const llm = new LlmService({ provider: "openai", apiKey: "k" });
+    const startedAt = Date.now();
+    const result = await llm.callJson({
+      model: "gpt-5.4-mini",
+      messages: [{ role: "user", content: "hi" }],
+      jsonSchema: SCHEMA,
+      maxRetries: 1,
+      retryDelayMs: 1,
+    });
+
+    expect(result.success).toBe(false);
+    expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(2);
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(120);
+  });
+
+  it("hands the configured ceiling to the claude code CLI", async () => {
+    process.env.LLM_REQUEST_TIMEOUT_MS = "45000";
+    const callSpy = vi
+      .spyOn(ClaudeCodeClient.prototype, "callJson")
+      .mockResolvedValue({
+        text: '{"ok":true}',
+        usage: { promptTokens: 1, completionTokens: 1 },
+      });
+
+    const llm = new LlmService({ provider: "claude_code" });
+    await llm.callJson({
+      model: "claude-sonnet-5",
+      messages: [{ role: "user", content: "hi" }],
+      jsonSchema: SCHEMA,
+    });
+
+    expect(callSpy.mock.calls[0]?.[0]).toMatchObject({ timeoutMs: 45_000 });
+  });
+
+  it("hands the configured ceiling to the codex app-server client", async () => {
+    process.env.LLM_REQUEST_TIMEOUT_MS = "45000";
+    const callSpy = vi
+      .spyOn(CodexClient.prototype, "callJson")
+      .mockResolvedValue({ text: '{"ok":true}', turnId: "turn-1" });
+
+    const llm = new LlmService({ provider: "codex" });
+    await llm.callJson({
+      model: "",
+      messages: [{ role: "user", content: "hi" }],
+      jsonSchema: SCHEMA,
+    });
+
+    expect(callSpy.mock.calls[0]?.[0]).toMatchObject({ timeoutMs: 45_000 });
+  });
+});

@@ -58,6 +58,7 @@ export type PipelineSettingsValues = {
   maxBulkActionJobs: EffectiveDefault<number>;
   discoveryConcurrency: EffectiveDefault<number>;
   llmRateLimitRetries: EffectiveDefault<number>;
+  llmRequestTimeoutMs: EffectiveDefault<number>;
   scoringConcurrency: EffectiveDefault<number>;
   tailoringConcurrency: EffectiveDefault<number>;
   bulkActionConcurrency: EffectiveDefault<number>;

@@ -530,9 +530,12 @@ export class ClaudeCodeClient {
       // argv prompt would also expose the candidate's CV in the process table.
       stdin: formatPrompt(options.messages),
       oauthToken,
+      // The env var stays the operator's per-provider escape hatch and wins;
+      // otherwise the caller's resolved ceiling (the llmRequestTimeoutMs
+      // setting) applies, and the constant is the floor under both.
       timeoutMs: getPositiveIntEnv(
         "CLAUDE_CODE_REQUEST_TIMEOUT_MS",
-        DEFAULT_REQUEST_TIMEOUT_MS,
+        options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
       ),
       signal: options.signal,
     }).catch((error: unknown) => {

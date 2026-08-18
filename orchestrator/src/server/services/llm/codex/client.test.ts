@@ -176,6 +176,95 @@ describe("CodexClient", () => {
     expect(threadReadCalls).toBe(0);
   });
 
+  it("gives up on a turn that never completes and discards the session", async () => {
+    // The stall is deliberately CHATTY: deltas keep arriving, so the
+    // per-wait idle timeout re-arms forever and only the ceiling can end it.
+    const tickers: NodeJS.Timeout[] = [];
+    const spawnCallsBefore = vi.mocked(spawn).mock.calls.length;
+    let stall = true;
+
+    mockSpawn((request, helpers) => {
+      if (request.method === "initialize") {
+        helpers.respond({
+          userAgent: "test",
+          codexHome: "/tmp/codex",
+          platformFamily: "unix",
+          platformOs: "linux",
+        });
+        return;
+      }
+      if (request.method === "thread/start") {
+        helpers.respond({ thread: { id: "thread-1" } });
+        return;
+      }
+      if (request.method === "turn/start") {
+        helpers.respond({ turn: { id: "turn-1" } });
+        if (stall) {
+          tickers.push(
+            setInterval(() => {
+              helpers.notify("item/agentMessage/delta", {
+                threadId: "thread-1",
+                turnId: "turn-1",
+                itemId: "msg-1",
+                delta: ".",
+              });
+            }, 10),
+          );
+          return;
+        }
+        helpers.notify("item/completed", {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            type: "agentMessage",
+            id: "msg-1",
+            phase: "final_answer",
+            text: '{"ok":true}',
+          },
+        });
+        helpers.notify("turn/completed", {
+          threadId: "thread-1",
+          turn: { id: "turn-1", status: "completed", error: null },
+        });
+        return;
+      }
+
+      helpers.respond({});
+    });
+
+    const client = new CodexClient();
+    const request = {
+      model: "",
+      messages: [{ role: "user", content: "Score this job." }],
+      jsonSchema: {
+        name: "stub",
+        schema: {
+          type: "object",
+          properties: { ok: { type: "boolean" } },
+          required: ["ok"],
+          additionalProperties: false,
+        },
+      },
+      timeoutMs: 200,
+    } as LlmRequestOptions<unknown>;
+
+    await expect(client.callJson(request)).rejects.toThrow(
+      /timed out after 200ms/,
+    );
+
+    for (const ticker of tickers) clearInterval(ticker);
+    expect(vi.mocked(spawn).mock.calls.length - spawnCallsBefore).toBe(1);
+
+    // The abandoned turn is still live inside that app-server and every call
+    // is serialized through the one shared session, so the next call has to
+    // get a fresh process rather than queue behind the wedge.
+    stall = false;
+    const response = await client.callJson(request);
+
+    expect(response.text).toContain('"ok":true');
+    expect(vi.mocked(spawn).mock.calls.length - spawnCallsBefore).toBe(2);
+  });
+
   it("reports missing auth as an invalid credential state", async () => {
     mockSpawn((request, helpers) => {
       if (request.method === "initialize") {

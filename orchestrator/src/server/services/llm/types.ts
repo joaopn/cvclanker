@@ -38,6 +38,12 @@ export interface LlmRequestOptions<_T> {
   jobId?: string;
   /** Optional abort signal for cancellation */
   signal?: AbortSignal;
+  /**
+   * Ceiling on ONE attempt, in ms. Omitted — every caller today — resolves
+   * from the `llmRequestTimeoutMs` setting. Pass it only when the caller has
+   * a budget of its own that is tighter than the user's global one.
+   */
+  timeoutMs?: number;
   /** Short human label shown in the live LLM queue (e.g. "score job", "tailor CV") */
   label?: string;
   /** Optional secondary line shown under the label (e.g. "Title @ Employer") */

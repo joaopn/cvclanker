@@ -80,6 +80,7 @@ export interface AppSettings {
   maxBulkActionJobs: Resolved<number>;
   discoveryConcurrency: Resolved<number>;
   llmRateLimitRetries: Resolved<number>;
+  llmRequestTimeoutMs: Resolved<number>;
   scoringConcurrency: Resolved<number>;
   tailoringConcurrency: Resolved<number>;
   bulkActionConcurrency: Resolved<number>;

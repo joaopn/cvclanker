@@ -1,5 +1,8 @@
 import { logger } from "@infra/logger";
-import { providerUsesBaseUrl } from "@shared/settings-registry";
+import {
+  DEFAULT_LLM_REQUEST_TIMEOUT_MS,
+  providerUsesBaseUrl,
+} from "@shared/settings-registry";
 import { toStringOrNull } from "@shared/utils/type-conversion";
 import { ClaudeCodeClient } from "./claude-code/client";
 import { CodexClient } from "./codex/client";
@@ -28,6 +31,7 @@ import type {
   LlmValidationResult,
   ResponseMode,
 } from "./types";
+import { deadlineErrorMessage, startDeadline } from "./utils/deadline";
 import {
   addQueryParam,
   buildHeaders,
@@ -189,6 +193,7 @@ export class LlmService {
       maxRetries = 0,
       retryDelayMs = 500,
       signal,
+      timeoutMs,
     } = options;
     const jobId = options.jobId;
 
@@ -205,6 +210,7 @@ export class LlmService {
         retryDelayMs,
         jobId,
         signal,
+        timeoutMs,
       });
 
       if (result.success) {
@@ -337,6 +343,11 @@ export class LlmService {
     options: LlmRequestOptions<T>,
   ): Promise<LlmResponse<T>> {
     const { maxRetries = 0, retryDelayMs = 500, signal, jobId } = options;
+    // Handed to the client rather than wrapped in a deadline signal here: an
+    // abandoned turn keeps running inside the shared app-server and every
+    // later call queues behind that one session, so the ceiling has to be
+    // enforced where the session can also be torn down.
+    const timeoutMs = resolveRequestTimeoutMs(options.timeoutMs);
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const attemptStartedAt = Date.now();
@@ -353,6 +364,7 @@ export class LlmService {
         const result = await this.codexClient.callJson({
           ...options,
           signal,
+          timeoutMs,
         });
         const parsed = parseJsonContent<T>(result.text, jobId);
         // Codex app-server protocol doesn't expose token usage today, so
@@ -423,6 +435,10 @@ export class LlmService {
     options: LlmRequestOptions<T>,
   ): Promise<LlmResponse<T>> {
     const { maxRetries = 0, retryDelayMs = 500, jobId } = options;
+    // The CLI spawn has always had its own ceiling; this makes the setting
+    // the source of that number, with CLAUDE_CODE_REQUEST_TIMEOUT_MS still
+    // overriding it for this provider alone.
+    const timeoutMs = resolveRequestTimeoutMs(options.timeoutMs);
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const attemptStartedAt = Date.now();
@@ -436,7 +452,10 @@ export class LlmService {
           await sleep(getRetryDelayMs(retryDelayMs, attempt));
         }
 
-        const result = await this.claudeCodeClient.callJson(options);
+        const result = await this.claudeCodeClient.callJson({
+          ...options,
+          timeoutMs,
+        });
 
         const parsed = parseJsonContent<T>(result.text, jobId);
         this.logCallCompleted({
@@ -500,6 +519,7 @@ export class LlmService {
     retryDelayMs: number;
     jobId?: string;
     signal?: AbortSignal;
+    timeoutMs?: number;
   }): Promise<LlmResponse<T>> {
     const {
       mode,
@@ -518,19 +538,27 @@ export class LlmService {
       0,
     );
 
+    const timeoutMs = resolveRequestTimeoutMs(args.timeoutMs);
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const attemptStartedAt = Date.now();
       let bodyBytes: number | null = null;
-      try {
-        if (attempt > 0) {
-          logger.info("LLM retry attempt", {
-            jobId: jobId ?? "unknown",
-            attempt,
-            maxRetries,
-          });
-          await sleep(getRetryDelayMs(retryDelayMs, attempt));
-        }
+      if (attempt > 0) {
+        logger.info("LLM retry attempt", {
+          jobId: jobId ?? "unknown",
+          attempt,
+          maxRetries,
+        });
+        await sleep(getRetryDelayMs(retryDelayMs, attempt));
+      }
 
+      // Per ATTEMPT, and armed around the whole exchange — response.json()
+      // included, since a provider can just as well stall mid-body as before
+      // the headers. Without it this await is unbounded: undici's own idle
+      // timeout re-arms on every byte received. Started after the retry sleep
+      // so a backoff never eats the budget it is waiting to spend.
+      const deadline = startDeadline({ signal, timeoutMs });
+      try {
         const { url, headers, body } = this.strategy.buildRequest({
           mode,
           baseUrl: this.baseUrl,
@@ -561,7 +589,7 @@ export class LlmService {
           method: "POST",
           headers,
           body: serializedBody,
-          signal,
+          signal: deadline.signal,
         });
 
         if (!response.ok) {
@@ -606,7 +634,15 @@ export class LlmService {
           },
         };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        // A timed-out attempt reaches here as a bare AbortError, which is
+        // indistinguishable from a caller cancelling — `timedOut()` is what
+        // separates them, and only the deadline's own abort gets rewritten
+        // into a message that names what was exceeded.
+        const message = deadline.timedOut()
+          ? deadlineErrorMessage({ timeoutMs, provider: this.provider })
+          : error instanceof Error
+            ? error.message
+            : String(error);
         const status = (error as LlmApiError).status;
         const body = (error as LlmApiError).body;
 
@@ -655,6 +691,8 @@ export class LlmService {
           error: message,
           code: classifyLlmError({ status, message }),
         };
+      } finally {
+        deadline.dispose();
       }
     }
 
@@ -804,6 +842,29 @@ export class LlmService {
       .map((entry) => entry.name?.trim() || entry.model?.trim() || "")
       .filter(Boolean);
   }
+}
+
+/**
+ * The deadline one attempt gets, in ms.
+ *
+ * Read from process.env rather than the settings table because this runs on
+ * every LLM call: the `llmRequestTimeoutMs` setting carries envKey
+ * LLM_REQUEST_TIMEOUT_MS, so the registry already syncs the stored value into
+ * process.env at boot and on save — no round trip, and never a stale value.
+ * An explicit per-call `timeoutMs` still wins, for callers with their own
+ * budget (a benchmark column, a route with a shorter request ceiling).
+ */
+function resolveRequestTimeoutMs(explicit?: number): number {
+  if (explicit !== undefined && Number.isFinite(explicit) && explicit > 0) {
+    return Math.floor(explicit);
+  }
+  const raw = process.env.LLM_REQUEST_TIMEOUT_MS?.trim();
+  if (!raw) return DEFAULT_LLM_REQUEST_TIMEOUT_MS;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_LLM_REQUEST_TIMEOUT_MS;
+  }
+  return parsed;
 }
 
 function normalizeProvider(

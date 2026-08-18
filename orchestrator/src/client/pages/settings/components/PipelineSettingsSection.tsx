@@ -1,6 +1,10 @@
 import { SettingsSectionFrame } from "@client/pages/settings/components/SettingsSectionFrame";
 import type { PipelineSettingsValues } from "@client/pages/settings/types";
-import { MAX_POOL_CONCURRENCY } from "@shared/settings-registry";
+import {
+  MAX_LLM_REQUEST_TIMEOUT_MS,
+  MAX_POOL_CONCURRENCY,
+  MIN_LLM_REQUEST_TIMEOUT_MS,
+} from "@shared/settings-registry";
 import type { UpdateSettingsInput } from "@shared/settings-schema.js";
 import {
   SUITABILITY_CATEGORIES,
@@ -143,6 +147,7 @@ export const PipelineSettingsSection: React.FC<
     inboxStaleThresholdDays,
     maxBulkActionJobs,
     llmRateLimitRetries,
+    llmRequestTimeoutMs,
     discoveryConcurrency,
     scoringConcurrency,
     tailoringConcurrency,
@@ -471,6 +476,58 @@ export const PipelineSettingsSection: React.FC<
           <div className="text-xs text-muted-foreground">
             Current:{" "}
             <span className="font-mono">{llmRateLimitRetries.effective}</span>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="llmRequestTimeoutMs" className="text-sm font-medium">
+            LLM request timeout (ms)
+          </label>
+          <Controller
+            name="llmRequestTimeoutMs"
+            control={control}
+            rules={{
+              validate: (v) =>
+                v === null ||
+                v === undefined ||
+                (Number.isInteger(v) &&
+                  v >= MIN_LLM_REQUEST_TIMEOUT_MS &&
+                  v <= MAX_LLM_REQUEST_TIMEOUT_MS) ||
+                `Must be between ${MIN_LLM_REQUEST_TIMEOUT_MS} and ${MAX_LLM_REQUEST_TIMEOUT_MS}`,
+            }}
+            render={({ field }) => (
+              <Input
+                id="llmRequestTimeoutMs"
+                type="number"
+                min={MIN_LLM_REQUEST_TIMEOUT_MS}
+                max={MAX_LLM_REQUEST_TIMEOUT_MS}
+                step={1000}
+                placeholder={String(llmRequestTimeoutMs.default)}
+                disabled={isLoading || isSaving}
+                value={field.value ?? ""}
+                onChange={(e) => {
+                  const value = e.target.valueAsNumber;
+                  field.onChange(Number.isFinite(value) ? value : null);
+                }}
+              />
+            )}
+          />
+          {errors.llmRequestTimeoutMs && (
+            <div className="text-xs text-destructive">
+              {errors.llmRequestTimeoutMs.message as string}
+            </div>
+          )}
+          <div className="text-xs text-muted-foreground">
+            How long a single LLM request may run before it is abandoned and the
+            job is left unscored (or the tailor left failed) rather than waiting
+            forever. Without it a provider that stalls mid-request can hold a
+            pipeline run in its scoring step until the app restarts. Applies per
+            attempt, so a call that retries can take a multiple of this. Raise
+            it if a slow local model legitimately needs longer.
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Current:{" "}
+            <span className="font-mono">{llmRequestTimeoutMs.effective}</span>
           </div>
         </div>
 

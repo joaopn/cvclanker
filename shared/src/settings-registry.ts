@@ -28,6 +28,41 @@ function parseIntOrNull(raw: string | undefined): number | null {
 // to 100 on 2026-08-10.
 export const MAX_POOL_CONCURRENCY = 100;
 
+// The ceiling on ONE LLM attempt, shared by every provider. It exists because
+// nothing below it is guaranteed to end: the HTTP providers hand their request
+// to fetch, whose only backstop is undici's idle timeout — and that resets on
+// every byte, so a provider trickling keep-alive padding while a model sits
+// queued holds the socket open forever. One such call is enough to freeze a
+// whole pipeline run: the scoring pool awaits its workers, so a worker that
+// never settles keeps the run in "scoring" until a restart, and cancellation
+// (polled between tasks) cannot reach it either.
+//
+// 5 minutes because this is a stuck-detector, not a tuning knob: it has to sit
+// above the slowest call anyone legitimately makes (a big reasoning model on a
+// full CV + JD) so it never truncates real work. Per ATTEMPT, not per call —
+// a stall is exactly what a retry is for, and the retry policy already treats
+// a timeout as retryable, so a call with `maxRetries: 2` is bounded at 3× this.
+export const DEFAULT_LLM_REQUEST_TIMEOUT_MS = 300_000;
+export const MIN_LLM_REQUEST_TIMEOUT_MS = 5_000;
+// 30 minutes: enough for a large local model on CPU, which is the only setup
+// that legitimately runs a single call this long.
+export const MAX_LLM_REQUEST_TIMEOUT_MS = 1_800_000;
+
+// Clamped on READ for the same reason as the concurrency values below: an
+// out-of-band stored value (hand-edited DB row, crafted snapshot) must not be
+// able to reintroduce the unbounded wait — 0 would otherwise disable the
+// deadline entirely, which is the bug this setting exists to prevent.
+function parseTimeoutMsOrNull(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const parsed = parseInt(raw, 10);
+  return Number.isNaN(parsed)
+    ? null
+    : Math.min(
+        MAX_LLM_REQUEST_TIMEOUT_MS,
+        Math.max(MIN_LLM_REQUEST_TIMEOUT_MS, parsed),
+      );
+}
+
 // Clamps to the same 1..MAX_POOL_CONCURRENCY the concurrency schemas enforce,
 // so an out-of-band stored value (hand-edited DB row, crafted snapshot) can
 // never stall a pool at 0 or overshoot the asyncPool clamp on read.
@@ -462,6 +497,26 @@ export const settingsRegistry = {
     schema: z.number().int().min(0).max(MAX_POOL_CONCURRENCY),
     default: (): number => 3,
     parse: parseIntOrNull,
+    serialize: serializeNullableNumber,
+  },
+  // Rides its envKey into process.env (boot + save) so the LLM path can read
+  // it without a settings round trip per call, and never serves a stale value
+  // after a save. `default()` deliberately does NOT read process.env — that is
+  // the llmBaseUrl trap documented on jwtExpirySeconds: an env-reading default
+  // echoes the override back as the default and breaks the client's nullIfSame
+  // collapse. A DB override wins over an operator's env baseline; the
+  // per-provider escape hatches (CLAUDE_CODE_REQUEST_TIMEOUT_MS,
+  // CODEX_APP_SERVER_*) still win over both, for their provider alone.
+  llmRequestTimeoutMs: {
+    kind: "typed" as const,
+    envKey: "LLM_REQUEST_TIMEOUT_MS",
+    schema: z
+      .number()
+      .int()
+      .min(MIN_LLM_REQUEST_TIMEOUT_MS)
+      .max(MAX_LLM_REQUEST_TIMEOUT_MS),
+    default: (): number => DEFAULT_LLM_REQUEST_TIMEOUT_MS,
+    parse: parseTimeoutMsOrNull,
     serialize: serializeNullableNumber,
   },
   scoringConcurrency: {

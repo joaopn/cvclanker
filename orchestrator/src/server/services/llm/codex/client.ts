@@ -3,13 +3,19 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface, type Interface } from "node:readline";
 import { logger } from "@infra/logger";
+import { DEFAULT_LLM_REQUEST_TIMEOUT_MS } from "@shared/settings-registry";
 import type { JsonSchemaDefinition, LlmRequestOptions } from "../types";
+import { type RequestDeadline, startDeadline } from "../utils/deadline";
 import { truncate } from "../utils/string";
 import { resolveCodexCommand } from "./install";
 
 const DEFAULT_STARTUP_TIMEOUT_MS = 15_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
-const DEFAULT_TURN_TIMEOUT_MS = 120_000;
+// How long ONE wait for the next notification may sit silent. This is an IDLE
+// timeout, not a turn ceiling: `waitForNotification` re-arms it on every
+// notification it receives, matching or not, so a chatty-but-stuck turn resets
+// it forever. The ceiling below is what actually bounds a turn.
+const DEFAULT_TURN_IDLE_TIMEOUT_MS = 120_000;
 const DEFAULT_IDLE_TIMEOUT_MS = 30_000;
 const MAX_STDERR_LINES = 40;
 const FALLBACK_CLIENT_VERSION = "dev";
@@ -90,6 +96,21 @@ function buildCodexErrorMessage(error: unknown): string {
 function isAbortError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   return error.name === "AbortError" || error.message.includes("aborted");
+}
+
+/**
+ * A turn we stopped waiting for — the ceiling was reached, the idle timeout
+ * fired, or the caller aborted. The turn itself is still running inside the
+ * app-server, and every later call is serialized through that ONE shared
+ * session, so the session has to be torn down rather than reused: otherwise
+ * the abandoned turn's notifications interleave with the next job's, and
+ * whatever it is stuck on keeps holding the queue.
+ */
+class CodexTurnAbandonedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CodexTurnAbandonedError";
+  }
 }
 
 function isSessionInfrastructureError(error: unknown): boolean {
@@ -450,7 +471,7 @@ class CodexAppServerSession {
       options?.timeoutMs ??
       getPositiveIntEnv(
         "CODEX_APP_SERVER_TURN_TIMEOUT_MS",
-        DEFAULT_TURN_TIMEOUT_MS,
+        DEFAULT_TURN_IDLE_TIMEOUT_MS,
       );
 
     while (true) {
@@ -718,7 +739,10 @@ async function withCodexSession<T>(args: {
     try {
       return await args.task(session);
     } catch (error) {
-      if (isSessionInfrastructureError(error)) {
+      if (
+        isSessionInfrastructureError(error) ||
+        error instanceof CodexTurnAbandonedError
+      ) {
         await resetSharedSession();
       }
       throw error;
@@ -834,217 +858,256 @@ export class CodexClient {
   async callJson(
     options: LlmRequestOptions<unknown>,
   ): Promise<{ text: string; turnId: string }> {
+    // The ceiling on the whole call. `CODEX_APP_SERVER_TURN_CEILING_MS` is the
+    // per-provider escape hatch; otherwise this is the caller's resolved
+    // `llmRequestTimeoutMs`. It is enforced with a signal rather than a
+    // per-wait timeout because `waitForNotification` re-arms its own timeout
+    // on every notification — a turn emitting deltas forever would never trip
+    // an idle timeout, which is exactly the wedge this bounds.
+    const ceilingMs = getPositiveIntEnv(
+      "CODEX_APP_SERVER_TURN_CEILING_MS",
+      options.timeoutMs ?? DEFAULT_LLM_REQUEST_TIMEOUT_MS,
+    );
+
     return await withCodexSession({
       signal: options.signal,
       task: async (session) => {
-        const threadStart = (await session.request("thread/start", {
-          model: options.model.trim() || null,
-          ephemeral: true,
-          approvalPolicy: "never",
-          sandbox: "read-only",
-          experimentalRawEvents: false,
-          persistExtendedHistory: false,
-        })) as {
-          thread?: { id?: string };
-        };
-
-        const threadId = threadStart.thread?.id;
-        if (!threadId) {
-          throw new Error("Codex thread/start did not return a thread id.");
-        }
-
-        const turnStart = (await session.request(
-          "turn/start",
-          {
-            threadId,
-            model: options.model.trim() || null,
-            input: [
-              {
-                type: "text",
-                text: formatPrompt({
-                  messages: options.messages,
-                  jsonSchema: options.jsonSchema,
-                }),
-                text_elements: [],
-              },
-            ],
-            outputSchema: options.jsonSchema.schema,
-          },
-          {
-            signal: options.signal,
-            timeoutMs: getPositiveIntEnv(
-              "CODEX_APP_SERVER_REQUEST_TIMEOUT_MS",
-              DEFAULT_REQUEST_TIMEOUT_MS,
-            ),
-          },
-        )) as {
-          turn?: { id?: string };
-        };
-
-        const turnId = turnStart.turn?.id;
-        if (!turnId) {
-          throw new Error("Codex turn/start did not return a turn id.");
-        }
-
-        const timeoutMs = getPositiveIntEnv(
-          "CODEX_APP_SERVER_TURN_TIMEOUT_MS",
-          DEFAULT_TURN_TIMEOUT_MS,
-        );
-        const capturedMessages = new Map<
-          string,
-          { text: string; phase: string | null }
-        >();
-        let turnCompleted: JsonRpcNotification | null = null;
-
-        while (!turnCompleted) {
-          const notification = await session.waitForNotification(
-            (candidate) => {
-              if (candidate.method === "turn/completed") {
-                const params = candidate.params as
-                  | { turn?: { id?: string } }
-                  | undefined;
-                return params?.turn?.id === turnId;
-              }
-
-              if (candidate.method === "item/agentMessage/delta") {
-                const params = candidate.params as
-                  | { threadId?: string; turnId?: string; itemId?: string }
-                  | undefined;
-                return (
-                  params?.threadId === threadId &&
-                  params?.turnId === turnId &&
-                  typeof params.itemId === "string"
-                );
-              }
-
-              if (candidate.method === "item/completed") {
-                const params = candidate.params as
-                  | { threadId?: string; turnId?: string; item?: unknown }
-                  | undefined;
-                return (
-                  params?.threadId === threadId &&
-                  params?.turnId === turnId &&
-                  typeof params.item === "object" &&
-                  params.item !== null
-                );
-              }
-
-              return false;
-            },
-            {
-              signal: options.signal,
-              timeoutMs,
-            },
-          );
-
-          if (notification.method === "item/agentMessage/delta") {
-            const params = notification.params as
-              | { itemId?: string; delta?: string }
-              | undefined;
-            const itemId = params?.itemId;
-            if (
-              typeof itemId === "string" &&
-              typeof params?.delta === "string"
-            ) {
-              const existing = capturedMessages.get(itemId) ?? {
-                text: "",
-                phase: null,
-              };
-              capturedMessages.set(itemId, {
-                text: `${existing.text}${params.delta}`,
-                phase: existing.phase,
-              });
-            }
-            continue;
-          }
-
-          if (notification.method === "item/completed") {
-            const params = notification.params as
-              | { item?: unknown }
-              | undefined;
-            const item =
-              params && typeof params.item === "object" && params.item !== null
-                ? (params.item as Record<string, unknown>)
-                : null;
-            if (item?.type === "agentMessage") {
-              const itemId =
-                typeof item.id === "string"
-                  ? item.id
-                  : `agent-message-${capturedMessages.size + 1}`;
-              const text = typeof item.text === "string" ? item.text : "";
-              const phase = typeof item.phase === "string" ? item.phase : null;
-              const existing = capturedMessages.get(itemId);
-              capturedMessages.set(itemId, {
-                text: text || existing?.text || "",
-                phase: phase ?? existing?.phase ?? null,
-              });
-            }
-            continue;
-          }
-
-          turnCompleted = notification;
-        }
-
-        const completedParams = turnCompleted.params as
-          | {
-              turn?: {
-                id?: string;
-                status?: string;
-                error?: { message?: string | null } | null;
-              };
-            }
-          | undefined;
-        const status = completedParams?.turn?.status;
-        if (status === "failed") {
-          const errorMessage =
-            completedParams?.turn?.error?.message?.trim() ||
-            "Codex turn failed with no error message.";
-          throw new Error(errorMessage);
-        }
-        if (status === "interrupted") {
-          throw new Error("Codex turn was interrupted.");
-        }
-
-        const textFromEvents = pickBestAgentMessageText(
-          Array.from(capturedMessages.values()),
-        );
-        if (textFromEvents) {
-          return { text: textFromEvents, turnId };
-        }
-
-        let text: string | null = null;
+        const deadline = startDeadline({
+          signal: options.signal,
+          timeoutMs: ceilingMs,
+        });
         try {
-          const threadRead = (await session.request("thread/read", {
-            threadId,
-            includeTurns: true,
-          })) as {
-            thread?: {
-              turns?: Array<{
-                id?: string;
-                items?: unknown[];
-              }>;
-            };
-          };
-
-          const turn = (threadRead.thread?.turns ?? []).find(
-            (candidate) => candidate.id === turnId,
-          );
-          text = extractAgentMessageText(turn ?? null);
-        } catch (error) {
-          logger.debug("Codex thread/read fallback unavailable", {
-            message: buildCodexErrorMessage(error),
-          });
+          return await this.runTurn({ session, options, deadline, ceilingMs });
+        } finally {
+          deadline.dispose();
         }
-
-        if (!text) {
-          throw new Error(
-            "Codex turn completed but no assistant message text was returned.",
-          );
-        }
-
-        return { text, turnId };
       },
     });
+  }
+
+  private async runTurn(args: {
+    session: CodexAppServerSession;
+    options: LlmRequestOptions<unknown>;
+    deadline: RequestDeadline;
+    ceilingMs: number;
+  }): Promise<{ text: string; turnId: string }> {
+    const { session, options, deadline, ceilingMs } = args;
+    const threadStart = (await session.request("thread/start", {
+      model: options.model.trim() || null,
+      ephemeral: true,
+      approvalPolicy: "never",
+      sandbox: "read-only",
+      experimentalRawEvents: false,
+      persistExtendedHistory: false,
+    })) as {
+      thread?: { id?: string };
+    };
+
+    const threadId = threadStart.thread?.id;
+    if (!threadId) {
+      throw new Error("Codex thread/start did not return a thread id.");
+    }
+
+    const turnStart = (await session.request(
+      "turn/start",
+      {
+        threadId,
+        model: options.model.trim() || null,
+        input: [
+          {
+            type: "text",
+            text: formatPrompt({
+              messages: options.messages,
+              jsonSchema: options.jsonSchema,
+            }),
+            text_elements: [],
+          },
+        ],
+        outputSchema: options.jsonSchema.schema,
+      },
+      {
+        signal: deadline.signal,
+        timeoutMs: getPositiveIntEnv(
+          "CODEX_APP_SERVER_REQUEST_TIMEOUT_MS",
+          DEFAULT_REQUEST_TIMEOUT_MS,
+        ),
+      },
+    )) as {
+      turn?: { id?: string };
+    };
+
+    const turnId = turnStart.turn?.id;
+    if (!turnId) {
+      throw new Error("Codex turn/start did not return a turn id.");
+    }
+
+    const idleTimeoutMs = getPositiveIntEnv(
+      "CODEX_APP_SERVER_TURN_TIMEOUT_MS",
+      DEFAULT_TURN_IDLE_TIMEOUT_MS,
+    );
+    const capturedMessages = new Map<
+      string,
+      { text: string; phase: string | null }
+    >();
+    let turnCompleted: JsonRpcNotification | null = null;
+
+    while (!turnCompleted) {
+      const notification = await session
+        .waitForNotification(
+          (candidate) => {
+            if (candidate.method === "turn/completed") {
+              const params = candidate.params as
+                | { turn?: { id?: string } }
+                | undefined;
+              return params?.turn?.id === turnId;
+            }
+
+            if (candidate.method === "item/agentMessage/delta") {
+              const params = candidate.params as
+                | { threadId?: string; turnId?: string; itemId?: string }
+                | undefined;
+              return (
+                params?.threadId === threadId &&
+                params?.turnId === turnId &&
+                typeof params.itemId === "string"
+              );
+            }
+
+            if (candidate.method === "item/completed") {
+              const params = candidate.params as
+                | { threadId?: string; turnId?: string; item?: unknown }
+                | undefined;
+              return (
+                params?.threadId === threadId &&
+                params?.turnId === turnId &&
+                typeof params.item === "object" &&
+                params.item !== null
+              );
+            }
+
+            return false;
+          },
+          {
+            signal: deadline.signal,
+            timeoutMs: idleTimeoutMs,
+          },
+        )
+        .catch((error: unknown) => {
+          // Whatever stopped the wait — the ceiling, the idle timeout, the
+          // caller's own abort — the turn is still live inside the app-server,
+          // so this rides out as the error that tears the session down. The
+          // ceiling gets a message naming itself; everything else keeps its own
+          // (a user cancelling must never be reported as a provider timeout).
+          throw new CodexTurnAbandonedError(
+            deadline.timedOut()
+              ? `Codex turn timed out after ${ceilingMs}ms.`
+              : error instanceof Error
+                ? error.message
+                : String(error),
+          );
+        });
+
+      if (notification.method === "item/agentMessage/delta") {
+        const params = notification.params as
+          | { itemId?: string; delta?: string }
+          | undefined;
+        const itemId = params?.itemId;
+        if (typeof itemId === "string" && typeof params?.delta === "string") {
+          const existing = capturedMessages.get(itemId) ?? {
+            text: "",
+            phase: null,
+          };
+          capturedMessages.set(itemId, {
+            text: `${existing.text}${params.delta}`,
+            phase: existing.phase,
+          });
+        }
+        continue;
+      }
+
+      if (notification.method === "item/completed") {
+        const params = notification.params as { item?: unknown } | undefined;
+        const item =
+          params && typeof params.item === "object" && params.item !== null
+            ? (params.item as Record<string, unknown>)
+            : null;
+        if (item?.type === "agentMessage") {
+          const itemId =
+            typeof item.id === "string"
+              ? item.id
+              : `agent-message-${capturedMessages.size + 1}`;
+          const text = typeof item.text === "string" ? item.text : "";
+          const phase = typeof item.phase === "string" ? item.phase : null;
+          const existing = capturedMessages.get(itemId);
+          capturedMessages.set(itemId, {
+            text: text || existing?.text || "",
+            phase: phase ?? existing?.phase ?? null,
+          });
+        }
+        continue;
+      }
+
+      turnCompleted = notification;
+    }
+
+    const completedParams = turnCompleted.params as
+      | {
+          turn?: {
+            id?: string;
+            status?: string;
+            error?: { message?: string | null } | null;
+          };
+        }
+      | undefined;
+    const status = completedParams?.turn?.status;
+    if (status === "failed") {
+      const errorMessage =
+        completedParams?.turn?.error?.message?.trim() ||
+        "Codex turn failed with no error message.";
+      throw new Error(errorMessage);
+    }
+    if (status === "interrupted") {
+      throw new Error("Codex turn was interrupted.");
+    }
+
+    const textFromEvents = pickBestAgentMessageText(
+      Array.from(capturedMessages.values()),
+    );
+    if (textFromEvents) {
+      return { text: textFromEvents, turnId };
+    }
+
+    let text: string | null = null;
+    try {
+      const threadRead = (await session.request("thread/read", {
+        threadId,
+        includeTurns: true,
+      })) as {
+        thread?: {
+          turns?: Array<{
+            id?: string;
+            items?: unknown[];
+          }>;
+        };
+      };
+
+      const turn = (threadRead.thread?.turns ?? []).find(
+        (candidate) => candidate.id === turnId,
+      );
+      text = extractAgentMessageText(turn ?? null);
+    } catch (error) {
+      logger.debug("Codex thread/read fallback unavailable", {
+        message: buildCodexErrorMessage(error),
+      });
+    }
+
+    if (!text) {
+      throw new Error(
+        "Codex turn completed but no assistant message text was returned.",
+      );
+    }
+
+    return { text, turnId };
   }
 }
 

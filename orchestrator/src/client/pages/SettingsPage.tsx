@@ -97,6 +97,7 @@ const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
   maxBulkActionJobs: null,
   discoveryConcurrency: null,
   llmRateLimitRetries: null,
+  llmRequestTimeoutMs: null,
   scoringConcurrency: null,
   tailoringConcurrency: null,
   bulkActionConcurrency: null,
@@ -351,6 +352,7 @@ export const SECTION_FIELD_MAP: Record<
     "maxBulkActionJobs",
     "discoveryConcurrency",
     "llmRateLimitRetries",
+    "llmRequestTimeoutMs",
     "scoringConcurrency",
     "tailoringConcurrency",
     "bulkActionConcurrency",
@@ -428,6 +430,7 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   maxBulkActionJobs: null,
   discoveryConcurrency: null,
   llmRateLimitRetries: null,
+  llmRequestTimeoutMs: null,
   scoringConcurrency: null,
   tailoringConcurrency: null,
   bulkActionConcurrency: null,
@@ -528,6 +531,7 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   maxBulkActionJobs: data.maxBulkActionJobs.override,
   discoveryConcurrency: data.discoveryConcurrency.override,
   llmRateLimitRetries: data.llmRateLimitRetries.override,
+  llmRequestTimeoutMs: data.llmRequestTimeoutMs.override,
   scoringConcurrency: data.scoringConcurrency.override,
   tailoringConcurrency: data.tailoringConcurrency.override,
   bulkActionConcurrency: data.bulkActionConcurrency.override,
@@ -676,6 +680,10 @@ const getDerivedSettings = (settings: AppSettings | null) => {
       llmRateLimitRetries: {
         effective: settings?.llmRateLimitRetries?.value ?? 3,
         default: settings?.llmRateLimitRetries?.default ?? 3,
+      },
+      llmRequestTimeoutMs: {
+        effective: settings?.llmRequestTimeoutMs?.value ?? 300_000,
+        default: settings?.llmRequestTimeoutMs?.default ?? 300_000,
       },
       scoringConcurrency: {
         effective: settings?.scoringConcurrency?.value ?? 4,
@@ -964,6 +972,10 @@ export const SettingsPage: React.FC = () => {
         llmRateLimitRetries: nullIfSame(
           data.llmRateLimitRetries,
           pipeline.llmRateLimitRetries.default,
+        ),
+        llmRequestTimeoutMs: nullIfSame(
+          data.llmRequestTimeoutMs,
+          pipeline.llmRequestTimeoutMs.default,
         ),
         scoringConcurrency: nullIfSame(
           data.scoringConcurrency,
