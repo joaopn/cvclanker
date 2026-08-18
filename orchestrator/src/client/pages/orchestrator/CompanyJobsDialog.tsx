@@ -1,7 +1,7 @@
 /**
  * Centered dialog listing every registered job from one company (employer),
- * across all statuses, with each job's status + closure reason. Clicking a row
- * navigates to that job in Manage and closes the dialog.
+ * across all statuses, with each job's fit classification, status + closure
+ * reason. Clicking a row navigates to that job in Manage and closes the dialog.
  */
 
 import * as api from "@client/api";
@@ -14,8 +14,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { getFilterTab } from "./JobCommandBar.utils";
 import { type FilterTab, outcomeLabel } from "./constants";
+import { JobCategoryBadge } from "./JobCategoryBadge";
+import { getFilterTab } from "./JobCommandBar.utils";
 import { JobStatusBadge } from "./JobStatusBadge";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -137,7 +138,14 @@ export const CompanyJobsDialog = ({
                         )}
                       </span>
                       <span className="flex shrink-0 flex-col items-end gap-1">
-                        <JobStatusBadge status={job.status} />
+                        <span className="flex items-center gap-1">
+                          {job.suitabilityCategory && (
+                            <JobCategoryBadge
+                              category={job.suitabilityCategory}
+                            />
+                          )}
+                          <JobStatusBadge status={job.status} />
+                        </span>
                         {closureReason && (
                           <span className="text-[10px] text-muted-foreground">
                             {closureReason}
