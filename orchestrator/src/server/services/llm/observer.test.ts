@@ -1,4 +1,5 @@
 // @vitest-environment node
+import type { LlmCallRecord } from "@shared/types";
 import { describe, expect, it } from "vitest";
 import { llmCallObserver } from "./observer";
 
@@ -21,6 +22,40 @@ function registerCall() {
   if (!record) throw new Error("registered record missing from snapshot");
   return { handle, id: record.id };
 }
+
+/**
+ * The window is oldest-first, so a long call gets pushed towards its edge
+ * while shorter ones churn past it. Under two-step classification every job
+ * books two records, so this is the ordinary case, not a corner one.
+ */
+describe("llmCallObserver record window", () => {
+  it("reports a running call's completion even after the window overflows", () => {
+    const seen = new Map<string, string>();
+    const onUpdate = (call: LlmCallRecord) => seen.set(call.id, call.status);
+    llmCallObserver.on("update", onUpdate);
+
+    try {
+      const slow = registerCall();
+      for (let i = 0; i < 60; i += 1) {
+        registerCall().handle.succeed();
+      }
+      slow.handle.succeed({ promptTokens: 50, completionTokens: 5 });
+
+      expect(seen.get(slow.id)).toBe("succeeded");
+    } finally {
+      llmCallObserver.off("update", onUpdate);
+    }
+  });
+
+  it("keeps an unfinished call in the snapshot rather than dropping it", () => {
+    const slow = registerCall();
+    for (let i = 0; i < 60; i += 1) {
+      registerCall().handle.succeed();
+    }
+
+    expect(latest(slow.id).status).toBe("running");
+  });
+});
 
 describe("llmCallObserver token totals", () => {
   it("leaves totalTokens null while the call is running", () => {
