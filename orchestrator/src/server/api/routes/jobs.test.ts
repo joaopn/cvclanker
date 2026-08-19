@@ -466,13 +466,28 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     expect(stored?.suitabilityCategory).toBe("great_fit");
   });
 
-  it("GET /duplicates returns active-triage jobs grouped by title + company", async () => {
-    // seedJob uses the same title/employer for every row, so two active rows
-    // form one duplicate group.
-    await seedJob({ id: "dups-a", status: "discovered" });
-    await seedJob({ id: "dups-b", status: "selected" });
+  it("GET /duplicates groups active-triage jobs by the board's posting id", async () => {
+    // Grouping is on the board's own id, so the URLs carry it — one posting
+    // seen under a country subdomain and bare. seedJob's default
+    // example.com URL has no board identity and would form no group at all,
+    // which is the point of the rule.
+    await seedJob({
+      id: "dups-a",
+      status: "discovered",
+      jobUrl: "https://www.linkedin.com/jobs/view/4383993915",
+    });
+    await seedJob({
+      id: "dups-b",
+      status: "selected",
+      jobUrl: "https://uk.linkedin.com/jobs/view/data-engineer-4383993915",
+    });
     // A terminal row with the same identity must NOT join the group.
-    await seedJob({ id: "dups-c", status: "closed", outcome: "rejected" });
+    await seedJob({
+      id: "dups-c",
+      status: "closed",
+      outcome: "rejected",
+      jobUrl: "https://ie.linkedin.com/jobs/view/de-4383993915",
+    });
 
     const res = await fetch(`${baseUrl}/api/jobs/duplicates`);
     expect(res.status).toBe(200);

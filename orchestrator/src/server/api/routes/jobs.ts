@@ -1038,8 +1038,9 @@ jobsRouter.get("/revision", async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/jobs/duplicates - Active-triage jobs grouped by normalized
- * title + company (groups of 2+). On-demand cleanup surface.
+ * GET /api/jobs/duplicates - Active-triage jobs the board itself lists under
+ * one posting id (groups of 2+). Rows with no parseable board id are not
+ * proposed: missing evidence must never buy a match. On-demand cleanup surface.
  */
 jobsRouter.get("/duplicates", async (_req: Request, res: Response) => {
   try {

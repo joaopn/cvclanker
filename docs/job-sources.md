@@ -72,8 +72,12 @@ tailoring as scraped ones.
 - **Reposts:** if a job URL shows up again with a newer posting date, CV Clanker
   bumps its repost count and pulls it back into the Inbox so you don't miss a
   re-listing.
-- **Duplicates across boards:** the same role found on two boards is detected
-  and merged, so you triage it once.
+- **Duplicates:** a LinkedIn posting listed more than once — under a country
+  subdomain, a slug URL, or via a second scraper — is grouped for review so you
+  triage it once. Only LinkedIn ids are read today, and only that board's own
+  posting id counts as proof: the same role appearing on two *different* boards
+  is deliberately left alone, because closing a job that merely looks similar
+  loses an opening you wanted.
 
 More on all of this in [Tracking your hunt](job-lifecycle.md).
 

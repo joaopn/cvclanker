@@ -30,7 +30,10 @@ skip, done.
 
 - **Reposts** — a job re-listed with a newer date is moved back into the Inbox
   with its repost count incremented.
-- **Duplicates** — the same role found on multiple boards is detected and merged.
+- **Duplicates** — a LinkedIn posting listed more than once (country subdomain,
+  slug URL, second scraper) is grouped on a review screen where you close the
+  copies you don't want. Nothing but the board's own posting id counts as
+  proof, so identical-looking roles on *different* boards are left alone.
 - **Aging** — untouched jobs move to a backlog over time; a repost can revive an
   aged-out job.
 

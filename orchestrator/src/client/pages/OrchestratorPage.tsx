@@ -762,9 +762,9 @@ export const OrchestratorPage: React.FC = () => {
               {duplicateCount > 0 && !isDuplicateBannerDismissed && (
                 <div className="flex items-center justify-between gap-3 rounded-md border border-status-warn/30 bg-status-warn/10 px-4 py-2 text-sm">
                   <span className="text-status-warn-text">
-                    {duplicateCount} possible duplicate{" "}
-                    {duplicateCount === 1 ? "group" : "groups"} (same title &
-                    company across sources)
+                    {duplicateCount} duplicate{" "}
+                    {duplicateCount === 1 ? "group" : "groups"} (one posting id,
+                    listed more than once)
                   </span>
                   <div className="flex shrink-0 items-center gap-2">
                     <Button

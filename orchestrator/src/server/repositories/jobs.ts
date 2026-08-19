@@ -8,7 +8,7 @@ import {
   DateNormalizationError,
   normalizeDatePosted,
 } from "@shared/date-normalize";
-import { normalizeDuplicateKey } from "@shared/duplicate-key";
+import { externalIdKey, normalizeTitleKey } from "@shared/duplicate-identity";
 import { canonicalizeJobUrl } from "@shared/job-url";
 import { buildLocationEvidence } from "@shared/location-domain.js";
 import type {
@@ -203,17 +203,39 @@ const DUPLICATE_SCOPE_STATUSES: JobStatus[] = [
 ];
 
 /**
- * Group active-triage jobs that share a normalized title + company. On-demand
- * only (not part of the hot list-fetch path), so the JS grouping is cheap.
- * Returns groups of 2+ members, each ordered as the list query returns them
- * (newest discovered first); empty-key rows are excluded.
+ * Group active-triage jobs the BOARD itself says are one posting: rows sharing
+ * a `(board, external id)`.
+ *
+ * This replaced grouping on normalized title + company, which had no access to
+ * any evidence about whether two rows were the same ad. On a real 18k-row
+ * database that key proposed 265 groups / 361 rows to close against this rule's
+ * 120 / 120. Comparing them pairwise, 405 of the old rule's 524 pairs are no
+ * longer proposed and 366 of those carry CONFLICTING board ids — the board
+ * itself says they are different postings. A list that long is swept rather
+ * than read, which turns weak evidence into destroyed openings. The measured
+ * worked example: eight `Software Development Engineer, Alexa Connections`
+ * rows at Amazon carrying EIGHT distinct requisition ids.
+ *
+ * Rows with no parseable board id are simply not proposed. Missing evidence
+ * must never buy a match — the cost is an extra row in the inbox, and the
+ * alternative cost is closing a job the user wanted.
+ *
+ * On-demand only (not the hot list-fetch path), so JS grouping is cheap. Groups
+ * are ordered largest-first, and the rows WITHIN each group keep the list
+ * query's order (newest discovered first) — `jobs[0]` supplies the header's
+ * representative title.
  */
 export async function getDuplicateGroups(): Promise<DuplicateJobGroup[]> {
   const items = await getJobListItems(DUPLICATE_SCOPE_STATUSES);
   const byKey = new Map<string, JobListItem[]>();
 
   for (const item of items) {
-    const key = normalizeDuplicateKey(item.title, item.employer);
+    // `JobListItem` carries `jobUrl` but not `sourceJobId`, and the id
+    // extractor's fallback to that field is measured DEAD for this caller:
+    // across all 15,121 LinkedIn rows of a real database, zero have a job-view
+    // URL whose path yields no id. Widening the list query for a case that
+    // does not occur would cost the hot path for nothing.
+    const key = externalIdKey({ jobUrl: item.jobUrl });
     if (!key) continue;
     const bucket = byKey.get(key);
     if (bucket) {
@@ -227,11 +249,19 @@ export async function getDuplicateGroups(): Promise<DuplicateJobGroup[]> {
   for (const [key, jobsInGroup] of byKey) {
     if (jobsInGroup.length < 2) continue;
     const first = jobsInGroup[0];
+    // A board id is strong evidence but not perfect: measured DB-wide, 39 of
+    // 823 id clusters carry more than one distinct title, some sharing almost
+    // no content. Those stay visible for a per-group decision but are barred
+    // from any bulk close — the one place where a wrong call is multiplied.
+    const titles = new Set(
+      jobsInGroup.map((job) => normalizeTitleKey(job.title)),
+    );
     groups.push({
       key,
       title: first.title,
       employer: first.employer,
       jobs: jobsInGroup,
+      bulkSafe: titles.size === 1,
     });
   }
 

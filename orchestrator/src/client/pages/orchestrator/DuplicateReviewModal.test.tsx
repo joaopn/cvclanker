@@ -49,7 +49,8 @@ function jobItem(overrides: Partial<JobListItem> & { id: string }): JobListItem 
 }
 
 const group = (): DuplicateJobGroup => ({
-  key: "senior data engineer acme corp",
+  key: "linkedin:4383993915",
+  bulkSafe: true,
   title: "Senior Data Engineer",
   employer: "Acme Corp",
   jobs: [
@@ -64,7 +65,8 @@ const group = (): DuplicateJobGroup => ({
 
 // A second cluster, so the close-all path has more than one group to sweep.
 const otherGroup = (): DuplicateJobGroup => ({
-  key: "platform engineer globex",
+  key: "linkedin:4455739231",
+  bulkSafe: true,
   title: "Platform Engineer",
   employer: "Globex",
   jobs: [
@@ -253,5 +255,111 @@ describe("DuplicateReviewModal", () => {
         screen.queryByText(/Nothing left to review/i),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("sweeps only up to a later review-only group, and lands the wizard on it", async () => {
+    // The configuration the rework exists for, and the one the first version
+    // of this test missed: a review-only group sitting AFTER sweepable ones.
+    // The press must cover the leading run only, and the wizard must land on
+    // the group needing a decision rather than past it.
+    const reviewOnly: DuplicateJobGroup = {
+      ...group(),
+      key: "linkedin:4435122980",
+      bulkSafe: false,
+      jobs: [
+        jobItem({ id: "r1", title: "Senior ML Scientist - Marketplace" }),
+        jobItem({ id: "r2", title: "Machine Learning Science - IC - G - I" }),
+      ],
+    };
+    const trailing: DuplicateJobGroup = {
+      ...group(),
+      key: "linkedin:4400000009",
+      jobs: [jobItem({ id: "z1" }), jobItem({ id: "z2" })],
+    };
+    renderModal({ groups: [group(), otherGroup(), reviewOnly, trailing] });
+
+    // "next", not "all": the run stops before the review-only group, so the
+    // label must not claim to cover everything that remains.
+    fireEvent.click(
+      screen.getByRole("button", { name: /Close next 2 groups/i }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText(/different job titles/i)).toBeInTheDocument(),
+    );
+    // Only the two leading groups' losers were sent — never the review-only
+    // group's, and never the trailing group the wizard has not reached.
+    const sent = runJobAction.mock.calls.at(-1)?.[0] as { jobIds: string[] };
+    expect([...sent.jobIds].sort()).toEqual(["g2", "j1"]);
+  });
+
+  it("advances to a review-only group after closing the one before it", async () => {
+    // The bug this pins: when close-all skipped an unsafe group but still
+    // advanced by the number of groups it closed, the wizard jumped over the
+    // group needing a decision and landed on one whose copies were already
+    // closed — a stale screen whose buttons then failed against the server's
+    // status guard.
+    const reviewOnly: DuplicateJobGroup = {
+      ...otherGroup(),
+      key: "linkedin:4435122980",
+      bulkSafe: false,
+    };
+    const third: DuplicateJobGroup = {
+      ...group(),
+      key: "linkedin:4400000003",
+      jobs: [
+        jobItem({ id: "t1", sourceLabel: "LinkedIn" }),
+        jobItem({ id: "t2", sourceLabel: "Indeed" }),
+      ],
+    };
+    renderModal({ groups: [group(), reviewOnly, third] });
+
+    // Only the leading run is offered — one group, so no Close all button.
+    expect(
+      screen.queryByRole("button", { name: /Close all/i }),
+    ).not.toBeInTheDocument();
+
+    // Closing the current group lands on the review-only one, not past it.
+    fireEvent.click(
+      screen.getByRole("button", { name: /Close 1 as duplicate/i }),
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/different job titles/i)).toBeInTheDocument(),
+    );
+  });
+
+  it("offers no bulk press while the current group needs a decision", () => {
+    // A board id says one posting; disagreeing titles say otherwise. The group
+    // stays on screen and reviewable — what must not happen is a bulk press
+    // that sweeps it, or one that sweeps past it and buries it.
+    const reviewOnly: DuplicateJobGroup = { ...group(), bulkSafe: false };
+    renderModal({ groups: [reviewOnly, otherGroup()] });
+
+    expect(screen.getByText(/different job titles/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Close all/i }),
+    ).not.toBeInTheDocument();
+    // ...and the per-group decision is still available.
+    expect(
+      screen.getByRole("button", { name: /as duplicate/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows each row's title when the group's titles disagree", () => {
+    // The header shows only the first row's title, so without per-row titles
+    // the warning asks the user to weigh evidence the screen never shows.
+    const reviewOnly: DuplicateJobGroup = {
+      ...group(),
+      bulkSafe: false,
+      jobs: [
+        jobItem({ id: "r1", title: "Senior ML Scientist - Marketplace" }),
+        jobItem({ id: "r2", title: "Machine Learning Science - IC - G - I" }),
+      ],
+    };
+    renderModal({ groups: [reviewOnly] });
+
+    expect(
+      screen.getByText("Machine Learning Science - IC - G - I"),
+    ).toBeInTheDocument();
   });
 });

@@ -306,12 +306,20 @@ export type JobListItem = Pick<
   sourceLabel?: string;
 };
 
-// A cluster of active-triage jobs sharing a normalized title + company.
+// A cluster of active-triage jobs the board itself lists under one posting id.
 export interface DuplicateJobGroup {
-  key: string; // normalizeDuplicateKey(title, employer)
+  /** `<board>:<id>` — globally unique, and what the modal keys its keeper on. */
+  key: string;
   title: string; // representative (first member's) title
   employer: string; // representative (first member's) employer
   jobs: JobListItem[];
+  /**
+   * False when the group's rows disagree about the job title. A board id is
+   * strong evidence but not perfect — measured, 39 of 823 id clusters carry
+   * more than one distinct title — so those stay reviewable one at a time but
+   * are excluded from any bulk close, where a wrong call multiplies.
+   */
+  bulkSafe: boolean;
 }
 
 export interface DuplicateJobGroupsResponse {

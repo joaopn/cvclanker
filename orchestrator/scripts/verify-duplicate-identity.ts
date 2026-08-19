@@ -114,8 +114,8 @@ console.log(
   `  ...of which titles disagree   : ${idTitleDisagreements} (review-only, never bulk-swept)`,
 );
 console.log(
-  `layer 3 (text + title + location): ${textGroups} groups, ${textRows} rows`,
+  `\nnot shipped — text identity (dropped 2026-08-19): ${textGroups} groups, ${textRows} rows`,
 );
-console.log(`  ...same board id (layer 2 has it) : ${textRedundant}`);
+console.log(`  ...same board id (already proposed): ${textRedundant}`);
 console.log(`  ...CONFLICTING board ids          : ${textConflicting}`);
 console.log(`  ...no id, text is only evidence   : ${textOnlyEvidence}`);

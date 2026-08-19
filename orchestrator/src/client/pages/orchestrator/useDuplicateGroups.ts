@@ -3,7 +3,7 @@ import { queryKeys } from "@client/lib/queryKeys";
 import { useQuery } from "@tanstack/react-query";
 
 /**
- * On-demand fetch of active-triage jobs grouped by normalized title + company.
+ * On-demand fetch of active-triage jobs grouped by the board's own posting id.
  * Backs the duplicate-review banner + modal. Kept out of the hot job-list path;
  * callers refetch after resolution and whenever the job list changes.
  */

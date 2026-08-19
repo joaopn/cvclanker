@@ -199,7 +199,7 @@ export function descriptionFingerprint(
   return normalized.length >= MIN_FINGERPRINT_CHARS ? normalized : null;
 }
 
-/** Title, normalized the same way `normalizeDuplicateKey` normalizes its parts. */
+/** Title, normalized to formatting-insensitive tokens for comparison. */
 export function normalizeTitleKey(title: string | null | undefined): string {
   return (title ?? "")
     .toLowerCase()

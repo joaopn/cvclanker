@@ -122,26 +122,41 @@ interface CloseAllPlan {
   losers: JobListItem[];
   /** Leading groups this batch covers — how far the wizard advances. */
   groupCount: number;
+  /** Groups the run could cover if the cap allowed; the label's denominator. */
+  runLength: number;
   /** True when the cap held groups back, so the button has to run again. */
   capped: boolean;
 }
 
 /**
- * What one "close all" press would do. Groups are taken whole and in order
- * until the next one would breach `maxBulkActionJobs` — splitting a group
- * across batches would leave copies behind that no longer read as duplicates.
- * The first group is always taken, so the button can never be a no-op; a
- * single group bigger than the cap is left to the server to refuse, exactly as
- * the per-group button would.
+ * What one "close all" press would do: the CONTIGUOUS run of sweepable groups
+ * starting at the current one, taken whole and in order until the cap would be
+ * breached — splitting a group across batches would leave copies behind that no
+ * longer read as duplicates.
+ *
+ * The run STOPS at the first group whose rows disagree about the job title.
+ * Two reasons, and the second is the one that bit: such a group needs a human
+ * decision, so sweeping past it would bury it; and because the wizard advances
+ * by the number of groups covered, sweeping a non-contiguous set would land the
+ * user on a group whose copies this press already closed — a screen showing
+ * stale rows whose buttons then fail against the server's status guard.
+ *
+ * The first group of the run is always taken, so the button is never a no-op
+ * when it is shown; a single group bigger than the cap is left for the server
+ * to refuse, exactly as the per-group button would. A run of zero (the current
+ * group needs review) is legitimate — the caller hides the button.
  */
 function planCloseAll(
   groups: DuplicateJobGroup[],
   keeperByKey: Record<string, string>,
   maxBulkActionJobs: number,
 ): CloseAllPlan {
+  const runEnd = groups.findIndex((candidate) => !candidate.bulkSafe);
+  const run = runEnd === -1 ? groups : groups.slice(0, runEnd);
+
   const losers: JobListItem[] = [];
   let groupCount = 0;
-  for (const group of groups) {
+  for (const group of run) {
     const next = losersOf(group, keeperByKey);
     if (groupCount > 0 && losers.length + next.length > maxBulkActionJobs) {
       break;
@@ -149,7 +164,12 @@ function planCloseAll(
     losers.push(...next);
     groupCount += 1;
   }
-  return { losers, groupCount, capped: groupCount < groups.length };
+  return {
+    losers,
+    groupCount,
+    runLength: run.length,
+    capped: groupCount < run.length,
+  };
 }
 
 const FIT_LABEL: Record<string, string> = {
@@ -282,7 +302,7 @@ export const DuplicateReviewModal: React.FC<DuplicateReviewModalProps> = ({
           <DialogDescription>
             {done
               ? "All duplicate groups reviewed."
-              : `Group ${index + 1} of ${total} · same title & company across sources. Keep one, close the rest.`}
+              : `Group ${index + 1} of ${total} · the job board lists these under one posting id. Keep one, close the rest.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -297,6 +317,13 @@ export const DuplicateReviewModal: React.FC<DuplicateReviewModalProps> = ({
               <div className="text-xs text-muted-foreground">
                 {group.employer} · {group.jobs.length} copies
               </div>
+              {!group.bulkSafe && (
+                // Say why this one is not swept, where the decision is made.
+                <div className="mt-1 text-xs text-status-warn-text">
+                  These copies carry the same posting id but different job
+                  titles — decide this group yourself; Close all stops here.
+                </div>
+              )}
             </div>
 
             <RadioGroup
@@ -322,8 +349,14 @@ export const DuplicateReviewModal: React.FC<DuplicateReviewModalProps> = ({
                   >
                     <RadioGroupItem value={job.id} id={`dup-${job.id}`} />
                     <div className="min-w-0 flex-1">
+                      {!group.bulkSafe && (
+                        // The group header shows only the FIRST row's title, so
+                        // without this the screen asks the user to weigh a
+                        // title disagreement it never shows them.
+                        <div className="truncate font-medium">{job.title}</div>
+                      )}
                       <div className="flex items-center gap-2">
-                        <span className="truncate font-medium">
+                        <span className="truncate text-muted-foreground">
                           {job.sourceLabel ?? job.source}
                         </span>
                         <Badge variant="secondary" className="font-normal">
@@ -359,11 +392,12 @@ export const DuplicateReviewModal: React.FC<DuplicateReviewModalProps> = ({
               })}
             </RadioGroup>
 
-            {remainingGroups.length > 1 && (
+            {closeAllPlan.runLength > 1 && (
               <p className="text-xs text-muted-foreground">
                 Close all keeps the selected copy here and the best-ranked copy
-                in each remaining group — furthest along the pipeline first,
-                then best fit, then newest.
+                in each group it covers — furthest along the pipeline first,
+                then best fit, then newest. It stops at the next group whose
+                rows disagree about the job title, leaving that one to you.
               </p>
             )}
           </div>
@@ -382,7 +416,7 @@ export const DuplicateReviewModal: React.FC<DuplicateReviewModalProps> = ({
                 Skip group
               </Button>
               <div className="flex flex-wrap items-center justify-end gap-2">
-                {remainingGroups.length > 1 && (
+                {closeAllPlan.runLength > 1 && (
                   <Button
                     variant="outline"
                     onClick={handleCloseAll}
@@ -391,9 +425,16 @@ export const DuplicateReviewModal: React.FC<DuplicateReviewModalProps> = ({
                     {(() => {
                       const jobs = closeAllPlan.losers.length;
                       const suffix = `(${jobs} job${jobs === 1 ? "" : "s"})`;
-                      return closeAllPlan.capped
-                        ? `Close ${closeAllPlan.groupCount} of ${remainingGroups.length} groups ${suffix}`
-                        : `Close all ${closeAllPlan.groupCount} groups ${suffix}`;
+                      const n = closeAllPlan.groupCount;
+                      const groupWord = `group${n === 1 ? "" : "s"}`;
+                      if (closeAllPlan.capped) {
+                        return `Close ${n} of ${closeAllPlan.runLength} groups ${suffix}`;
+                      }
+                      // "all" would overclaim when the run stops early at a
+                      // group that needs a decision — say "next" instead.
+                      return closeAllPlan.runLength < remainingGroups.length
+                        ? `Close next ${n} ${groupWord} ${suffix}`
+                        : `Close all ${n} ${groupWord} ${suffix}`;
                     })()}
                   </Button>
                 )}
