@@ -19,6 +19,7 @@
     "start": "tsx src/server/index.ts",
     "benchmark:jobs": "tsx scripts/benchmark-jobs.ts",
     "repro:llm-timeout": "tsx scripts/repro-llm-request-timeout.ts",
+    "repro:date-posted": "tsx scripts/repro-date-posted-drop.ts",
     "db:migrate": "tsx src/server/db/migrate.ts",
     "db:migrate:prod": "tsx src/server/db/migrate.ts",
     "db:clear": "tsx src/server/db/clear.ts",

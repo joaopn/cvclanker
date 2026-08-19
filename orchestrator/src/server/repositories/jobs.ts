@@ -3,6 +3,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { logger } from "@infra/logger";
 import {
   DateNormalizationError,
   normalizeDatePosted,
@@ -10,7 +11,6 @@ import {
 import { normalizeDuplicateKey } from "@shared/duplicate-key";
 import { canonicalizeJobUrl } from "@shared/job-url";
 import { buildLocationEvidence } from "@shared/location-domain.js";
-import { logger } from "@infra/logger";
 import type {
   CreateJobInput,
   CreateJobNoteInput,
@@ -32,13 +32,13 @@ import type {
 } from "@shared/types/location";
 import type { BenchSampleCategory } from "@shared/types/scoring-bench";
 import { and, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { db, schema } from "../db/index";
 import {
   isProviderInstanceSource,
   resolveSourceDisplayLabel,
 } from "../services/sources/display";
 import { deleteOrphanedJobPdfs } from "./job-pdfs";
 import { getAllProviderInstances } from "./provider-instances";
-import { db, schema } from "../db/index";
 
 const {
   interviews,
@@ -165,8 +165,7 @@ export async function getJobListItems(
       : undefined,
     employer ? sql`lower(${jobs.employer}) = lower(${employer})` : undefined,
   ].filter(Boolean);
-  const whereClause =
-    conditions.length > 0 ? and(...conditions) : undefined;
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
   const baseQuery = db.select(selection).from(jobs);
   const rows = await (whereClause
@@ -554,6 +553,41 @@ async function tryInsertJob(input: CreateJobInput): Promise<Job | null> {
  * callers (the import step) can capture the actual jobs for the run popup
  * without changing the count-based return shape.
  */
+/**
+ * The posting date, or UNKNOWN when the value cannot be parsed.
+ *
+ * An unparseable date used to reject the whole row: the ad never reached the
+ * database, so a board that renders a relative date ("Vor 3 Tagen") cost the
+ * job, not just its date. Nothing downstream needs the column — it is
+ * nullable, real databases already carry ~2.5% NULLs, `sweepStaleJobs`
+ * COALESCEs to `discovered_at`, and the UI's date pill renders the unknown
+ * case — so storing NULL keeps the ad AND keeps the lexical-comparison
+ * guarantee the normalizer exists to protect (a stored value is either
+ * canonical ISO or absent, never a third format).
+ *
+ * Still logged loudly: an unknown date is a data-quality signal about an
+ * extractor, and silence is what let this go unnoticed.
+ */
+function normalizeDatePostedOrUnknown(
+  input: CreateJobInput,
+): string | undefined {
+  try {
+    return normalizeDatePosted(input.datePosted) ?? undefined;
+  } catch (error) {
+    logger.warn("Unparseable date_posted; importing with an unknown date", {
+      source: input.source,
+      jobUrl: input.jobUrl,
+      rawDatePosted:
+        error instanceof DateNormalizationError
+          ? error.rawValue
+          : String(input.datePosted),
+      message:
+        error instanceof Error ? error.message : "unknown normalize error",
+    });
+    return undefined;
+  }
+}
+
 export type CreateJobsCategorizeFn = (
   bucket: "imported" | "duplicated" | "rejected",
   input: CreateJobInput,
@@ -580,7 +614,7 @@ export async function createJobs(
     const normalized: CreateJobInput = {
       ...inputOrInputs,
       jobUrl: canonicalizeJobUrl(inputOrInputs.jobUrl),
-      datePosted: normalizeDatePosted(inputOrInputs.datePosted) ?? undefined,
+      datePosted: normalizeDatePostedOrUnknown(inputOrInputs),
     };
     const inserted = await tryInsertJob(normalized);
     if (inserted) return inserted;
@@ -589,30 +623,15 @@ export async function createJobs(
     throw new Error("Failed to create or resolve existing job by URL");
   }
 
-  let rejected = 0;
-  const normalizedInputs: CreateJobInput[] = [];
-  for (const input of inputOrInputs) {
-    try {
-      normalizedInputs.push({
-        ...input,
-        jobUrl: canonicalizeJobUrl(input.jobUrl),
-        datePosted: normalizeDatePosted(input.datePosted) ?? undefined,
-      });
-    } catch (error) {
-      rejected += 1;
-      onCategorize?.("rejected", input, "bad data");
-      logger.error("Rejecting job ingestion: bad date_posted", {
-        source: input.source,
-        jobUrl: input.jobUrl,
-        rawDatePosted:
-          error instanceof DateNormalizationError
-            ? error.rawValue
-            : String(input.datePosted),
-        message:
-          error instanceof Error ? error.message : "unknown normalize error",
-      });
-    }
-  }
+  // Nothing rejects a row here any more; the counter stays because the
+  // funnel's Rejected bucket is still fed by discovery (location mismatch,
+  // blocked employer) and callers read the shape.
+  const rejected = 0;
+  const normalizedInputs: CreateJobInput[] = inputOrInputs.map((input) => ({
+    ...input,
+    jobUrl: canonicalizeJobUrl(input.jobUrl),
+    datePosted: normalizeDatePostedOrUnknown(input),
+  }));
 
   const byUrl = new Map<
     string,
@@ -822,9 +841,7 @@ export async function getUnscoredDiscoveredJobs(
   const query = db
     .select()
     .from(jobs)
-    .where(
-      and(eq(jobs.status, "discovered"), isNull(jobs.suitabilityCategory)),
-    )
+    .where(and(eq(jobs.status, "discovered"), isNull(jobs.suitabilityCategory)))
     .orderBy(desc(jobs.discoveredAt));
 
   const rows =
@@ -1081,7 +1098,9 @@ function mapRowToJob(row: typeof jobs.$inferSelect): Job {
     pdfPath: row.pdfPath,
     coverLetterDraft: row.coverLetterDraft ?? "",
     coverLetterDocumentId: row.coverLetterDocumentId ?? null,
-    coverLetterFieldOverrides: parseFieldOverrides(row.coverLetterFieldOverrides),
+    coverLetterFieldOverrides: parseFieldOverrides(
+      row.coverLetterFieldOverrides,
+    ),
     coverLetterPdfPath: row.coverLetterPdfPath ?? null,
     interviewPrep: row.interviewPrep ?? "",
     jobType: row.jobType ?? null,

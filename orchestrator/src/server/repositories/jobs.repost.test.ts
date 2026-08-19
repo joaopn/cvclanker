@@ -50,7 +50,12 @@ describe.sequential("jobs repository repost detection", () => {
       },
     ]);
 
-    expect(result).toEqual({ created: 0, skipped: 0, reposted: 1, rejected: 0 });
+    expect(result).toEqual({
+      created: 0,
+      skipped: 0,
+      reposted: 1,
+      rejected: 0,
+    });
 
     const refreshed = await jobsRepo.getJobByUrl(url);
     expect(refreshed?.datePosted).toBe("2026-04-15T00:00:00.000Z");
@@ -80,7 +85,12 @@ describe.sequential("jobs repository repost detection", () => {
         datePosted: "2026-04-15",
       },
     ]);
-    expect(sameDay).toEqual({ created: 0, skipped: 1, reposted: 0, rejected: 0 });
+    expect(sameDay).toEqual({
+      created: 0,
+      skipped: 1,
+      reposted: 0,
+      rejected: 0,
+    });
 
     const older = await jobsRepo.createJobs([
       {
@@ -233,7 +243,12 @@ describe.sequential("jobs repository repost detection", () => {
         datePosted: "2026-04-15",
       },
     ]);
-    expect(result).toEqual({ created: 0, skipped: 1, reposted: 0, rejected: 0 });
+    expect(result).toEqual({
+      created: 0,
+      skipped: 1,
+      reposted: 0,
+      rejected: 0,
+    });
 
     const refreshed = await jobsRepo.getJobByUrl(url);
     expect(refreshed?.datePosted).toBeNull();
@@ -256,7 +271,9 @@ describe.sequential("jobs repository repost detection", () => {
     expect(refreshed?.datePosted).toBe("2026-04-25T00:00:00.000Z");
   });
 
-  it("rejects rows with unparseable datePosted and counts them", async () => {
+  it("imports rows with unparseable datePosted, with the date left unknown", async () => {
+    // The ad is the valuable part. Dropping the whole row over a date a board
+    // rendered as "3 days ago" loses a job the user would have wanted to see.
     const goodUrl = "https://example.com/jobs/good-row";
     const badUrl = "https://example.com/jobs/bad-row";
 
@@ -277,10 +294,46 @@ describe.sequential("jobs repository repost detection", () => {
       },
     ]);
 
-    expect(result.created).toBe(1);
-    expect(result.rejected).toBe(1);
-    expect(await jobsRepo.getJobByUrl(badUrl)).toBeNull();
+    expect(result.created).toBe(2);
+    expect(result.rejected).toBe(0);
+
+    const bad = await jobsRepo.getJobByUrl(badUrl);
+    expect(bad).not.toBeNull();
+    // NULL, never the raw text: a stored value is canonical ISO or absent, so
+    // the lexical SQL comparisons the normalizer protects stay sound.
+    expect(bad?.datePosted).toBeNull();
+
     const refreshed = await jobsRepo.getJobByUrl(goodUrl);
     expect(refreshed?.datePosted).toBe("2026-04-15T00:00:00.000Z");
+  });
+
+  it("keeps the single-insert path from throwing on a bad date", async () => {
+    // Manual URL import goes through this path; a 500 there is the same job
+    // loss with a worse failure mode.
+    const job = await jobsRepo.createJob({
+      source: "manual",
+      title: "Data Engineer",
+      employer: "Acme",
+      jobUrl: "https://example.com/jobs/manual-bad-date",
+      datePosted: "Vor 3 Tagen",
+    });
+
+    expect(job.datePosted).toBeNull();
+  });
+
+  it("still normalizes a unix-ms date rather than treating it as unknown", async () => {
+    const url = "https://example.com/jobs/unix-ms";
+    await jobsRepo.createJobs([
+      {
+        source: "indeed",
+        title: "Platform Engineer",
+        employer: "Acme",
+        jobUrl: url,
+        datePosted: "1777075200000",
+      },
+    ]);
+
+    const job = await jobsRepo.getJobByUrl(url);
+    expect(job?.datePosted).toBe(new Date(1777075200000).toISOString());
   });
 });
