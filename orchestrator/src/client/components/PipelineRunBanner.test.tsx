@@ -52,6 +52,7 @@ const baseEvent: PipelineProgressEvent = {
       jobsImported: 0,
       jobsReposted: 0,
       jobsDuplicated: 0,
+      jobsUnmappable: 0,
       jobsFiltered: 0,
       jobsRejected: 0,
       startedAt: "2026-05-22T10:00:00.000Z",
@@ -64,6 +65,7 @@ const baseEvent: PipelineProgressEvent = {
       jobsImported: 0,
       jobsReposted: 0,
       jobsDuplicated: 0,
+      jobsUnmappable: 0,
       jobsFiltered: 0,
       jobsRejected: 0,
       startedAt: "2026-05-22T10:00:00.000Z",
@@ -83,6 +85,7 @@ const sourceRow = (
   jobsImported: 0,
   jobsReposted: 0,
   jobsDuplicated: 0,
+  jobsUnmappable: 0,
   jobsFiltered: 0,
   jobsRejected: 0,
   ...overrides,
@@ -137,6 +140,36 @@ describe("PipelineRunBanner", () => {
     expect(screen.getByText("LinkedIn")).toBeInTheDocument();
     expect(screen.getByText("Indeed")).toBeInTheDocument();
     expect(screen.getByText("Pipeline")).toBeInTheDocument();
+  });
+
+  it("surfaces a source's unreadable-item count, including when it mapped none", () => {
+    // The zero case is the severe one: a source that returned items and could
+    // read NONE of them renders a bare 0, which is the silence B35 is about.
+    render(<PipelineRunBanner isRunning />);
+    act(() => {
+      lastHandlers.current?.onMessage({
+        ...baseEvent,
+        sourceStats: [
+          sourceRow("linkedin", "LinkedIn", {
+            status: "completed",
+            jobsScraped: 12,
+            jobsUnmappable: 4,
+          }),
+          sourceRow("indeed", "Indeed", {
+            status: "completed",
+            jobsScraped: 0,
+            jobsUnmappable: 7,
+          }),
+        ],
+      });
+    });
+
+    expect(
+      screen.getByTitle(/4 returned item\(s\) could not be read/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTitle(/7 returned item\(s\) could not be read/),
+    ).toBeInTheDocument();
   });
 
   it("stays visible after the run reaches a terminal step", () => {

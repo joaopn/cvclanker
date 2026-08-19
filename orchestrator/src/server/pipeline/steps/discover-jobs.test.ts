@@ -627,6 +627,110 @@ describe("discoverJobsStep", () => {
     expect(result.discoveredJobs[0]?.location).toBe("Split, Croatia");
   });
 
+  it("surfaces a source's unmappable count on its funnel row", async () => {
+    // Without this the row says "1 scraped" for a source that returned 4
+    // items and could only read 1 — the other 3 leave no trace anywhere.
+    const registryModule = await import("@server/extractors/registry");
+
+    const manifest = {
+      id: "workingnomads",
+      displayName: "Working Nomads",
+      providesSources: ["workingnomads"],
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        jobs: [
+          {
+            source: "workingnomads",
+            title: "Kept",
+            employer: "Acme",
+            jobUrl: "https://example.com/kept",
+          },
+        ],
+        droppedCount: 3,
+      }),
+    };
+
+    vi.mocked(registryModule.getExtractorRegistry).mockResolvedValue({
+      manifests: new Map([["workingnomads", manifest as any]]),
+      manifestBySource: new Map([["workingnomads", manifest as any]]),
+      availableSources: ["workingnomads"],
+    } as any);
+
+    await discoverJobsStep({
+      mergedConfig: { ...baseConfig, sources: ["workingnomads"] },
+    });
+
+    const row = getProgress().sourceStats.find(
+      (entry) => entry.id === "workingnomads",
+    );
+    expect(row?.jobsScraped).toBe(1);
+    expect(row?.jobsUnmappable).toBe(3);
+  });
+
+  it("keeps a fan-out extractor's unmappable count instead of losing it", async () => {
+    // jobspy's task id is "jobspy" while its platforms are indeed/linkedin/
+    // glassdoor, so an attribution keyed on the task's own id matches no
+    // platform and silently drops the number — which is how this shipped
+    // broken the first time. Reported once, never multiplied across siblings.
+    const registryModule = await import("@server/extractors/registry");
+
+    const manifest = {
+      id: "jobspy",
+      displayName: "JobSpy",
+      providesSources: ["indeed", "linkedin"],
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        jobs: [],
+        droppedCount: 5,
+      }),
+    };
+
+    vi.mocked(registryModule.getExtractorRegistry).mockResolvedValue({
+      manifests: new Map([["jobspy", manifest as any]]),
+      manifestBySource: new Map([
+        ["indeed", manifest as any],
+        ["linkedin", manifest as any],
+      ]),
+      availableSources: ["indeed", "linkedin"],
+    } as any);
+
+    await discoverJobsStep({
+      mergedConfig: { ...baseConfig, sources: ["indeed", "linkedin"] },
+    });
+
+    const rows = getProgress().sourceStats;
+    const total = rows.reduce((sum, row) => sum + row.jobsUnmappable, 0);
+    expect(total).toBe(5);
+  });
+
+  it("leaves unmappable at zero for a source that reports nothing dropped", async () => {
+    // An extractor that omits the field must read as "dropped nothing", never
+    // as "unknown" — the funnel has no way to render uncertainty.
+    const registryModule = await import("@server/extractors/registry");
+
+    const manifest = {
+      id: "workingnomads",
+      displayName: "Working Nomads",
+      providesSources: ["workingnomads"],
+      run: vi.fn().mockResolvedValue({ success: true, jobs: [] }),
+    };
+
+    vi.mocked(registryModule.getExtractorRegistry).mockResolvedValue({
+      manifests: new Map([["workingnomads", manifest as any]]),
+      manifestBySource: new Map([["workingnomads", manifest as any]]),
+      availableSources: ["workingnomads"],
+    } as any);
+
+    await discoverJobsStep({
+      mergedConfig: { ...baseConfig, sources: ["workingnomads"] },
+    });
+
+    expect(
+      getProgress().sourceStats.find((entry) => entry.id === "workingnomads")
+        ?.jobsUnmappable,
+    ).toBe(0);
+  });
+
   it("tracks source completion counters across source transitions", async () => {
     const jobsRepo = await import("@server/repositories/jobs");
     const registryModule = await import("@server/extractors/registry");

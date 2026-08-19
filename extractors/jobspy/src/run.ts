@@ -154,6 +154,8 @@ export interface JobSpyResult {
   success: boolean;
   jobs: CreateJobInput[];
   error?: string;
+  /** Source items this run could not map into a job. */
+  droppedCount?: number;
 }
 
 function normalizeOptionalString(
@@ -242,6 +244,7 @@ export async function runJobSpy(
 
   try {
     const jobs: CreateJobInput[] = [];
+    let unmappable = 0;
     const seenJobUrls = new Set<string>();
     const totalRuns = runLocations.length;
     let runIndex = 0;
@@ -364,7 +367,11 @@ export async function runJobSpy(
 
         const raw = await readFile(outputJson, "utf-8");
         const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
-        for (const job of mapJobSpyRows(parsed)) {
+        const mapped = mapJobSpyRows(parsed);
+        unmappable += mapped.dropped;
+        for (const job of mapped.jobs) {
+          // Not unmappable: this row mapped fine, it is just the same posting
+          // an earlier location already returned.
           if (seenJobUrls.has(job.jobUrl)) continue;
           seenJobUrls.add(job.jobUrl);
           jobs.push(job);
@@ -400,7 +407,7 @@ export async function runJobSpy(
       };
     }
 
-    return { success: true, jobs };
+    return { success: true, jobs, droppedCount: unmappable };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return { success: false, jobs: [], error: message };
@@ -472,17 +479,31 @@ function slugForFilename(input: string): string {
   return slug || "term";
 }
 
-function mapJobSpyRows(
+// The return type is structurally the shared `MappedJobs`, spelled out rather
+// than imported: this is the only extractor whose tsconfig sets
+// moduleResolution NodeNext, and `shared/src/types/extractors.ts` uses
+// extensionless relative imports, so pulling that module into this workspace's
+// standalone tsc scope adds resolution errors to a config already failing there.
+export function mapJobSpyRows(
   parsed: Array<Record<string, unknown>>,
-): CreateJobInput[] {
+): { jobs: CreateJobInput[]; dropped: number } {
   const jobs: CreateJobInput[] = [];
+  // A row jobspy returned that we cannot turn into a job: an unrecognised
+  // `site`, or no url to identify it by. Counted rather than silently skipped.
+  let dropped = 0;
 
   for (const row of parsed) {
     const source = toJobSource(row.site);
-    if (!source) continue;
+    if (!source) {
+      dropped += 1;
+      continue;
+    }
 
     const jobUrl = toStringOrNull(row.job_url);
-    if (!jobUrl) continue;
+    if (!jobUrl) {
+      dropped += 1;
+      continue;
+    }
 
     const minAmount = toNumberOrNull(row.min_amount);
     const maxAmount = toNumberOrNull(row.max_amount);
@@ -537,5 +558,5 @@ function mapJobSpyRows(
     });
   }
 
-  return jobs;
+  return { jobs, dropped };
 }

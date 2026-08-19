@@ -37,6 +37,12 @@ import { captureRunJobs, toCapturedRunJob } from "../run-job-capture";
 type DiscoveryTaskResult = {
   discoveredJobs: CreateJobInput[];
   sourceErrors: string[];
+  /**
+   * Items the source returned that its mapper could not read. Named apart from
+   * the `droppedCount` locals further down, which count something else
+   * entirely (location-intent mismatch / blocked employer).
+   */
+  unmappableCount: number;
 };
 
 type DiscoverySourceTask = {
@@ -364,9 +370,14 @@ export async function discoverJobsStep(args: {
               sourceErrors: [
                 `${instance.label}: ${result.error ?? "unknown error"}`,
               ],
+              unmappableCount: result.droppedCount ?? 0,
             };
           }
-          return { discoveredJobs: result.jobs, sourceErrors: [] };
+          return {
+            discoveredJobs: result.jobs,
+            sourceErrors: [],
+            unmappableCount: result.droppedCount ?? 0,
+          };
         },
       });
     }
@@ -437,12 +448,14 @@ export async function discoverJobsStep(args: {
             sourceErrors: [
               `${manifest.displayName || manifest.id}: ${result.error ?? "unknown error"} (sources: ${grouped.sources.join(",")})`,
             ],
+            unmappableCount: result.droppedCount ?? 0,
           };
         }
 
         return {
           discoveredJobs: result.jobs,
           sourceErrors: [],
+          unmappableCount: result.droppedCount ?? 0,
         };
       },
     });
@@ -519,6 +532,16 @@ export async function discoverJobsStep(args: {
         );
         progressHelpers.recordSourceJobsCounts(platform, {
           scraped: platformJobs.length,
+          // One task reports ONE count, and a fan-out task's unreadable rows
+          // usually cannot say which platform they belonged to — jobspy's
+          // unrecognised-`site` rows are exactly that. So the count lands once,
+          // on the task's first platform, rather than being duplicated across
+          // siblings (which would triple it) or split into invented precision.
+          // For every single-platform source it is simply that source's count.
+          unmappable:
+            platform === sourceTask.platforms[0]
+              ? taskResult.unmappableCount
+              : 0,
         });
         captureRunJobs(
           platform,
@@ -542,6 +565,7 @@ export async function discoverJobsStep(args: {
           sourceErrors: [
             `${sourceTask.source}: ${error instanceof Error ? error.message : "unknown error"}`,
           ],
+          unmappableCount: 0,
         };
       }
     },

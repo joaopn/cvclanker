@@ -42,6 +42,8 @@ export interface WorkingNomadsResult {
   success: boolean;
   jobs: CreateJobInput[];
   error?: string;
+  /** Source items this run could not map into a job. */
+  droppedCount?: number;
 }
 
 interface WorkingNomadsSearchJob {
@@ -475,7 +477,7 @@ async function fetchWorkingNomadsJobs(args: {
   searchTerms: string[];
   locationTokens: string[];
   maxJobsPerTerm: number;
-}): Promise<WorkingNomadsSearchJob[]> {
+}): Promise<{ items: WorkingNomadsSearchJob[]; dropped: number }> {
   const response = await args.fetchImpl(WORKING_NOMADS_SEARCH_URL, {
     method: "POST",
     headers: {
@@ -501,7 +503,7 @@ async function fetchWorkingNomadsJobs(args: {
     | WorkingNomadsSearchResponse
     | WorkingNomadsSearchJob[];
   if (Array.isArray(payload)) {
-    return payload;
+    return { items: payload, dropped: 0 };
   }
 
   const hits = payload.hits?.hits;
@@ -509,9 +511,11 @@ async function fetchWorkingNomadsJobs(args: {
     throw new Error("Working Nomads search returned an unexpected payload.");
   }
 
-  return hits
+  // A hit with no `_source` carries no job at all — counted, not skipped.
+  const items = hits
     .map((hit) => hit._source)
     .filter((job): job is WorkingNomadsSearchJob => Boolean(job));
+  return { items, dropped: hits.length - items.length };
 }
 
 function mapWorkingNomadsJob(
@@ -630,10 +634,11 @@ export async function runWorkingNomads(
 
   try {
     const jobs: CreateJobInput[] = [];
+    let unmappable = 0;
     const seen = new Set<string>();
 
     if (options.shouldCancel?.()) {
-      return { success: true, jobs };
+      return { success: true, jobs, droppedCount: unmappable };
     }
 
     // Joined-terms mode: one Elasticsearch query for the OR-composed set,
@@ -647,17 +652,19 @@ export async function runWorkingNomads(
       searchTerm: composedQuery,
     });
 
-    const fetchedJobs = await fetchWorkingNomadsJobs({
+    const fetched = await fetchWorkingNomadsJobs({
       fetchImpl,
       searchTerms,
       locationTokens,
       maxJobsPerTerm,
     });
 
+    unmappable += fetched.dropped;
+
     let jobsFoundTerm = 0;
-    for (const job of fetchedJobs) {
+    for (const job of fetched.items) {
       if (options.shouldCancel?.()) {
-        return { success: true, jobs };
+        return { success: true, jobs, droppedCount: unmappable };
       }
       if (jobsFoundTerm >= maxJobsPerTerm) {
         break;
@@ -667,7 +674,16 @@ export async function runWorkingNomads(
       }
 
       const mapped = mapWorkingNomadsJob(job);
-      if (!mapped) continue;
+      if (!mapped) {
+        // A search hit with nothing usable in it. Filtered rows are NOT
+        // counted here — the term filter above and the location filter below
+        // both skip rows that would have mapped fine. Consequence worth
+        // knowing: a row that is both term-mismatched AND unreadable is
+        // filtered before it reaches this branch, so it never shows up as
+        // unreadable.
+        unmappable += 1;
+        continue;
+      }
       if (
         explicitLocations.length > 0 &&
         !explicitLocations.some((location) =>
@@ -696,6 +712,7 @@ export async function runWorkingNomads(
     return {
       success: true,
       jobs,
+      droppedCount: unmappable,
     };
   } catch (error) {
     const message =

@@ -40,6 +40,8 @@ export interface StartupJobsResult {
   success: boolean;
   jobs: CreateJobInput[];
   error?: string;
+  /** Source items this run could not map into a job. */
+  droppedCount?: number;
 }
 
 type StartupJobsWorkplaceType = "remote" | "hybrid" | "on-site";
@@ -151,6 +153,7 @@ export async function runStartupJobs(
   const workplaceType = mapWorkplaceTypes(options.workplaceTypes);
   const termTotal = searchTerms.length * usableLocations.length;
   const jobs: CreateJobInput[] = [];
+  let unmappable = 0;
   const seen = new Set<string>();
   let runIndex = 0;
 
@@ -159,7 +162,7 @@ export async function runStartupJobs(
       for (const searchTerm of searchTerms) {
         runIndex += 1;
         if (options.shouldCancel?.()) {
-          return { success: true, jobs };
+          return { success: true, jobs, droppedCount: unmappable };
         }
 
         options.onProgress?.({
@@ -181,7 +184,12 @@ export async function runStartupJobs(
         let jobsFoundTerm = 0;
         for (const record of records) {
           const mapped = mapStartupJob(record);
-          if (!mapped) continue;
+          if (!mapped) {
+            // A record the API returned that has no usable url/title. Counted
+            // rather than dropped in silence.
+            unmappable += 1;
+            continue;
+          }
           const dedupeKey = mapped.jobUrl;
           if (seen.has(dedupeKey)) continue;
           seen.add(dedupeKey);
@@ -203,6 +211,7 @@ export async function runStartupJobs(
     return {
       success: true,
       jobs,
+      droppedCount: unmappable,
     };
   } catch (error) {
     const message =

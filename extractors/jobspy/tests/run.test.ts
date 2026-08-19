@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deriveIsRemoteFlag,
+  mapJobSpyRows,
   parseJobSpyProgressLine,
   resolveJobSpyCountryIndeed,
   resolveJobSpyLocations,
@@ -89,5 +90,30 @@ describe("parseJobSpyProgressLine", () => {
       indeedLocation: "Zagreb",
       glassdoorLocation: "Zagreb",
     });
+  });
+});
+
+describe("mapJobSpyRows drop accounting", () => {
+  it("counts rows it cannot map instead of skipping them silently", () => {
+    const result = mapJobSpyRows([
+      { site: "linkedin", job_url: "https://example.com/1", title: "Kept" },
+      // jobspy grew a site we do not map.
+      { site: "some-new-board", job_url: "https://example.com/2" },
+      // Nothing to identify the posting by.
+      { site: "indeed", title: "No URL" },
+    ]);
+
+    expect(result.jobs).toHaveLength(1);
+    expect(result.dropped).toBe(2);
+  });
+
+  it("reports zero when every row maps", () => {
+    const result = mapJobSpyRows([
+      { site: "linkedin", job_url: "https://example.com/1" },
+      { site: "indeed", job_url: "https://example.com/2" },
+    ]);
+
+    expect(result.jobs).toHaveLength(2);
+    expect(result.dropped).toBe(0);
   });
 });

@@ -130,6 +130,10 @@ export const manifest: ExtractorManifest = {
     return {
       success: true,
       jobs: result.jobs,
+      // Forwarded, not dropped: this wrapper is the only path from the runner
+      // to the pipeline, so re-wrapping without it makes the funnel's
+      // unreadable-item count permanently zero (B35).
+      droppedCount: result.droppedCount,
     };
   },
 };

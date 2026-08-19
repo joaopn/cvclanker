@@ -60,4 +60,24 @@ describe("startupjobs manifest", () => {
       }),
     );
   });
+
+  it("forwards the runner's unreadable-item count to the pipeline", async () => {
+    const { manifest } = await import("../src/manifest");
+    const { runStartupJobs } = await import("../src/run");
+    vi.mocked(runStartupJobs).mockResolvedValue({
+      success: true,
+      jobs: [],
+      droppedCount: 2,
+    });
+
+    const result = await manifest.run({
+      source: "startupjobs",
+      selectedSources: ["startupjobs"],
+      settings: {},
+      searchTerms: ["backend engineer"],
+      selectedCountry: "czechia",
+    });
+
+    expect(result.droppedCount).toBe(2);
+  });
 });

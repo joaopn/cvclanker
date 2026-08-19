@@ -536,15 +536,24 @@ const CountValue: React.FC<{
   value: number;
   pending: boolean;
   onClick: () => void;
-}> = ({ value, pending, onClick }) => {
+  /** Appended to the button's own tooltip; the cell-level title is shadowed
+   * by this button wherever the user actually points. */
+  note?: string;
+}> = ({ value, pending, onClick, note }) => {
   if (pending) return <>—</>;
-  if (value <= 0) return <>{value}</>;
+  // Zero is the case that matters most here: a source that returned items and
+  // could read NONE of them renders a plain 0, which is the original silence
+  // this change exists to end. No button (there are no jobs to show), so the
+  // note rides on a titled span instead.
+  if (value <= 0) {
+    return note ? <span title={note}>{value}</span> : <>{value}</>;
+  }
   return (
     <button
       type="button"
       className="tabular-nums underline decoration-dotted underline-offset-2 hover:decoration-solid"
       onClick={onClick}
-      title="Show these jobs"
+      title={note ? `Show these jobs — ${note}` : "Show these jobs"}
     >
       {value}
     </button>
@@ -569,10 +578,21 @@ const SourceRow: React.FC<{
           <StatusCell status={row.status} />
         </TableCell>
         <TableCell className="text-right tabular-nums">
+          {/* Scraped counts jobs the mapper could read. Anything it could not
+              read never became a job, so it has no row for the popup to show
+              and rides along as a note instead of its own bucket. The two are
+              deliberately NOT summed: scraped is de-duplicated across a run's
+              locations while unreadable items are counted every time they come
+              back, so a total would be arithmetic the data does not support. */}
           <CountValue
             value={row.jobsScraped}
             pending={pending}
             onClick={() => onShowJobs("scraped")}
+            note={
+              row.jobsUnmappable > 0
+                ? `${row.jobsUnmappable} returned item(s) could not be read and never became jobs — counted once per extractor run, so an extractor covering several sources reports its whole total on this row`
+                : undefined
+            }
           />
         </TableCell>
         <TableCell

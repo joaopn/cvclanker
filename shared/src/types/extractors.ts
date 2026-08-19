@@ -46,6 +46,23 @@ export interface ExtractorRunResult {
   success: boolean;
   jobs: CreateJobInput[];
   error?: string;
+  /**
+   * Items the source returned that the mapper could not turn into a job —
+   * missing url/title, an unrecognised site, a payload shape it does not know.
+   *
+   * Reported so the funnel can say so. Without it a source that returns 100
+   * items and maps 80 is indistinguishable from one that found 80, and the
+   * 20 vanish with no counter anywhere (B35). Optional so an extractor that
+   * cannot drop anything need not carry it; absent reads as zero, never as
+   * "unknown".
+   */
+  droppedCount?: number;
+}
+
+/** A mapping pass: what it produced, and how much it could not map. */
+export interface MappedJobs {
+  jobs: CreateJobInput[];
+  dropped: number;
 }
 
 export interface ExtractorManifest {

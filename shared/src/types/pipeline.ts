@@ -145,6 +145,7 @@ export interface PipelineSourceStats {
   jobsImported: number; // brand-new rows inserted
   jobsReposted: number; // existing rows re-promoted from a shelf (folded into "imported" in the UI)
   jobsDuplicated: number; // existing rows that stayed put (deduped at import)
+  jobsUnmappable: number; // items the source returned that never became jobs (mapper could not read them)
   jobsFiltered: number; // dropped before import (location-intent mismatch / blocked company)
   jobsRejected: number; // rows dropped at import (e.g. unparseable date_posted)
   startedAt?: string;

@@ -9,6 +9,7 @@ import {
   resolveSearchCities,
   shouldApplyStrictCityFilter,
 } from "@shared/search-cities.js";
+import type { MappedJobs } from "@shared/types/extractors";
 import type { CreateJobInput } from "@shared/types/jobs";
 import {
   toNumberOrNull,
@@ -67,6 +68,8 @@ export interface HiringCafeResult {
   success: boolean;
   jobs: CreateJobInput[];
   error?: string;
+  /** Source items this run could not map into a job. */
+  droppedCount?: number;
 }
 
 function resolveTsxCliPath(): string | null {
@@ -151,23 +154,36 @@ function mapHiringCafeRow(row: HiringCafeRawJob): CreateJobInput | null {
   };
 }
 
-async function readDataset(): Promise<CreateJobInput[]> {
-  const content = await readFile(DATASET_PATH, "utf-8");
-  const parsed = JSON.parse(content) as unknown;
-  if (!Array.isArray(parsed)) return [];
+export function mapHiringCafeRows(parsed: unknown): MappedJobs {
+  if (!Array.isArray(parsed)) return { jobs: [], dropped: 0 };
 
   const jobs: CreateJobInput[] = [];
   const seen = new Set<string>();
+  // Rows the dataset carried that we cannot read: not an object, or missing
+  // whatever `mapHiringCafeRow` needs. The in-run dedupe below is NOT counted
+  // here — those rows mapped fine.
+  let dropped = 0;
   for (const value of parsed) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      dropped += 1;
+      continue;
+    }
     const mapped = mapHiringCafeRow(value as HiringCafeRawJob);
-    if (!mapped) continue;
+    if (!mapped) {
+      dropped += 1;
+      continue;
+    }
     const dedupeKey = mapped.sourceJobId || mapped.jobUrl;
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
     jobs.push(mapped);
   }
-  return jobs;
+  return { jobs, dropped };
+}
+
+async function readDataset(): Promise<MappedJobs> {
+  const content = await readFile(DATASET_PATH, "utf-8");
+  return mapHiringCafeRows(JSON.parse(content) as unknown);
 }
 
 async function clearStorageDataset(): Promise<void> {
@@ -207,6 +223,7 @@ export async function runHiringCafe(
 
   try {
     const jobs: CreateJobInput[] = [];
+    let unmappable = 0;
     const seen = new Set<string>();
 
     for (let runIndex = 0; runIndex < runLocations.length; runIndex += 1) {
@@ -297,9 +314,9 @@ export async function runHiringCafe(
       });
 
       const runJobs = await readDataset();
-      const filtered = runJobs;
+      unmappable += runJobs.dropped;
 
-      for (const job of filtered) {
+      for (const job of runJobs.jobs) {
         const key = job.sourceJobId || job.jobUrl;
         if (seen.has(key)) continue;
         seen.add(key);
@@ -307,7 +324,7 @@ export async function runHiringCafe(
       }
     }
 
-    return { success: true, jobs };
+    return { success: true, jobs, droppedCount: unmappable };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return { success: false, jobs: [], error: message };

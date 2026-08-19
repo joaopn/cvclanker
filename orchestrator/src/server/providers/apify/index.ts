@@ -153,7 +153,7 @@ async function runApifyInstance(
     });
   }
 
-  return { success: true, jobs: mapped };
+  return { success: true, jobs: mapped, droppedCount };
 }
 
 export const apifyProvider: ProviderRunner = {

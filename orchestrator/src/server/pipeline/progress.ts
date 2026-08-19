@@ -98,6 +98,7 @@ type SourceStatsInternal = {
   jobsImported: number;
   jobsReposted: number;
   jobsDuplicated: number;
+  jobsUnmappable: number;
   jobsFiltered: number;
   jobsRejected: number;
   startedAt?: string;
@@ -142,6 +143,7 @@ function getOrCreateSourceRow(
     jobsImported: 0,
     jobsReposted: 0,
     jobsDuplicated: 0,
+    jobsUnmappable: 0,
     jobsFiltered: 0,
     jobsRejected: 0,
     order: resolveSourceOrder(platform),
@@ -161,6 +163,7 @@ function buildSourceStats(): PipelineSourceStats[] {
       jobsImported: row.jobsImported,
       jobsReposted: row.jobsReposted,
       jobsDuplicated: row.jobsDuplicated,
+      jobsUnmappable: row.jobsUnmappable,
       jobsFiltered: row.jobsFiltered,
       jobsRejected: row.jobsRejected,
       startedAt: row.startedAt,
@@ -499,6 +502,7 @@ export const progressHelpers = {
       row.jobsImported = 0;
       row.jobsReposted = 0;
       row.jobsDuplicated = 0;
+      row.jobsUnmappable = 0;
       row.jobsFiltered = 0;
       row.jobsRejected = 0;
       resetRunJobCaptureForSource(platform);
@@ -541,11 +545,12 @@ export const progressHelpers = {
 
   recordSourceJobsCounts: (
     platform: string,
-    counts: { scraped?: number },
+    counts: { scraped?: number; unmappable?: number },
   ) => {
     const row = sourceStatsByPlatform.get(platform);
     if (!row) return;
     if (counts.scraped !== undefined) row.jobsScraped = counts.scraped;
+    if (counts.unmappable !== undefined) row.jobsUnmappable = counts.unmappable;
     updateProgress({});
   },
 
