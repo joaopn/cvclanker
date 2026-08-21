@@ -8,6 +8,7 @@ export const EXTRACTOR_SOURCE_IDS = [
   "startupjobs",
   "workingnomads",
   "himalayas",
+  "weworkremotely",
   "manual",
 ] as const;
 
@@ -43,6 +44,12 @@ export const EXTRACTOR_SOURCE_METADATA: Record<
     category: "pipeline",
     remoteProfileOnly: true,
   },
+  weworkremotely: {
+    label: "We Work Remotely",
+    order: 94,
+    category: "pipeline",
+    remoteProfileOnly: true,
+  },
   manual: { label: "Manual", order: 110, category: "manual" },
 };
 
@@ -63,6 +70,7 @@ export const EXTRACTOR_ID_BY_SOURCE: Record<ExtractorSourceId, string> = {
   startupjobs: "startupjobs",
   workingnomads: "workingnomads",
   himalayas: "himalayas",
+  weworkremotely: "weworkremotely",
   manual: "manual",
 };
 

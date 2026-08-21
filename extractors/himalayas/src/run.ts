@@ -98,18 +98,22 @@ function toStringArray(value: unknown): string[] {
 }
 
 export function stripHtml(value: string): string {
-  return value
-    .replace(/<\s*(br|\/p|\/div|\/li|\/h[1-6])\s*\/?\s*>/gi, "\n")
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&quot;/gi, '"')
-    .replace(/[ \t]+/g, " ")
-    .replace(/\s*\n\s*/g, "\n")
-    .trim();
+  return (
+    value
+      .replace(/<\s*(br|\/p|\/div|\/li|\/h[1-6])\s*\/?\s*>/gi, "\n")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&#39;|&apos;/gi, "'")
+      .replace(/&quot;/gi, '"')
+      // Decoded LAST so "&amp;lt;" single-decodes to the text "&lt;" instead of
+      // double-decoding into markup.
+      .replace(/&amp;/gi, "&")
+      .replace(/[ \t]+/g, " ")
+      .replace(/\s*\n\s*/g, "\n")
+      .trim()
+  );
 }
 
 /**

@@ -372,8 +372,9 @@ export const ProfileConfigFields: React.FC<ProfileConfigFieldsProps> = ({
               was published, so its freshness is approximate: postings it
               estimates to be older than this window are dropped during the
               scrape. Himalayas walks the board newest-first and stops at this
-              window (7 days when blank). startup.jobs and Working Nomads ignore
-              this setting entirely.
+              window (7 days when blank); We Work Remotely skips feed items
+              older than it. startup.jobs and Working Nomads ignore this setting
+              entirely.
             </p>
             <div className="space-y-1.5">
               <label

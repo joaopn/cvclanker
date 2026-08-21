@@ -117,6 +117,7 @@ COPY extractors/jobspy ./extractors/jobspy
 COPY extractors/startupjobs ./extractors/startupjobs
 COPY extractors/workingnomads ./extractors/workingnomads
 COPY extractors/himalayas ./extractors/himalayas
+COPY extractors/weworkremotely ./extractors/weworkremotely
 
 # ============================================================================
 # PARALLEL BUILD STAGES
@@ -190,6 +191,7 @@ COPY extractors/jobspy ./extractors/jobspy
 COPY extractors/startupjobs ./extractors/startupjobs
 COPY extractors/workingnomads ./extractors/workingnomads
 COPY extractors/himalayas ./extractors/himalayas
+COPY extractors/weworkremotely ./extractors/weworkremotely
 
 # Bake user-editable prompt YAMLs into the image as a fallback so a fresh
 # `docker compose up` works even before the host-side bind mount is wired.
