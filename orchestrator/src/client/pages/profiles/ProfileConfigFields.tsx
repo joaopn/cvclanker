@@ -47,6 +47,7 @@ export interface EditorForm {
   workplaceTypes: WorkplaceType[];
   searchScope: LocationSearchScope;
   matchStrictness: LocationMatchStrictness;
+  remoteProfile: boolean;
   scrapeMaxAgeDays: string;
   scrapeSinceLastRun: boolean;
   blockedKeywords: string[];
@@ -87,6 +88,7 @@ export function formFromConfig(
     workplaceTypes: config.workplaceTypes,
     searchScope: config.locationSearchScope,
     matchStrictness: config.locationMatchStrictness,
+    remoteProfile: config.remoteProfile,
     scrapeMaxAgeDays:
       config.scrapeMaxAgeDays === null ? "" : String(config.scrapeMaxAgeDays),
     scrapeSinceLastRun: config.scrapeSinceLastRun,
@@ -141,6 +143,7 @@ export function buildConfig(
     workplaceTypes: form.workplaceTypes,
     locationSearchScope: form.searchScope,
     locationMatchStrictness: form.matchStrictness,
+    remoteProfile: form.remoteProfile,
     scrapeMaxAgeDays: parseMaxAge(form.scrapeMaxAgeDays),
     scrapeSinceLastRun: form.scrapeSinceLastRun,
     blockedCompanyKeywords: form.blockedKeywords,
@@ -264,6 +267,28 @@ export const ProfileConfigFields: React.FC<ProfileConfigFieldsProps> = ({
             <CardTitle>Location</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
+            <div className="space-y-1.5">
+              <label
+                htmlFor="profile-remote-profile"
+                className="flex cursor-pointer items-center gap-3 text-sm"
+              >
+                <Checkbox
+                  id="profile-remote-profile"
+                  checked={form.remoteProfile}
+                  onCheckedChange={(checked) =>
+                    onChange({ remoteProfile: checked === true })
+                  }
+                />
+                Remote profile
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Search remote jobs instead of jobs near a location. The country
+                below then means where you live: postings restricted to other
+                countries (&quot;US only&quot;) are dropped. Unlocks the
+                remote-only boards, and Apify actors never run on a remote
+                profile.
+              </p>
+            </div>
             <div className="grid gap-4 md:grid-cols-2">
               <CountryField
                 value={form.country}

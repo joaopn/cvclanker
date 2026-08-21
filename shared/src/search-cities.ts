@@ -21,6 +21,12 @@ const COUNTRY_LOCATION_VARIANTS: Record<string, string[]> = {
     "northern ireland",
   ],
   "united states": ["us", "usa", "united states of america"],
+  // The boards spell these two ways; without the variant a resident's own
+  // country false-rejects ("Europe, Türkiye" for a Turkey profile). Conscious
+  // widening: the czechia variant also reaches the non-remote path, where it
+  // only ADDS accepts.
+  turkey: ["türkiye"],
+  czechia: ["czech republic"],
 };
 
 // A location string that names no place at all ("Remote", "Worldwide") is not a
@@ -92,7 +98,7 @@ function buildCountryNameTokenRuns(): Set<string> {
   return runs;
 }
 
-function tokenizeLocation(value: string | null | undefined): string[] {
+export function tokenizeLocation(value: string | null | undefined): string[] {
   const normalized = normalizeLocationToken(value)
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
@@ -139,7 +145,9 @@ function namesAnyCountry(jobLocation: string | undefined): boolean {
   return false;
 }
 
-function isNonGeographicLocation(jobLocation: string | undefined): boolean {
+export function isNonGeographicLocation(
+  jobLocation: string | undefined,
+): boolean {
   const tokens = tokenizeLocation(jobLocation);
   if (tokens.length === 0) return true;
   return tokens.every((token) => NON_GEOGRAPHIC_LOCATION_TOKENS.has(token));

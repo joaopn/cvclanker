@@ -1,4 +1,8 @@
 import {
+  EXTRACTOR_SOURCE_METADATA,
+  isExtractorSourceId,
+} from "./extractors/index.js";
+import {
   formatCountryLabel,
   isSourceAllowedForCountry,
   normalizeCountryKey,
@@ -72,6 +76,7 @@ export interface LocationIntentInput {
   geoScope?: string | null;
   searchScope?: string | null;
   matchStrictness?: string | null;
+  remoteProfile?: boolean | null;
 }
 
 export interface LocationIntent {
@@ -82,6 +87,12 @@ export interface LocationIntent {
   geoScope: LocationGeoScope;
   searchScope: LocationSearchScope;
   matchStrictness: LocationMatchStrictness;
+  /**
+   * Remote-type profile: the selected country means "where the candidate
+   * lives" (an eligibility filter) rather than "where to search", and the
+   * remote-only boards become runnable.
+   */
+  remoteProfile: boolean;
 }
 
 export interface LocationEvidenceInput {
@@ -119,12 +130,15 @@ export interface LocationSourceCapabilitiesInput {
   source: JobSource | string;
   supportedCountryKeys?: readonly string[] | null;
   requiresCityLocations?: boolean | null;
+  requiresRemoteProfile?: boolean | null;
 }
 
 export interface LocationSourceCapabilities {
   source: JobSource | string;
   supportedCountryKeys: string[] | null;
   requiresCityLocations: boolean;
+  /** Remote-only boards: runnable only when the profile is remote-type. */
+  requiresRemoteProfile: boolean;
 }
 
 export interface LocationSourcePlan {
@@ -469,6 +483,7 @@ export function normalizeLocationIntent(
     geoScope,
     searchScope: geoScope,
     matchStrictness: normalizeLocationMatchStrictness(value.matchStrictness),
+    remoteProfile: value.remoteProfile === true,
   };
 }
 
@@ -533,6 +548,11 @@ export function getDefaultLocationSourceCapabilities(
     source,
     supportedCountryKeys: createDefaultSupportedCountryKeys(source),
     requiresCityLocations: source === "glassdoor",
+    // Guarded: `source` also carries synthetic provider ids ("apify:<uuid>")
+    // that must not index the metadata Record.
+    requiresRemoteProfile:
+      isExtractorSourceId(source) &&
+      EXTRACTOR_SOURCE_METADATA[source].remoteProfileOnly === true,
   };
 }
 
@@ -552,6 +572,10 @@ export function normalizeLocationSourceCapabilities(
       "requiresCityLocations" in value
         ? (value.requiresCityLocations ?? defaults.requiresCityLocations)
         : defaults.requiresCityLocations,
+    requiresRemoteProfile:
+      "requiresRemoteProfile" in value
+        ? (value.requiresRemoteProfile ?? defaults.requiresRemoteProfile)
+        : defaults.requiresRemoteProfile,
   };
 }
 
@@ -600,6 +624,13 @@ export function planLocationSource(args: {
     } else {
       reasons.push("No selected country was provided.");
     }
+  }
+
+  // After the country arm: that arm ASSIGNS isCompatible rather than
+  // narrowing it, so a gate placed before it would be silently overwritten.
+  if (capabilities.requiresRemoteProfile && !intent.remoteProfile) {
+    isCompatible = false;
+    reasons.push("Only runs on a remote-type profile.");
   }
 
   if (allowRemoteWorldwide) {
@@ -768,6 +799,9 @@ export function createLocationIntentFromLegacyInputs(
     workplaceTypes: value.workplaceTypes ?? [],
     geoScope: value.geoScope ?? value.searchScope ?? null,
     matchStrictness: value.matchStrictness ?? null,
+    // runPipeline re-derives the run's intent through this function, so a
+    // field missing here is silently stripped before discovery reads it.
+    remoteProfile: value.remoteProfile ?? null,
   });
 }
 

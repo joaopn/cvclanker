@@ -26,6 +26,13 @@ export interface ProfileConfig {
   workplaceTypes: LocationWorkplaceType[];
   locationSearchScope: LocationSearchScope;
   locationMatchStrictness: LocationMatchStrictness;
+  /**
+   * Remote-type profile: the country/cities mean "where the candidate lives"
+   * (an eligibility filter on remote postings) rather than "where to search",
+   * the remote-only boards become runnable, and Apify provider instances are
+   * excluded from the run.
+   */
+  remoteProfile: boolean;
   /** null = no cap; each extractor keeps its own default. */
   scrapeMaxAgeDays: number | null;
   /**
@@ -82,6 +89,7 @@ export const profileConfigSchema = z.object({
   workplaceTypes: z.array(z.enum(LOCATION_WORKPLACE_TYPE_VALUES)).max(3),
   locationSearchScope: z.enum(LOCATION_SEARCH_SCOPE_VALUES),
   locationMatchStrictness: z.enum(LOCATION_MATCH_STRICTNESS_VALUES),
+  remoteProfile: z.boolean(),
   scrapeMaxAgeDays: z.number().int().min(1).max(365).nullable(),
   scrapeSinceLastRun: z.boolean(),
   blockedCompanyKeywords: z.array(z.string().trim().min(1).max(200)).max(200),
@@ -100,6 +108,7 @@ export function defaultProfileConfig(): ProfileConfig {
     workplaceTypes: ["remote", "hybrid", "onsite"],
     locationSearchScope: "selected_only",
     locationMatchStrictness: "exact_only",
+    remoteProfile: false,
     scrapeMaxAgeDays: null,
     scrapeSinceLastRun: false,
     blockedCompanyKeywords: [],

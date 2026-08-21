@@ -284,8 +284,15 @@ async function resolveProfileRunConfig(
   const profileConfig = profile?.config ?? null;
 
   const resolvedSearchTerms = body.searchTerms ?? profileConfig?.searchTerms;
+  const isRemoteProfile = profileConfig?.remoteProfile === true;
+  // A remote-type profile never runs Apify provider instances (PI's call,
+  // 2026-08-21: LinkedIn's forced AI search degraded the actors' remote
+  // filters to keyword soup, so every instance would bill for rows the
+  // eligibility filter then rejects). An explicit body list still wins — the
+  // escape hatch exists only for direct API callers.
   const resolvedProviderInstanceIds =
-    body.providerInstanceIds ?? profileConfig?.providerInstanceIds;
+    body.providerInstanceIds ??
+    (isRemoteProfile ? [] : profileConfig?.providerInstanceIds);
 
   const locationIntent = createLocationIntent({
     selectedCountry: body.country ?? profileConfig?.searchCountry,
@@ -298,6 +305,7 @@ async function resolveProfileRunConfig(
     geoScope: body.searchScope ?? profileConfig?.locationSearchScope,
     matchStrictness:
       body.matchStrictness ?? profileConfig?.locationMatchStrictness,
+    remoteProfile: profileConfig?.remoteProfile,
   });
 
   // Sources: a body list wins verbatim (including `[]` = "no built-in
@@ -378,12 +386,23 @@ async function resolveProfileRunConfig(
   }
 
   if (effectiveSourceCount === 0 && effectiveInstanceIds.length === 0) {
+    // Name the remote exclusion when it is what emptied the run — the generic
+    // "enable a source" copy would send the user hunting a Sources-page
+    // problem that does not exist.
+    const emptiedByRemoteExclusion =
+      isRemoteProfile &&
+      body.providerInstanceIds === undefined &&
+      (profileConfig?.providerInstanceIds ?? []).some((id) =>
+        enabledInstanceIds.has(id),
+      );
     return {
       ok: false,
       error: badRequest(
-        profile
-          ? `No sources are enabled for the "${profile.name}" search profile. Enable a source on the Sources page, then select it in the search profile.`
-          : "No sources are enabled for this run. Enable a source on the Sources page, then select it in the search profile.",
+        emptiedByRemoteExclusion && profile
+          ? `The "${profile.name}" search profile is remote-type, so its Apify actors are excluded from runs. Select a built-in source in the search profile.`
+          : profile
+            ? `No sources are enabled for the "${profile.name}" search profile. Enable a source on the Sources page, then select it in the search profile.`
+            : "No sources are enabled for this run. Enable a source on the Sources page, then select it in the search profile.",
       ),
     };
   }

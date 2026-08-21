@@ -7,6 +7,7 @@ import {
   getLegacyLocationSelection,
   getPrimaryLocationLabel,
   normalizeLocationSourceCapabilities,
+  planLocationSource,
   planLocationSources,
 } from "./location-domain";
 
@@ -24,6 +25,7 @@ describe("location-domain", () => {
       selectedCountry: "united kingdom",
       country: "united kingdom",
       cityLocations: ["Leeds", "london"],
+      remoteProfile: false,
       workplaceTypes: ["remote", "onsite", "hybrid"],
       geoScope: "remote_worldwide_prioritize_selected",
       searchScope: "remote_worldwide_prioritize_selected",
@@ -43,6 +45,7 @@ describe("location-domain", () => {
       selectedCountry: "united kingdom",
       country: "united kingdom",
       cityLocations: ["Leeds", "London"],
+      remoteProfile: false,
       workplaceTypes: [],
       geoScope: "selected_plus_remote_worldwide",
       searchScope: "selected_plus_remote_worldwide",
@@ -145,6 +148,7 @@ describe("location-domain", () => {
       normalizeLocationSourceCapabilities({ source: "startupjobs" }),
     ).toEqual({
       requiresCityLocations: false,
+      requiresRemoteProfile: false,
       source: "startupjobs",
       supportedCountryKeys: null,
     });
@@ -164,6 +168,7 @@ describe("location-domain", () => {
       }),
     ).toEqual({
       requiresCityLocations: true,
+      requiresRemoteProfile: false,
       source: "glassdoor",
       supportedCountryKeys: ["united kingdom"],
     });
@@ -206,5 +211,79 @@ describe("location-domain", () => {
     expect(result.plans[0]?.reasons).toContain(
       "A selected country is required for this source.",
     );
+  });
+});
+
+describe("remote-type profile plumbing", () => {
+  it("normalizes remoteProfile and defaults it off", () => {
+    expect(createLocationIntent({}).remoteProfile).toBe(false);
+    expect(createLocationIntent({ remoteProfile: true }).remoteProfile).toBe(
+      true,
+    );
+  });
+
+  it("survives the legacy-inputs re-derivation runPipeline performs", () => {
+    // runPipeline rebuilds the run's intent through this function; a field
+    // missing from its input literal is silently stripped before discovery.
+    const intent = createLocationIntent({
+      selectedCountry: "portugal",
+      remoteProfile: true,
+    });
+    expect(createLocationIntentFromLegacyInputs(intent).remoteProfile).toBe(
+      true,
+    );
+  });
+
+  it("gates a requiresRemoteProfile source on the profile flag", () => {
+    const capabilities = {
+      source: "himalayas",
+      requiresRemoteProfile: true,
+    };
+    const blocked = planLocationSource({
+      intent: { selectedCountry: "portugal", workplaceTypes: ["remote"] },
+      source: "himalayas",
+      capabilities,
+    });
+    expect(blocked).toMatchObject({ isCompatible: false, canRun: false });
+    expect(blocked.reasons).toContain("Only runs on a remote-type profile.");
+
+    const allowed = planLocationSource({
+      intent: {
+        selectedCountry: "portugal",
+        workplaceTypes: ["remote"],
+        remoteProfile: true,
+      },
+      source: "himalayas",
+      capabilities,
+    });
+    expect(allowed).toMatchObject({ isCompatible: true, canRun: true });
+  });
+
+  it("keeps requiresRemoteProfile through the capabilities normalizer", () => {
+    // planLocationSource routes EVERY capabilities value through the
+    // normalizer's field-by-field rebuild — a field dropped there fails the
+    // gate open on every profile.
+    expect(
+      normalizeLocationSourceCapabilities({
+        source: "himalayas",
+        requiresRemoteProfile: true,
+      }).requiresRemoteProfile,
+    ).toBe(true);
+    expect(
+      normalizeLocationSourceCapabilities({ source: "startupjobs" })
+        .requiresRemoteProfile,
+    ).toBe(false);
+  });
+
+  it("leaves sources without the capability unaffected by the flag", () => {
+    const plan = planLocationSource({
+      intent: {
+        selectedCountry: "portugal",
+        workplaceTypes: ["remote"],
+        remoteProfile: true,
+      },
+      source: "startupjobs",
+    });
+    expect(plan).toMatchObject({ isCompatible: true, canRun: true });
   });
 });

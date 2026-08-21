@@ -620,6 +620,83 @@ describe.sequential("Pipeline API routes", () => {
     );
   });
 
+  it("excludes Apify instances from a remote-type profile's run", async () => {
+    const { runPipeline } = await import("@server/pipeline/index");
+    const { db, schema } = await import("@server/db");
+    await db.insert(schema.providerInstances).values({
+      id: "inst-remote",
+      providerId: "apify",
+      actorRef: "acme/actor",
+      label: "Acme actor",
+      templateId: null,
+      enabled: true,
+      inputTemplateJson: "{}",
+      outputMappingJson: "{}",
+      mappingsJson: {},
+    });
+    const profileId = await createProfile(baseUrl, {
+      searchTerms: ["backend engineer"],
+      searchCountry: "portugal",
+      remoteProfile: true,
+      enabledSourceIds: ["test-linkedin"],
+      providerInstanceIds: ["inst-remote"],
+    });
+
+    const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId }),
+    });
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(runPipeline).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerInstanceIds: [],
+        locationIntent: expect.objectContaining({ remoteProfile: true }),
+      }),
+    );
+  });
+
+  it("names the remote exclusion when it emptied the run's sources", async () => {
+    const { db, schema } = await import("@server/db");
+    await db.insert(schema.providerInstances).values({
+      id: "inst-remote-only",
+      providerId: "apify",
+      actorRef: "acme/actor",
+      label: "Acme actor",
+      templateId: null,
+      enabled: true,
+      inputTemplateJson: "{}",
+      outputMappingJson: "{}",
+      mappingsJson: {},
+    });
+    // Creation auto-fills an empty source selection, so narrow via update —
+    // same path as the source-less 400 backstop above.
+    const profileId = await createProfile(baseUrl, {
+      searchTerms: ["backend engineer"],
+      searchCountry: "portugal",
+      remoteProfile: true,
+      providerInstanceIds: ["inst-remote-only"],
+    });
+    const clearRes = await fetch(`${baseUrl}/api/profiles/${profileId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ config: { enabledSourceIds: [] } }),
+    });
+    expect((await clearRes.json()).ok).toBe(true);
+
+    const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId }),
+    });
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body.ok).toBe(false);
+    expect(body.error.message).toContain("remote-type");
+    expect(body.error.message).not.toContain("Enable a source on the Sources");
+  });
+
   it("aims a per-source re-run at the page of the profile it names", async () => {
     const { runPipeline, targetProfileRunPage } = await import(
       "@server/pipeline/index"

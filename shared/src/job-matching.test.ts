@@ -174,3 +174,167 @@ describe("matchJobLocationIntent", () => {
     );
   });
 });
+
+describe("matchJobLocationIntent — remote-type profile", () => {
+  const remoteIntent = (country: string | null) =>
+    intentFor({
+      selectedCountry: country,
+      workplaceTypes: ["remote"],
+      remoteProfile: true,
+    });
+
+  it("keeps a posting restricted to the selected country", () => {
+    expect(
+      matchJobLocationIntent(
+        { location: "Portugal", isRemote: true },
+        remoteIntent("portugal"),
+      ),
+    ).toMatchObject({ matched: true, reasonCode: "selected_location" });
+  });
+
+  it("rejects a posting restricted to another country (the 'US only' case)", () => {
+    expect(
+      matchJobLocationIntent(
+        { location: "United States", isRemote: true },
+        remoteIntent("portugal"),
+      ),
+    ).toMatchObject({ matched: false, reasonCode: "no_country_match" });
+  });
+
+  it("keeps an unrestricted posting — 'Anywhere in the World' is universal", () => {
+    for (const location of [
+      "Anywhere in the World",
+      "Anywhere",
+      "Remote",
+      "Worldwide",
+    ]) {
+      expect(
+        matchJobLocationIntent({ location }, remoteIntent("portugal")),
+      ).toMatchObject({ matched: true, reasonCode: "remote_worldwide" });
+    }
+  });
+
+  it("keeps a posting with no location data at all", () => {
+    expect(matchJobLocationIntent({}, remoteIntent("portugal"))).toMatchObject({
+      matched: true,
+      reasonCode: "remote_worldwide",
+    });
+  });
+
+  it("resolves region eligibility, including comma-separated OR-lists", () => {
+    const portugal = remoteIntent("portugal");
+    expect(matchJobLocationIntent({ location: "EMEA" }, portugal).matched).toBe(
+      true,
+    );
+    // Jobicy emits multi-region strings; any eligible segment keeps the row.
+    expect(
+      matchJobLocationIntent({ location: "APAC, EMEA" }, portugal).matched,
+    ).toBe(true);
+    expect(
+      matchJobLocationIntent({ location: "Europe, Türkiye" }, portugal).matched,
+    ).toBe(true);
+    // A Turkey resident is caught by the country variant, not the region map
+    // (Jobicy's own grammar keeps Türkiye out of "Europe").
+    expect(
+      matchJobLocationIntent(
+        { location: "Europe, Türkiye" },
+        remoteIntent("turkey"),
+      ),
+    ).toMatchObject({ matched: true, reasonCode: "selected_location" });
+    expect(
+      matchJobLocationIntent(
+        { location: "Czech Republic" },
+        remoteIntent("czechia"),
+      ),
+    ).toMatchObject({ matched: true, reasonCode: "selected_location" });
+    expect(
+      matchJobLocationIntent({ location: "APAC, LATAM" }, portugal),
+    ).toMatchObject({ matched: false, reasonCode: "no_country_match" });
+  });
+
+  it("strips We Work Remotely's ' Only' grammar before the region lookup", () => {
+    expect(
+      matchJobLocationIntent(
+        { location: "Europe Only" },
+        remoteIntent("portugal"),
+      ).matched,
+    ).toBe(true);
+    expect(
+      matchJobLocationIntent({ location: "USA Only" }, remoteIntent("portugal"))
+        .matched,
+    ).toBe(false);
+    expect(
+      matchJobLocationIntent(
+        { location: "USA Only" },
+        remoteIntent("united states"),
+      ),
+    ).toMatchObject({ matched: true, reasonCode: "selected_location" });
+  });
+
+  it("rejects an unknown region token — a false reject beats an ineligible import", () => {
+    expect(
+      matchJobLocationIntent({ location: "Nordics" }, remoteIntent("portugal"))
+        .matched,
+    ).toBe(false);
+  });
+
+  it("treats country 'worldwide' and a missing country as unfiltered", () => {
+    expect(
+      matchJobLocationIntent(
+        { location: "United States" },
+        remoteIntent("worldwide"),
+      ),
+    ).toMatchObject({ matched: true, reasonCode: "unfiltered" });
+    expect(
+      matchJobLocationIntent({ location: "United States" }, remoteIntent(null)),
+    ).toMatchObject({ matched: true, reasonCode: "unfiltered" });
+  });
+
+  it("expands usa/ca to either member country", () => {
+    expect(
+      matchJobLocationIntent({ location: "Canada" }, remoteIntent("usa/ca")),
+    ).toMatchObject({ matched: true, reasonCode: "selected_location" });
+  });
+
+  it("reads eligibility from evidence fields, not just the location string", () => {
+    expect(
+      matchJobLocationIntent(
+        {
+          locationEvidence: { location: "Germany", country: "germany" },
+          isRemote: true,
+        },
+        remoteIntent("portugal"),
+      ).matched,
+    ).toBe(false);
+  });
+
+  it("ignores city lists on a remote profile — eligibility is country-level", () => {
+    const withCities = intentFor({
+      selectedCountry: "portugal",
+      cityLocations: ["Lisbon"],
+      workplaceTypes: ["remote"],
+      remoteProfile: true,
+    });
+    expect(
+      matchJobLocationIntent({ location: "Portugal" }, withCities),
+    ).toMatchObject({ matched: true, reasonCode: "selected_location" });
+  });
+
+  it("leaves the non-remote path untouched when the flag is off", () => {
+    // "United States" names a country, so the flag-off path rejects it for a
+    // Portugal profile (no isRemote signal to reach the remote arm). "EMEA"
+    // stays country-unspecified there and is kept — both pre-existing.
+    expect(
+      matchJobLocationIntent(
+        { location: "United States" },
+        intentFor({ selectedCountry: "portugal" }),
+      ).matched,
+    ).toBe(false);
+    expect(
+      matchJobLocationIntent(
+        { location: "EMEA" },
+        intentFor({ selectedCountry: "portugal" }),
+      ).matched,
+    ).toBe(true);
+  });
+});

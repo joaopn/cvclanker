@@ -53,6 +53,7 @@ function makeProfile(
       workplaceTypes: ["remote"],
       locationSearchScope: "selected_only",
       locationMatchStrictness: "exact_only",
+      remoteProfile: false,
       scrapeMaxAgeDays: null,
       scrapeSinceLastRun: false,
       blockedCompanyKeywords: [],

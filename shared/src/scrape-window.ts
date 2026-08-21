@@ -85,6 +85,7 @@ export const SCRAPE_COVERAGE_FIELDS = [
   "workplaceTypes",
   "locationSearchScope",
   "locationMatchStrictness",
+  "remoteProfile",
   "scrapeMaxAgeDays",
 ] as const satisfies ReadonlyArray<keyof ProfileConfig>;
 

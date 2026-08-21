@@ -1,5 +1,10 @@
 import { formatCountryLabel } from "./location-support.js";
 import {
+  isUniversalRemoteRegion,
+  remoteRegionIncludesCountry,
+} from "./remote-regions.js";
+import {
+  isNonGeographicLocation,
   locationCountryUnspecified,
   matchesRequestedCity,
   matchesRequestedCountry,
@@ -181,6 +186,62 @@ export function matchJobLocationIntent(
 
   if (!selectedCountry) {
     return { matched: true, reasonCode: "unfiltered", priority: 0 };
+  }
+
+  // Remote-type profile: the selected country is an ELIGIBILITY filter, not a
+  // search location. A row is kept when its location data names the country,
+  // names a region containing it, or names no geography at all (an
+  // unrestricted remote posting). City lists and match strictness are
+  // country-level concerns here and deliberately ignored. Unknown region
+  // tokens reject: for a remote profile a false reject is cheaper than
+  // importing a posting the user cannot apply to.
+  if (intent.remoteProfile) {
+    if (selectedCountry === "worldwide") {
+      return { matched: true, reasonCode: "unfiltered", priority: 0 };
+    }
+    const eligibleCountries =
+      selectedCountry === "usa/ca"
+        ? ["united states", "canada"]
+        : [selectedCountry];
+    // We Work Remotely's restriction grammar is "<X> Only". The trailing word
+    // defeats token-run country matching ("USA Only" tokenizes as
+    // `usa only`, while the requested side's short variants alias back to
+    // `united states`), so strip it before the country check.
+    const restrictionCandidates = candidates.map((candidate) =>
+      candidate.replace(/\s+only\s*$/i, ""),
+    );
+    if (
+      restrictionCandidates.some((candidate) =>
+        eligibleCountries.some((country) =>
+          matchesRequestedCountry(candidate, country),
+        ),
+      )
+    ) {
+      return { matched: true, reasonCode: "selected_location", priority: 1 };
+    }
+    // Multi-region strings ("APAC, EMEA" / "Europe, Türkiye") are OR-lists —
+    // evaluate per comma segment, not per whole candidate.
+    const segments = candidates.flatMap((candidate) =>
+      candidate
+        .split(",")
+        .map((segment) => segment.trim())
+        .filter((segment) => segment.length > 0),
+    );
+    const geographic = segments.filter(
+      (segment) =>
+        !isNonGeographicLocation(segment) && !isUniversalRemoteRegion(segment),
+    );
+    const eligible =
+      geographic.length === 0 ||
+      geographic.some((segment) =>
+        eligibleCountries.some((country) =>
+          remoteRegionIncludesCountry(segment, country),
+        ),
+      );
+    if (eligible) {
+      return { matched: true, reasonCode: "remote_worldwide", priority: 0 };
+    }
+    return { matched: false, reasonCode: "no_country_match", priority: 0 };
   }
 
   // A location that names no country at all ("Greater Reading Area", "Utrecht

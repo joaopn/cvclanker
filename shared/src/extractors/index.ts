@@ -18,6 +18,8 @@ export interface ExtractorSourceMetadata {
   category: "pipeline" | "manual";
   requiresCredentials?: boolean;
   ukOnly?: boolean;
+  /** Remote-only board: runnable only when the Search Profile is remote-type. */
+  remoteProfileOnly?: boolean;
 }
 
 export const EXTRACTOR_SOURCE_METADATA: Record<
