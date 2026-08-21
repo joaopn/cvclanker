@@ -700,6 +700,7 @@ try {
     "workingnomads",
     "himalayas",
     "weworkremotely",
+    "jobicy",
   ];
 
   const tableCols = sqlite
