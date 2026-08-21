@@ -116,6 +116,7 @@ COPY extractors/hiringcafe ./extractors/hiringcafe
 COPY extractors/jobspy ./extractors/jobspy
 COPY extractors/startupjobs ./extractors/startupjobs
 COPY extractors/workingnomads ./extractors/workingnomads
+COPY extractors/himalayas ./extractors/himalayas
 
 # ============================================================================
 # PARALLEL BUILD STAGES
@@ -188,6 +189,7 @@ COPY extractors/hiringcafe ./extractors/hiringcafe
 COPY extractors/jobspy ./extractors/jobspy
 COPY extractors/startupjobs ./extractors/startupjobs
 COPY extractors/workingnomads ./extractors/workingnomads
+COPY extractors/himalayas ./extractors/himalayas
 
 # Bake user-editable prompt YAMLs into the image as a fallback so a fresh
 # `docker compose up` works even before the host-side bind mount is wired.

@@ -7,6 +7,7 @@ export const EXTRACTOR_SOURCE_IDS = [
   "hiringcafe",
   "startupjobs",
   "workingnomads",
+  "himalayas",
   "manual",
 ] as const;
 
@@ -36,6 +37,12 @@ export const EXTRACTOR_SOURCE_METADATA: Record<
     order: 90,
     category: "pipeline",
   },
+  himalayas: {
+    label: "Himalayas",
+    order: 92,
+    category: "pipeline",
+    remoteProfileOnly: true,
+  },
   manual: { label: "Manual", order: 110, category: "manual" },
 };
 
@@ -55,11 +62,21 @@ export const EXTRACTOR_ID_BY_SOURCE: Record<ExtractorSourceId, string> = {
   hiringcafe: "hiringcafe",
   startupjobs: "startupjobs",
   workingnomads: "workingnomads",
+  himalayas: "himalayas",
   manual: "manual",
 };
 
 export function sourceExtractorLabel(source: ExtractorSourceId): string {
   return EXTRACTOR_ID_BY_SOURCE[source];
+}
+
+/** Whether this extractor's board is runnable only on a remote-type profile. */
+export function isRemoteProfileOnlyExtractor(extractorId: string): boolean {
+  return EXTRACTOR_SOURCE_IDS.some(
+    (source) =>
+      EXTRACTOR_ID_BY_SOURCE[source] === extractorId &&
+      EXTRACTOR_SOURCE_METADATA[source].remoteProfileOnly === true,
+  );
 }
 
 const extractorSourceTuple = EXTRACTOR_SOURCE_IDS as unknown as [

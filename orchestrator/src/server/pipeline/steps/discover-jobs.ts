@@ -253,10 +253,25 @@ export async function discoverJobsStep(args: {
   }
 
   if (requestedSources.length > 0 && compatibleSources.length === 0) {
+    // Name the remote gate when it is what emptied the run: a remote-only
+    // board skipped on a non-remote profile would otherwise surface as a
+    // country problem that does not exist.
+    const remoteGated = sourcePlans
+      .filter(
+        ({ plan }) =>
+          !plan.canRun &&
+          plan.capabilities.requiresRemoteProfile &&
+          !locationIntent.remoteProfile,
+      )
+      .map(({ source }) => source);
+    const refusalSuffix =
+      remoteGated.length > 0
+        ? ` (${remoteGated.join(", ")}: runs only on a remote-type profile)`
+        : "";
     throw new Error(
       locationIntent.selectedCountry
-        ? `No compatible sources for selected country: ${formatCountryLabel(locationIntent.selectedCountry)}`
-        : `No compatible sources for requested location: ${getPrimaryLocationLabel(locationIntent)}`,
+        ? `No compatible sources for selected country: ${formatCountryLabel(locationIntent.selectedCountry)}${refusalSuffix}`
+        : `No compatible sources for requested location: ${getPrimaryLocationLabel(locationIntent)}${refusalSuffix}`,
     );
   }
 

@@ -1,4 +1,5 @@
 import type { SourceConfigsExtractorEntry } from "@client/api";
+import { isRemoteProfileOnlyExtractor } from "@shared/extractors";
 import type {
   LocationMatchStrictness,
   LocationSearchScope,
@@ -370,8 +371,9 @@ export const ProfileConfigFields: React.FC<ProfileConfigFieldsProps> = ({
               filters on the date it indexed a posting rather than the date it
               was published, so its freshness is approximate: postings it
               estimates to be older than this window are dropped during the
-              scrape. startup.jobs and Working Nomads ignore this setting
-              entirely.
+              scrape. Himalayas walks the board newest-first and stops at this
+              window (7 days when blank). startup.jobs and Working Nomads ignore
+              this setting entirely.
             </p>
             <div className="space-y-1.5">
               <label
@@ -437,10 +439,24 @@ export const ProfileConfigFields: React.FC<ProfileConfigFieldsProps> = ({
                 <div className="flex flex-wrap gap-2 gap-x-4">
                   {extractors.map((extractor) => {
                     const checkboxId = `pin-extractor-${extractor.extractorId}`;
+                    const ticked = form.enabledSourceIds.includes(
+                      extractor.extractorId,
+                    );
+                    // A remote-only board never runs on a non-remote profile.
+                    // The hint renders whenever that is true — including on a
+                    // ticked row (auto-pinned or stale), which would otherwise
+                    // read as an ordinary source that will run. Ticking is
+                    // blocked, but a stale tick stays clearable.
+                    const remoteOnly = isRemoteProfileOnlyExtractor(
+                      extractor.extractorId,
+                    );
+                    const remoteInert = remoteOnly && !form.remoteProfile;
+                    const remoteBlocked = remoteInert && !ticked;
                     // Disabled on the Sources page → shown, but not selectable.
                     // Never hidden: the user has to be able to see why they
                     // cannot pick it.
-                    const sourceDisabled = !extractor.row.enabled;
+                    const sourceDisabled =
+                      !extractor.row.enabled || remoteBlocked;
                     return (
                       <div
                         key={extractor.extractorId}
@@ -458,9 +474,7 @@ export const ProfileConfigFields: React.FC<ProfileConfigFieldsProps> = ({
                           <Checkbox
                             id={checkboxId}
                             disabled={sourceDisabled}
-                            checked={form.enabledSourceIds.includes(
-                              extractor.extractorId,
-                            )}
+                            checked={ticked}
                             onCheckedChange={(checked) =>
                               toggleExtractor(
                                 extractor.extractorId,
@@ -470,9 +484,13 @@ export const ProfileConfigFields: React.FC<ProfileConfigFieldsProps> = ({
                           />
                           {extractor.displayName}
                         </label>
-                        {sourceDisabled ? (
+                        {!extractor.row.enabled ? (
                           <span className="text-xs text-muted-foreground">
                             disabled on the Sources page
+                          </span>
+                        ) : remoteInert ? (
+                          <span className="text-xs text-muted-foreground">
+                            runs only on a remote profile
                           </span>
                         ) : null}
                       </div>

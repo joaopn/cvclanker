@@ -275,6 +275,28 @@ describe("remote-type profile plumbing", () => {
     ).toBe(false);
   });
 
+  it("derives the gate from source metadata on the default-capabilities path", () => {
+    // No explicit capabilities: this exercises metadata -> defaults ->
+    // normalizer end to end, so a dropped metadata flag fails the test, not
+    // just the explicit-capabilities path above.
+    const blocked = planLocationSource({
+      intent: { selectedCountry: "portugal", workplaceTypes: ["remote"] },
+      source: "himalayas",
+    });
+    expect(blocked).toMatchObject({ isCompatible: false, canRun: false });
+    expect(blocked.reasons).toContain("Only runs on a remote-type profile.");
+
+    const allowed = planLocationSource({
+      intent: {
+        selectedCountry: "portugal",
+        workplaceTypes: ["remote"],
+        remoteProfile: true,
+      },
+      source: "himalayas",
+    });
+    expect(allowed).toMatchObject({ isCompatible: true, canRun: true });
+  });
+
   it("leaves sources without the capability unaffected by the flag", () => {
     const plan = planLocationSource({
       intent: {
