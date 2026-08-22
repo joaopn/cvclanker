@@ -637,7 +637,9 @@ describe.sequential("Pipeline API routes", () => {
     const profileId = await createProfile(baseUrl, {
       searchTerms: ["backend engineer"],
       searchCountry: "portugal",
+      searchCities: "Lisbon|Porto",
       remoteProfile: true,
+      remoteLocationBlocklist: ["US only"],
       enabledSourceIds: ["test-linkedin"],
       providerInstanceIds: ["inst-remote"],
     });
@@ -649,10 +651,17 @@ describe.sequential("Pipeline API routes", () => {
     });
     const body = await res.json();
     expect(body.ok).toBe(true);
+    // The stored country/cities are kept for when the flag is unticked but
+    // must not seed a remote run; the blocklist rides through.
     expect(runPipeline).toHaveBeenCalledWith(
       expect.objectContaining({
         providerInstanceIds: [],
-        locationIntent: expect.objectContaining({ remoteProfile: true }),
+        locationIntent: expect.objectContaining({
+          remoteProfile: true,
+          selectedCountry: null,
+          cityLocations: [],
+          remoteLocationBlocklist: ["US only"],
+        }),
       }),
     );
   });

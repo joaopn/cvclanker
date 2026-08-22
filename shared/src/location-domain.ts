@@ -133,6 +133,7 @@ export interface LocationSourceCapabilitiesInput {
   supportedCountryKeys?: readonly string[] | null;
   requiresCityLocations?: boolean | null;
   requiresRemoteProfile?: boolean | null;
+  requiresCountry?: boolean | null;
 }
 
 export interface LocationSourceCapabilities {
@@ -141,6 +142,12 @@ export interface LocationSourceCapabilities {
   requiresCityLocations: boolean;
   /** Remote-only boards: runnable only when the profile is remote-type. */
   requiresRemoteProfile: boolean;
+  /**
+   * Returns nothing without a selected country OR a city (startup.jobs
+   * searches its city list first and only falls back to the country).
+   * Skipped with a reason instead of running empty.
+   */
+  requiresCountry: boolean;
 }
 
 export interface LocationSourcePlan {
@@ -558,6 +565,7 @@ export function getDefaultLocationSourceCapabilities(
     requiresRemoteProfile:
       isExtractorSourceId(source) &&
       EXTRACTOR_SOURCE_METADATA[source].remoteProfileOnly === true,
+    requiresCountry: source === "startupjobs",
   };
 }
 
@@ -581,6 +589,10 @@ export function normalizeLocationSourceCapabilities(
       "requiresRemoteProfile" in value
         ? (value.requiresRemoteProfile ?? defaults.requiresRemoteProfile)
         : defaults.requiresRemoteProfile,
+    requiresCountry:
+      "requiresCountry" in value
+        ? (value.requiresCountry ?? defaults.requiresCountry)
+        : defaults.requiresCountry,
   };
 }
 
@@ -626,6 +638,9 @@ export function planLocationSource(args: {
     if (capabilities.supportedCountryKeys !== null) {
       isCompatible = false;
       reasons.push("A selected country is required for this source.");
+    } else if (capabilities.requiresCountry && requestedCities.length === 0) {
+      isCompatible = false;
+      reasons.push("A selected country or city is required for this source.");
     } else {
       reasons.push("No selected country was provided.");
     }

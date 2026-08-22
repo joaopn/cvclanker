@@ -264,10 +264,27 @@ export async function discoverJobsStep(args: {
           !locationIntent.remoteProfile,
       )
       .map(({ source }) => source);
+    // Same for the country-or-city requirement: a remote profile sends no
+    // geography, so a source that needs some is skipped, not empty.
+    const geographyGated = sourcePlans
+      .filter(
+        ({ plan }) =>
+          !plan.canRun &&
+          plan.capabilities.requiresCountry &&
+          !locationIntent.selectedCountry &&
+          locationIntent.cityLocations.length === 0,
+      )
+      .map(({ source }) => source);
+    const refusals = [
+      ...(remoteGated.length > 0
+        ? [`${remoteGated.join(", ")}: runs only on a remote-type profile`]
+        : []),
+      ...(geographyGated.length > 0
+        ? [`${geographyGated.join(", ")}: needs a selected country or city`]
+        : []),
+    ];
     const refusalSuffix =
-      remoteGated.length > 0
-        ? ` (${remoteGated.join(", ")}: runs only on a remote-type profile)`
-        : "";
+      refusals.length > 0 ? ` (${refusals.join("; ")})` : "";
     throw new Error(
       locationIntent.selectedCountry
         ? `No compatible sources for selected country: ${formatCountryLabel(locationIntent.selectedCountry)}${refusalSuffix}`

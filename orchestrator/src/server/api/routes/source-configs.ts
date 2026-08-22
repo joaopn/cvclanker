@@ -48,9 +48,10 @@ sourceConfigsRouter.get("/", async (_req: Request, res: Response) => {
 
     const profileConfig =
       (await getDefaultProfile())?.config ?? defaultProfileConfig();
+    // Same rule as the run route: a remote-type profile sends no geography.
     const runGlobals: SourceConfigRunGlobals = {
-      city: profileConfig.searchCities,
-      country: profileConfig.searchCountry,
+      city: profileConfig.remoteProfile ? "" : profileConfig.searchCities,
+      country: profileConfig.remoteProfile ? "" : profileConfig.searchCountry,
       workplaceTypes: JSON.stringify(profileConfig.workplaceTypes),
       ...(profileConfig.scrapeMaxAgeDays
         ? { maxAgeDays: String(profileConfig.scrapeMaxAgeDays) }

@@ -113,6 +113,24 @@ describe("ProfileEditorPage", () => {
     expect(screen.getByLabelText("Max jobs discovered")).toHaveValue(500);
   });
 
+  it("hides the geography fields on a remote profile and restores them on untick", async () => {
+    renderAt("/profiles/p1");
+    expect(await screen.findByLabelText("Name")).toHaveValue("Remote ML");
+    expect(screen.getByText("Country")).toBeInTheDocument();
+    expect(screen.getByLabelText("Cities")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Remote profile"));
+    expect(screen.queryByText("Country")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Cities")).not.toBeInTheDocument();
+    expect(screen.queryByText("Location scope")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Exclude locations")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Remote profile"));
+    // The stored country survives the round-trip untouched.
+    expect(screen.getByLabelText("Germany")).toBeInTheDocument();
+    expect(screen.getByLabelText("Cities")).toBeInTheDocument();
+  });
+
   it("saves edits via updateProfile and returns to the list", async () => {
     renderAt("/profiles/p1");
     const nameInput = await screen.findByLabelText("Name");

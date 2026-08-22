@@ -288,10 +288,11 @@ export const ProfileConfigFields: React.FC<ProfileConfigFieldsProps> = ({
                 Remote profile
               </label>
               <p className="text-xs text-muted-foreground">
-                Search remote jobs instead of jobs near a location. Unlocks the
-                remote-only boards; Apify actors never run on a remote profile.
-                Location filtering becomes the blocklist below — everything not
-                listed is kept, whatever the country says.
+                Search remote jobs instead of jobs near a location: no country
+                or cities are sent to any source. Unlocks the remote-only
+                boards; Apify actors never run on a remote profile. Location
+                filtering becomes the blocklist below — everything not listed is
+                kept.
               </p>
               {form.remoteProfile ? (
                 <TokenizedField
@@ -312,41 +313,47 @@ export const ProfileConfigFields: React.FC<ProfileConfigFieldsProps> = ({
                 />
               ) : null}
             </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <CountryField
-                value={form.country}
-                onChange={(value) => onChange({ country: value })}
-              />
-              <TokenizedField
-                id="profile-cities"
-                label="Cities"
-                labelClassName="text-base font-semibold"
-                values={form.cityValues}
-                draft={form.cityDraft}
-                parseInput={parseCityLocationsInput}
-                onDraftChange={(value) => onChange({ cityDraft: value })}
-                onValuesChange={(value) => onChange({ cityValues: value })}
-                placeholder='e.g. "London"'
-                removeLabelPrefix="Remove city"
-                helperText={
-                  form.cityValues.length === 0
-                    ? "No cities: the whole country is searched, as one search per source."
-                    : "Each city is searched separately, so the city list multiplies what a paid source costs. Clear it to search the whole country instead."
-                }
-              />
-            </div>
+            {form.remoteProfile ? null : (
+              <div className="grid gap-4 md:grid-cols-2">
+                <CountryField
+                  value={form.country}
+                  onChange={(value) => onChange({ country: value })}
+                />
+                <TokenizedField
+                  id="profile-cities"
+                  label="Cities"
+                  labelClassName="text-base font-semibold"
+                  values={form.cityValues}
+                  draft={form.cityDraft}
+                  parseInput={parseCityLocationsInput}
+                  onDraftChange={(value) => onChange({ cityDraft: value })}
+                  onValuesChange={(value) => onChange({ cityValues: value })}
+                  placeholder='e.g. "London"'
+                  removeLabelPrefix="Remove city"
+                  helperText={
+                    form.cityValues.length === 0
+                      ? "No cities: the whole country is searched, as one search per source."
+                      : "Each city is searched separately, so the city list multiplies what a paid source costs. Clear it to search the whole country instead."
+                  }
+                />
+              </div>
+            )}
             <WorkplaceTypesField
               value={form.workplaceTypes}
               onToggle={toggleWorkplace}
             />
-            <LocationScopeField
-              value={form.searchScope}
-              onChange={(value) => onChange({ searchScope: value })}
-            />
-            <MatchStrictnessField
-              value={form.matchStrictness}
-              onChange={(value) => onChange({ matchStrictness: value })}
-            />
+            {form.remoteProfile ? null : (
+              <>
+                <LocationScopeField
+                  value={form.searchScope}
+                  onChange={(value) => onChange({ searchScope: value })}
+                />
+                <MatchStrictnessField
+                  value={form.matchStrictness}
+                  onChange={(value) => onChange({ matchStrictness: value })}
+                />
+              </>
+            )}
           </CardContent>
         </Card>
       ) : null}
@@ -514,6 +521,17 @@ export const ProfileConfigFields: React.FC<ProfileConfigFieldsProps> = ({
                         ) : remoteInert ? (
                           <span className="text-xs text-muted-foreground">
                             runs only on a remote profile
+                          </span>
+                        ) : form.remoteProfile &&
+                          extractor.extractorId === "jobspy" ? (
+                          <span className="text-xs text-muted-foreground">
+                            no country: Indeed searches the US, Glassdoor is
+                            skipped
+                          </span>
+                        ) : form.remoteProfile &&
+                          extractor.extractorId === "startupjobs" ? (
+                          <span className="text-xs text-muted-foreground">
+                            needs a country: skipped on a remote profile
                           </span>
                         ) : null}
                       </div>

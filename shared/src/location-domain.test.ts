@@ -150,6 +150,7 @@ describe("location-domain", () => {
       normalizeLocationSourceCapabilities({ source: "startupjobs" }),
     ).toEqual({
       requiresCityLocations: false,
+      requiresCountry: true,
       requiresRemoteProfile: false,
       source: "startupjobs",
       supportedCountryKeys: null,
@@ -170,6 +171,7 @@ describe("location-domain", () => {
       }),
     ).toEqual({
       requiresCityLocations: true,
+      requiresCountry: false,
       requiresRemoteProfile: false,
       source: "glassdoor",
       supportedCountryKeys: ["united kingdom"],
@@ -203,8 +205,13 @@ describe("location-domain", () => {
       sources: ["glassdoor", "startupjobs"],
     });
 
-    expect(result.compatibleSources).toEqual(["startupjobs"]);
-    expect(result.incompatibleSources).toEqual(["glassdoor"]);
+    // startup.jobs needs a country OR a city (it would silently return
+    // nothing with neither), so with no cities it is skipped too.
+    expect(result.compatibleSources).toEqual([]);
+    expect(result.incompatibleSources).toEqual(["glassdoor", "startupjobs"]);
+    expect(result.plans[1]?.reasons).toContain(
+      "A selected country or city is required for this source.",
+    );
     expect(result.plans[0]).toMatchObject({
       source: "glassdoor",
       isCompatible: false,
@@ -312,5 +319,39 @@ describe("remote-type profile plumbing", () => {
       source: "startupjobs",
     });
     expect(plan).toMatchObject({ isCompatible: true, canRun: true });
+  });
+
+  it("skips a country-requiring source on a country-less remote run", () => {
+    // Remote runs carry no country; startup.jobs would return nothing, so
+    // it is excluded with a reason (and from the per-term budget divisor).
+    const plan = planLocationSource({
+      intent: { selectedCountry: "", remoteProfile: true },
+      source: "startupjobs",
+    });
+    expect(plan).toMatchObject({ isCompatible: false, canRun: false });
+    expect(plan.reasons).toContain(
+      "A selected country or city is required for this source.",
+    );
+    // A city alone satisfies it: startup.jobs searches its city list first.
+    expect(
+      planLocationSource({
+        intent: { selectedCountry: "", cityLocations: ["Berlin"] },
+        source: "startupjobs",
+      }),
+    ).toMatchObject({ isCompatible: true, canRun: true });
+    // The gate reads the capability, not the source id.
+    expect(
+      planLocationSource({
+        intent: { selectedCountry: "" },
+        source: "startupjobs",
+        capabilities: { source: "startupjobs", requiresCountry: false },
+      }),
+    ).toMatchObject({ isCompatible: true, canRun: true });
+    expect(
+      normalizeLocationSourceCapabilities({
+        source: "himalayas",
+        requiresCountry: true,
+      }).requiresCountry,
+    ).toBe(true);
   });
 });

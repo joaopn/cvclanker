@@ -34,8 +34,13 @@ function summarize(profile: Profile): string {
     config.enabledSourceIds.length + config.providerInstanceIds.length;
   return [
     `${termCount} term${termCount === 1 ? "" : "s"}`,
-    config.searchCountry.trim() || "any country",
-    `${cityCount} cit${cityCount === 1 ? "y" : "ies"}`,
+    // A remote profile sends no geography; the stored values are inert.
+    ...(config.remoteProfile
+      ? ["remote"]
+      : [
+          config.searchCountry.trim() || "any country",
+          `${cityCount} cit${cityCount === 1 ? "y" : "ies"}`,
+        ]),
     `budget ${config.runBudget}`,
     `top ${config.topN}`,
     `${sourceCount} source${sourceCount === 1 ? "" : "s"}`,

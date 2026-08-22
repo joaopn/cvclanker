@@ -294,13 +294,20 @@ async function resolveProfileRunConfig(
     body.providerInstanceIds ??
     (isRemoteProfile ? [] : profileConfig?.providerInstanceIds);
 
+  // A remote-type profile has no search geography: the editor hides Country
+  // and Cities, so the stored values (kept for when the flag is unticked) must
+  // not leak into the run and seed a location-scoped source. Body overrides
+  // still win for explicit API callers.
   const locationIntent = createLocationIntent({
-    selectedCountry: body.country ?? profileConfig?.searchCountry,
+    selectedCountry:
+      body.country ?? (isRemoteProfile ? "" : profileConfig?.searchCountry),
     cityLocations:
       body.cityLocations ??
-      (profileConfig
-        ? parseSearchCitiesSetting(profileConfig.searchCities)
-        : undefined),
+      (isRemoteProfile
+        ? []
+        : profileConfig
+          ? parseSearchCitiesSetting(profileConfig.searchCities)
+          : undefined),
     workplaceTypes: body.workplaceTypes ?? profileConfig?.workplaceTypes,
     geoScope: body.searchScope ?? profileConfig?.locationSearchScope,
     matchStrictness:
