@@ -52,7 +52,9 @@ sourceConfigsRouter.get("/", async (_req: Request, res: Response) => {
     const runGlobals: SourceConfigRunGlobals = {
       city: profileConfig.remoteProfile ? "" : profileConfig.searchCities,
       country: profileConfig.remoteProfile ? "" : profileConfig.searchCountry,
-      workplaceTypes: JSON.stringify(profileConfig.workplaceTypes),
+      workplaceTypes: JSON.stringify(
+        profileConfig.remoteProfile ? ["remote"] : profileConfig.workplaceTypes,
+      ),
       ...(profileConfig.scrapeMaxAgeDays
         ? { maxAgeDays: String(profileConfig.scrapeMaxAgeDays) }
         : {}),

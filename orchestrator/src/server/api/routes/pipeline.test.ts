@@ -638,6 +638,7 @@ describe.sequential("Pipeline API routes", () => {
       searchTerms: ["backend engineer"],
       searchCountry: "portugal",
       searchCities: "Lisbon|Porto",
+      workplaceTypes: ["hybrid", "onsite"],
       remoteProfile: true,
       remoteLocationBlocklist: ["US only"],
       enabledSourceIds: ["test-linkedin"],
@@ -660,6 +661,8 @@ describe.sequential("Pipeline API routes", () => {
           remoteProfile: true,
           selectedCountry: null,
           cityLocations: [],
+          // The remote profile IS the remote arrangement, whatever is stored.
+          workplaceTypes: ["remote"],
           remoteLocationBlocklist: ["US only"],
         }),
       }),

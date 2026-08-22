@@ -123,12 +123,16 @@ describe("ProfileEditorPage", () => {
     expect(screen.queryByText("Country")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Cities")).not.toBeInTheDocument();
     expect(screen.queryByText("Location scope")).not.toBeInTheDocument();
+    expect(screen.queryByText("Work arrangement")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Exclude locations")).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("Remote profile"));
     // The stored country survives the round-trip untouched.
     expect(screen.getByLabelText("Germany")).toBeInTheDocument();
     expect(screen.getByLabelText("Cities")).toBeInTheDocument();
+    expect(screen.getByText("Work arrangement")).toBeInTheDocument();
+    // The stored ticks survive the hide too.
+    expect(screen.getByLabelText("Remote")).toBeChecked();
   });
 
   it("saves edits via updateProfile and returns to the list", async () => {

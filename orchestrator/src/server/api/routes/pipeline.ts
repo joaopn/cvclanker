@@ -308,7 +308,12 @@ async function resolveProfileRunConfig(
         : profileConfig
           ? parseSearchCitiesSetting(profileConfig.searchCities)
           : undefined),
-    workplaceTypes: body.workplaceTypes ?? profileConfig?.workplaceTypes,
+    // A remote-type profile IS the remote workplace type: the editor hides the
+    // ticks, and sending anything else would disable the remote-only boards
+    // or leave jobspy's native remote filter off.
+    workplaceTypes:
+      body.workplaceTypes ??
+      (isRemoteProfile ? ["remote"] : profileConfig?.workplaceTypes),
     geoScope: body.searchScope ?? profileConfig?.locationSearchScope,
     matchStrictness:
       body.matchStrictness ?? profileConfig?.locationMatchStrictness,
