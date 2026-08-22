@@ -77,6 +77,7 @@ export interface LocationIntentInput {
   searchScope?: string | null;
   matchStrictness?: string | null;
   remoteProfile?: boolean | null;
+  remoteLocationBlocklist?: readonly string[] | null;
 }
 
 export interface LocationIntent {
@@ -88,11 +89,12 @@ export interface LocationIntent {
   searchScope: LocationSearchScope;
   matchStrictness: LocationMatchStrictness;
   /**
-   * Remote-type profile: the selected country means "where the candidate
-   * lives" (an eligibility filter) rather than "where to search", and the
-   * remote-only boards become runnable.
+   * Remote-type profile: the remote-only boards become runnable and location
+   * filtering is the blacklist below instead of the country/city match.
    */
   remoteProfile: boolean;
+  /** Remote profiles only: location strings that drop a posting. */
+  remoteLocationBlocklist: string[];
 }
 
 export interface LocationEvidenceInput {
@@ -484,6 +486,9 @@ export function normalizeLocationIntent(
     searchScope: geoScope,
     matchStrictness: normalizeLocationMatchStrictness(value.matchStrictness),
     remoteProfile: value.remoteProfile === true,
+    remoteLocationBlocklist: normalizeStringArray(
+      value.remoteLocationBlocklist ?? [],
+    ),
   };
 }
 
@@ -802,6 +807,7 @@ export function createLocationIntentFromLegacyInputs(
     // runPipeline re-derives the run's intent through this function, so a
     // field missing here is silently stripped before discovery reads it.
     remoteProfile: value.remoteProfile ?? null,
+    remoteLocationBlocklist: value.remoteLocationBlocklist ?? null,
   });
 }
 

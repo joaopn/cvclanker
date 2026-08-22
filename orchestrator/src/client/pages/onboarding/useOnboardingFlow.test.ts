@@ -54,6 +54,7 @@ function makeProfile(
       locationSearchScope: "selected_only",
       locationMatchStrictness: "exact_only",
       remoteProfile: false,
+      remoteLocationBlocklist: [],
       scrapeMaxAgeDays: null,
       scrapeSinceLastRun: false,
       blockedCompanyKeywords: [],

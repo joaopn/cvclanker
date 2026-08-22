@@ -287,8 +287,8 @@ async function resolveProfileRunConfig(
   const isRemoteProfile = profileConfig?.remoteProfile === true;
   // A remote-type profile never runs Apify provider instances (PI's call,
   // 2026-08-21: LinkedIn's forced AI search degraded the actors' remote
-  // filters to keyword soup, so every instance would bill for rows the
-  // eligibility filter then rejects). An explicit body list still wins — the
+  // filters to keyword soup, so every instance would bill for rows that are
+  // not remote at all). An explicit body list still wins — the
   // escape hatch exists only for direct API callers.
   const resolvedProviderInstanceIds =
     body.providerInstanceIds ??
@@ -306,6 +306,7 @@ async function resolveProfileRunConfig(
     matchStrictness:
       body.matchStrictness ?? profileConfig?.locationMatchStrictness,
     remoteProfile: profileConfig?.remoteProfile,
+    remoteLocationBlocklist: profileConfig?.remoteLocationBlocklist,
   });
 
   // Sources: a body list wins verbatim (including `[]` = "no built-in

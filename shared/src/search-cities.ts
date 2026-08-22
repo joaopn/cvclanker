@@ -20,7 +20,7 @@ const COUNTRY_LOCATION_VARIANTS: Record<string, string[]> = {
     "wales",
     "northern ireland",
   ],
-  "united states": ["us", "usa", "united states of america"],
+  "united states": ["us", "usa", "u.s.", "u.s.a.", "united states of america"],
   // The boards spell these two ways; without the variant a resident's own
   // country false-rejects ("Europe, Türkiye" for a Turkey profile). Conscious
   // widening: the czechia variant also reaches the non-remote path, where it
@@ -98,7 +98,7 @@ function buildCountryNameTokenRuns(): Set<string> {
   return runs;
 }
 
-export function tokenizeLocation(value: string | null | undefined): string[] {
+function tokenizeLocation(value: string | null | undefined): string[] {
   const normalized = normalizeLocationToken(value)
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
@@ -145,9 +145,7 @@ function namesAnyCountry(jobLocation: string | undefined): boolean {
   return false;
 }
 
-export function isNonGeographicLocation(
-  jobLocation: string | undefined,
-): boolean {
+function isNonGeographicLocation(jobLocation: string | undefined): boolean {
   const tokens = tokenizeLocation(jobLocation);
   if (tokens.length === 0) return true;
   return tokens.every((token) => NON_GEOGRAPHIC_LOCATION_TOKENS.has(token));
@@ -276,6 +274,150 @@ function matchesRequestedLocationTokens(
     if (matches) return true;
   }
 
+  return false;
+}
+
+// Variant token-run → canonical country tokens ("usa" → "united states",
+// "great britain" → "united kingdom"), built lazily from the same variant
+// table the country matcher uses. Lets a blocklist entry and a board's
+// location string meet on one spelling whichever each side chose.
+let variantRunIndex: { runs: Map<string, string[]>; maxTokens: number } | null =
+  null;
+
+function getVariantRunIndex(): {
+  runs: Map<string, string[]>;
+  maxTokens: number;
+} {
+  if (!variantRunIndex) {
+    const runs = new Map<string, string[]>();
+    for (const [country, variants] of Object.entries(
+      COUNTRY_LOCATION_VARIANTS,
+    )) {
+      const canonical = tokenizeLocation(country);
+      for (const variant of variants) {
+        // Raw tokens on purpose: tokenizeLocation would whole-string-alias
+        // "us"/"usa"/"uk" to their canonical names first, so those runs
+        // would never enter the index and "US only" vs "USA Only" could
+        // never meet.
+        const run = rawLocationTokens(variant).join(" ");
+        if (run) runs.set(run, canonical);
+      }
+    }
+    variantRunIndex = {
+      runs,
+      maxTokens: Math.max(
+        1,
+        ...Array.from(runs.keys(), (run) => run.split(" ").length),
+      ),
+    };
+  }
+  return variantRunIndex;
+}
+
+/** Lowercased alphanumeric tokens with NO alias rewriting. */
+function rawLocationTokens(value: string | null | undefined): string[] {
+  const normalized = (value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  return normalized ? normalized.split(" ") : [];
+}
+
+/**
+ * Indices of tokens that must NOT be read as a country: a lowercase "us" in
+ * free text is the pronoun ("help us scale"), while "US"/"USA"/"U.S." is the
+ * country. Only the text side asks for this — a blocklist ENTRY "us" was
+ * typed by someone who means the country.
+ */
+function pronounUsIndices(value: string | null | undefined): Set<number> {
+  const protectedIndices = new Set<number>();
+  const rawWords = (value ?? "")
+    .trim()
+    .replace(/[^A-Za-z0-9]+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
+  // The raw split and tokenizeLocation agree token-for-token unless the
+  // whole string is an alias ("usa", or a bare "us" → "united states"); a
+  // segment that is nothing but "us" reads as a sloppy-case country, not a
+  // pronoun, so leaving it unprotected is the right call.
+  if (rawWords.length !== tokenizeLocation(value).length)
+    return protectedIndices;
+  rawWords.forEach((word, index) => {
+    if (word.toLowerCase() === "us" && word !== "US")
+      protectedIndices.add(index);
+  });
+  return protectedIndices;
+}
+
+function canonicalizeLocationTokens(
+  value: string | null | undefined,
+  options: { protectPronounUs?: boolean } = {},
+): string[] {
+  const tokens = tokenizeLocation(value);
+  const protectedIndices = options.protectPronounUs
+    ? pronounUsIndices(value)
+    : new Set<number>();
+  const { runs, maxTokens } = getVariantRunIndex();
+  const out: string[] = [];
+  let index = 0;
+  while (index < tokens.length) {
+    let replaced = false;
+    for (
+      let length = Math.min(maxTokens, tokens.length - index);
+      length >= 1;
+      length -= 1
+    ) {
+      const canonical =
+        length === 1 && protectedIndices.has(index)
+          ? undefined
+          : runs.get(tokens.slice(index, index + length).join(" "));
+      if (canonical) {
+        out.push(...canonical);
+        index += length;
+        replaced = true;
+        break;
+      }
+    }
+    if (!replaced) {
+      out.push(tokens[index]);
+      index += 1;
+    }
+  }
+  return out;
+}
+
+/**
+ * Remote-profile blocklist test: does `text` contain the blocklist `entry`?
+ * Case-insensitive, punctuation-blind ("US-only" ~ "us only"), and
+ * country-alias-aware on BOTH sides ("US only" matches "USA Only" and
+ * "United States Only"). An entry is a contiguous token run, so "US only"
+ * does not match a bare "United States". `protectPronounUs` is for free
+ * text (titles), where a lowercase "us" is a pronoun, never the country;
+ * location fields pass it off, a lowercase "us only" there IS the country.
+ */
+export function matchesBlockedLocation(
+  text: string | null | undefined,
+  entry: string,
+  options: { protectPronounUs?: boolean } = {},
+): boolean {
+  const entryTokens = canonicalizeLocationTokens(entry);
+  const textTokens = canonicalizeLocationTokens(text, {
+    protectPronounUs: options.protectPronounUs === true,
+  });
+  if (entryTokens.length === 0 || textTokens.length === 0) return false;
+  if (entryTokens.length > textTokens.length) return false;
+  for (let i = 0; i <= textTokens.length - entryTokens.length; i += 1) {
+    let matches = true;
+    for (let j = 0; j < entryTokens.length; j += 1) {
+      if (textTokens[i + j] !== entryTokens[j]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) return true;
+  }
   return false;
 }
 

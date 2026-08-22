@@ -155,8 +155,8 @@ function formatSalary(args: {
 }
 
 function buildLocationEvidence(restrictions: string[]): JobLocationEvidence {
-  // No restriction = apply from anywhere. The literal phrase is what the
-  // matcher's remote branch recognises as universally eligible.
+  // No restriction = apply from anywhere; the literal phrase is what a user
+  // would see on the board, so a blocklist entry can target it.
   const location =
     restrictions.length > 0 ? restrictions.join(", ") : "Anywhere in the World";
   return {

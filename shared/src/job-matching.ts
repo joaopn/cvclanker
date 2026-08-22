@@ -1,11 +1,7 @@
 import { formatCountryLabel } from "./location-support.js";
 import {
-  isUniversalRemoteRegion,
-  remoteRegionIncludesCountry,
-} from "./remote-regions.js";
-import {
-  isNonGeographicLocation,
   locationCountryUnspecified,
+  matchesBlockedLocation,
   matchesRequestedCity,
   matchesRequestedCountry,
   shouldApplyStrictCityFilter,
@@ -144,6 +140,7 @@ export type LocationMatchReasonCode =
   | "unfiltered"
   | "selected_location"
   | "remote_worldwide"
+  | "remote_location_blocked"
   | "no_country_match"
   | "no_city_match";
 
@@ -161,11 +158,37 @@ export function describeLocationRejection(
   if (reasonCode === "no_country_match") {
     return `location mismatch: outside ${country}`;
   }
+  if (reasonCode === "remote_location_blocked") {
+    return "location matches the remote profile's blocklist";
+  }
   return "location mismatch";
+}
+
+/**
+ * The parts of a title that carry a location restriction: bracketed segments
+ * and whatever follows the LAST whitespace-delimited separator or ": " —
+ * "(US Only)", "[EMEA]", "- US-only", "| North America". In-word hyphens
+ * ("US-only", "Full-Stack") are not separators, so a restriction keeps its
+ * own spelling. The title's leading free text is not scanned.
+ */
+export function titleRestrictionSegments(
+  title: string | null | undefined,
+): string[] {
+  if (!title) return [];
+  const brackets = Array.from(
+    title.matchAll(/[([]([^)\]]*)[)\]]/g),
+    (match) => match[1],
+  );
+  const parts = title.replace(/[([][^)\]]*[)\]]/g, " ").split(/\s[-–—|]\s|:\s/);
+  const tail = parts.length > 1 ? parts[parts.length - 1] : "";
+  return [...brackets, tail]
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
 }
 
 export function matchJobLocationIntent(
   job: {
+    title?: string | null;
     location?: string | null;
     locationEvidence?: {
       location?: string | null;
@@ -184,64 +207,33 @@ export function matchJobLocationIntent(
   const candidates = getJobLocationCandidates(job);
   const selectedCountry = intent.selectedCountry;
 
-  if (!selectedCountry) {
-    return { matched: true, reasonCode: "unfiltered", priority: 0 };
+  // Remote-type profile: location filtering is a BLACKLIST. A posting is
+  // dropped when its location text (or title — boards and scrapers alike put
+  // "(US Only)" there) matches any blocklist entry; everything else is kept,
+  // whatever the selected country says. The description is deliberately NOT
+  // scanned: "US" appears in most job ads for reasons unrelated to
+  // eligibility.
+  if (intent.remoteProfile) {
+    const titleSegments = titleRestrictionSegments(job.title);
+    const blocked = intent.remoteLocationBlocklist.some(
+      (entry) =>
+        candidates.some((text) => matchesBlockedLocation(text, entry)) ||
+        titleSegments.some((text) =>
+          matchesBlockedLocation(text, entry, { protectPronounUs: true }),
+        ),
+    );
+    if (blocked) {
+      return {
+        matched: false,
+        reasonCode: "remote_location_blocked",
+        priority: 0,
+      };
+    }
+    return { matched: true, reasonCode: "remote_worldwide", priority: 0 };
   }
 
-  // Remote-type profile: the selected country is an ELIGIBILITY filter, not a
-  // search location. A row is kept when its location data names the country,
-  // names a region containing it, or names no geography at all (an
-  // unrestricted remote posting). City lists and match strictness are
-  // country-level concerns here and deliberately ignored. Unknown region
-  // tokens reject: for a remote profile a false reject is cheaper than
-  // importing a posting the user cannot apply to.
-  if (intent.remoteProfile) {
-    if (selectedCountry === "worldwide") {
-      return { matched: true, reasonCode: "unfiltered", priority: 0 };
-    }
-    const eligibleCountries =
-      selectedCountry === "usa/ca"
-        ? ["united states", "canada"]
-        : [selectedCountry];
-    // We Work Remotely's restriction grammar is "<X> Only". The trailing word
-    // defeats token-run country matching ("USA Only" tokenizes as
-    // `usa only`, while the requested side's short variants alias back to
-    // `united states`), so strip it before the country check.
-    const restrictionCandidates = candidates.map((candidate) =>
-      candidate.replace(/\s+only\s*$/i, ""),
-    );
-    if (
-      restrictionCandidates.some((candidate) =>
-        eligibleCountries.some((country) =>
-          matchesRequestedCountry(candidate, country),
-        ),
-      )
-    ) {
-      return { matched: true, reasonCode: "selected_location", priority: 1 };
-    }
-    // Multi-region strings ("APAC, EMEA" / "Europe, Türkiye") are OR-lists —
-    // evaluate per comma segment, not per whole candidate.
-    const segments = candidates.flatMap((candidate) =>
-      candidate
-        .split(",")
-        .map((segment) => segment.trim())
-        .filter((segment) => segment.length > 0),
-    );
-    const geographic = segments.filter(
-      (segment) =>
-        !isNonGeographicLocation(segment) && !isUniversalRemoteRegion(segment),
-    );
-    const eligible =
-      geographic.length === 0 ||
-      geographic.some((segment) =>
-        eligibleCountries.some((country) =>
-          remoteRegionIncludesCountry(segment, country),
-        ),
-      );
-    if (eligible) {
-      return { matched: true, reasonCode: "remote_worldwide", priority: 0 };
-    }
-    return { matched: false, reasonCode: "no_country_match", priority: 0 };
+  if (!selectedCountry) {
+    return { matched: true, reasonCode: "unfiltered", priority: 0 };
   }
 
   // A location that names no country at all ("Greater Reading Area", "Utrecht

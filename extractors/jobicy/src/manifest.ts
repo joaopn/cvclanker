@@ -29,7 +29,7 @@ const jobicyConfigSchema: SourceConfigSchema = {
       type: "text",
       default: "",
       description:
-        "Jobicy geo slug sent server-side (e.g. portugal, uk, usa, emea). Blank = derived from the profile's country; Jobicy resolves region membership itself, so a country slug also returns EMEA/Europe/Anywhere postings a resident may apply to.",
+        "Optional Jobicy geo slug sent server-side (e.g. portugal, uk, usa, emea) to narrow what the board returns. Blank = no geo filter — remote profiles filter by their location blocklist instead. Jobicy resolves region membership itself, so a country slug also returns EMEA/Europe/Anywhere postings.",
     },
     {
       key: "max_age_days",
@@ -41,11 +41,6 @@ const jobicyConfigSchema: SourceConfigSchema = {
     },
   ],
   globalMappings: [
-    {
-      globalField: "country",
-      sourceField: "geo",
-      enabledByDefault: true,
-    },
     {
       globalField: "workplaceTypes",
       sourceField: "workplaceTypes",
@@ -126,7 +121,9 @@ export const manifest: ExtractorManifest = {
     const result = await runJobicy({
       searchTerms: context.searchTerms,
       workplaceTypes: parseWorkplaceTypes(context.settings.workplaceTypes),
-      selectedCountry: context.settings.geo || context.selectedCountry,
+      // Opt-in narrowing only: a remote profile is a blacklist, so the
+      // profile's country is deliberately NOT sent as a geo filter.
+      selectedCountry: context.settings.geo || undefined,
       maxJobsPerTerm: parsePositiveInt(context.settings.max_jobs_per_term),
       maxAgeDays: parsePositiveInt(context.settings.max_age_days),
       shouldCancel: context.shouldCancel,

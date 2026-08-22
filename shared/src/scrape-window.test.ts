@@ -127,6 +127,9 @@ describe("changesScrapeCoverage", () => {
       true,
     );
     expect(changesScrapeCoverage(existing, { remoteProfile: true })).toBe(true);
+    expect(
+      changesScrapeCoverage(existing, { remoteLocationBlocklist: ["US only"] }),
+    ).toBe(true);
     expect(changesScrapeCoverage(existing, { scrapeMaxAgeDays: 14 })).toBe(
       true,
     );

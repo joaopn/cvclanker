@@ -49,6 +49,8 @@ export interface EditorForm {
   searchScope: LocationSearchScope;
   matchStrictness: LocationMatchStrictness;
   remoteProfile: boolean;
+  remoteBlocklist: string[];
+  remoteBlocklistDraft: string;
   scrapeMaxAgeDays: string;
   scrapeSinceLastRun: boolean;
   blockedKeywords: string[];
@@ -90,6 +92,8 @@ export function formFromConfig(
     searchScope: config.locationSearchScope,
     matchStrictness: config.locationMatchStrictness,
     remoteProfile: config.remoteProfile,
+    remoteBlocklist: config.remoteLocationBlocklist,
+    remoteBlocklistDraft: "",
     scrapeMaxAgeDays:
       config.scrapeMaxAgeDays === null ? "" : String(config.scrapeMaxAgeDays),
     scrapeSinceLastRun: config.scrapeSinceLastRun,
@@ -145,6 +149,7 @@ export function buildConfig(
     locationSearchScope: form.searchScope,
     locationMatchStrictness: form.matchStrictness,
     remoteProfile: form.remoteProfile,
+    remoteLocationBlocklist: form.remoteBlocklist,
     scrapeMaxAgeDays: parseMaxAge(form.scrapeMaxAgeDays),
     scrapeSinceLastRun: form.scrapeSinceLastRun,
     blockedCompanyKeywords: form.blockedKeywords,
@@ -283,12 +288,29 @@ export const ProfileConfigFields: React.FC<ProfileConfigFieldsProps> = ({
                 Remote profile
               </label>
               <p className="text-xs text-muted-foreground">
-                Search remote jobs instead of jobs near a location. The country
-                below then means where you live: postings restricted to other
-                countries (&quot;US only&quot;) are dropped. Unlocks the
-                remote-only boards, and Apify actors never run on a remote
-                profile.
+                Search remote jobs instead of jobs near a location. Unlocks the
+                remote-only boards; Apify actors never run on a remote profile.
+                Location filtering becomes the blocklist below — everything not
+                listed is kept, whatever the country says.
               </p>
+              {form.remoteProfile ? (
+                <TokenizedField
+                  id="profile-remote-blocklist"
+                  label="Exclude locations"
+                  values={form.remoteBlocklist}
+                  draft={form.remoteBlocklistDraft}
+                  parseInput={parseSearchTermsInput}
+                  onDraftChange={(value) =>
+                    onChange({ remoteBlocklistDraft: value })
+                  }
+                  onValuesChange={(value) =>
+                    onChange({ remoteBlocklist: value })
+                  }
+                  placeholder='e.g. "US only", "North America Only"'
+                  removeLabelPrefix="Remove"
+                  helperText="A posting is dropped when its location text, or a restriction in its title like (US Only), contains one of these. Case and punctuation do not matter, and common US/UK spellings are unified (&quot;US-only&quot; also catches &quot;USA Only&quot;); a single word matches anywhere in that text. Leave empty to keep everything."
+                />
+              ) : null}
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <CountryField

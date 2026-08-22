@@ -26,6 +26,7 @@ describe("location-domain", () => {
       country: "united kingdom",
       cityLocations: ["Leeds", "london"],
       remoteProfile: false,
+      remoteLocationBlocklist: [],
       workplaceTypes: ["remote", "onsite", "hybrid"],
       geoScope: "remote_worldwide_prioritize_selected",
       searchScope: "remote_worldwide_prioritize_selected",
@@ -46,6 +47,7 @@ describe("location-domain", () => {
       country: "united kingdom",
       cityLocations: ["Leeds", "London"],
       remoteProfile: false,
+      remoteLocationBlocklist: [],
       workplaceTypes: [],
       geoScope: "selected_plus_remote_worldwide",
       searchScope: "selected_plus_remote_worldwide",
@@ -228,10 +230,13 @@ describe("remote-type profile plumbing", () => {
     const intent = createLocationIntent({
       selectedCountry: "portugal",
       remoteProfile: true,
+      remoteLocationBlocklist: [" US only ", "us only", "Colorado"],
     });
-    expect(createLocationIntentFromLegacyInputs(intent).remoteProfile).toBe(
-      true,
-    );
+    const rederived = createLocationIntentFromLegacyInputs(intent);
+    expect(rederived.remoteProfile).toBe(true);
+    // Trimmed + case-insensitively deduped on the way in, preserved on the
+    // way through.
+    expect(rederived.remoteLocationBlocklist).toEqual(["US only", "Colorado"]);
   });
 
   it("gates a requiresRemoteProfile source on the profile flag", () => {

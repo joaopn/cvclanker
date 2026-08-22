@@ -35,13 +35,13 @@ describe("jobicy manifest", () => {
         workplaceTypes: ["remote"],
         maxJobsPerTerm: 70,
         maxAgeDays: 3,
-        // The mapped geo field wins over the bare selectedCountry.
+        // The explicit geo field is the only geo source.
         selectedCountry: "united kingdom",
       }),
     );
   });
 
-  it("falls back to the run's country when no geo setting is stored", async () => {
+  it("sends no geo filter when the field is blank — a remote profile is a blacklist", async () => {
     const { manifest } = await import("../src/manifest");
     const { runJobicy } = await import("../src/run");
     vi.mocked(runJobicy).mockResolvedValue({ success: true, jobs: [] });
@@ -55,7 +55,7 @@ describe("jobicy manifest", () => {
     });
 
     expect(vi.mocked(runJobicy)).toHaveBeenCalledWith(
-      expect.objectContaining({ selectedCountry: "portugal" }),
+      expect.objectContaining({ selectedCountry: undefined }),
     );
   });
 

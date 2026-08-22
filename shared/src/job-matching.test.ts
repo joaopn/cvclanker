@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   describeLocationRejection,
   matchJobLocationIntent,
+  titleRestrictionSegments,
 } from "./job-matching";
 import { createLocationIntent } from "./location-domain";
 
@@ -176,154 +177,136 @@ describe("matchJobLocationIntent", () => {
 });
 
 describe("matchJobLocationIntent — remote-type profile", () => {
-  const remoteIntent = (country: string | null) =>
+  const remoteIntent = (
+    blocklist: string[],
+    country: string | null = "portugal",
+  ) =>
     intentFor({
       selectedCountry: country,
       workplaceTypes: ["remote"],
       remoteProfile: true,
+      remoteLocationBlocklist: blocklist,
     });
 
-  it("keeps a posting restricted to the selected country", () => {
-    expect(
-      matchJobLocationIntent(
-        { location: "Portugal", isRemote: true },
-        remoteIntent("portugal"),
-      ),
-    ).toMatchObject({ matched: true, reasonCode: "selected_location" });
-  });
-
-  it("rejects a posting restricted to another country (the 'US only' case)", () => {
-    expect(
-      matchJobLocationIntent(
-        { location: "United States", isRemote: true },
-        remoteIntent("portugal"),
-      ),
-    ).toMatchObject({ matched: false, reasonCode: "no_country_match" });
-  });
-
-  it("keeps an unrestricted posting — 'Anywhere in the World' is universal", () => {
-    for (const location of [
-      "Anywhere in the World",
-      "Anywhere",
-      "Remote",
-      "Worldwide",
-    ]) {
+  it("keeps everything when the blocklist is empty, whatever the country", () => {
+    for (const location of ["United States", "Anywhere in the World", "EMEA"]) {
       expect(
-        matchJobLocationIntent({ location }, remoteIntent("portugal")),
+        matchJobLocationIntent({ location }, remoteIntent([])),
       ).toMatchObject({ matched: true, reasonCode: "remote_worldwide" });
     }
-  });
-
-  it("keeps a posting with no location data at all", () => {
-    expect(matchJobLocationIntent({}, remoteIntent("portugal"))).toMatchObject({
-      matched: true,
-      reasonCode: "remote_worldwide",
-    });
-  });
-
-  it("resolves region eligibility, including comma-separated OR-lists", () => {
-    const portugal = remoteIntent("portugal");
-    expect(matchJobLocationIntent({ location: "EMEA" }, portugal).matched).toBe(
-      true,
+    expect(matchJobLocationIntent({}, remoteIntent(["US only"]))).toMatchObject(
+      { matched: true, reasonCode: "remote_worldwide" },
     );
-    // Jobicy emits multi-region strings; any eligible segment keeps the row.
-    expect(
-      matchJobLocationIntent({ location: "APAC, EMEA" }, portugal).matched,
-    ).toBe(true);
-    expect(
-      matchJobLocationIntent({ location: "Europe, Türkiye" }, portugal).matched,
-    ).toBe(true);
-    // A Turkey resident is caught by the country variant, not the region map
-    // (Jobicy's own grammar keeps Türkiye out of "Europe").
-    expect(
-      matchJobLocationIntent(
-        { location: "Europe, Türkiye" },
-        remoteIntent("turkey"),
-      ),
-    ).toMatchObject({ matched: true, reasonCode: "selected_location" });
-    expect(
-      matchJobLocationIntent(
-        { location: "Czech Republic" },
-        remoteIntent("czechia"),
-      ),
-    ).toMatchObject({ matched: true, reasonCode: "selected_location" });
-    expect(
-      matchJobLocationIntent({ location: "APAC, LATAM" }, portugal),
-    ).toMatchObject({ matched: false, reasonCode: "no_country_match" });
   });
 
-  it("strips We Work Remotely's ' Only' grammar before the region lookup", () => {
-    expect(
-      matchJobLocationIntent(
-        { location: "Europe Only" },
-        remoteIntent("portugal"),
-      ).matched,
-    ).toBe(true);
-    expect(
-      matchJobLocationIntent({ location: "USA Only" }, remoteIntent("portugal"))
-        .matched,
-    ).toBe(false);
+  it("drops a posting whose location matches a blocklist entry", () => {
     expect(
       matchJobLocationIntent(
         { location: "USA Only" },
-        remoteIntent("united states"),
+        remoteIntent(["US only"]),
       ),
-    ).toMatchObject({ matched: true, reasonCode: "selected_location" });
+    ).toMatchObject({ matched: false, reasonCode: "remote_location_blocked" });
   });
 
-  it("rejects an unknown region token — a false reject beats an ineligible import", () => {
+  it("matches punctuation-blind and country-alias-aware on both sides", () => {
+    const blocked = remoteIntent(["US-only"]);
+    for (const location of ["USA Only", "United States Only", "us only"]) {
+      expect(matchJobLocationIntent({ location }, blocked).matched).toBe(false);
+    }
+    // An entry is a contiguous run: "US only" does not block a bare country.
     expect(
-      matchJobLocationIntent({ location: "Nordics" }, remoteIntent("portugal"))
-        .matched,
-    ).toBe(false);
-  });
-
-  it("treats country 'worldwide' and a missing country as unfiltered", () => {
+      matchJobLocationIntent({ location: "United States" }, blocked).matched,
+    ).toBe(true);
     expect(
       matchJobLocationIntent(
         { location: "United States" },
-        remoteIntent("worldwide"),
-      ),
-    ).toMatchObject({ matched: true, reasonCode: "unfiltered" });
-    expect(
-      matchJobLocationIntent({ location: "United States" }, remoteIntent(null)),
-    ).toMatchObject({ matched: true, reasonCode: "unfiltered" });
-  });
-
-  it("expands usa/ca to either member country", () => {
-    expect(
-      matchJobLocationIntent({ location: "Canada" }, remoteIntent("usa/ca")),
-    ).toMatchObject({ matched: true, reasonCode: "selected_location" });
-  });
-
-  it("reads eligibility from evidence fields, not just the location string", () => {
-    expect(
-      matchJobLocationIntent(
-        {
-          locationEvidence: { location: "Germany", country: "germany" },
-          isRemote: true,
-        },
-        remoteIntent("portugal"),
+        remoteIntent(["United States"]),
       ).matched,
     ).toBe(false);
   });
 
-  it("ignores city lists on a remote profile — eligibility is country-level", () => {
+  it("scans the title's restriction segments and the evidence fields", () => {
+    const blocked = remoteIntent(["US only"]);
+    expect(
+      matchJobLocationIntent(
+        { title: "Senior Engineer (US Only)", location: "Remote" },
+        blocked,
+      ).matched,
+    ).toBe(false);
+    expect(
+      matchJobLocationIntent(
+        { title: "Senior Engineer - US only", location: "Remote" },
+        blocked,
+      ).matched,
+    ).toBe(false);
+    expect(
+      matchJobLocationIntent(
+        { title: "Senior Engineer - US-only", location: "Remote" },
+        blocked,
+      ).matched,
+    ).toBe(false);
+    expect(
+      matchJobLocationIntent(
+        { title: "Senior Engineer (U.S. only)", location: "Remote" },
+        blocked,
+      ).matched,
+    ).toBe(false);
+    // A lowercase "us" in text is the pronoun, never the country — a bare
+    // "US" entry must not block "help us scale" (leading free text is not
+    // scanned either, but a separator tail is).
+    expect(
+      matchJobLocationIntent(
+        { title: "Senior Engineer — help us scale", location: "Remote" },
+        remoteIntent(["US"]),
+      ).matched,
+    ).toBe(true);
+    expect(
+      matchJobLocationIntent(
+        { title: "Senior Engineer — US", location: "Remote" },
+        remoteIntent(["US"]),
+      ).matched,
+    ).toBe(false);
+    expect(
+      matchJobLocationIntent(
+        { locationEvidence: { location: "North America Only" } },
+        remoteIntent(["north america only"]),
+      ).matched,
+    ).toBe(false);
+  });
+
+  it("is not a whitelist: an unlisted foreign restriction is kept", () => {
+    expect(
+      matchJobLocationIntent(
+        { location: "Germany" },
+        remoteIntent(["US only"], "portugal"),
+      ),
+    ).toMatchObject({ matched: true, reasonCode: "remote_worldwide" });
+  });
+
+  it("applies with no country selected at all", () => {
+    expect(
+      matchJobLocationIntent(
+        { location: "USA Only" },
+        remoteIntent(["US only"], null),
+      ).matched,
+    ).toBe(false);
+  });
+
+  it("ignores city lists and strictness on a remote profile", () => {
     const withCities = intentFor({
       selectedCountry: "portugal",
       cityLocations: ["Lisbon"],
       workplaceTypes: ["remote"],
       remoteProfile: true,
+      remoteLocationBlocklist: [],
     });
     expect(
-      matchJobLocationIntent({ location: "Portugal" }, withCities),
-    ).toMatchObject({ matched: true, reasonCode: "selected_location" });
+      matchJobLocationIntent({ location: "Berlin, Germany" }, withCities)
+        .matched,
+    ).toBe(true);
   });
 
   it("leaves the non-remote path untouched when the flag is off", () => {
-    // "United States" names a country, so the flag-off path rejects it for a
-    // Portugal profile (no isRemote signal to reach the remote arm). "EMEA"
-    // stays country-unspecified there and is kept — both pre-existing.
     expect(
       matchJobLocationIntent(
         { location: "United States" },
@@ -336,5 +319,33 @@ describe("matchJobLocationIntent — remote-type profile", () => {
         intentFor({ selectedCountry: "portugal" }),
       ).matched,
     ).toBe(true);
+  });
+
+  it("describes the blocklist rejection", () => {
+    expect(
+      describeLocationRejection("remote_location_blocked", remoteIntent([])),
+    ).toBe("location matches the remote profile's blocklist");
+  });
+});
+
+describe("titleRestrictionSegments", () => {
+  it("extracts bracketed and trailing-separator segments only", () => {
+    expect(titleRestrictionSegments("Senior Engineer (US Only)")).toEqual([
+      "US Only",
+    ]);
+    expect(
+      titleRestrictionSegments("Engineer [EMEA] - Remote | US only"),
+    ).toEqual(["EMEA", "US only"]);
+    // In-word hyphens are not separators: the advertised "US-only" phrasing
+    // survives in a dash tail, and "Full-Stack" yields no false tail.
+    expect(titleRestrictionSegments("Senior Engineer - US-only")).toEqual([
+      "US-only",
+    ]);
+    expect(titleRestrictionSegments("Full-Stack Engineer")).toEqual([]);
+    expect(
+      titleRestrictionSegments("Acme: Senior Engineer (Remote, US)"),
+    ).toEqual(["Remote, US", "Senior Engineer"]);
+    expect(titleRestrictionSegments("Plain title")).toEqual([]);
+    expect(titleRestrictionSegments(null)).toEqual([]);
   });
 });

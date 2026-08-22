@@ -27,12 +27,18 @@ export interface ProfileConfig {
   locationSearchScope: LocationSearchScope;
   locationMatchStrictness: LocationMatchStrictness;
   /**
-   * Remote-type profile: the country/cities mean "where the candidate lives"
-   * (an eligibility filter on remote postings) rather than "where to search",
-   * the remote-only boards become runnable, and Apify provider instances are
-   * excluded from the run.
+   * Remote-type profile: the remote-only boards become runnable, Apify
+   * provider instances are excluded from the run, and location filtering is a
+   * BLACKLIST (`remoteLocationBlocklist`) instead of the country/city match.
    */
   remoteProfile: boolean;
+  /**
+   * Remote profiles only: postings whose location text (or title) matches any
+   * of these strings are dropped — "US only", "North America Only", "Colorado".
+   * Matching is case-insensitive, punctuation-blind, and country-alias-aware
+   * ("US-only" matches "USA Only"). Everything else is kept.
+   */
+  remoteLocationBlocklist: string[];
   /** null = no cap; each extractor keeps its own default. */
   scrapeMaxAgeDays: number | null;
   /**
@@ -90,6 +96,7 @@ export const profileConfigSchema = z.object({
   locationSearchScope: z.enum(LOCATION_SEARCH_SCOPE_VALUES),
   locationMatchStrictness: z.enum(LOCATION_MATCH_STRICTNESS_VALUES),
   remoteProfile: z.boolean(),
+  remoteLocationBlocklist: z.array(z.string().trim().min(1).max(200)).max(200),
   scrapeMaxAgeDays: z.number().int().min(1).max(365).nullable(),
   scrapeSinceLastRun: z.boolean(),
   blockedCompanyKeywords: z.array(z.string().trim().min(1).max(200)).max(200),
@@ -109,6 +116,7 @@ export function defaultProfileConfig(): ProfileConfig {
     locationSearchScope: "selected_only",
     locationMatchStrictness: "exact_only",
     remoteProfile: false,
+    remoteLocationBlocklist: [],
     scrapeMaxAgeDays: null,
     scrapeSinceLastRun: false,
     blockedCompanyKeywords: [],

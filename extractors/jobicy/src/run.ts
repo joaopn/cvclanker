@@ -10,8 +10,8 @@ const DAY_MS = 86_400_000;
  * Jobicy's geo slug grammar, verified against the live API: lowercase country
  * name with spaces → dashes ("portugal", "new-zealand", "hong-kong") EXCEPT
  * the two short forms below. An unknown slug silently un-filters (the
- * appliedFilters echo just omits geo), which is safe here — the matcher's
- * eligibility branch is the backstop.
+ * appliedFilters echo just omits geo), which is safe here — the geo field is
+ * an opt-in narrowing on top of the remote profile's location blocklist.
  */
 const GEO_SLUG_OVERRIDES: Record<string, string> = {
   "united kingdom": "uk",
@@ -26,9 +26,8 @@ export function jobicyGeoSlug(
   const key = normalizeCountryKey(selectedCountry);
   if (!key || key === "worldwide") return undefined;
   // usa/ca spans two countries and geo takes one — an unfiltered request
-  // keeps the Canada-only rows, and the matcher's eligibility branch (which
-  // runs at discovery, before any scoring spend) drops the ineligible rest,
-  // at the cost of ineligible rows taking slots in the per-request count.
+  // keeps the Canada-only rows; the remote profile's blocklist (applied at
+  // discovery, before any scoring spend) is where the user trims the rest.
   if (key === "usa/ca") return undefined;
   return GEO_SLUG_OVERRIDES[key] ?? key.replace(/\s+/g, "-");
 }

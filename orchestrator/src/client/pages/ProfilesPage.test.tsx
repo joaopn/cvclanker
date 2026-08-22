@@ -40,6 +40,7 @@ function makeProfile(overrides: Partial<Profile> = {}): Profile {
       locationSearchScope: "selected_only",
       locationMatchStrictness: "exact_only",
       remoteProfile: false,
+      remoteLocationBlocklist: [],
       scrapeMaxAgeDays: null,
       scrapeSinceLastRun: false,
       blockedCompanyKeywords: [],
