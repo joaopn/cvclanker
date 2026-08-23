@@ -582,6 +582,146 @@ describe.sequential("Pipeline API routes", () => {
     );
   });
 
+  it("passes a per-run discoveryConcurrency override through to the pipeline", async () => {
+    // "Retry all failed" re-runs several sources one at a time.
+    const { runPipeline } = await import("@server/pipeline/index");
+    await createProfile(baseUrl, {
+      searchTerms: ["ml engineer"],
+      searchCountry: "germany",
+      enabledSourceIds: ["test-linkedin", "test-indeed"],
+    });
+
+    const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sources: ["linkedin", "indeed"],
+        providerInstanceIds: [],
+        partial: true,
+        discoveryConcurrency: 1,
+      }),
+    });
+    const body = await res.json();
+
+    expect(body.ok).toBe(true);
+    expect(runPipeline).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sources: ["linkedin", "indeed"],
+        partial: true,
+        discoveryConcurrency: 1,
+      }),
+    );
+  });
+
+  it("skips a source disabled since the run a partial re-run retries, and names it", async () => {
+    // A banner page keeps a failed row after its source is disabled on the
+    // Sources page; "Retry all" must still retry the others.
+    const { runPipeline } = await import("@server/pipeline/index");
+    const { db, schema } = await import("@server/db");
+    const { eq } = await import("drizzle-orm");
+    await createProfile(baseUrl, {
+      searchTerms: ["ml engineer"],
+      searchCountry: "germany",
+      enabledSourceIds: ["test-linkedin", "test-indeed"],
+    });
+    await db
+      .update(schema.sourceConfigs)
+      .set({ enabled: false })
+      .where(eq(schema.sourceConfigs.extractorId, "test-indeed"));
+
+    const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sources: ["linkedin", "indeed"],
+        providerInstanceIds: ["inst-gone"],
+        partial: true,
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.skippedDisabledSources).toEqual(["indeed", "inst-gone"]);
+    expect(runPipeline).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sources: ["linkedin"],
+        providerInstanceIds: [],
+        partial: true,
+      }),
+    );
+  });
+
+  it("keeps an omitted list meaning every enabled source when a partial re-run skips", async () => {
+    // `sources` omitted = all enabled extractors, so skipping the one named
+    // instance must not read as "nothing left".
+    const { runPipeline } = await import("@server/pipeline/index");
+    const profileId = await createProfile(baseUrl, {
+      searchTerms: ["ml engineer"],
+      searchCountry: "germany",
+      enabledSourceIds: ["test-linkedin"],
+    });
+
+    const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        profileId,
+        providerInstanceIds: ["inst-gone"],
+        partial: true,
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.skippedDisabledSources).toEqual(["inst-gone"]);
+    expect(runPipeline).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sources: ["linkedin"],
+        providerInstanceIds: [],
+      }),
+    );
+  });
+
+  it("still rejects a partial re-run whose every source is disabled", async () => {
+    const { runPipeline } = await import("@server/pipeline/index");
+    const { db, schema } = await import("@server/db");
+    const { eq } = await import("drizzle-orm");
+    await db
+      .update(schema.sourceConfigs)
+      .set({ enabled: false })
+      .where(eq(schema.sourceConfigs.extractorId, "test-linkedin"));
+
+    const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sources: ["linkedin"],
+        providerInstanceIds: [],
+        partial: true,
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error.message).toMatch(/not enabled/i);
+    expect(runPipeline).not.toHaveBeenCalled();
+  });
+
+  it("rejects a discoveryConcurrency outside the pool bounds", async () => {
+    const { runPipeline } = await import("@server/pipeline/index");
+
+    const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ discoveryConcurrency: 0 }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("INVALID_REQUEST");
+    expect(runPipeline).not.toHaveBeenCalled();
+  });
+
   it("still runs a per-source re-run scoped to one Apify instance", async () => {
     // The mirror shape: an Apify re-run posts `sources: []`. A naive
     // "resolved sources empty → reject" would 400 every one of these.

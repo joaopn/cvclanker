@@ -60,6 +60,9 @@ interface PipelineRunBannerProps {
   // re-run resolves its config from that profile and reconciles into that page;
   // omitted on a single run, which has no pages.
   onRerunSource?: (source: JobSource, profileId?: string) => void;
+  // Re-run every failed source on the page in view, one after another. Omit
+  // to hide the "Retry all" button beside the failure count.
+  onRerunSources?: (sources: JobSource[], profileId?: string) => void;
 }
 
 export const stepLabels: Record<PipelineProgressEvent["step"], string> = {
@@ -191,6 +194,7 @@ const StatusCell: React.FC<{ status: PipelineSourceStats["status"] }> = ({
 export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
   isRunning,
   onRerunSource,
+  onRerunSources,
 }) => {
   const [progress, setProgress] = useState<PipelineProgressEvent | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -300,10 +304,17 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
   const sourceStats = displayedPage
     ? displayedPage.sourceStats
     : (progress?.sourceStats ?? []);
-  const anyFailures = sourceStats.some((row) => row.status === "failed");
+  const failedSources = sourceStats
+    .filter((row) => row.status === "failed")
+    .map((row) => row.id as JobSource);
+  const anyFailures = failedSources.length > 0;
   // Failures are held back while the page in view is still filling in, but a
   // finished profile's page shows them right away even though the chain runs on.
   const showFailureCount = anyFailures && (!isActive || !isLivePage);
+  // The per-row re-run gate plus `isRunning`, which a click raises at once —
+  // so the button is gone before the stream reports the run it started.
+  const showRetryAll =
+    showFailureCount && !isActive && !isRunning && !!onRerunSources;
   // A re-run fired from a page carries that page's Search Profile, so it
   // resolves the same run config the page was scraped with and reconciles back
   // into the page. The second argument is OMITTED rather than passed as
@@ -313,6 +324,11 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
     if (!onRerunSource) return;
     if (displayedPage) onRerunSource(source, displayedPage.profile.id);
     else onRerunSource(source);
+  };
+  const handleRerunFailed = () => {
+    if (!onRerunSources) return;
+    if (displayedPage) onRerunSources(failedSources, displayedPage.profile.id);
+    else onRerunSources(failedSources);
   };
 
   return (
@@ -413,12 +429,21 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
                 {showFailureCount && (
                   <span className="inline-flex items-center gap-1 text-xs text-destructive">
                     <AlertTriangle className="h-3.5 w-3.5" />
-                    {
-                      sourceStats.filter((row) => row.status === "failed")
-                        .length
-                    }{" "}
-                    failed
+                    {failedSources.length} failed
                   </span>
+                )}
+                {showRetryAll && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-6 gap-1 px-2 text-xs"
+                    title="Re-run every failed source, one after another"
+                    onClick={handleRerunFailed}
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    Retry all
+                  </Button>
                 )}
               </div>
 

@@ -19,6 +19,9 @@ export interface PipelineConfig {
   // funnel instead of wiping every source's results. Untouched sources keep
   // their rows + captured jobs; only the re-run sources refresh.
   partial?: boolean;
+  // Per-run override of the `discoveryConcurrency` setting: how many sources
+  // crawl at once. A "retry all failed" re-run sends 1 — one source at a time.
+  discoveryConcurrency?: number;
   outputDir: string; // Directory for generated PDFs
   locationIntent?: LocationIntent;
   // Scrape config the selected Profile drives (Batch 3). When set, these win

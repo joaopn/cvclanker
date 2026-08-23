@@ -1,4 +1,5 @@
 import * as api from "@client/api";
+import { toast } from "@client/lib/toast";
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { usePipelineControls } from "./usePipelineControls";
@@ -16,10 +17,10 @@ vi.mock("@client/lib/toast", () => ({
   },
 }));
 
-function renderControls() {
+function renderControls(args: { isPipelineRunning?: boolean } = {}) {
   return renderHook(() =>
     usePipelineControls({
-      isPipelineRunning: false,
+      isPipelineRunning: args.isPipelineRunning ?? false,
       setIsPipelineRunning: vi.fn(),
       pipelineTerminalEvent: null,
     }),
@@ -79,5 +80,60 @@ describe("usePipelineControls", () => {
     expect(api.runPipeline).toHaveBeenCalledWith(
       expect.objectContaining({ profileId: undefined, sources: ["linkedin"] }),
     );
+  });
+
+  describe("handleRerunSources", () => {
+    it("re-runs every failed source in one partial run, one source at a time", async () => {
+      const { result } = renderControls();
+
+      await act(async () => {
+        await result.current.handleRerunSources(
+          ["linkedin", "apify:inst-1", "indeed"],
+          "profile-1",
+        );
+      });
+
+      expect(api.runPipeline).toHaveBeenCalledTimes(1);
+      expect(api.runPipeline).toHaveBeenCalledWith(
+        expect.objectContaining({
+          profileId: "profile-1",
+          sources: ["linkedin", "indeed"],
+          providerInstanceIds: ["inst-1"],
+          partial: true,
+          discoveryConcurrency: 1,
+        }),
+      );
+    });
+
+    it("names the sources the server skipped as disabled", async () => {
+      vi.mocked(api.runPipeline).mockResolvedValue({
+        message: "Pipeline started",
+        skippedDisabledSources: ["indeed"],
+      } as never);
+      const { result } = renderControls();
+
+      await act(async () => {
+        await result.current.handleRerunSources(["linkedin", "indeed"]);
+      });
+
+      expect(toast.message).toHaveBeenCalledWith(
+        "Pipeline started",
+        expect.objectContaining({
+          description: expect.stringContaining(
+            "Skipped, disabled or removed on the Sources page: indeed",
+          ),
+        }),
+      );
+    });
+
+    it("starts nothing while a run is already in flight", async () => {
+      const { result } = renderControls({ isPipelineRunning: true });
+
+      await act(async () => {
+        await result.current.handleRerunSources(["linkedin"]);
+      });
+
+      expect(api.runPipeline).not.toHaveBeenCalled();
+    });
   });
 });

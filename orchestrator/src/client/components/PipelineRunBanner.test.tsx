@@ -344,4 +344,92 @@ describe("PipelineRunBanner", () => {
     fireEvent.click(screen.getByRole("button", { name: /re-run LinkedIn/i }));
     expect(onRerunSource).toHaveBeenCalledWith("linkedin");
   });
+
+  it("retries every failed source on the page with one click", () => {
+    const onRerunSources = vi.fn();
+    const { rerender } = render(
+      <PipelineRunBanner isRunning onRerunSources={onRerunSources} />,
+    );
+    act(() => {
+      lastHandlers.current?.onMessage({
+        ...chainEvent,
+        step: "completed",
+        profileRun: null,
+        profileRuns: [
+          {
+            profile: { id: "p1", name: "Vienna", index: 1, total: 2 },
+            sourceStats: [
+              sourceRow("hiringcafe", "Hiring Cafe", {
+                status: "failed",
+                error: "429 from upstream",
+              }),
+              sourceRow("workingnomads", "Working Nomads"),
+              sourceRow("apify:inst-1", "LinkedIn (Apify)", {
+                status: "failed",
+                error: "actor timed out",
+              }),
+            ],
+          },
+          chainEvent.profileRuns?.[1] as NonNullable<
+            PipelineProgressEvent["profileRuns"]
+          >[number],
+        ],
+      });
+    });
+    rerender(
+      <PipelineRunBanner isRunning={false} onRerunSources={onRerunSources} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /previous profile/i }));
+    expect(screen.getByText("2 failed")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /retry all/i }));
+
+    // Both failures, as the page lists them, aimed at that page.
+    expect(onRerunSources).toHaveBeenCalledWith(
+      ["hiringcafe", "apify:inst-1"],
+      "p1",
+    );
+  });
+
+  it("offers no Retry all while the chain is still running", () => {
+    const onRerunSources = vi.fn();
+    render(<PipelineRunBanner isRunning onRerunSources={onRerunSources} />);
+    act(() => {
+      lastHandlers.current?.onMessage(chainEvent);
+    });
+    fireEvent.click(screen.getByRole("button", { name: /previous profile/i }));
+
+    // Page 1's failure shows while profile 2 crawls, but nothing may start.
+    expect(screen.getByText("1 failed")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /retry all/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("retries a single-profile run's failures against the default profile", () => {
+    const onRerunSources = vi.fn();
+    const { rerender } = render(
+      <PipelineRunBanner isRunning onRerunSources={onRerunSources} />,
+    );
+    act(() => {
+      lastHandlers.current?.onMessage({
+        ...baseEvent,
+        step: "completed",
+        sourceStats: [
+          sourceRow("linkedin", "LinkedIn", {
+            status: "failed",
+            error: "blocked",
+          }),
+          sourceRow("indeed", "Indeed"),
+        ],
+      });
+    });
+    rerender(
+      <PipelineRunBanner isRunning={false} onRerunSources={onRerunSources} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /retry all/i }));
+    expect(onRerunSources).toHaveBeenCalledWith(["linkedin"]);
+  });
 });

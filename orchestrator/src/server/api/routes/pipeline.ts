@@ -50,6 +50,7 @@ import {
 } from "@shared/location-preferences.js";
 import { deriveMaxJobsPerTerm } from "@shared/run-budget.js";
 import { parseSearchCitiesSetting } from "@shared/search-cities.js";
+import { MAX_POOL_CONCURRENCY } from "@shared/settings-registry";
 import {
   type PipelineConfig,
   type PipelineStatusResponse,
@@ -238,6 +239,13 @@ const runPipelineSchema = z.object({
   // Per-source re-run: reconcile the scoped sources into the existing banner
   // funnel instead of resetting every source's results.
   partial: z.boolean().optional(),
+  // Per-run override of the `discoveryConcurrency` setting (same bounds).
+  discoveryConcurrency: z
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_POOL_CONCURRENCY)
+    .optional(),
   // Resolve the run's scrape config from this Profile. Body fields still win
   // per-field (one-off overrides); absent → the default Profile.
   profileId: z.string().min(1).optional(),
@@ -457,6 +465,7 @@ async function resolveProfileRunConfig(
       locationIntent,
       enableAutoTailoring: body.enableAutoTailoring,
       partial: body.partial,
+      discoveryConcurrency: body.discoveryConcurrency,
     },
   };
 }
@@ -578,6 +587,15 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
     // profile. The location-compatibility check IS profile-dependent and lives
     // in `resolveProfileRunConfig`. Profile-derived sources are NOT gated —
     // discovery skips incompatible ones rather than failing the run.
+    // A partial run re-runs rows off the banner, which can name a source
+    // disabled since the run they came from. Those are skipped and reported
+    // rather than failing the request — unless the skip empties every list
+    // the request gave explicitly (see the gate below).
+    const skipDisabled = body.partial === true;
+    const skippedDisabledSources: string[] = [];
+    let requestedSources = body.sources;
+    let requestedInstanceIds = body.providerInstanceIds;
+
     if (body.sources && body.sources.length > 0) {
       const registry = await loadRegistry();
       if (!registry) {
@@ -604,7 +622,7 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
         const manifest = registry.manifestBySource.get(source);
         return manifest !== undefined && !enabledExtractorIds.has(manifest.id);
       });
-      if (disabledSources.length > 0) {
+      if (disabledSources.length > 0 && !skipDisabled) {
         return fail(
           res,
           badRequest(
@@ -613,13 +631,17 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
           ),
         );
       }
+      skippedDisabledSources.push(...disabledSources);
+      requestedSources = body.sources.filter(
+        (source) => !disabledSources.includes(source),
+      );
     }
 
     if (body.providerInstanceIds && body.providerInstanceIds.length > 0) {
       const unknownInstanceIds = body.providerInstanceIds.filter(
         (id) => !enabledInstanceIds.has(id),
       );
-      if (unknownInstanceIds.length > 0) {
+      if (unknownInstanceIds.length > 0 && !skipDisabled) {
         return fail(
           res,
           badRequest(
@@ -628,6 +650,26 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
           ),
         );
       }
+      skippedDisabledSources.push(...unknownInstanceIds);
+      requestedInstanceIds = body.providerInstanceIds.filter(
+        (id) => !unknownInstanceIds.includes(id),
+      );
+    }
+
+    // An OMITTED list means "all enabled", so only explicit lists the skip
+    // emptied leave nothing to run.
+    if (
+      skippedDisabledSources.length > 0 &&
+      requestedSources?.length === 0 &&
+      requestedInstanceIds?.length === 0
+    ) {
+      return fail(
+        res,
+        badRequest(
+          `Requested sources are not enabled or do not exist: ${skippedDisabledSources.join(", ")}`,
+          { skippedDisabledSources },
+        ),
+      );
     }
 
     // Multi-profile: resolve EVERY profile before starting anything, so a
@@ -687,7 +729,11 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
     }
 
     const resolved = await resolveProfileRunConfig({
-      body,
+      body: {
+        ...body,
+        sources: requestedSources,
+        providerInstanceIds: requestedInstanceIds,
+      },
       profile,
       enabledExtractorIds,
       enabledInstanceIds,
@@ -726,7 +772,7 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
           if (pageScoped) clearProfileRunPageTarget();
         });
     });
-    ok(res, { message: "Pipeline started" });
+    ok(res, { message: "Pipeline started", skippedDisabledSources });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return fail(res, badRequest(error.message, error.flatten()));

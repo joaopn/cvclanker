@@ -504,8 +504,9 @@ export async function discoverJobsStep(args: {
     return { discoveredJobs, sourceErrors, scrapedSources, scrapeStartedAt };
   }
 
-  const discoveryConcurrency = (await getEffectiveSettings())
-    .discoveryConcurrency.value;
+  const discoveryConcurrency =
+    args.mergedConfig.discoveryConcurrency ??
+    (await getEffectiveSettings()).discoveryConcurrency.value;
 
   const sourceResults = await asyncPool<
     DiscoverySourceTask,

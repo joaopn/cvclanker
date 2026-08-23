@@ -145,6 +145,59 @@ describe("discoverJobsStep", () => {
     );
   });
 
+  it("crawls one source at a time when the run overrides discoveryConcurrency to 1", async () => {
+    const registryModule = await import("@server/extractors/registry");
+
+    let finishJobspy: () => void = () => {};
+    const jobspyManifest = {
+      id: "jobspy",
+      displayName: "JobSpy",
+      providesSources: ["indeed", "linkedin", "glassdoor"],
+      run: vi.fn().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishJobspy = () => resolve({ success: true, jobs: [] });
+          }),
+      ),
+    };
+    const hiringcafeManifest = {
+      id: "hiringcafe",
+      displayName: "Hiring Cafe",
+      providesSources: ["hiringcafe"],
+      run: vi.fn().mockResolvedValue({ success: true, jobs: [] }),
+    };
+
+    vi.mocked(registryModule.getExtractorRegistry).mockResolvedValue({
+      manifests: new Map([
+        ["jobspy", jobspyManifest as any],
+        ["hiringcafe", hiringcafeManifest as any],
+      ]),
+      manifestBySource: new Map([
+        ["indeed", jobspyManifest as any],
+        ["linkedin", jobspyManifest as any],
+        ["glassdoor", jobspyManifest as any],
+        ["hiringcafe", hiringcafeManifest as any],
+      ]),
+      availableSources: ["indeed", "linkedin", "glassdoor", "hiringcafe"],
+    } as any);
+
+    const step = discoverJobsStep({
+      mergedConfig: { ...baseConfig, discoveryConcurrency: 1 },
+    });
+
+    try {
+      // The setting's default pool (3) would have started both by now.
+      await vi.waitFor(() => expect(jobspyManifest.run).toHaveBeenCalled());
+      expect(hiringcafeManifest.run).not.toHaveBeenCalled();
+    } finally {
+      finishJobspy();
+    }
+    const result = await step;
+
+    expect(hiringcafeManifest.run).toHaveBeenCalledTimes(1);
+    expect(result.sourceErrors).toEqual([]);
+  });
+
   it("throws when all enabled sources fail", async () => {
     const registryModule = await import("@server/extractors/registry");
 

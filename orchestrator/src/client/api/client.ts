@@ -1035,11 +1035,15 @@ export async function runPipeline(config?: {
   searchScope?: LocationSearchScope;
   matchStrictness?: LocationMatchStrictness;
   partial?: boolean;
-}): Promise<{ message: string }> {
-  return fetchApi<{ message: string }>("/pipeline/run", {
-    method: "POST",
-    body: JSON.stringify(config || {}),
-  });
+  discoveryConcurrency?: number;
+}): Promise<{ message: string; skippedDisabledSources?: string[] }> {
+  return fetchApi<{ message: string; skippedDisabledSources?: string[] }>(
+    "/pipeline/run",
+    {
+      method: "POST",
+      body: JSON.stringify(config || {}),
+    },
+  );
 }
 
 export async function getRunJobs(
