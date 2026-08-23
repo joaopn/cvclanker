@@ -291,7 +291,8 @@ export const ProfileConfigFields: React.FC<ProfileConfigFieldsProps> = ({
                 Search remote jobs instead of jobs near a location: runs send no
                 country or cities and the work arrangement is always Remote.
                 Unlocks the remote-only boards; Apify actors never run on a
-                remote profile. Location filtering becomes the blocklist below —
+                remote profile. Postings a source flags as not remote are
+                dropped; location filtering is otherwise the blocklist below —
                 everything not listed is kept.
               </p>
               {form.remoteProfile ? (

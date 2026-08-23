@@ -274,6 +274,33 @@ describe("matchJobLocationIntent — remote-type profile", () => {
     ).toBe(false);
   });
 
+  it("drops a posting the source explicitly flags as not remote", () => {
+    // jobspy's LinkedIn/Indeed legs leak on-site rows past their remote
+    // filters but report per-row remoteness (board attribute or keyword
+    // scan); unknown (hiring.cafe) stays kept.
+    expect(
+      matchJobLocationIntent(
+        { location: "North Carolina, United States", isRemote: false },
+        remoteIntent([]),
+      ),
+    ).toMatchObject({ matched: false, reasonCode: "not_remote" });
+    expect(
+      matchJobLocationIntent(
+        { location: "North Carolina, United States", isRemote: true },
+        remoteIntent([]),
+      ).matched,
+    ).toBe(true);
+    expect(
+      matchJobLocationIntent(
+        { location: "North Carolina, United States" },
+        remoteIntent([]),
+      ).matched,
+    ).toBe(true);
+    expect(describeLocationRejection("not_remote", remoteIntent([]))).toBe(
+      "the source flags this posting as not remote",
+    );
+  });
+
   it("is not a whitelist: an unlisted foreign restriction is kept", () => {
     expect(
       matchJobLocationIntent(

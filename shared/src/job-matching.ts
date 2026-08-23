@@ -141,6 +141,7 @@ export type LocationMatchReasonCode =
   | "selected_location"
   | "remote_worldwide"
   | "remote_location_blocked"
+  | "not_remote"
   | "no_country_match"
   | "no_city_match";
 
@@ -160,6 +161,9 @@ export function describeLocationRejection(
   }
   if (reasonCode === "remote_location_blocked") {
     return "location matches the remote profile's blocklist";
+  }
+  if (reasonCode === "not_remote") {
+    return "the source flags this posting as not remote";
   }
   return "location mismatch";
 }
@@ -214,6 +218,18 @@ export function matchJobLocationIntent(
   // scanned: "US" appears in most job ads for reasons unrelated to
   // eligibility.
   if (intent.remoteProfile) {
+    // A source that reports per-row remoteness is believed: jobspy's
+    // LinkedIn and Indeed legs return on-site postings even with their
+    // remote filters on (LinkedIn's facet is degraded to a keyword), and
+    // python-jobspy's per-row is_remote is Indeed's Remote attribute,
+    // Glassdoor's location type, or on LinkedIn a remote/wfh keyword scan of
+    // title+description+location (title+location only when the detail fetch
+    // failed — a plain-city remote row can then drop; accepted). Unknown
+    // (hiring.cafe never sets it — its search was filtered to Remote
+    // server-side) is kept.
+    if (job.isRemote === false) {
+      return { matched: false, reasonCode: "not_remote", priority: 0 };
+    }
     const titleSegments = titleRestrictionSegments(job.title);
     const blocked = intent.remoteLocationBlocklist.some(
       (entry) =>
