@@ -116,6 +116,12 @@ providerInstancesRouter.delete("/:id", async (req: Request, res: Response) => {
  */
 const MAX_SAMPLES = 5;
 
+// Deadline for the interactive "Test actor" preview. Matches the ~300s bound
+// the old synchronous Apify call imposed as a side effect — long enough for a
+// slow LinkedIn actor to produce first rows, short enough that the user is
+// plausibly still looking. Hitting it aborts the actor run server-side.
+const PROVIDER_TEST_DEADLINE_MS = 300_000;
+
 providerInstancesRouter.post(
   "/:id/test",
   async (req: Request, res: Response) => {
@@ -147,22 +153,32 @@ providerInstancesRouter.post(
           ? ((await settingsRepo.getSetting("apifyApiToken")) ?? "")
           : "";
 
+      // Bounds this interactive preview the way the old sync client's ~300s
+      // platform ceiling did, but deliberately: at the deadline the actor run
+      // is aborted server-side (it stops billing) and whatever it scraped
+      // still comes back as samples below.
+      const startedAtMs = Date.now();
       const result = await provider.run({
         instance,
         runGlobals,
         apiToken: apiToken || null,
         searchTerms,
+        shouldCancel: () =>
+          Date.now() - startedAtMs > PROVIDER_TEST_DEADLINE_MS,
       });
 
+      const samples = result.jobs.slice(0, MAX_SAMPLES);
       if (!result.success) {
+        // A failed run can still carry salvaged rows (timed out or aborted
+        // mid-crawl) — mapping verification wants to see them.
         return ok(res, {
           outcome: "error",
           error: result.error ?? "unknown error",
-          samples: [],
+          samples,
+          totalMapped: result.jobs.length,
         });
       }
 
-      const samples = result.jobs.slice(0, MAX_SAMPLES);
       ok(res, {
         outcome: "ok",
         samples,

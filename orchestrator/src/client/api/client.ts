@@ -1565,7 +1565,14 @@ export type ProviderInstanceTestResponse =
       samples: Array<Record<string, unknown>>;
       totalMapped: number;
     }
-  | { outcome: "error"; error: string; samples: [] };
+  | {
+      outcome: "error";
+      error: string;
+      // A failed run can still carry salvaged samples (e.g. an actor run
+      // that timed out mid-crawl).
+      samples: Array<Record<string, unknown>>;
+      totalMapped: number;
+    };
 
 export async function testProviderInstance(
   id: string,

@@ -6,7 +6,7 @@ import type {
   JobSource,
 } from "@shared/types";
 import type { ProviderRunContext, ProviderRunner } from "../types";
-import { ApifyApiError, runApifyActor } from "./client";
+import { ApifyApiError, type ApifyRunOutcome, runApifyActor } from "./client";
 import {
   applyFreeformMapping,
   FreeformMappingError,
@@ -86,13 +86,13 @@ async function runApifyInstance(
     }
   }
 
-  let datasetItems: unknown[];
+  let runOutcome: ApifyRunOutcome;
   try {
-    datasetItems = await runApifyActor({
+    runOutcome = await runApifyActor({
       token: apiToken,
       actorRef: instance.actorRef,
       input: resolvedInput,
-      timeoutSec: 290,
+      shouldCancel,
     });
   } catch (error) {
     if (error instanceof ApifyApiError) {
@@ -101,6 +101,7 @@ async function runApifyInstance(
     const message = error instanceof Error ? error.message : String(error);
     return { success: false, jobs: [], error: message };
   }
+  const datasetItems = runOutcome.items;
 
   const sourceId = providerSourceId(instance.id);
   const mapped: CreateJobInput[] = [];
@@ -153,6 +154,20 @@ async function runApifyInstance(
     });
   }
 
+  if (runOutcome.status !== "SUCCEEDED") {
+    // The run died — its own timeout, or an abort — after scraping these
+    // rows. success:false + jobs carries them out: discovery imports what was
+    // paid for while the source still reads as failed, so its scrape
+    // watermark stays put and a retry is offered (B42's salvage half).
+    const how =
+      runOutcome.status === "TIMED-OUT" ? "timed out" : "was aborted";
+    return {
+      success: false,
+      jobs: mapped,
+      droppedCount,
+      error: `Actor run ${how} after scraping ${datasetItems.length} item(s); kept the ${mapped.length} job(s) mapped from them`,
+    };
+  }
   return { success: true, jobs: mapped, droppedCount };
 }
 

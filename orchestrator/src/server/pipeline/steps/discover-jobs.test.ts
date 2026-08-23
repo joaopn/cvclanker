@@ -145,6 +145,78 @@ describe("discoverJobsStep", () => {
     );
   });
 
+  it("imports a failed instance's salvaged rows, marks the row failed, and holds its watermark", async () => {
+    const providerInstances = await import(
+      "@server/repositories/provider-instances"
+    );
+    const providersModule = await import("@server/providers");
+    const salvagedJob = {
+      source: "apify:inst-1",
+      title: "Engineer",
+      employer: "ACME",
+      jobUrl: "https://example.com/salvaged",
+      location: "London, United Kingdom",
+      locationEvidence: {
+        location: "London, United Kingdom",
+        country: "united kingdom",
+        city: "London",
+        source: "location",
+      },
+    };
+    // *Once so the overrides drain after this test instead of leaking into
+    // the rest of the file (clearAllMocks keeps implementations).
+    vi.mocked(
+      providerInstances.getEnabledProviderInstances,
+    ).mockResolvedValueOnce([
+      {
+        id: "inst-1",
+        providerId: "apify",
+        actorRef: "acme/actor",
+        label: "Acme actor",
+        maxJobs: null,
+        maxAgeDays: null,
+      },
+    ] as never);
+    vi.mocked(providersModule.getProvider).mockReturnValueOnce({
+      id: "apify",
+      displayName: "Apify",
+      templates: [],
+      run: vi.fn().mockResolvedValue({
+        success: false,
+        jobs: [salvagedJob],
+        error:
+          "Actor run timed out after scraping 3 item(s); kept the 1 job(s) mapped from them",
+        droppedCount: 2,
+      }),
+    } as never);
+
+    const result = await discoverJobsStep({
+      mergedConfig: { ...baseConfig, sources: [] },
+    });
+
+    // The paid-for row imports like any other…
+    expect(result.discoveredJobs.map((job) => job.jobUrl)).toEqual([
+      "https://example.com/salvaged",
+    ]);
+    // …the source still reads as failed…
+    expect(result.sourceErrors).toEqual([
+      "Acme actor: Actor run timed out after scraping 3 item(s); kept the 1 job(s) mapped from them",
+    ]);
+    // …and its watermark does not advance over the window it missed.
+    expect(result.scrapedSources).not.toContain("apify:inst-1");
+
+    const row = getProgress().sourceStats.find(
+      (candidate) => candidate.id === "apify:inst-1",
+    );
+    expect(row?.status).toBe("failed");
+    expect(row?.jobsScraped).toBe(1);
+    expect(row?.jobsUnmappable).toBe(2);
+    expect(row?.error).toMatch(/timed out/);
+    expect(
+      getRunJobs("apify:inst-1", "scraped").map((job) => job.jobUrl),
+    ).toEqual(["https://example.com/salvaged"]);
+  });
+
   it("crawls one source at a time when the run overrides discoveryConcurrency to 1", async () => {
     const registryModule = await import("@server/extractors/registry");
 

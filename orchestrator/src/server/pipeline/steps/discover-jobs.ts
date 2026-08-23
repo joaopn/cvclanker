@@ -398,7 +398,9 @@ export async function discoverJobsStep(args: {
 
           if (!result.success) {
             return {
-              discoveredJobs: [],
+              // A failed run can still carry salvaged rows (an Apify run
+              // that timed out mid-crawl); they import like any others.
+              discoveredJobs: result.jobs,
               sourceErrors: [
                 `${instance.label}: ${result.error ?? "unknown error"}`,
               ],
@@ -476,7 +478,9 @@ export async function discoverJobsStep(args: {
 
         if (!result.success) {
           return {
-            discoveredJobs: [],
+            // Same salvage contract as provider instances: rows a failed run
+            // returned are kept, the failure still marks the source failed.
+            discoveredJobs: result.jobs,
             sourceErrors: [
               `${manifest.displayName || manifest.id}: ${result.error ?? "unknown error"} (sources: ${grouped.sources.join(",")})`,
             ],
@@ -546,7 +550,27 @@ export async function discoverJobsStep(args: {
       const taskResult = outcome.result;
       if (taskResult.sourceErrors.length > 0) {
         const message = taskResult.sourceErrors.join("; ");
+        // Salvaged rows still count and capture — recorded BEFORE the failed
+        // mark so the funnel shows what the dying run paid for. The watermark
+        // does NOT advance (below): the run did not cover its window.
         for (const platform of sourceTask.platforms) {
+          const platformJobs = taskResult.discoveredJobs.filter(
+            (job) => job.source === platform,
+          );
+          // Unconditional, like the success branch: a dying run that scraped
+          // items it could not map still shows its unmappable count.
+          progressHelpers.recordSourceJobsCounts(platform, {
+            scraped: platformJobs.length,
+            unmappable:
+              platform === sourceTask.platforms[0]
+                ? taskResult.unmappableCount
+                : 0,
+          });
+          captureRunJobs(
+            platform,
+            "scraped",
+            platformJobs.map((job) => toCapturedRunJob(job)),
+          );
           progressHelpers.markSourceFailed(platform, message);
         }
         return;

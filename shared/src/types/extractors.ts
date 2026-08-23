@@ -44,6 +44,13 @@ export interface ExtractorRuntimeContext {
 
 export interface ExtractorRunResult {
   success: boolean;
+  /**
+   * On success: everything the run mapped. On FAILURE this may still be
+   * non-empty — rows salvaged before the failure, e.g. an Apify run that
+   * timed out after scraping hundreds of paid items (B42). Discovery imports
+   * them either way; the failure still marks the source failed and holds its
+   * scrape watermark back, so the next window re-covers what was missed.
+   */
   jobs: CreateJobInput[];
   error?: string;
   /**
