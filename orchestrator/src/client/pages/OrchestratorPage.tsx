@@ -61,6 +61,7 @@ import {
   useUndoController,
 } from "./orchestrator/useUndoController";
 import {
+  collectProfileSearchTitles,
   getEnabledSources,
   getJobCounts,
   getSourcesWithJobs,
@@ -318,23 +319,10 @@ export const OrchestratorPage: React.FC = () => {
 
   const { profiles, selectedProfileIds, toggleProfile } = useSelectedProfile();
 
-  // The job-title badges are the union of every Search Profile's search terms,
-  // deduped case-insensitively (first spelling wins) and sorted so the row is
-  // stable as profiles are edited.
-  const profileSearchTitles = useMemo(() => {
-    const byKey = new Map<string, string>();
-    for (const profile of profiles) {
-      for (const term of profile.config.searchTerms) {
-        const trimmed = term.trim();
-        if (!trimmed) continue;
-        const key = trimmed.toLowerCase();
-        if (!byKey.has(key)) byKey.set(key, trimmed);
-      }
-    }
-    return [...byKey.values()].sort((left, right) =>
-      left.localeCompare(right, undefined, { sensitivity: "base" }),
-    );
-  }, [profiles]);
+  const profileSearchTitles = useMemo(
+    () => collectProfileSearchTitles(profiles),
+    [profiles],
+  );
 
   const availableFilterChipTypes = useMemo(
     () => filterChipTypesForTab(activeTab),

@@ -92,6 +92,7 @@ export const SwipePage: React.FC = () => {
           pipelineTerminalEvent={pipelineTerminalEvent}
           isPipelineRunning={isPipelineRunning}
           onRunPipeline={() => runPipelineNow(selectedProfileIds)}
+          profiles={profiles}
         />
       </main>
     </div>

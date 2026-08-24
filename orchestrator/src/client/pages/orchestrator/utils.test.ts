@@ -1,6 +1,34 @@
 import { createAppSettings, createJob } from "@shared/testing/factories.js";
+import { defaultProfileConfig, type Profile } from "@shared/types";
 import { describe, expect, it } from "vitest";
-import { getEnabledSources, getJobCounts } from "./utils";
+import {
+  collectProfileSearchTitles,
+  getEnabledSources,
+  getJobCounts,
+} from "./utils";
+
+const profile = (id: string, searchTerms: string[]): Profile => ({
+  id,
+  name: id,
+  config: { ...defaultProfileConfig(), searchTerms },
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+});
+
+describe("collectProfileSearchTitles", () => {
+  it("unions every profile's terms, deduped case-insensitively (first spelling wins), sorted", () => {
+    expect(
+      collectProfileSearchTitles([
+        profile("a", ["Python Developer", "  ", "SRE"]),
+        profile("b", ["python developer", "Backend Engineer"]),
+      ]),
+    ).toEqual(["Backend Engineer", "Python Developer", "SRE"]);
+  });
+
+  it("returns an empty list with no profiles", () => {
+    expect(collectProfileSearchTitles([])).toEqual([]);
+  });
+});
 
 describe("orchestrator utils", () => {
   it("enables startupjobs without credentials", () => {

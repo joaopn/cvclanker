@@ -1,8 +1,9 @@
 import {
-  SUITABILITY_CATEGORY_RANK,
   type AppSettings,
   type JobListItem,
   type JobSource,
+  type Profile,
+  SUITABILITY_CATEGORY_RANK,
 } from "@shared/types";
 import type { DateFilterDimension, FilterTab, JobSort } from "./constants";
 import { orderedFilterSources, orderedSources } from "./constants";
@@ -25,6 +26,25 @@ const compareNumber = (a: number, b: number) => a - b;
 
 export const clampNumber = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
+
+// The job-title badges are the union of every Search Profile's search terms,
+// deduped case-insensitively (first spelling wins) and sorted so the row is
+// stable as profiles are edited. Shared by the Manage filter bar and the
+// Swipe filter sheet.
+export const collectProfileSearchTitles = (profiles: Profile[]): string[] => {
+  const byKey = new Map<string, string>();
+  for (const profile of profiles) {
+    for (const term of profile.config.searchTerms) {
+      const trimmed = term.trim();
+      if (!trimmed) continue;
+      const key = trimmed.toLowerCase();
+      if (!byKey.has(key)) byKey.set(key, trimmed);
+    }
+  }
+  return [...byKey.values()].sort((left, right) =>
+    left.localeCompare(right, undefined, { sensitivity: "base" }),
+  );
+};
 
 export const parseSalaryBounds = (
   job: JobListItem,

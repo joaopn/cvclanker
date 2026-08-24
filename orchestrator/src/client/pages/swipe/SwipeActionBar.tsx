@@ -1,28 +1,35 @@
 /**
  * Bottom action bar for the Swipe deck — tap-target equivalents of the
- * swipe gestures, plus the gesture-less Backlog action.
+ * swipe gestures, plus the gesture-less Backlog action and the trigger for
+ * the bottom filter sheet.
  */
 
-import { Archive, Check, RotateCcw, X } from "lucide-react";
+import { Archive, Check, RotateCcw, SlidersHorizontal, X } from "lucide-react";
 import type React from "react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface SwipeActionBarProps {
   disabled: boolean;
   canUndo: boolean;
+  /** Whether any deck filter is active — marks the trigger with a dot. */
+  filtersActive: boolean;
   onSkip: () => void;
   onBacklog: () => void;
   onTailor: () => void;
   onUndo: () => void;
+  onOpenFilters: () => void;
 }
 
 export const SwipeActionBar: React.FC<SwipeActionBarProps> = ({
   disabled,
   canUndo,
+  filtersActive,
   onSkip,
   onBacklog,
   onTailor,
   onUndo,
+  onOpenFilters,
 }) => {
   return (
     <div className="relative flex items-center justify-center gap-6 px-4">
@@ -69,6 +76,22 @@ export const SwipeActionBar: React.FC<SwipeActionBarProps> = ({
         className="h-14 w-14 rounded-full border-status-good/40 text-status-good-text hover:bg-status-good/10 hover:text-status-good-text"
       >
         <Check className="h-6 w-6" />
+      </Button>
+      <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        onClick={onOpenFilters}
+        aria-label="Filters"
+        className={cn(
+          "absolute right-4 top-1/2 h-10 w-10 -translate-y-1/2 rounded-full",
+          filtersActive ? "text-primary" : "text-muted-foreground",
+        )}
+      >
+        <SlidersHorizontal className="h-4 w-4" />
+        {filtersActive && (
+          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary" />
+        )}
       </Button>
     </div>
   );
