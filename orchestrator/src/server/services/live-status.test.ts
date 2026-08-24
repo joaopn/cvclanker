@@ -26,11 +26,14 @@ import {
 } from "./live-status";
 
 // Markup captured live from the guest endpoint (jobs-guest/jobs/api/
-// jobPosting/<id>) on 2026-08-24 — two open-job caption variants and the
-// closed-job figure, verbatim modulo trimming.
+// jobPosting/<id>) on 2026-08-24, verbatim modulo trimming. The endpoint
+// alternates a FULL render (carries the contextual sign-in modals + the
+// Apply CTA on open jobs) with a CONDENSED one (neither, even when open).
 const TITLE_MARKUP = `<h2 class="top-card-layout__title font-sans text-lg topcard__title">AI Developer</h2>`;
+const FULL_RENDER_MARKER = `<div class="contextual-sign-in-modal"></div>`;
+const APPLY_CTA = `<button class="sign-up-modal__outlet top-card-layout__cta btn-md btn-primary" data-modal="job-details-topcard-apply-modal">Apply</button>`;
 
-const OPEN_FIGURE_VARIANT = `<html><body>${TITLE_MARKUP}
+const OPEN_FIGURE_VARIANT = `<html><body>${TITLE_MARKUP}${FULL_RENDER_MARKER}${APPLY_CTA}
   <figure class="num-applicants__figure topcard__flavor--metadata topcard__flavor--bullet">
     <span class="num-applicants__icon num-applicants__icon--clock lazy-load"></span>
     <figcaption class="num-applicants__caption">
@@ -39,13 +42,14 @@ const OPEN_FIGURE_VARIANT = `<html><body>${TITLE_MARKUP}
   </figure>
 </body></html>`;
 
-const OPEN_SPAN_VARIANT = `<html><body>${TITLE_MARKUP}
+const OPEN_SPAN_VARIANT = `<html><body>${TITLE_MARKUP}${FULL_RENDER_MARKER}${APPLY_CTA}
   <span class="num-applicants__caption topcard__flavor--metadata topcard__flavor--bullet">
     45 applicants
   </span>
 </body></html>`;
 
-const CLOSED_MARKUP = `<html><body>${TITLE_MARKUP}
+// Kind A: the explicit closed banner (job 4441896971).
+const CLOSED_MARKUP = `<html><body>${TITLE_MARKUP}${FULL_RENDER_MARKER}
   <figure class="closed-job closed-job__flavor topcard__flavor-row">
     <span class="closed-job__icon closed-job__icon--error-pebble lazy-load"></span>
     <figcaption class="closed-job__flavor--closed">No longer accepting applications</figcaption>
@@ -53,6 +57,23 @@ const CLOSED_MARKUP = `<html><body>${TITLE_MARKUP}
   <figure class="num-applicants__figure">
     <figcaption class="num-applicants__caption">Be among the first 25 applicants</figcaption>
   </figure>
+</body></html>`;
+
+// Kind B: no banner, but the full render omits the Apply CTA entirely
+// (job 4442812721 — an empty cta-container plus the reset caption).
+const CLOSED_NO_BANNER = `<html><body>${TITLE_MARKUP}${FULL_RENDER_MARKER}
+  <div class="top-card-layout__cta-container flex flex-wrap"><!----><!----></div>
+  <figure class="num-applicants__figure">
+    <figcaption class="num-applicants__caption">Be among the first 25 applicants</figcaption>
+  </figure>
+</body></html>`;
+
+// The condensed render of an OPEN job: caption present, but no sign-in
+// modals and no Apply CTA — indistinguishable from kind-B closed, so it
+// must yield NO verdict (job 4427933585 had this shape while open).
+const CONDENSED_OPEN = `<html><body>${TITLE_MARKUP}
+  <div class="top-card-layout__cta-container flex flex-wrap"><!----><!----></div>
+  <span class="num-applicants__caption topcard__flavor--metadata">50 applicants</span>
 </body></html>`;
 
 const NOT_A_POSTING = `<html><body><p>Sign in to continue</p></body></html>`;
@@ -76,11 +97,35 @@ describe("parseLinkedinLiveStatus", () => {
     });
   });
 
-  it("flags a closed job and nulls its (reset) applicant caption", () => {
+  it("flags a banner-closed job and nulls its (reset) applicant caption", () => {
     expect(parseLinkedinLiveStatus(CLOSED_MARKUP)).toEqual({
       closed: true,
       applicants: null,
     });
+  });
+
+  it("verdicts a CONDENSED render carrying the banner (rule order)", () => {
+    // The banner decides BEFORE the render-variant check — a condensed
+    // kind-A page has the figure but no sign-in-modal marker, and must not
+    // fall into the no-verdict branch.
+    const condensedClosedA = CLOSED_MARKUP.replace(FULL_RENDER_MARKER, "");
+    expect(parseLinkedinLiveStatus(condensedClosedA)).toEqual({
+      closed: true,
+      applicants: null,
+    });
+  });
+
+  it("flags a banner-LESS closed job by its missing Apply CTA", () => {
+    expect(parseLinkedinLiveStatus(CLOSED_NO_BANNER)).toEqual({
+      closed: true,
+      applicants: null,
+    });
+  });
+
+  it("yields NO verdict on the condensed render, even of an open job", () => {
+    // The condensed render of an open job is indistinguishable from a
+    // banner-less closed one — guessing either way records lies.
+    expect(parseLinkedinLiveStatus(CONDENSED_OPEN)).toBeNull();
   });
 
   it("returns null for a page with no posting markup", () => {
@@ -88,16 +133,16 @@ describe("parseLinkedinLiveStatus", () => {
   });
 
   it("returns null for a title-only page rather than guessing 'open'", () => {
-    // A posting-shaped page missing BOTH markers must not produce a verdict:
-    // if LinkedIn renames the closed-figure class, closed jobs would
-    // otherwise all be recorded as accepting applications.
+    // A posting-shaped page with no verdict-capable markers must not produce
+    // one: if LinkedIn renames its classes, closed jobs would otherwise all
+    // be recorded as accepting applications.
     expect(
       parseLinkedinLiveStatus(`<html><body>${TITLE_MARKUP}</body></html>`),
     ).toBeNull();
   });
 
   it("ignores a closed-job class outside a figure (description markup)", () => {
-    const html = `<html><body>${TITLE_MARKUP}
+    const html = `<html><body>${TITLE_MARKUP}${FULL_RENDER_MARKER}${APPLY_CTA}
       <span class="num-applicants__caption">45 applicants</span>
       <div class="description"><p class="closed-job">we reopened this role</p></div>
     </body></html>`;
@@ -155,6 +200,37 @@ describe("fetchLinkedinLiveStatus", () => {
       expect.any(Number),
       0,
     );
+  });
+
+  it("retries the static tier past a condensed render", async () => {
+    tryStaticFetchMock
+      .mockResolvedValueOnce({ html: CONDENSED_OPEN, finalUrl: GUEST_URL })
+      .mockResolvedValueOnce({ html: OPEN_SPAN_VARIANT, finalUrl: GUEST_URL });
+
+    await expect(fetchLinkedinLiveStatus(JOB_URL)).resolves.toEqual({
+      closed: false,
+      applicants: "45 applicants",
+    });
+    expect(tryStaticFetchMock).toHaveBeenCalledTimes(2);
+    expect(tryBrowserFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("falls to the browser only after three condensed draws", async () => {
+    tryStaticFetchMock.mockResolvedValue({
+      html: CONDENSED_OPEN,
+      finalUrl: GUEST_URL,
+    });
+    tryBrowserFetchMock.mockResolvedValue({
+      html: CLOSED_NO_BANNER,
+      finalUrl: GUEST_URL,
+    });
+
+    await expect(fetchLinkedinLiveStatus(JOB_URL)).resolves.toEqual({
+      closed: true,
+      applicants: null,
+    });
+    expect(tryStaticFetchMock).toHaveBeenCalledTimes(3);
+    expect(tryBrowserFetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("falls back to the browser tier when the static page isn't a posting", async () => {

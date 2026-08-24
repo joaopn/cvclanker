@@ -28,31 +28,57 @@ export interface LinkedinLiveStatus {
 }
 
 /**
- * Read the live status out of a guest-endpoint (or job page) HTML document.
- * Returns null when the page carries NEITHER the applicant caption nor the
- * closed figure — the two facts this check exists to read — which is the
- * caller's signal to try the browser tier (or give up). Deliberately strict:
- * a page that merely looks like a posting (title present, markers absent)
- * must NOT produce an "accepting applications" verdict, or a class rename on
- * LinkedIn's side would silently record every closed job as open.
+ * Read the live status out of a guest-endpoint HTML document. Returns null
+ * when the page cannot support a verdict — the caller's signal to fetch
+ * again (or give up). Deliberately strict: a page that merely looks like a
+ * posting must NOT produce an "accepting applications" verdict, or a markup
+ * change on LinkedIn's side would silently record closed jobs as open.
  *
- * Detection is by class, never by text, so localized pages parse the same.
+ * Two measured facts drive the shape (2026-08-24, 16 live pages):
+ * - The endpoint ALTERNATES two renders per request: a FULL page carrying
+ *   the contextual sign-in modals, and a CONDENSED one without them. Only
+ *   the full render can prove open-ness — on the condensed one an open job
+ *   and a bannerless closed job are identical (both an empty CTA container).
+ * - Closed jobs come in two kinds: with the explicit "No longer accepting
+ *   applications" figure (kind A), and WITHOUT it (kind B — e.g. job
+ *   4442812721), where the only tell is the full render omitting the Apply
+ *   CTA. Every open full render carries the CTA (13/13 measured, offsite
+ *   apply included); both closed kinds lack it.
+ *
+ * Detection is by class/attribute, never by text, so localized pages parse
+ * the same.
  */
 export function parseLinkedinLiveStatus(
   html: string,
 ): LinkedinLiveStatus | null {
   const document = new JSDOM(html).window.document;
 
+  // Kind A: the explicit banner decides regardless of render variant.
   // Scoped to <figure> so employer-authored description markup that happens
   // to reuse the class can never flip the verdict.
-  const closed = document.querySelector("figure.closed-job") !== null;
+  if (document.querySelector("figure.closed-job")) {
+    return { closed: true, applicants: null };
+  }
+
+  // Condensed render: no verdict possible — never guess "open" off it.
+  const isFullRender =
+    document.querySelector(".contextual-sign-in-modal") !== null;
+  if (!isFullRender) return null;
+
+  // Kind B: a full render with no Apply CTA is a job no longer taking
+  // applications, banner or not.
+  const hasApplyCta =
+    document.querySelector('[data-modal="job-details-topcard-apply-modal"]') !==
+    null;
+  if (!hasApplyCta) {
+    return { closed: true, applicants: null };
+  }
+
   const caption = document
     .querySelector(".num-applicants__caption")
     ?.textContent?.replace(/\s+/g, " ")
     .trim();
-
-  if (!closed && !caption) return null;
-  return { closed, applicants: closed ? null : (caption ?? null) };
+  return { closed: false, applicants: caption ?? null };
 }
 
 /**
@@ -85,9 +111,18 @@ export async function fetchLinkedinLiveStatus(
     });
   }
 
+  // The endpoint alternates its two renders per request (strict alternation
+  // in measurement), so a condensed no-verdict draw is retried: three
+  // attempts mean the browser tier fires only after three condensed draws in
+  // a row, which the observed alternation makes vanishingly unlikely.
+  const STATIC_ATTEMPTS = 3;
+
   try {
-    const staticResult = await tryStaticFetch(guestUrl, controller.signal);
-    if (staticResult) {
+    for (let attempt = 0; attempt < STATIC_ATTEMPTS; attempt++) {
+      const staticResult = await tryStaticFetch(guestUrl, controller.signal);
+      // Non-OK/empty body: repeating the identical request buys nothing —
+      // fall straight through to the browser tier.
+      if (!staticResult) break;
       const status = parseLinkedinLiveStatus(staticResult.html);
       if (status) return status;
     }
