@@ -12,7 +12,7 @@ interface StaleControlBarProps {
   onSwept: () => Promise<void> | void;
 }
 
-type SweepScope = "shelf" | "active";
+type SweepScope = "shelf" | "active" | "liveClosed";
 
 const MIN_DAYS = 1;
 const MAX_DAYS = 365;
@@ -56,15 +56,22 @@ export const StaleControlBar = ({
   const runSweep = async (scope: SweepScope) => {
     if (busy) return;
     const days = clampDays(thresholdDays);
-    if (!Number.isFinite(days)) {
+    if (scope !== "liveClosed" && !Number.isFinite(days)) {
       toast.error("Enter a valid number of days (1-365).");
       return;
     }
     setBusyScope(scope);
     try {
-      const result = await api.sweepStaleJobs(days, scope);
+      const result =
+        scope === "liveClosed"
+          ? await api.sweepLiveClosedJobs()
+          : await api.sweepStaleJobs(days, scope);
       if (result.moved === 0) {
-        toast.message("No rows older than the threshold.");
+        toast.message(
+          scope === "liveClosed"
+            ? "No jobs whose posting closed."
+            : "No rows older than the threshold.",
+        );
       } else {
         toast.success(`${result.moved} jobs moved to Stale`, {
           description: describeBreakdown(result.breakdown),
@@ -146,6 +153,24 @@ export const StaleControlBar = ({
           </>
         ) : (
           "Also move aged Ready & Live here"
+        )}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={busy}
+        onClick={() => void runSweep("liveClosed")}
+        className="h-7 px-3 text-xs sm:ml-auto sm:w-auto"
+        title='Moves Inbox/Backlog jobs whose live LinkedIn check found "No longer accepting applications". Run Live status on a selection first to populate the check.'
+      >
+        {busyScope === "liveClosed" ? (
+          <>
+            <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+            Sweeping...
+          </>
+        ) : (
+          "Move closed postings here"
         )}
       </Button>
     </form>

@@ -64,6 +64,47 @@ describe.sequential("jobs repository repost detection", () => {
     expect(refreshed?.status).toBe("discovered");
   });
 
+  it("clears the live-status verdict on a repost — the old check predates it", async () => {
+    const url = "https://example.com/jobs/repost-live";
+    await jobsRepo.createJobs([
+      {
+        source: "linkedin",
+        title: "Backend Engineer",
+        employer: "Acme",
+        jobUrl: url,
+        datePosted: "2026-04-01",
+      },
+    ]);
+    const seeded = await jobsRepo.getJobByUrl(url);
+    if (!seeded) throw new Error("seed row missing");
+    await db
+      .update(schema.jobs)
+      .set({
+        liveClosed: true,
+        liveApplicants: null,
+        liveStatusCheckedAt: "2026-04-02T00:00:00.000Z",
+      })
+      .where(
+        (await import("drizzle-orm")).eq(schema.jobs.id, seeded.id),
+      );
+
+    await jobsRepo.createJobs([
+      {
+        source: "linkedin",
+        title: "Backend Engineer",
+        employer: "Acme",
+        jobUrl: url,
+        datePosted: "2026-04-15",
+      },
+    ]);
+
+    const refreshed = await jobsRepo.getJobByUrl(url);
+    expect(refreshed?.repostCount).toBe(1);
+    expect(refreshed?.liveClosed).toBeNull();
+    expect(refreshed?.liveApplicants).toBeNull();
+    expect(refreshed?.liveStatusCheckedAt).toBeNull();
+  });
+
   it("skips when datePosted is unchanged or older", async () => {
     const url = "https://example.com/jobs/repost-2";
     await jobsRepo.createJobs([

@@ -726,6 +726,13 @@ export async function createJobs(
             repostCount: existing.repostCount + 1,
             status: nextStatus,
             updatedAt: now,
+            // A repost is a fresh posting state: the live LinkedIn check
+            // (closed / applicant count) predates it and no longer describes
+            // this row — clearing it keeps the live-closed sweep from
+            // re-staling a freshly relisted job on a stale verdict.
+            liveClosed: null,
+            liveApplicants: null,
+            liveStatusCheckedAt: null,
           })
           .where(eq(jobs.id, existing.id));
         reposted += 1;
@@ -1066,6 +1073,42 @@ export async function sweepStaleJobs(
     .update(jobs)
     .set({ status: "stale", updatedAt: sql`(datetime('now'))` })
     .where(ageWhere);
+
+  return { moved, breakdown };
+}
+
+/**
+ * Move every shelf row (Inbox/Selected/Backlog) whose live LinkedIn check
+ * found the posting no longer accepting applications into `stale`. The
+ * active statuses are deliberately out of scope — an applied/interviewing
+ * job whose posting closed is the user's call to mark closed, and a tailored
+ * `ready` row is work they may still want visible. Returns the total moved
+ * plus a per-source-status breakdown, same shape as sweepStaleJobs.
+ */
+export async function sweepLiveClosedJobs(): Promise<{
+  moved: number;
+  breakdown: Partial<Record<JobStatus, number>>;
+}> {
+  const eligibleStatuses: JobStatus[] = [...STALE_SWEEP_SCOPE_STATUSES.shelf];
+  const closedWhere = and(
+    inArray(jobs.status, eligibleStatuses),
+    eq(jobs.liveClosed, true),
+  );
+  const rows = await db
+    .select({ status: jobs.status })
+    .from(jobs)
+    .where(closedWhere);
+  const breakdown: Partial<Record<JobStatus, number>> = {};
+  for (const row of rows) {
+    breakdown[row.status] = (breakdown[row.status] ?? 0) + 1;
+  }
+  const moved = rows.length;
+  if (moved === 0) return { moved, breakdown };
+
+  await db
+    .update(jobs)
+    .set({ status: "stale", updatedAt: sql`(datetime('now'))` })
+    .where(closedWhere);
 
   return { moved, breakdown };
 }

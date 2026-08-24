@@ -978,6 +978,19 @@ export async function sweepStaleJobs(
   });
 }
 
+export async function sweepLiveClosedJobs(): Promise<{
+  moved: number;
+  breakdown: Partial<Record<JobStatus, number>>;
+}> {
+  return fetchApi<{
+    moved: number;
+    breakdown: Partial<Record<JobStatus, number>>;
+  }>("/jobs/sweep-live-closed", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
 export async function streamJobAction(
   input: JobActionRequest,
   handlers: {

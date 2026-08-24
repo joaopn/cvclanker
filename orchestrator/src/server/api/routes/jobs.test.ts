@@ -300,6 +300,73 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     expect(byId["sweep-ready-old"]).toBe("ready");
   });
 
+  it("sweep-live-closed moves shelf rows whose posting closed, leaves everything else", async () => {
+    const { db, schema } = await import("@server/db/index");
+    const { sql } = await import("drizzle-orm");
+    // Closed postings that should be swept.
+    await seedJob({ id: "lc-discovered", status: "discovered" });
+    await seedJob({ id: "lc-backlog", status: "backlog" });
+    // Closed posting on an ACTIVE status — never swept.
+    await seedJob({ id: "lc-applied", status: "applied" });
+    // Open posting and a never-checked row — neither moves.
+    await seedJob({ id: "lc-open", status: "discovered" });
+    await seedJob({ id: "lc-unchecked", status: "discovered" });
+
+    await db
+      .update(schema.jobs)
+      .set({ liveClosed: true })
+      .where(
+        sql`${schema.jobs.id} IN ('lc-discovered', 'lc-backlog', 'lc-applied')`,
+      );
+    await db
+      .update(schema.jobs)
+      .set({ liveClosed: false })
+      .where(sql`${schema.jobs.id} = 'lc-open'`);
+
+    const res = await fetch(`${baseUrl}/api/jobs/sweep-live-closed`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as {
+      ok: boolean;
+      data: {
+        moved: number;
+        breakdown: Partial<Record<string, number>>;
+      };
+    };
+    expect(payload.ok).toBe(true);
+    expect(payload.data.moved).toBe(2);
+    expect(payload.data.breakdown).toEqual({ discovered: 1, backlog: 1 });
+
+    const rows = await db
+      .select({ id: schema.jobs.id, status: schema.jobs.status })
+      .from(schema.jobs);
+    const byId = Object.fromEntries(rows.map((r) => [r.id, r.status]));
+    expect(byId["lc-discovered"]).toBe("stale");
+    expect(byId["lc-backlog"]).toBe("stale");
+    expect(byId["lc-applied"]).toBe("applied");
+    expect(byId["lc-open"]).toBe("discovered");
+    expect(byId["lc-unchecked"]).toBe("discovered");
+  });
+
+  it("sweep-live-closed is a no-op on an empty match", async () => {
+    await seedJob({ id: "lc-none", status: "discovered" });
+
+    const res = await fetch(`${baseUrl}/api/jobs/sweep-live-closed`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as {
+      ok: boolean;
+      data: { moved: number };
+    };
+    expect(payload.data.moved).toBe(0);
+  });
+
   it("sweep-stale scope=active sweeps aged ready/applied/in_progress, leaves shelf rows", async () => {
     const { db, schema } = await import("@server/db/index");
     const { sql } = await import("drizzle-orm");

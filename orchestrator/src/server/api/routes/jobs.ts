@@ -1427,6 +1427,44 @@ const sweepStaleRequestSchema = z.object({
 });
 
 /**
+ * POST /api/jobs/sweep-live-closed - Bulk-move shelf rows whose live
+ * LinkedIn check found the posting closed ("No longer accepting
+ * applications") into `stale`. Same shape as sweep-stale: single pass,
+ * returns the count plus a per-source-status breakdown for the toast.
+ */
+jobsRouter.post("/sweep-live-closed", async (_req: Request, res: Response) => {
+  try {
+    const result = await jobsRepo.sweepLiveClosedJobs();
+
+    logger.info("Live-closed sweep completed", {
+      route: "POST /api/jobs/sweep-live-closed",
+      moved: result.moved,
+      breakdown: result.breakdown,
+    });
+
+    ok(res, result);
+  } catch (error) {
+    const err =
+      error instanceof AppError
+        ? error
+        : new AppError({
+            status: 500,
+            code: "INTERNAL_ERROR",
+            message: error instanceof Error ? error.message : "Unknown error",
+          });
+
+    logger.error("Live-closed sweep failed", {
+      route: "POST /api/jobs/sweep-live-closed",
+      status: err.status,
+      code: err.code,
+      details: err.details,
+    });
+
+    fail(res, err);
+  }
+});
+
+/**
  * POST /api/jobs/sweep-stale - Bulk-move aged rows into `stale`. The `scope`
  * bounds the source statuses: `shelf` (default) covers {discovered, selected,
  * backlog}; `active` covers {ready, applied, in_progress}. Single transaction;
