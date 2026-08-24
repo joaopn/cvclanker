@@ -1,10 +1,10 @@
-import { createAppSettings, createJob } from "@shared/testing/factories.js";
+import { createAppSettings } from "@shared/testing/factories.js";
 import { defaultProfileConfig, type Profile } from "@shared/types";
 import { describe, expect, it } from "vitest";
 import {
   collectProfileSearchTitles,
   getEnabledSources,
-  getJobCounts,
+  getJobCountsFromStats,
 } from "./utils";
 
 const profile = (id: string, searchTerms: string[]): Profile => ({
@@ -39,21 +39,21 @@ describe("orchestrator utils", () => {
     expect(getEnabledSources(createAppSettings())).toContain("workingnomads");
   });
 
-  it("groups jobs by tab including the `discovered` alias and `stale` bucket", () => {
-    const jobs = [
-      createJob({ id: "ready", status: "ready", closedAt: null }),
-      createJob({ id: "processing", status: "processing", closedAt: null }),
-      createJob({ id: "discovered", status: "discovered", closedAt: null }),
-      createJob({ id: "selected", status: "selected", closedAt: null }),
-      createJob({ id: "applied", status: "applied", closedAt: null }),
-      createJob({ id: "in_progress", status: "in_progress", closedAt: null }),
-      createJob({ id: "backlog", status: "backlog", closedAt: null }),
-      createJob({ id: "stale", status: "stale", closedAt: null }),
-      createJob({ id: "skipped", status: "skipped", closedAt: null }),
-      createJob({ id: "closed", status: "closed", closedAt: 1700000000 }),
-    ];
-
-    expect(getJobCounts(jobs)).toEqual({
+  it("maps by-status stats to tab counts including the `discovered` alias", () => {
+    expect(
+      getJobCountsFromStats({
+        discovered: 1,
+        selected: 1,
+        processing: 1,
+        ready: 1,
+        applied: 1,
+        in_progress: 1,
+        backlog: 1,
+        stale: 1,
+        skipped: 1,
+        closed: 1,
+      }),
+    ).toEqual({
       inbox: 1,
       tailoring: 2, // processing + ready
       live: 1, // applied

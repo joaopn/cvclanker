@@ -1,3 +1,4 @@
+import * as api from "@client/api";
 import { PipelineRunBanner } from "@client/components/PipelineRunBanner";
 import { useKeyboardAvailability } from "@client/hooks/useKeyboardAvailability";
 import { useLlmCallQueue } from "@client/hooks/useLlmCallQueue";
@@ -7,9 +8,11 @@ import {
   useResizableListPanel,
 } from "@client/hooks/useResizableListPanel";
 import { useSettings } from "@client/hooks/useSettings";
+import { useQuery } from "@tanstack/react-query";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { queryKeys } from "@/client/lib/queryKeys";
 import type { VirtualListHandle } from "@/client/lib/virtual-list";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerClose, DrawerContent } from "@/components/ui/drawer";
@@ -25,6 +28,7 @@ import {
   type FilterTab,
   filterChipTypesForTab,
   isFilterFamilyActive,
+  orderedFilterSources,
   tabs,
   UNATTRIBUTED_PROFILE_ID,
 } from "./orchestrator/constants";
@@ -63,7 +67,7 @@ import {
 import {
   collectProfileSearchTitles,
   getEnabledSources,
-  getJobCounts,
+  getJobCountsFromStats,
   getSourcesWithJobs,
 } from "./orchestrator/utils";
 
@@ -258,20 +262,39 @@ export const OrchestratorPage: React.FC = () => {
   // the facets — everything except Closed.
   const filterBarEnabledForTab = FILTER_BAR_TABS.includes(activeTab);
   const needsFullView = facetsEnabledForTab && facetFilters.requiresFullView;
+  // Statuses the active tab shows — the data hook fetches ONLY these rows,
+  // so terminal shelves (Closed, Stale, …) load lazily when first opened
+  // instead of riding along on every Inbox refresh. All fetches unscoped.
+  const scopeStatuses = useMemo(() => {
+    const tabDef = tabs.find((t) => t.id === activeTab);
+    return tabDef && tabDef.statuses.length > 0 ? tabDef.statuses : undefined;
+  }, [activeTab]);
   const {
     jobs,
     selectedJob,
+    stats,
     isLoading,
     isPipelineRunning,
     setIsPipelineRunning,
     pipelineTerminalEvent,
     setIsRefreshPaused,
     loadJobs,
-  } = useOrchestratorData(selectedJobId, needsFullView);
+  } = useOrchestratorData(selectedJobId, needsFullView, scopeStatuses);
   const enabledSources = useMemo(
     () => getEnabledSources(settings ?? null),
     [settings],
   );
+
+  // The command bar searches "across all states", while the tab list is now
+  // scoped — so it lazily fetches the unscoped list itself, only once the
+  // dialog opens, falling back to the scoped rows while that loads.
+  const { data: commandBarData } = useQuery({
+    queryKey: queryKeys.jobs.list({ view: "list" }),
+    queryFn: () => api.getJobs({ view: "list" }),
+    enabled: isCommandBarOpen,
+    staleTime: 30_000,
+  });
+  const commandBarJobs = commandBarData?.jobs ?? jobs;
 
   const undoController = useUndoController(loadJobs);
 
@@ -435,9 +458,22 @@ export const OrchestratorPage: React.FC = () => {
     return jobBelongsToTab(activeTab, selectedJob.status) ? selectedJob : null;
   }, [selectedJob, activeTab]);
 
-  const counts = useMemo(() => getJobCounts(jobs), [jobs]);
+  const counts = useMemo(() => getJobCountsFromStats(stats), [stats]);
   const displayedCounts = useMemo(() => counts, [counts]);
-  const sourcesWithJobs = useMemo(() => getSourcesWithJobs(jobs), [jobs]);
+  // Sources present on the ACTIVE tab (the list payload is scoped), plus the
+  // active selection so its chip stays rendered — and clearable — on a tab
+  // with no such rows. "No rows anywhere" is no longer knowable client-side,
+  // so nothing auto-resets the filter; the filtered empty state and Reset
+  // cover a dead selection.
+  const sourcesWithJobs = useMemo(() => {
+    const sources = getSourcesWithJobs(jobs);
+    if (sourceFilter === "all" || sources.includes(sourceFilter)) {
+      return sources;
+    }
+    return orderedFilterSources.filter(
+      (source) => source === sourceFilter || sources.includes(source),
+    );
+  }, [jobs, sourceFilter]);
   const {
     selectedJobIds,
     canSkipSelected,
@@ -466,13 +502,6 @@ export const OrchestratorPage: React.FC = () => {
     pushUndo: undoController.pushUndo,
     undo: undoController.undo,
   });
-
-  useEffect(() => {
-    if (isLoading || sourceFilter === "all") return;
-    if (!sourcesWithJobs.includes(sourceFilter)) {
-      setSourceFilter("all");
-    }
-  }, [isLoading, sourceFilter, setSourceFilter, sourcesWithJobs]);
 
   const handleSelectJob = (id: string) => {
     handleSelectJobId(id);
@@ -719,7 +748,7 @@ export const OrchestratorPage: React.FC = () => {
             {/* Main content: tabs/filters -> list/detail */}
             <section className="space-y-4 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
               <JobCommandBar
-                jobs={jobs}
+                jobs={commandBarJobs}
                 onSelectJob={handleCommandSelectJob}
                 open={isCommandBarOpen}
                 onOpenChange={setIsCommandBarOpen}

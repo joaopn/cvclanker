@@ -164,3 +164,127 @@ describe("useOrchestratorData full-view switching", () => {
     );
   });
 });
+
+describe("useOrchestratorData scoped fetching", () => {
+  it("fetches and polls only the scope's statuses", async () => {
+    const scope: JobStatus[] = ["discovered"];
+    const { result } = renderHook(
+      () => useOrchestratorData(null, false, scope),
+      { wrapper: makeWrapper() },
+    );
+
+    await waitFor(() =>
+      expect(api.getJobs).toHaveBeenCalledWith({
+        view: "list",
+        statuses: ["discovered"],
+      }),
+    );
+
+    // The revision poll compares like with like: the scoped token.
+    api.getJobsRevision.mockResolvedValue({ revision: "r2" });
+    await act(async () => {
+      await result.current.checkForJobChanges();
+    });
+    expect(api.getJobsRevision).toHaveBeenCalledWith({
+      statuses: ["discovered"],
+    });
+    // Token changed, so the scoped list refetches.
+    await waitFor(() => expect(api.getJobs).toHaveBeenCalledTimes(2));
+  });
+
+  it("refetches on scope change and serves a seen scope from cache instantly", async () => {
+    const inboxJobs = [{ id: "a", status: "discovered" }];
+    const closedJobs = [{ id: "b", status: "closed" }];
+    api.getJobs.mockImplementation(
+      async (options?: { statuses?: string[] }) => ({
+        jobs: options?.statuses?.includes("closed") ? closedJobs : inboxJobs,
+        byStatus: emptyByStatus,
+        revision: options?.statuses?.includes("closed") ? "rc" : "ri",
+      }),
+    );
+
+    const inboxScope: JobStatus[] = ["discovered"];
+    const closedScope: JobStatus[] = ["skipped", "closed"];
+    const { result, rerender } = renderHook(
+      ({ scope }: { scope: JobStatus[] }) =>
+        useOrchestratorData(null, false, scope),
+      { initialProps: { scope: inboxScope }, wrapper: makeWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.jobs).toEqual(inboxJobs));
+
+    rerender({ scope: closedScope });
+    await waitFor(() => expect(result.current.jobs).toEqual(closedJobs));
+    expect(api.getJobs).toHaveBeenLastCalledWith({
+      view: "list",
+      statuses: ["skipped", "closed"],
+    });
+
+    // Back to a seen scope: the cached rows paint before the revalidating
+    // fetch resolves, and no loading state flashes.
+    let releaseRefetch: (() => void) | undefined;
+    api.getJobs.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseRefetch = () =>
+            resolve({
+              jobs: inboxJobs,
+              byStatus: emptyByStatus,
+              revision: "ri",
+            });
+        }),
+    );
+    rerender({ scope: inboxScope });
+    expect(result.current.jobs).toEqual(inboxJobs);
+    expect(result.current.isLoading).toBe(false);
+    await act(async () => {
+      releaseRefetch?.();
+    });
+  });
+
+  it("discards a response from a scope that is no longer active", async () => {
+    const inboxJobs = [{ id: "a", status: "discovered" }];
+    const closedJobs = [{ id: "b", status: "closed" }];
+    let resolveInbox: ((value: unknown) => void) | undefined;
+    let resolveClosed: ((value: unknown) => void) | undefined;
+    api.getJobs.mockImplementation((options?: { statuses?: string[] }) => {
+      if (options?.statuses?.includes("closed")) {
+        return new Promise((resolve) => {
+          resolveClosed = resolve;
+        });
+      }
+      return new Promise((resolve) => {
+        resolveInbox = resolve;
+      });
+    });
+
+    const inboxScope: JobStatus[] = ["discovered"];
+    const closedScope: JobStatus[] = ["skipped", "closed"];
+    const { result, rerender } = renderHook(
+      ({ scope }: { scope: JobStatus[] }) =>
+        useOrchestratorData(null, false, scope),
+      { initialProps: { scope: inboxScope }, wrapper: makeWrapper() },
+    );
+
+    rerender({ scope: closedScope });
+
+    // The inbox response lands AFTER the switch: it must not reach the list.
+    await act(async () => {
+      resolveInbox?.({
+        jobs: inboxJobs,
+        byStatus: emptyByStatus,
+        revision: "ri",
+      });
+    });
+    expect(result.current.jobs).toEqual([]);
+
+    await act(async () => {
+      resolveClosed?.({
+        jobs: closedJobs,
+        byStatus: emptyByStatus,
+        revision: "rc",
+      });
+    });
+    expect(result.current.jobs).toEqual(closedJobs);
+  });
+});

@@ -7,6 +7,7 @@
 import { PageHeader } from "@client/components/layout";
 import { PipelineProgressStrip } from "@client/components/PipelineProgressStrip";
 import { ViewToggle } from "@client/components/ViewToggle";
+import type { JobStatus } from "@shared/types";
 import { Loader2, Play, Square } from "lucide-react";
 import type React from "react";
 import { Button } from "@/components/ui/button";
@@ -16,9 +17,14 @@ import { usePipelineControls } from "./orchestrator/usePipelineControls";
 import { useSelectedProfile } from "./orchestrator/useSelectedProfile";
 import { SwipeDeck } from "./swipe/SwipeDeck";
 
+// The deck triages the Inbox only — scope the shared data hook to it so this
+// surface never fetches the whole jobs table (it reads only pipeline state;
+// the deck itself queries its own cards).
+const SWIPE_SCOPE: JobStatus[] = ["discovered"];
+
 export const SwipePage: React.FC = () => {
   const { isPipelineRunning, setIsPipelineRunning, pipelineTerminalEvent } =
-    useOrchestratorData(null);
+    useOrchestratorData(null, false, SWIPE_SCOPE);
 
   const { isCancelling, runPipelineNow, handleCancelPipeline } =
     usePipelineControls({

@@ -2,6 +2,7 @@ import {
   type AppSettings,
   type JobListItem,
   type JobSource,
+  type JobStatus,
   type Profile,
   SUITABILITY_CATEGORY_RANK,
 } from "@shared/types";
@@ -217,40 +218,30 @@ export const jobMatchesQuery = (job: JobListItem, query: string) => {
   return haystack.includes(normalized);
 };
 
-export const getJobCounts = (
-  jobs: JobListItem[],
+/**
+ * Tab badge counts from the server's global by-status stats. Derived from
+ * stats rather than from the loaded rows because the list payload is scoped
+ * to the active tab — counting rows would zero every other tab's badge.
+ * Includes a `discovered` alias so legacy callers (empty-state CTAs that ask
+ * "how many Inbox rows" via the historical `counts.discovered` name) keep
+ * working without churn.
+ */
+export const getJobCountsFromStats = (
+  byStatus: Record<JobStatus, number>,
 ): Record<FilterTab, number> & { discovered: number } => {
-  // Includes a `discovered` alias so legacy callers (empty-state CTAs that
-  // ask "how many Inbox rows" via the historical `counts.discovered` name)
-  // keep working without churn.
-  const byTab: Record<FilterTab, number> & { discovered: number } = {
-    inbox: 0,
-    tailoring: 0,
-    live: 0,
-    interviewing: 0,
-    backlog: 0,
-    stale: 0,
-    closed: 0,
-    all: jobs.length,
-    discovered: 0,
+  const total = Object.values(byStatus).reduce((sum, count) => sum + count, 0);
+  return {
+    inbox: byStatus.discovered,
+    tailoring: byStatus.processing + byStatus.ready,
+    live: byStatus.applied,
+    interviewing: byStatus.in_progress,
+    backlog: byStatus.backlog,
+    stale: byStatus.stale,
+    closed: byStatus.skipped + byStatus.closed,
+    // A stray legacy `selected` row counts only here, as before.
+    all: total,
+    discovered: byStatus.discovered,
   };
-
-  for (const job of jobs) {
-    if (job.status === "discovered") {
-      byTab.inbox += 1;
-      byTab.discovered += 1;
-    }
-    if (job.status === "processing" || job.status === "ready") {
-      byTab.tailoring += 1;
-    }
-    if (job.status === "applied") byTab.live += 1;
-    if (job.status === "in_progress") byTab.interviewing += 1;
-    if (job.status === "backlog") byTab.backlog += 1;
-    if (job.status === "stale") byTab.stale += 1;
-    if (job.status === "skipped" || job.status === "closed") byTab.closed += 1;
-  }
-
-  return byTab;
 };
 
 export const getSourcesWithJobs = (jobs: JobListItem[]): JobSource[] => {
