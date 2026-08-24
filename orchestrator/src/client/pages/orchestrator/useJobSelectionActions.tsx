@@ -25,6 +25,7 @@ import {
   canRescrape,
   canSkip,
   getFailedJobIds,
+  hasLinkedinPostingId,
 } from "./jobActions";
 import { clampNumber } from "./utils";
 
@@ -426,9 +427,11 @@ export function useJobSelectionActions({
   );
 
   // Option-less variants. mark_closed needs an outcome and goes through
-  // runMarkClosedAction below.
+  // runMarkClosedAction below; fetch_live_status must go through
+  // runFetchLiveStatusAction, which sends only the LinkedIn subset — a bare
+  // dispatch would spray per-job "no LinkedIn id" failures on mixed input.
   const runJobAction = useCallback(
-    async (action: Exclude<JobAction, "mark_closed">) => {
+    async (action: Exclude<JobAction, "mark_closed" | "fetch_live_status">) => {
       const jobIds = Array.from(selectedJobIds);
       if (jobIds.length === 0) return;
       await runStreamingAction({ action, jobIds } as JobActionRequest);
@@ -450,6 +453,20 @@ export function useJobSelectionActions({
       options: { prefilter: true },
     });
   }, [selectedJobIds, runStreamingAction]);
+
+  /**
+   * Live-status checks act on the LinkedIn SUBSET of the selection: a
+   * dedicated dispatcher (same pattern as the screened rescore) filters out
+   * rows with no LinkedIn posting id, so a mixed selection works instead of
+   * spraying per-job "no LinkedIn id" failures into the toast.
+   */
+  const runFetchLiveStatusAction = useCallback(async () => {
+    const jobIds = selectedJobs
+      .filter(hasLinkedinPostingId)
+      .map((job) => job.id);
+    if (jobIds.length === 0) return;
+    await runStreamingAction({ action: "fetch_live_status", jobIds });
+  }, [selectedJobs, runStreamingAction]);
 
   const runMarkClosedAction = useCallback(
     async (outcome: JobOutcome) => {
@@ -484,6 +501,7 @@ export function useJobSelectionActions({
     clearSelection,
     runJobAction,
     runScreenedRescoreAction,
+    runFetchLiveStatusAction,
     runMarkClosedAction,
   };
 }

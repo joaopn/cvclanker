@@ -494,6 +494,7 @@ export const OrchestratorPage: React.FC = () => {
     clearSelection,
     runJobAction,
     runScreenedRescoreAction,
+    runFetchLiveStatusAction,
     runMarkClosedAction,
   } = useJobSelectionActions({
     activeJobs,
@@ -957,7 +958,7 @@ export const OrchestratorPage: React.FC = () => {
           onMarkClosed={(outcome) => void runMarkClosedAction(outcome)}
           onReopen={() => void runJobAction("reopen")}
           onDelete={() => void runJobAction("delete")}
-          onFetchLiveStatus={() => void runJobAction("fetch_live_status")}
+          onFetchLiveStatus={() => void runFetchLiveStatusAction()}
           onClear={clearSelection}
         />
 

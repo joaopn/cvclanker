@@ -219,7 +219,7 @@ describe("jobActions", () => {
       expect(canFetchLiveStatus([bare, slugged])).toBe(true);
     });
 
-    it("refuses when any selected job is not a LinkedIn posting", () => {
+    it("allows a MIXED selection — the dispatcher acts on the LinkedIn subset", () => {
       const linkedin = createJob({
         id: "1",
         jobUrl: "https://www.linkedin.com/jobs/view/4441896971",
@@ -228,8 +228,15 @@ describe("jobActions", () => {
         id: "2",
         jobUrl: "https://example.com/jobs/123456",
       });
+      expect(canFetchLiveStatus([linkedin, other])).toBe(true);
+    });
+
+    it("refuses when no selected job is a LinkedIn posting", () => {
+      const other = createJob({
+        id: "2",
+        jobUrl: "https://example.com/jobs/123456",
+      });
       expect(canFetchLiveStatus([other])).toBe(false);
-      expect(canFetchLiveStatus([linkedin, other])).toBe(false);
     });
 
     it("is false for an empty selection", () => {

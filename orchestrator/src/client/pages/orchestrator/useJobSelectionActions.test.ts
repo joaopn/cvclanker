@@ -220,6 +220,61 @@ describe("useJobSelectionActions", () => {
     expect(toast.dismiss).toHaveBeenCalled();
   });
 
+  it("sends only the LinkedIn subset of a mixed selection to fetch_live_status", async () => {
+    const activeJobs = [
+      createJob({
+        id: "job-li",
+        status: "discovered",
+        jobUrl: "https://www.linkedin.com/jobs/view/4441896971",
+      }),
+      createJob({
+        id: "job-other",
+        status: "discovered",
+        jobUrl: "https://example.com/jobs/123456",
+      }),
+    ];
+    const loadJobs = vi.fn().mockResolvedValue(undefined);
+    mockStreamJobAction({
+      action: "fetch_live_status",
+      requested: 1,
+      succeeded: 1,
+      failed: 0,
+      results: [
+        {
+          jobId: "job-li",
+          ok: true,
+          job: createJob({ id: "job-li", status: "discovered" }),
+        },
+      ],
+    });
+
+    const { result } = renderHook(() =>
+      useJobSelectionActions({
+        activeJobs,
+        activeTab: "inbox",
+        loadJobs,
+        maxBulkActionJobs: 100,
+      }),
+    );
+
+    act(() => {
+      result.current.toggleSelectJob("job-li");
+      result.current.toggleSelectJob("job-other");
+    });
+
+    await act(async () => {
+      await result.current.runFetchLiveStatusAction();
+    });
+
+    // The non-LinkedIn row is skipped, not sent to fail server-side.
+    expect(api.streamJobAction).toHaveBeenCalledWith(
+      { action: "fetch_live_status", jobIds: ["job-li"] },
+      expect.objectContaining({
+        onEvent: expect.any(Function),
+      }),
+    );
+  });
+
   it("runs rescore and reports success copy", async () => {
     const activeJobs = [
       createJob({ id: "job-1", status: "ready" }),

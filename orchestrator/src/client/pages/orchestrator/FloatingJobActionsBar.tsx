@@ -400,8 +400,9 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
               {renderTabButtons()}
               {/* Deliberately outside the per-tab switch, like Delete: a live
                   LinkedIn check is useful wherever a row can be selected —
-                  mostly for triaging what to tailor. Hidden unless every
-                  selected job carries a LinkedIn posting id. */}
+                  mostly for triaging what to tailor. Shown when at least one
+                  selected job is a LinkedIn posting; the dispatcher acts on
+                  that subset and skips the rest. */}
               {canFetchLiveStatusSelected && (
                 <Button
                   type="button"
@@ -410,7 +411,7 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
                   className={buttonClass}
                   disabled={jobActionInFlight}
                   onClick={onFetchLiveStatus}
-                  title="Fetch each job's live status from LinkedIn: whether it still accepts applications, and how many people applied. LinkedIn jobs only."
+                  title="Fetch each job's live status from LinkedIn: whether it still accepts applications, and how many people applied. Non-LinkedIn jobs in the selection are skipped."
                 >
                   Live status
                 </Button>

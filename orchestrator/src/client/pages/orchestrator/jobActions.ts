@@ -126,17 +126,23 @@ export function canDelete(jobs: JobListItem[]): boolean {
 }
 
 /**
- * Live-status checks read LinkedIn's guest endpoint, so every selected job
- * must carry a LinkedIn posting id in its URL. URL-only on purpose: the
- * server also accepts an id recovered from `sourceJobId`, which list rows
- * don't carry — this guard is a conservative subset and never offers a job
- * the server would refuse.
+ * Live-status checks read LinkedIn's guest endpoint, keyed on the posting id
+ * in the job's URL. URL-only on purpose: the server also accepts an id
+ * recovered from `sourceJobId`, which list rows don't carry — this predicate
+ * is a conservative subset and never admits a job the server would refuse.
+ */
+export function hasLinkedinPostingId(job: JobListItem): boolean {
+  return extractExternalId({ jobUrl: job.jobUrl }) !== null;
+}
+
+/**
+ * Offered when AT LEAST ONE selected job is a LinkedIn posting — mixed
+ * selections are the norm on select-all, and the dispatcher sends only the
+ * LinkedIn subset, so non-LinkedIn rows are skipped rather than failed.
+ * (`some` on an empty selection is false, covering the no-selection case.)
  */
 export function canFetchLiveStatus(jobs: JobListItem[]): boolean {
-  return (
-    jobs.length > 0 &&
-    jobs.every((job) => extractExternalId({ jobUrl: job.jobUrl }) !== null)
-  );
+  return jobs.some(hasLinkedinPostingId);
 }
 
 export function getFailedJobIds(response: JobActionResponse): Set<string> {
