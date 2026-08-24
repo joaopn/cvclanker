@@ -82,6 +82,7 @@ vi.mock("@server/services/manualJob", () => ({
   fetchJobDraft: vi.fn(),
   tryStaticFetch: vi.fn(),
   tryBrowserFetch: vi.fn(),
+  readSettledPageContent: vi.fn(),
 }));
 
 // The whole module is replaced, so every export the server imports must be

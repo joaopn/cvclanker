@@ -6,7 +6,7 @@ import { AppError, unprocessableEntity } from "@infra/errors";
 import { logger } from "@infra/logger";
 import type { ManualJobDraft } from "@shared/types";
 import { JSDOM } from "jsdom";
-import { type Browser, firefox } from "playwright";
+import { type Browser, firefox, type Page } from "playwright";
 import { LlmService } from "./llm/service";
 import type { JsonSchemaDefinition } from "./llm/types";
 import { resolveLlmModel } from "./modelSelection";
@@ -197,10 +197,46 @@ export async function tryBrowserFetch(
         .waitForLoadState("networkidle", { timeout: settleMs })
         .catch(() => {});
     }
-    return { html: await page.content(), finalUrl: page.url() };
+    return { html: await readSettledPageContent(page), finalUrl: page.url() };
   } finally {
     await context.close().catch(() => {});
   }
+}
+
+/**
+ * `page.content()` rejects with "Unable to retrieve content because the page
+ * is navigating and changing the content" when a JS navigation is replacing
+ * the document mid-read. LinkedIn's guest pages fire such redirects, and
+ * under bulk live-status checks the race is common (field report: 8 of 37
+ * browser-tier reads lost in one run). Wait the navigation out and re-read.
+ *
+ * Three attempts cover a redirect chain of two navigations; the settle wait
+ * is bounded so a page navigating in a loop cannot hang the fetch (worst
+ * case adds 2 × SETTLE_TIMEOUT_MS before the last error is rethrown). Any
+ * other content() error is rethrown untouched on first sight.
+ *
+ * Exported for tests only — production callers go through tryBrowserFetch.
+ */
+export async function readSettledPageContent(page: Page): Promise<string> {
+  const CONTENT_ATTEMPTS = 3;
+  const SETTLE_TIMEOUT_MS = 2_000;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < CONTENT_ATTEMPTS; attempt++) {
+    try {
+      return await page.content();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (!message.includes("Unable to retrieve content")) throw error;
+      lastError = error;
+      // Let the in-flight navigation finish; a timeout here is fine — the
+      // page may have settled anyway, and the next content() attempt is the
+      // real test.
+      await page
+        .waitForLoadState("load", { timeout: SETTLE_TIMEOUT_MS })
+        .catch(() => {});
+    }
+  }
+  throw lastError;
 }
 
 interface ExtractedJobFields {

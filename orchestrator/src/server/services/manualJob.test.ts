@@ -89,3 +89,65 @@ describe("inferManualJobDetails", () => {
     });
   });
 });
+
+describe("readSettledPageContent", () => {
+  const NAV_ERROR = new Error(
+    "page.content: Unable to retrieve content because the page is navigating and changing the content.",
+  );
+
+  function fakePage(contentImpl: () => Promise<string>) {
+    return {
+      content: vi.fn(contentImpl),
+      waitForLoadState: vi.fn().mockResolvedValue(undefined),
+    } as unknown as import("playwright").Page;
+  }
+
+  it("returns the content when the first read succeeds", async () => {
+    const page = fakePage(async () => "<html>ok</html>");
+    const { readSettledPageContent } = await import("./manualJob");
+
+    await expect(readSettledPageContent(page)).resolves.toBe("<html>ok</html>");
+    expect(page.waitForLoadState).not.toHaveBeenCalled();
+  });
+
+  it("waits out an in-flight navigation and re-reads", async () => {
+    let calls = 0;
+    const page = fakePage(async () => {
+      calls += 1;
+      if (calls < 3) throw NAV_ERROR;
+      return "<html>settled</html>";
+    });
+    const { readSettledPageContent } = await import("./manualJob");
+
+    await expect(readSettledPageContent(page)).resolves.toBe(
+      "<html>settled</html>",
+    );
+    expect(page.content).toHaveBeenCalledTimes(3);
+    expect(page.waitForLoadState).toHaveBeenCalledTimes(2);
+    expect(page.waitForLoadState).toHaveBeenCalledWith("load", {
+      timeout: 2_000,
+    });
+  });
+
+  it("rethrows the navigation error after three losing reads", async () => {
+    const page = fakePage(async () => {
+      throw NAV_ERROR;
+    });
+    const { readSettledPageContent } = await import("./manualJob");
+
+    await expect(readSettledPageContent(page)).rejects.toBe(NAV_ERROR);
+    expect(page.content).toHaveBeenCalledTimes(3);
+  });
+
+  it("rethrows any other error immediately, without retrying", async () => {
+    const crash = new Error("Target closed");
+    const page = fakePage(async () => {
+      throw crash;
+    });
+    const { readSettledPageContent } = await import("./manualJob");
+
+    await expect(readSettledPageContent(page)).rejects.toBe(crash);
+    expect(page.content).toHaveBeenCalledTimes(1);
+    expect(page.waitForLoadState).not.toHaveBeenCalled();
+  });
+});
