@@ -24,6 +24,7 @@ function renderBar(
       canMarkClosedSelected={false}
       canReopenSelected={false}
       canDeleteSelected
+      canFetchLiveStatusSelected={false}
       hasScorerPrefilter={false}
       jobActionInFlight={false}
       onMoveToReady={noop}
@@ -38,6 +39,7 @@ function renderBar(
       onMarkClosed={noop}
       onReopen={noop}
       onDelete={onDelete}
+      onFetchLiveStatus={noop}
       onClear={noop}
       {...overrides}
     />,
@@ -86,6 +88,36 @@ describe("FloatingJobActionsBar delete", () => {
     expect(
       screen.queryByRole("button", { name: "Delete" }),
     ).not.toBeInTheDocument();
+  });
+
+  describe("live status", () => {
+    it("offers the button on every tab when the selection qualifies", () => {
+      // Outside the per-tab switch like Delete: every tab gets it, gated only
+      // on the selection carrying LinkedIn posting ids.
+      for (const activeTab of ["inbox", "live", "closed", "all"] as const) {
+        renderBar({ activeTab, canFetchLiveStatusSelected: true });
+        expect(
+          screen.getByRole("button", { name: "Live status" }),
+        ).toBeInTheDocument();
+        cleanup();
+      }
+    });
+
+    it("hides the button when a selected job has no LinkedIn id", () => {
+      renderBar({ canFetchLiveStatusSelected: false });
+      expect(
+        screen.queryByRole("button", { name: "Live status" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("fires the handler on click", () => {
+      const onFetchLiveStatus = vi.fn();
+      renderBar({ canFetchLiveStatusSelected: true, onFetchLiveStatus });
+
+      fireEvent.click(screen.getByRole("button", { name: "Live status" }));
+
+      expect(onFetchLiveStatus).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("screened rescore", () => {

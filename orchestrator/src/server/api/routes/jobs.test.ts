@@ -539,6 +539,58 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     expect(body.data.results[0].error.code).toBe("INVALID_REQUEST");
   });
 
+  it("fetch_live_status rejects a job with no LinkedIn posting id before any fetch", async () => {
+    // seedJob's default URL is example.com — no LinkedIn id, so the arm
+    // short-circuits on the id guard and never touches the fetch tiers.
+    await seedJob({ id: "live-guard", status: "discovered" });
+
+    const { body } = await postAction({
+      action: "fetch_live_status",
+      jobIds: ["live-guard"],
+    });
+
+    expect(body.data.succeeded).toBe(0);
+    expect(body.data.failed).toBe(1);
+    expect(body.data.results[0].error.code).toBe("INVALID_REQUEST");
+  });
+
+  it("fetch_live_status stores the parsed live status off fixture HTML", async () => {
+    // Hermetic happy path: test-utils factory-mocks the whole manualJob
+    // module, so services/live-status resolves its fetch tiers against
+    // vi.fn()s — no network, no browser.
+    await seedJob({
+      id: "live-ok",
+      status: "discovered",
+      jobUrl: "https://www.linkedin.com/jobs/view/4441896971",
+    });
+    const manualJob = await import("@server/services/manualJob");
+    vi.mocked(manualJob.tryStaticFetch).mockResolvedValue({
+      html: `<html><body>
+        <h2 class="top-card-layout__title topcard__title">AI Developer</h2>
+        <figure class="closed-job closed-job__flavor topcard__flavor-row">
+          <figcaption class="closed-job__flavor--closed">No longer accepting applications</figcaption>
+        </figure>
+        <figcaption class="num-applicants__caption">Be among the first 25 applicants</figcaption>
+      </body></html>`,
+      finalUrl:
+        "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/4441896971",
+    });
+
+    const { body } = await postAction({
+      action: "fetch_live_status",
+      jobIds: ["live-ok"],
+    });
+
+    expect(body.data.succeeded).toBe(1);
+    const job = body.data.results[0].job;
+    expect(job.liveClosed).toBe(true);
+    // The caption on a closed posting is LinkedIn's reset value — stored null.
+    expect(job.liveApplicants).toBeNull();
+    expect(job.liveStatusCheckedAt).toBeTruthy();
+    // The check must not move the job or touch its score.
+    expect(job.status).toBe("discovered");
+  });
+
   it("clear_score drops the stored suitability without moving the job", async () => {
     const { db, schema } = await import("@server/db/index");
     await seedJob({ id: "job-cs1", status: "discovered" });

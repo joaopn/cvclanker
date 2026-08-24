@@ -487,6 +487,7 @@ export const OrchestratorPage: React.FC = () => {
     canMarkClosedSelected,
     canReopenSelected,
     canDeleteSelected,
+    canFetchLiveStatusSelected,
     jobActionInFlight,
     toggleSelectJob,
     toggleSelectAll,
@@ -941,6 +942,7 @@ export const OrchestratorPage: React.FC = () => {
           canMarkClosedSelected={canMarkClosedSelected}
           canReopenSelected={canReopenSelected}
           canDeleteSelected={canDeleteSelected}
+          canFetchLiveStatusSelected={canFetchLiveStatusSelected}
           hasScorerPrefilter={hasScorerPrefilter}
           jobActionInFlight={jobActionInFlight !== null}
           onMoveToReady={() => void runJobAction("move_to_ready")}
@@ -955,6 +957,7 @@ export const OrchestratorPage: React.FC = () => {
           onMarkClosed={(outcome) => void runMarkClosedAction(outcome)}
           onReopen={() => void runJobAction("reopen")}
           onDelete={() => void runJobAction("delete")}
+          onFetchLiveStatus={() => void runJobAction("fetch_live_status")}
           onClear={clearSelection}
         />
 

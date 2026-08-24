@@ -96,7 +96,9 @@ function rewriteUrlForFetch(input: string): string {
   return input;
 }
 
-async function tryStaticFetch(
+// Exported: services/live-status.ts reuses the same fetch tiers (static
+// first, Camoufox on failure) for the LinkedIn live-status check.
+export async function tryStaticFetch(
   url: string,
   signal: AbortSignal,
 ): Promise<{ html: string; finalUrl: string } | null> {
@@ -132,7 +134,7 @@ async function tryStaticFetch(
   return { html, finalUrl: response.url };
 }
 
-async function tryBrowserFetch(
+export async function tryBrowserFetch(
   url: string,
   timeoutMs: number,
   settleMs: number,

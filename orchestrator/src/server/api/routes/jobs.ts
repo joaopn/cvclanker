@@ -29,6 +29,7 @@ import {
 import { renderCvPdf } from "@server/services/cv/render-cv";
 import { getActiveCvDocument } from "@server/services/cv-active";
 import { isJobScoringEnabled } from "@server/services/job-scoring-settings";
+import { fetchLinkedinLiveStatus } from "@server/services/live-status";
 import { fetchJobDraft } from "@server/services/manualJob";
 import {
   JobNotScoreableError,
@@ -36,6 +37,7 @@ import {
 } from "@server/services/scorer";
 import { getEffectiveSettings } from "@server/services/settings";
 import { asyncPool } from "@server/utils/async-pool";
+import { extractExternalId } from "@shared/duplicate-identity";
 import { settingsRegistry } from "@shared/settings-registry";
 import {
   APPLICATION_OUTCOMES,
@@ -185,6 +187,10 @@ const jobActionRequestSchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("reopen"),
+    jobIds: z.array(z.string().min(1)).min(1),
+  }),
+  z.object({
+    action: z.literal("fetch_live_status"),
     jobIds: z.array(z.string().min(1)).min(1),
   }),
 ]);
@@ -812,6 +818,44 @@ async function executeJobActionForJob(
       return { jobId, ok: true, job: updated };
     }
 
+    if (action === "fetch_live_status") {
+      // Live-status check: reads LinkedIn's public guest endpoint and writes
+      // the three live_* columns; touches no status/score/tailoring field, so
+      // no status guard — safe from any status, `processing` included. The id
+      // guard runs BEFORE any fetch (keeps the hermetic route tests network-
+      // free, and a non-LinkedIn row in a mixed selection fails fast).
+      if (
+        !extractExternalId({
+          jobUrl: job.jobUrl,
+          sourceJobId: job.sourceJobId,
+        })
+      ) {
+        throw badRequest("Job has no LinkedIn posting id to check", {
+          jobId,
+          jobUrl: job.jobUrl,
+        });
+      }
+
+      const status = await fetchLinkedinLiveStatus(job.jobUrl, job.sourceJobId);
+      const updated = await jobsRepo.updateJob(jobId, {
+        liveClosed: status.closed,
+        liveApplicants: status.applicants,
+        liveStatusCheckedAt: new Date().toISOString(),
+      });
+      if (!updated) {
+        throw new AppError({
+          status: 404,
+          code: "NOT_FOUND",
+          message: "Job not found",
+        });
+      }
+
+      return { jobId, ok: true, job: updated };
+    }
+
+    // NOTE: everything past this point is the `rescore` arm — it is a bare
+    // fallthrough, not an `action === "rescore"` guard, so a new action arm
+    // MUST be inserted above or it silently rescores.
     if (job.status === "processing") {
       throw badRequest(`Job is not rescorable from status "${job.status}"`, {
         jobId,

@@ -260,6 +260,15 @@ export interface Job {
   repostedAt: string | null;
   repostCount: number;
 
+  // Live LinkedIn posting status, written only by the fetch_live_status
+  // action. `liveClosed` null = never checked. `liveApplicants` is the
+  // board's caption ("45 applicants", "Be among the first 25 applicants");
+  // null when never checked AND when the posting is closed — LinkedIn resets
+  // the caption on closed postings, so the value would be fabricated.
+  liveClosed: boolean | null;
+  liveApplicants: string | null;
+  liveStatusCheckedAt: string | null;
+
   // Timestamps
   discoveredAt: string;
   processedAt: string | null;
@@ -295,6 +304,9 @@ export type JobListItem = Pick<
   | "salaryCurrency"
   | "repostedAt"
   | "repostCount"
+  | "liveClosed"
+  | "liveApplicants"
+  | "liveStatusCheckedAt"
   | "discoveredAt"
   | "readyAt"
   | "appliedAt"
@@ -445,6 +457,9 @@ export interface UpdateJobInput {
   coverLetterFieldOverrides?: CvFieldOverrides;
   coverLetterPdfPath?: string | null;
   interviewPrep?: string;
+  liveClosed?: boolean | null;
+  liveApplicants?: string | null;
+  liveStatusCheckedAt?: string | null;
   readyAt?: string;
   appliedAt?: string;
 }

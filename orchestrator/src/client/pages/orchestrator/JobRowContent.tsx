@@ -27,6 +27,16 @@ function parseDate(value: string | null | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function formatCheckedAge(
+  checkedAt: string | null,
+  now: number,
+): string | null {
+  const checked = parseDate(checkedAt);
+  if (checked == null) return null;
+  const days = Math.max(0, Math.floor((now - checked) / DAY_MS));
+  return days === 0 ? "checked today" : `checked ${days}d ago`;
+}
+
 function formatAge(
   job: JobListItem,
   now: number,
@@ -132,6 +142,27 @@ export const JobRowContent = ({
             {job.salary?.trim() && (
               <span className="truncate">{job.salary}</span>
             )}
+          </div>
+        )}
+        {job.liveStatusCheckedAt && (
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+            {job.liveClosed ? (
+              <span className="rounded border border-[color:color-mix(in_oklab,var(--badge-base)_70%,var(--badge-bad))] bg-[color-mix(in_oklab,var(--badge-base)_90%,var(--badge-bad))] px-1.5 py-px text-[10px] font-medium text-rose-200">
+                No longer accepting applications
+              </span>
+            ) : (
+              // A closed posting's applicant caption is reset by LinkedIn, so
+              // the server stores null for it — this branch is open jobs only.
+              <span className="truncate">
+                {job.liveApplicants ?? "Accepting applications"}
+              </span>
+            )}
+            <span
+              className="text-muted-foreground/70"
+              title={job.liveStatusCheckedAt}
+            >
+              {formatCheckedAge(job.liveStatusCheckedAt, Date.now())}
+            </span>
           </div>
         )}
       </div>

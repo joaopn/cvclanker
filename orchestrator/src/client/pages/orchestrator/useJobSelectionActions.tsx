@@ -14,6 +14,7 @@ import { JobActionProgressToast } from "./JobActionProgressToast";
 import {
   canClearScore,
   canDelete,
+  canFetchLiveStatus,
   canMarkClosed,
   canMoveToBacklog,
   canMoveToInbox,
@@ -39,6 +40,7 @@ const jobActionLabel: Record<JobAction, string> = {
   mark_closed: "Closing applications...",
   mark_duplicated: "Marking duplicates...",
   reopen: "Reopening...",
+  fetch_live_status: "Checking LinkedIn status...",
   delete: "Deleting jobs...",
 };
 
@@ -54,6 +56,7 @@ const jobActionSuccessLabel: Record<JobAction, string> = {
   mark_closed: "applications closed",
   mark_duplicated: "duplicates closed",
   reopen: "jobs reopened",
+  fetch_live_status: "live statuses checked",
   delete: "jobs deleted",
 };
 
@@ -149,6 +152,10 @@ export function useJobSelectionActions({
   );
   const canDeleteSelected = useMemo(
     () => canDelete(selectedJobs),
+    [selectedJobs],
+  );
+  const canFetchLiveStatusSelected = useMemo(
+    () => canFetchLiveStatus(selectedJobs),
     [selectedJobs],
   );
 
@@ -470,6 +477,7 @@ export function useJobSelectionActions({
     canMarkClosedSelected,
     canReopenSelected,
     canDeleteSelected,
+    canFetchLiveStatusSelected,
     jobActionInFlight,
     toggleSelectJob,
     toggleSelectAll,

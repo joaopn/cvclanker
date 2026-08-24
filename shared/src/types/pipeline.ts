@@ -315,6 +315,10 @@ export type JobAction =
   | "mark_closed"
   | "mark_duplicated"
   | "reopen"
+  // Refreshes the row's live LinkedIn status (still accepting applications +
+  // applicant-count caption) from the public guest endpoint. LinkedIn rows
+  // only; touches no status/score/tailoring field.
+  | "fetch_live_status"
   // Irreversible: removes the row and everything hanging off it. Deliberately
   // absent from the client's `undoActionLabel` — undo restores {status,
   // outcome, closedAt} via PATCH, which cannot bring a deleted row back.
@@ -331,6 +335,7 @@ export type JobActionRequest =
         | "move_to_inbox"
         | "mark_duplicated"
         | "reopen"
+        | "fetch_live_status"
         | "delete";
       jobIds: string[];
     }

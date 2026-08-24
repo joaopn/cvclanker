@@ -1,3 +1,4 @@
+import { extractExternalId } from "@shared/duplicate-identity";
 import type { JobActionResponse, JobListItem } from "@shared/types";
 
 const SKIPPABLE_STATUSES = new Set([
@@ -121,6 +122,20 @@ export function canDelete(jobs: JobListItem[]): boolean {
   return (
     jobs.length > 0 &&
     jobs.every((job) => job.status !== "processing" || isFailedProcessing(job))
+  );
+}
+
+/**
+ * Live-status checks read LinkedIn's guest endpoint, so every selected job
+ * must carry a LinkedIn posting id in its URL. URL-only on purpose: the
+ * server also accepts an id recovered from `sourceJobId`, which list rows
+ * don't carry — this guard is a conservative subset and never offers a job
+ * the server would refuse.
+ */
+export function canFetchLiveStatus(jobs: JobListItem[]): boolean {
+  return (
+    jobs.length > 0 &&
+    jobs.every((job) => extractExternalId({ jobUrl: job.jobUrl }) !== null)
   );
 }
 

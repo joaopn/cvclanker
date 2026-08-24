@@ -30,6 +30,7 @@ interface FloatingJobActionsBarProps {
   canMarkClosedSelected: boolean;
   canReopenSelected: boolean;
   canDeleteSelected: boolean;
+  canFetchLiveStatusSelected: boolean;
   /** A pre-filter model is configured, so the screened variant is on offer. */
   hasScorerPrefilter: boolean;
   jobActionInFlight: boolean;
@@ -45,6 +46,7 @@ interface FloatingJobActionsBarProps {
   onMarkClosed: (outcome: JobOutcome) => void;
   onReopen: () => void;
   onDelete: () => void;
+  onFetchLiveStatus: () => void;
   onClear: () => void;
 }
 
@@ -64,6 +66,7 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
   canMarkClosedSelected,
   canReopenSelected,
   canDeleteSelected,
+  canFetchLiveStatusSelected,
   hasScorerPrefilter,
   jobActionInFlight,
   onMoveToReady,
@@ -78,6 +81,7 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
   onMarkClosed,
   onReopen,
   onDelete,
+  onFetchLiveStatus,
   onClear,
 }) => {
   const buttonClass = "w-full sm:w-auto";
@@ -394,6 +398,23 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
             </div>
             <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
               {renderTabButtons()}
+              {/* Deliberately outside the per-tab switch, like Delete: a live
+                  LinkedIn check is useful wherever a row can be selected —
+                  mostly for triaging what to tailor. Hidden unless every
+                  selected job carries a LinkedIn posting id. */}
+              {canFetchLiveStatusSelected && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className={buttonClass}
+                  disabled={jobActionInFlight}
+                  onClick={onFetchLiveStatus}
+                  title="Fetch each job's live status from LinkedIn: whether it still accepts applications, and how many people applied. LinkedIn jobs only."
+                >
+                  Live status
+                </Button>
+              )}
               {/* Deliberately outside the per-tab switch: deleting is valid
                   wherever a row can be selected, and every tab should offer the
                   same escape hatch. */}

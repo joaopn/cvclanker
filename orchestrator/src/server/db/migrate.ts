@@ -320,6 +320,15 @@ const migrations: string[] = [
   // duplicate-column-name skip.
   `ALTER TABLE jobs ADD COLUMN profile_id TEXT`,
 
+  // Live LinkedIn posting status (fetch_live_status action): whether the
+  // posting stopped accepting applications, the applicant-count caption, and
+  // when the check ran. Same defensive-ALTER-before-rebuild pattern — the
+  // rebuild's INSERT SELECT references all three, so legacy DBs need the
+  // columns first. Idempotent via the duplicate-column-name skip.
+  `ALTER TABLE jobs ADD COLUMN live_closed INTEGER`,
+  `ALTER TABLE jobs ADD COLUMN live_applicants TEXT`,
+  `ALTER TABLE jobs ADD COLUMN live_status_checked_at TEXT`,
+
   // Canonical jobs-table rebuild. Originally added in 5d to drop unused
   // columns (tailored_summary/headline/skills, tracer_links_enabled,
   // sponsor_match_*); 5g extended it with the new status + outcome enums and
@@ -392,6 +401,9 @@ const migrations: string[] = [
     interview_prep TEXT NOT NULL DEFAULT '',
     reposted_at TEXT,
     repost_count INTEGER NOT NULL DEFAULT 0,
+    live_closed INTEGER,
+    live_applicants TEXT,
+    live_status_checked_at TEXT,
     discovered_at TEXT NOT NULL DEFAULT (datetime('now')),
     processed_at TEXT,
     ready_at TEXT,
@@ -417,6 +429,7 @@ const migrations: string[] = [
     cover_letter_document_id, cover_letter_field_overrides, cover_letter_pdf_path,
     interview_prep,
     reposted_at, repost_count,
+    live_closed, live_applicants, live_status_checked_at,
     discovered_at, processed_at, ready_at,
     applied_at, created_at, updated_at
   )
@@ -449,6 +462,7 @@ const migrations: string[] = [
     COALESCE(interview_prep, '') AS interview_prep,
     COALESCE(reposted_at, NULL) AS reposted_at,
     COALESCE(repost_count, 0) AS repost_count,
+    live_closed, live_applicants, live_status_checked_at,
     discovered_at, processed_at,
     ready_at, applied_at, created_at, updated_at
   FROM jobs`,

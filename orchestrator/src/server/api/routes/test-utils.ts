@@ -71,9 +71,17 @@ vi.mock("@server/pipeline/index", () => {
   };
 });
 
+// Same whole-module-replaced rule as the scorer mock below: every export the
+// server imports must be listed. `fetchJobDraft` feeds the rescrape arm;
+// `tryStaticFetch`/`tryBrowserFetch` feed services/live-status — route tests
+// resolve that service's imports against this factory, so a live-status
+// happy path is driven by mocking `tryStaticFetch` to return fixture HTML.
 vi.mock("@server/services/manualJob", () => ({
   inferManualJobDetails: vi.fn(),
   fetchAndExtractJobContent: vi.fn(),
+  fetchJobDraft: vi.fn(),
+  tryStaticFetch: vi.fn(),
+  tryBrowserFetch: vi.fn(),
 }));
 
 // The whole module is replaced, so every export the server imports must be
