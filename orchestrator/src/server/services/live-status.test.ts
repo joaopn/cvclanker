@@ -31,7 +31,12 @@ import {
 // Apply CTA on open jobs) with a CONDENSED one (neither, even when open).
 const TITLE_MARKUP = `<h2 class="top-card-layout__title font-sans text-lg topcard__title">AI Developer</h2>`;
 const FULL_RENDER_MARKER = `<div class="contextual-sign-in-modal"></div>`;
-const APPLY_CTA = `<button class="sign-up-modal__outlet top-card-layout__cta btn-md btn-primary" data-modal="job-details-topcard-apply-modal">Apply</button>`;
+// OFFSITE apply: a sign-in-modal outlet button, full render only. Wrapped in
+// the CTA container because the parse's Apply probes are scoped to it.
+const APPLY_CTA = `<div class="top-card-layout__cta-container flex flex-wrap"><button class="sign-up-modal__outlet top-card-layout__cta btn-md btn-primary" data-modal="job-details-topcard-apply-modal">Apply</button></div>`;
+// ONSITE (Easy Apply): a plain apply-button with NO data-modal (job
+// 4458701238), present on BOTH renders.
+const ONSITE_APPLY_CTA = `<div class="top-card-layout__cta-container flex flex-wrap"><button class="apply-button apply-button--default top-card-layout__cta btn-md btn-primary" data-reference-id="idN64ZZ4Tp==">Apply</button></div>`;
 
 const OPEN_FIGURE_VARIANT = `<html><body>${TITLE_MARKUP}${FULL_RENDER_MARKER}${APPLY_CTA}
   <figure class="num-applicants__figure topcard__flavor--metadata topcard__flavor--bullet">
@@ -94,6 +99,41 @@ describe("parseLinkedinLiveStatus", () => {
     expect(parseLinkedinLiveStatus(OPEN_SPAN_VARIANT)).toEqual({
       closed: false,
       applicants: "45 applicants",
+    });
+  });
+
+  it("verdicts an ONSITE (Easy Apply) job open on the FULL render", () => {
+    const html = `<html><body>${TITLE_MARKUP}${FULL_RENDER_MARKER}${ONSITE_APPLY_CTA}
+      <figcaption class="num-applicants__caption">20 applicants</figcaption>
+    </body></html>`;
+    expect(parseLinkedinLiveStatus(html)).toEqual({
+      closed: false,
+      applicants: "20 applicants",
+    });
+  });
+
+  it("verdicts an ONSITE job open even on the CONDENSED render", () => {
+    // Unlike offsite, the onsite apply-button survives the condensed render
+    // (measured on job 4458701238) — so the verdict needs no retry.
+    const html = `<html><body>${TITLE_MARKUP}${ONSITE_APPLY_CTA}
+      <figcaption class="num-applicants__caption">20 applicants</figcaption>
+    </body></html>`;
+    expect(parseLinkedinLiveStatus(html)).toEqual({
+      closed: false,
+      applicants: "20 applicants",
+    });
+  });
+
+  it("ignores an apply-button outside the CTA container", () => {
+    // The Apply probes are container-scoped so employer description markup
+    // can never flip a bannerless closed page to open.
+    const html = `<html><body>${TITLE_MARKUP}${FULL_RENDER_MARKER}
+      <div class="top-card-layout__cta-container"><!----><!----></div>
+      <div class="description"><button class="apply-button">apply on our site</button></div>
+    </body></html>`;
+    expect(parseLinkedinLiveStatus(html)).toEqual({
+      closed: true,
+      applicants: null,
     });
   });
 

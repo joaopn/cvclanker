@@ -34,19 +34,25 @@ export interface LinkedinLiveStatus {
  * posting must NOT produce an "accepting applications" verdict, or a markup
  * change on LinkedIn's side would silently record closed jobs as open.
  *
- * Two measured facts drive the shape (2026-08-24, 16 live pages):
+ * Measured facts driving the shape (2026-08-24/25, 20 live pages):
  * - The endpoint ALTERNATES two renders per request: a FULL page carrying
- *   the contextual sign-in modals, and a CONDENSED one without them. Only
- *   the full render can prove open-ness — on the condensed one an open job
- *   and a bannerless closed job are identical (both an empty CTA container).
+ *   the contextual sign-in modals, and a CONDENSED one without them.
+ * - An open job's Apply CTA comes in TWO variants, both inside the topcard
+ *   CTA container: OFFSITE apply renders a sign-in-modal outlet button
+ *   (`data-modal="job-details-topcard-apply-modal"`), FULL render only;
+ *   ONSITE (Easy Apply — e.g. job 4458701238) renders `button.apply-button`
+ *   with no data-modal at all, and keeps it on BOTH renders, so an onsite
+ *   job is decidable even off the condensed page.
  * - Closed jobs come in two kinds: with the explicit "No longer accepting
  *   applications" figure (kind A), and WITHOUT it (kind B — e.g. job
- *   4442812721), where the only tell is the full render omitting the Apply
- *   CTA. Every open full render carries the CTA (13/13 measured, offsite
- *   apply included); both closed kinds lack it.
+ *   4442812721), where the tell is a full render whose CTA container is
+ *   EMPTY. Neither closed kind carries either Apply variant on any render.
+ * - On the condensed render an OFFSITE open job and a bannerless closed job
+ *   are identical (both an empty CTA container) — no verdict there.
  *
  * Detection is by class/attribute, never by text, so localized pages parse
- * the same.
+ * the same. Apply probes are scoped to the CTA container so employer-authored
+ * description markup can never flip a verdict.
  */
 export function parseLinkedinLiveStatus(
   html: string,
@@ -60,25 +66,27 @@ export function parseLinkedinLiveStatus(
     return { closed: true, applicants: null };
   }
 
-  // Condensed render: no verdict possible — never guess "open" off it.
+  // Either Apply variant proves the job is still taking applications.
+  const hasApplyCta =
+    document.querySelector(
+      '.top-card-layout__cta-container .apply-button, .top-card-layout__cta-container [data-modal="job-details-topcard-apply-modal"]',
+    ) !== null;
+  if (hasApplyCta) {
+    const caption = document
+      .querySelector(".num-applicants__caption")
+      ?.textContent?.replace(/\s+/g, " ")
+      .trim();
+    return { closed: false, applicants: caption ?? null };
+  }
+
+  // No banner, no Apply CTA: on the FULL render that means closed (kind B);
+  // on the condensed render it is undecidable — an offsite open job looks
+  // exactly like this there. Never guess "closed" off a condensed page.
   const isFullRender =
     document.querySelector(".contextual-sign-in-modal") !== null;
   if (!isFullRender) return null;
 
-  // Kind B: a full render with no Apply CTA is a job no longer taking
-  // applications, banner or not.
-  const hasApplyCta =
-    document.querySelector('[data-modal="job-details-topcard-apply-modal"]') !==
-    null;
-  if (!hasApplyCta) {
-    return { closed: true, applicants: null };
-  }
-
-  const caption = document
-    .querySelector(".num-applicants__caption")
-    ?.textContent?.replace(/\s+/g, " ")
-    .trim();
-  return { closed: false, applicants: caption ?? null };
+  return { closed: true, applicants: null };
 }
 
 /**
