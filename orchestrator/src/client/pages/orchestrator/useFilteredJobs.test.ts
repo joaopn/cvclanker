@@ -210,3 +210,77 @@ describe("useFilteredJobs untailored toggle (Tailoring-only within-tab filter)",
     expect(ids(runTab("all", true))).toEqual(ids(runTab("all", false)));
   });
 });
+
+describe("useFilteredJobs sorter", () => {
+  // Under the popover's score sort `high` leads; under posted / found `old`
+  // (posted latest) leads; under fewer applicants `few` leads and the
+  // non-LinkedIn `high` row drops to the floor.
+  const rows: JobListItem[] = [
+    createJob({
+      id: "high",
+      status: "discovered",
+      source: "indeed",
+      jobUrl: "https://www.indeed.com/viewjob?jk=high",
+      suitabilityCategory: "great_fit",
+      datePosted: "2026-08-10T00:00:00.000Z",
+      employer: "A",
+      title: "T",
+    }),
+    createJob({
+      id: "old",
+      status: "discovered",
+      jobUrl: "https://www.linkedin.com/jobs/view/4000000001",
+      suitabilityCategory: "bad_fit",
+      datePosted: "2026-08-20T00:00:00.000Z",
+      liveClosed: false,
+      liveApplicants: "40 applicants",
+      liveStatusCheckedAt: "2026-08-24T00:00:00.000Z",
+      employer: "A",
+      title: "T",
+    }),
+    createJob({
+      id: "few",
+      status: "discovered",
+      jobUrl: "https://www.linkedin.com/jobs/view/4000000002",
+      suitabilityCategory: "good_fit",
+      datePosted: "2026-08-01T00:00:00.000Z",
+      liveClosed: false,
+      liveApplicants: "2 applicants",
+      liveStatusCheckedAt: "2026-08-24T00:00:00.000Z",
+      employer: "A",
+      title: "T",
+    }),
+  ];
+  const runSorter = (sorter: "none" | "posted" | "applicants") =>
+    renderHook(() =>
+      useFilteredJobs(
+        rows,
+        "inbox",
+        DEFAULT_DATE_FILTER,
+        "all",
+        { mode: "at_least", min: null, max: null },
+        { key: "score", direction: "desc" },
+        null,
+        "all",
+        [],
+        false,
+        [],
+        [],
+        [],
+        [],
+        sorter,
+      ),
+    ).result.current.map((job) => job.id);
+
+  it("leaves the popover sort in charge while idle", () => {
+    expect(runSorter("none")).toEqual(["high", "few", "old"]);
+  });
+
+  it("overrides the popover sort with posted / found", () => {
+    expect(runSorter("posted")).toEqual(["old", "high", "few"]);
+  });
+
+  it("overrides the popover sort with fewer applicants, non-LinkedIn last", () => {
+    expect(runSorter("applicants")).toEqual(["few", "old", "high"]);
+  });
+});

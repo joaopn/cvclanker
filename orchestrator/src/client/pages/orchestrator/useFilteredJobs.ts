@@ -7,9 +7,10 @@ import type {
   FitFilterValue,
   JobDateFilter,
   JobSort,
+  JobSorter,
   SalaryFilter,
 } from "./constants";
-import { UNATTRIBUTED_PROFILE_ID } from "./constants";
+import { JOB_SORTER_SORTS, UNATTRIBUTED_PROFILE_ID } from "./constants";
 import { type ActiveFacet, buildFacetPredicates } from "./facets/registry";
 import {
   compareJobs,
@@ -49,6 +50,10 @@ export const useFilteredJobs = (
   // profile matches no badge, so it counts as unattributed — otherwise those
   // rows are reachable from no profile selection at all.
   knownProfileIds: string[] = [],
+  // The filter bar's sorter icon. `none` = idle, and `sort` (the Filters
+  // popover) governs; anything else pins the whole JobSort. The caller passes
+  // `none` on tabs that don't render the bar, so it can't act unseen.
+  sorter: JobSorter = "none",
 ) =>
   useMemo(() => {
     let filtered = [...jobs];
@@ -205,10 +210,11 @@ export const useFilteredJobs = (
       });
     }
 
+    const baseSort = sorter === "none" ? sort : JOB_SORTER_SORTS[sorter];
     const effectiveSort =
-      sort.key === "date"
-        ? { ...sort, datePriority: getDatePriority(dateFilter.dimensions) }
-        : sort;
+      baseSort.key === "date"
+        ? { ...baseSort, datePriority: getDatePriority(dateFilter.dimensions) }
+        : baseSort;
 
     return [...filtered].sort((a, b) => compareJobs(a, b, effectiveSort));
   }, [
@@ -226,6 +232,7 @@ export const useFilteredJobs = (
     profileFilter,
     titleFilter,
     knownProfileIds,
+    sorter,
   ]);
 
 const matchesDateDimension = (

@@ -5,7 +5,13 @@ import { Filter, Search } from "lucide-react";
 import type React from "react";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -32,14 +38,17 @@ import type {
   FilterTab,
   JobDateFilter,
   JobSort,
+  JobSorter,
   SalaryFilter,
   SalaryFilterMode,
   SponsorFilter,
 } from "./constants";
 import {
+  DEFAULT_JOB_SORTER,
   dateFilterDimensionLabels,
   dateFilterDimensionOrder,
   defaultSortDirection,
+  JOB_SORTER_LABELS,
   orderedFilterSources,
   tabs,
 } from "./constants";
@@ -62,6 +71,9 @@ interface OrchestratorFiltersProps {
   sourcesWithJobs: JobSource[];
   sort: JobSort;
   onSortChange: (sort: JobSort) => void;
+  // The filter bar's sorter icon. While it is set, this popover's sort is
+  // overridden — say so rather than let its controls look broken.
+  sorter?: JobSorter;
   onResetFilters: () => void;
   filteredCount: number;
   isFiltersOpen?: boolean;
@@ -94,6 +106,7 @@ const sortFieldOrder: JobSort["key"][] = [
   "discoveredAt",
   "posted",
   "salary",
+  "applicants",
   "title",
   "employer",
 ];
@@ -106,6 +119,7 @@ const sortFieldLabels: Record<JobSort["key"], string> = {
   salary: "Salary",
   title: "Title",
   employer: "Company",
+  applicants: "Applicants",
 };
 
 const datePresetOptions: Array<{
@@ -153,6 +167,12 @@ const getDirectionOptions = (
       { value: "asc", label: "Smallest first" },
     ];
   }
+  if (key === "applicants") {
+    return [
+      { value: "asc", label: "Fewest first" },
+      { value: "desc", label: "Most first" },
+    ];
+  }
   return [
     { value: "asc", label: "A to Z" },
     { value: "desc", label: "Z to A" },
@@ -195,6 +215,7 @@ export const OrchestratorFilters: React.FC<OrchestratorFiltersProps> = ({
   sourcesWithJobs,
   sort,
   onSortChange,
+  sorter = DEFAULT_JOB_SORTER,
   onResetFilters,
   filteredCount,
   isFiltersOpen: isFiltersOpenProp,
@@ -655,6 +676,13 @@ export const OrchestratorFilters: React.FC<OrchestratorFiltersProps> = ({
                   <Card>
                     <CardHeader className="pb-3">
                       <CardTitle>Sort</CardTitle>
+                      {sorter !== DEFAULT_JOB_SORTER && (
+                        <CardDescription className="text-xs">
+                          Overridden by the list sorter (
+                          {JOB_SORTER_LABELS[sorter]}) — set it to None to use
+                          this.
+                        </CardDescription>
+                      )}
                     </CardHeader>
                     <CardContent className="space-y-3">
                       <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:flex-wrap sm:items-center">

@@ -28,6 +28,7 @@ import {
   type FilterTab,
   filterChipTypesForTab,
   isFilterFamilyActive,
+  type JobSorter,
   orderedFilterSources,
   tabs,
   UNATTRIBUTED_PROFILE_ID,
@@ -115,6 +116,8 @@ export const OrchestratorPage: React.FC = () => {
     setDateFilter,
     sort,
     setSort,
+    sorter,
+    setSorter,
     maxAgeDays,
     setMaxAgeDays,
     closedSubFilter,
@@ -418,6 +421,10 @@ export const OrchestratorPage: React.FC = () => {
     profileFilterForTab.length > 0 ||
     titleFilterForTab.length > 0;
 
+  // The sorter icon lives on the filter bar, so it acts only where the bar
+  // renders — same co-gating as the profile / job-title families.
+  const sorterForTab: JobSorter = filterBarEnabledForTab ? sorter : "none";
+
   const activeJobs = useFilteredJobs(
     jobs,
     activeTab,
@@ -433,6 +440,7 @@ export const OrchestratorPage: React.FC = () => {
     profileFilterForTab,
     titleFilterForTab,
     knownProfileIds,
+    sorterForTab,
   );
   const setActiveTab = useCallback(
     (newTab: FilterTab) => {
@@ -776,6 +784,7 @@ export const OrchestratorPage: React.FC = () => {
                 sourcesWithJobs={sourcesWithJobs}
                 sort={sort}
                 onSortChange={setSort}
+                sorter={sorterForTab}
                 onResetFilters={handleResetFilters}
                 filteredCount={activeJobs.length}
               />
@@ -853,6 +862,8 @@ export const OrchestratorPage: React.FC = () => {
                           titles={profileSearchTitles}
                           titleFilter={filterChips.titleFilter}
                           onToggleTitle={filterChips.toggleTitleFilter}
+                          sorter={sorter}
+                          onSorterChange={setSorter}
                           facetBar={
                             facetsEnabledForTab ? (
                               <FacetBar

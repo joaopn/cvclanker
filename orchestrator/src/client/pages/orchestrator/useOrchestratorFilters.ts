@@ -8,15 +8,18 @@ import type {
   FitFilterValue,
   JobDateFilter,
   JobSort,
+  JobSorter,
   SalaryFilter,
   SalaryFilterMode,
   SponsorFilter,
 } from "./constants";
 import {
   ALLOWED_CLOSED_SUB_FILTERS,
+  DEFAULT_JOB_SORTER,
   DEFAULT_SORT,
   dateFilterDimensionOrder,
   FIT_FILTER_VALUES,
+  JOB_SORTERS,
 } from "./constants";
 
 const allowedSponsorFilters: SponsorFilter[] = [
@@ -39,6 +42,7 @@ const allowedSortKeys: JobSort["key"][] = [
   "salary",
   "title",
   "employer",
+  "applicants",
 ];
 const allowedSortDirections: JobSort["direction"][] = ["asc", "desc"];
 const allowedDateFilterPresets: DateFilterPreset[] = [
@@ -219,6 +223,31 @@ export const useOrchestratorFilters = () => {
     [setSearchParams],
   );
 
+  // The filter bar's sorter icon. Its own param, not a face for `sort`: with
+  // `none` the popover's sort governs (the pre-sorter behaviour), and since
+  // DEFAULT_SORT is itself posted-desc the two would be indistinguishable in
+  // `sort` alone.
+  const sorter = useMemo((): JobSorter => {
+    const raw = searchParams.get("sorter");
+    return JOB_SORTERS.includes(raw as JobSorter)
+      ? (raw as JobSorter)
+      : DEFAULT_JOB_SORTER;
+  }, [searchParams]);
+
+  const setSorter = useCallback(
+    (value: JobSorter) => {
+      setSearchParams(
+        (prev) => {
+          if (value === DEFAULT_JOB_SORTER) prev.delete("sorter");
+          else prev.set("sorter", value);
+          return prev;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
   const maxAgeDays = useMemo((): number | null => {
     const raw = searchParams.get("maxAge");
     if (raw == null) return null;
@@ -366,6 +395,7 @@ export const useOrchestratorFilters = () => {
         prev.delete("salaryMax");
         prev.delete("minSalary");
         prev.delete("sort");
+        prev.delete("sorter");
         prev.delete("date");
         prev.delete("appliedStart");
         prev.delete("appliedEnd");
@@ -393,6 +423,8 @@ export const useOrchestratorFilters = () => {
     setDateFilter,
     sort,
     setSort,
+    sorter,
+    setSorter,
     maxAgeDays,
     setMaxAgeDays,
     closedSubFilter,

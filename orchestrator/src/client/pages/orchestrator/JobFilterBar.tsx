@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
-import type { FitFilterValue, JobFilterChipType } from "./constants";
+import type { FitFilterValue, JobFilterChipType, JobSorter } from "./constants";
 import {
   FIT_FILTER_CHIP_CLASS,
   FIT_FILTER_LABELS,
@@ -14,6 +14,7 @@ import {
   UNATTRIBUTED_PROFILE_ID,
   UNATTRIBUTED_PROFILE_LABEL,
 } from "./constants";
+import { JobSorterMenu } from "./JobSorterMenu";
 
 export interface JobFilterBarProfile {
   id: string;
@@ -37,14 +38,18 @@ interface JobFilterBarProps {
   // The unmodified facet "+ Filter" control, rendered inline on the tickbox
   // row. Absent on tabs that don't carry facets.
   facetBar?: ReactNode;
+  // The sorter icon menu, pinned to the right end of the same row.
+  sorter: JobSorter;
+  onSorterChange: (sorter: JobSorter) => void;
 }
 
 const CHIP_CLASS = "h-7 px-2 text-xs font-medium";
 
 /**
  * The Manage view's filter bar: one control row carrying a tickbox per badge
- * family plus the facet "+ Filter" button, then one badge row per enabled
- * family (fit, profile, job title — in that order).
+ * family plus the facet "+ Filter" button, with the sorter icon at its right
+ * end, then one badge row per enabled family (fit, profile, job title — in
+ * that order).
  *
  * Fit badges keep their per-category colours; the profile and job-title
  * families each use a single hardcoded colour for every badge in the row.
@@ -62,6 +67,8 @@ export function JobFilterBar({
   titleFilter,
   onToggleTitle,
   facetBar,
+  sorter,
+  onSorterChange,
 }: JobFilterBarProps) {
   const isEnabled = (type: JobFilterChipType) =>
     isFilterFamilyActive(availableTypes, enabledTypes, type);
@@ -88,6 +95,9 @@ export function JobFilterBar({
           );
         })}
         {facetBar ? <div className="min-w-0">{facetBar}</div> : null}
+        <div className="ml-auto shrink-0">
+          <JobSorterMenu sorter={sorter} onSorterChange={onSorterChange} />
+        </div>
       </div>
 
       {isEnabled("fit") ? (

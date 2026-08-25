@@ -8,6 +8,7 @@ import {
 } from "@shared/types";
 import type { DateFilterDimension, FilterTab, JobSort } from "./constants";
 import { orderedFilterSources, orderedSources } from "./constants";
+import { hasLinkedinPostingId } from "./jobActions";
 
 const dateValue = (value: string | null) => {
   if (!value) return null;
@@ -87,6 +88,72 @@ export const parseSalaryBounds = (
   return { min: Math.min(...values), max: Math.max(...values) };
 };
 
+/**
+ * Reads LinkedIn's applicant caption as stored by the live-status action into
+ * a number the "fewer applicants" sort can order on. The captions are
+ * LinkedIn's own text, whitespace-collapsed and otherwise verbatim: measured
+ * "45 applicants" and "Be among the first 25 applicants", plus the documented
+ * cap "Over 200 applicants". Every branch keys on the "applicants" tail so a
+ * caption about anything else reads as no count.
+ *
+ * - "Over N" (and the "N+" spelling of the same cap) means more than N, i.e.
+ *   at least N + 1 — which keeps it after an explicit N.
+ * - "Be among the first N" is shown INSTEAD of any count below N, so nothing
+ *   explicit competes with it; 0 puts it where fewest-first wants it.
+ * - Anything unreadable is null: the row then has no count, not a guessed one.
+ */
+export const parseLiveApplicants = (caption: string | null): number | null => {
+  if (!caption) return null;
+  const text = caption.trim().toLowerCase();
+  if (!text) return null;
+
+  const over = /\bover\s+(\d[\d,]*)\s*applicants?\b/.exec(text);
+  if (over) return toCount(over[1]) + 1;
+
+  const first = /\bfirst\s+(\d[\d,]*)\s*applicants?\b/.exec(text);
+  if (first) return 0;
+
+  const plain = /(\d[\d,]*)\s*(\+)?\s*applicants?\b/.exec(text);
+  if (plain) return toCount(plain[1]) + (plain[2] ? 1 : 0);
+
+  return null;
+};
+
+const toCount = (digits: string) =>
+  Number.parseInt(digits.replace(/,/g, ""), 10);
+
+/**
+ * Where a row lands under the applicants sort. Tier 0 is the only one with a
+ * count; the rest are the rows that have none, ordered so that a row that
+ * could still be checked (never checked, or checked open with no caption)
+ * sits above a dead one, and everything not on LinkedIn — which the
+ * live-status action can never read — forms the floor. Membership follows
+ * the DATA, not the URL shape: a closed verdict or a count on the row is
+ * taken before asking whether the URL looks like a LinkedIn posting.
+ */
+export type ApplicantsSortRank =
+  | { tier: 0; count: number }
+  | { tier: 1 | 2 | 3; count: null };
+export const applicantsSortRank = (job: JobListItem): ApplicantsSortRank => {
+  if (job.liveClosed === true) return { tier: 2, count: null };
+  const count = parseLiveApplicants(job.liveApplicants);
+  if (count != null) return { tier: 0, count };
+  if (!hasLinkedinPostingId(job)) return { tier: 3, count: null };
+  return { tier: 1, count: null };
+};
+
+// Newest posted / found first; a row with no date at all goes last. (Today
+// every row has one — `discoveredAt` is NOT NULL — so the null arms only pin
+// the intent for the next copy of this pattern.)
+const comparePostedNewestFirst = (a: JobListItem, b: JobListItem) => {
+  const aPosted = getJobPostedValue(a);
+  const bPosted = getJobPostedValue(b);
+  if (aPosted == null && bPosted == null) return 0;
+  if (aPosted == null) return 1;
+  if (bPosted == null) return -1;
+  return compareNumber(bPosted, aPosted);
+};
+
 export const compareJobs = (a: JobListItem, b: JobListItem, sort: JobSort) => {
   let value = 0;
 
@@ -162,6 +229,25 @@ export const compareJobs = (a: JobListItem, b: JobListItem, sort: JobSort) => {
       if (aDate == null) return 1;
       if (bDate == null) return -1;
       value = compareNumber(aDate, bDate);
+      break;
+    }
+    case "applicants": {
+      const aRank = applicantsSortRank(a);
+      const bRank = applicantsSortRank(b);
+      // Tiers hold whatever the direction — same shape as the null-last rule
+      // of `score` / `salary`: flipping "fewest first" to "most first" must not
+      // hoist the rows that have no count at all.
+      if (aRank.tier !== bRank.tier) return aRank.tier - bRank.tier;
+      if (aRank.tier === 0 && bRank.tier === 0) {
+        value = compareNumber(aRank.count, bRank.count);
+      }
+      if (value === 0) {
+        // Equal counts, and every row of the count-less tiers: newest
+        // posted / found first, whatever the direction. The id fallback below
+        // would make those tiers look shuffled.
+        const byPosted = comparePostedNewestFirst(a, b);
+        if (byPosted !== 0) return byPosted;
+      }
       break;
     }
     default:

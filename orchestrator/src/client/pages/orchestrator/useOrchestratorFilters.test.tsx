@@ -37,6 +37,18 @@ describe("useOrchestratorFilters", () => {
     });
   });
 
+  it("parses the applicants sort key", () => {
+    const { Wrapper } = createWrapper("/jobs/inbox?sort=applicants-desc");
+    const { result } = renderHook(() => useOrchestratorFilters(), {
+      wrapper: Wrapper,
+    });
+
+    expect(result.current.sort).toEqual({
+      key: "applicants",
+      direction: "desc",
+    });
+  });
+
   it("falls back to default sort for invalid sort query params", () => {
     const cases = [
       "/ready?sort=title",
@@ -94,5 +106,57 @@ describe("useOrchestratorFilters", () => {
     });
 
     expect(getLocation()).toBe("/all");
+  });
+
+  it("parses the sorter param and ignores an unknown value", () => {
+    const valid = createWrapper("/jobs/inbox?sorter=applicants");
+    expect(
+      renderHook(() => useOrchestratorFilters(), { wrapper: valid.Wrapper })
+        .result.current.sorter,
+    ).toBe("applicants");
+
+    const invalid = createWrapper("/jobs/inbox?sorter=salary");
+    expect(
+      renderHook(() => useOrchestratorFilters(), { wrapper: invalid.Wrapper })
+        .result.current.sorter,
+    ).toBe("none");
+
+    const absent = createWrapper("/jobs/inbox");
+    expect(
+      renderHook(() => useOrchestratorFilters(), { wrapper: absent.Wrapper })
+        .result.current.sorter,
+    ).toBe("none");
+  });
+
+  it("writes the sorter to the URL, drops it on none, and clears it on reset", () => {
+    const { Wrapper, getLocation } = createWrapper(
+      "/jobs/inbox?sort=score-desc",
+    );
+    const { result } = renderHook(() => useOrchestratorFilters(), {
+      wrapper: Wrapper,
+    });
+
+    act(() => {
+      result.current.setSorter("posted");
+    });
+    expect(result.current.sorter).toBe("posted");
+    expect(getLocation()).toContain("sorter=posted");
+    // The popover's sort is untouched — the sorter is a layer over it.
+    expect(getLocation()).toContain("sort=score-desc");
+
+    act(() => {
+      result.current.setSorter("none");
+    });
+    expect(getLocation()).not.toContain("sorter=");
+
+    act(() => {
+      result.current.setSorter("applicants");
+    });
+    act(() => {
+      result.current.resetFilters();
+    });
+    expect(result.current.sorter).toBe("none");
+    expect(getLocation()).not.toContain("sorter=");
+    expect(getLocation()).not.toContain("sort=");
   });
 });

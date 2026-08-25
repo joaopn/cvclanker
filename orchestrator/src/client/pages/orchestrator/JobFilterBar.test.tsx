@@ -18,6 +18,8 @@ const baseProps = () => ({
   titles: ["data engineer", "platform engineer"],
   titleFilter: [],
   onToggleTitle: vi.fn(),
+  sorter: "none" as const,
+  onSorterChange: vi.fn(),
 });
 
 describe("JobFilterBar", () => {
@@ -139,5 +141,16 @@ describe("JobFilterBar", () => {
     );
 
     expect(screen.getByText("FACET_BAR_SLOT")).toBeInTheDocument();
+  });
+
+  it("renders the sorter icon at the end of the tickbox row", () => {
+    render(
+      <JobFilterBar {...baseProps()} facetBar={<div>FACET_BAR_SLOT</div>} />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Sort jobs" });
+    const row = screen.getByText("FACET_BAR_SLOT").parentElement?.parentElement;
+    expect(row).not.toBeNull();
+    expect(row?.lastElementChild?.contains(trigger)).toBe(true);
   });
 });

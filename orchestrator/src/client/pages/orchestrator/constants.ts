@@ -247,7 +247,8 @@ export type SortKey =
   | "score"
   | "salary"
   | "title"
-  | "employer";
+  | "employer"
+  | "applicants";
 export type SortDirection = "asc" | "desc";
 export type SponsorFilter =
   | "all"
@@ -277,6 +278,33 @@ export interface JobDateFilter {
 }
 
 export const DEFAULT_SORT: JobSort = { key: "posted", direction: "desc" };
+
+/**
+ * The list sorter: the icon menu at the right end of the filter bar's control
+ * row. It is a layer OVER the Filters-popover `sort` — `none` (the default)
+ * means the sorter is idle and that sort governs, which is exactly the
+ * pre-sorter behaviour; the other two pin a whole `JobSort`. A separate value
+ * rather than a face for `sort` because `DEFAULT_SORT` IS posted-desc, so
+ * "none" and "posted / found" would be one indistinguishable state there.
+ */
+export const JOB_SORTERS = ["none", "posted", "applicants"] as const;
+export type JobSorter = (typeof JOB_SORTERS)[number];
+export const DEFAULT_JOB_SORTER: JobSorter = "none";
+
+export const JOB_SORTER_LABELS: Record<JobSorter, string> = {
+  none: "None",
+  posted: "Posted / found",
+  applicants: "Fewer applicants",
+};
+
+// `posted` is the value behind the row's "Posted Xd / Found Xd" pill
+// (`getJobPostedValue`: datePosted, else discoveredAt). `applicants` is the
+// live-status count, fewest first — see `compareJobs` for the tiers that
+// order the rows without one.
+export const JOB_SORTER_SORTS: Record<Exclude<JobSorter, "none">, JobSort> = {
+  posted: { key: "posted", direction: "desc" },
+  applicants: { key: "applicants", direction: "asc" },
+};
 export const DEFAULT_DATE_FILTER: JobDateFilter = {
   dimensions: [],
   startDate: null,
@@ -292,6 +320,7 @@ export const sortLabels: Record<JobSort["key"], string> = {
   salary: "Salary",
   title: "Title",
   employer: "Company",
+  applicants: "Applicants",
 };
 
 export const defaultSortDirection: Record<JobSort["key"], SortDirection> = {
@@ -302,6 +331,7 @@ export const defaultSortDirection: Record<JobSort["key"], SortDirection> = {
   salary: "desc",
   title: "asc",
   employer: "asc",
+  applicants: "asc",
 };
 
 export type ClosedSubFilter =
