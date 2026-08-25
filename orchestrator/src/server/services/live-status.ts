@@ -15,6 +15,99 @@ import { JSDOM } from "jsdom";
 import { tryBrowserFetch, tryStaticFetch } from "./manualJob";
 import { getEffectiveSettings } from "./settings";
 
+/**
+ * Global pacing for every LinkedIn request this service makes (both tiers —
+ * the browser fetch is a LinkedIn request too). LinkedIn rate-limits per IP:
+ * a bulk check at `bulkActionConcurrency` parallel jobs × up to 3 attempts
+ * each drew 429s in production, which then 429'd the USER's own browsing on
+ * the shared IP — and falling to Camoufox on a rate-limited IP just gets the
+ * authwall. So:
+ * - Requests are SERIALIZED with a minimum spacing. 1s ≈ human browsing
+ *   pace: a 100-job sweep takes under 2 minutes; at 100ms the burst reads
+ *   as scraping again, and at 10s a sweep crawls for no gain (a burst of 10
+ *   unspaced requests measured fine — it's the sustained parallel volume
+ *   that trips the limiter).
+ * - A 429 opens an EXPONENTIAL backoff window shared by every queued job
+ *   (the limit is per-IP, so per-job retries would multiply the damage —
+ *   same reasoning as the LLM rate-limit budget). 5s base: LinkedIn's
+ *   short-window limiter typically clears in seconds; doubling to a 60s cap
+ *   keeps a hard-limited IP from hammering once a minute-scale block is on.
+ * - A job whose remaining budget (`manualJobFetchTimeoutMs`, default 15s)
+ *   cannot cover the wait fails FAST with a rate-limit message instead of
+ *   burning its timeout in the queue — and a 429 NEVER falls to the browser
+ *   tier.
+ */
+const GUEST_REQUEST_SPACING_MS = 1_000;
+const RATE_LIMIT_BACKOFF_BASE_MS = 5_000;
+const RATE_LIMIT_BACKOFF_CAP_MS = 60_000;
+
+let paceQueueTail: Promise<void> = Promise.resolve();
+let nextAllowedAt = 0;
+let currentBackoffMs = 0;
+
+/** Test-only: clear the module-level pacing state between tests. */
+export function resetLiveStatusPacingForTests(): void {
+  paceQueueTail = Promise.resolve();
+  nextAllowedAt = 0;
+  currentBackoffMs = 0;
+}
+
+class LinkedinRateLimitedError extends AppError {
+  constructor() {
+    super({
+      status: 502,
+      code: "UPSTREAM_ERROR",
+      // Two ways to land here: a real 429 opened a backoff window this job's
+      // budget can't cover, or (large selections) the 1s pacing alone pushed
+      // this job past its fetch timeout. Both resolve the same way.
+      message:
+        currentBackoffMs > 0
+          ? "LinkedIn is rate limiting requests from this machine (HTTP 429). Wait a few minutes and re-run the live-status check on the remaining jobs."
+          : "The paced live-status queue could not reach this job inside its fetch timeout — re-run the check on the remaining jobs (requests are spaced out to avoid LinkedIn rate limits).",
+    });
+  }
+}
+
+/**
+ * Take the next request slot: waits out the spacing/backoff window, or
+ * throws LinkedinRateLimitedError when the wait would not fit inside the
+ * job's deadline — better one clear failure than a queued 408.
+ *
+ * The wait is a LOOP that re-reads `nextAllowedAt` after every sleep: the
+ * fetch itself runs outside the mutex, so another job's 429 can open or
+ * extend the backoff window while this turn is already mid-sleep, and a
+ * stamp computed from the stale value would CLOBBER that window (measured:
+ * at concurrency 4 the clobber self-perpetuates and the backoff never
+ * engages). The break-to-stamp path has no await between the fresh read and
+ * the write, so no window can slip in.
+ */
+async function acquireRequestSlot(deadlineAt: number): Promise<void> {
+  const turn = paceQueueTail.then(async () => {
+    for (;;) {
+      const wait = Math.max(0, nextAllowedAt - Date.now());
+      if (Date.now() + wait >= deadlineAt) {
+        throw new LinkedinRateLimitedError();
+      }
+      if (wait === 0) break;
+      await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+    nextAllowedAt = Date.now() + GUEST_REQUEST_SPACING_MS;
+  });
+  // The chain must survive a thrown slot (budget refusal) — swallow it on
+  // the tail so later jobs still get turns; the caller still sees the throw.
+  paceQueueTail = turn.catch(() => {});
+  return turn;
+}
+
+/** A 429 arrived: open/double the shared backoff window. */
+function registerRateLimit(): void {
+  currentBackoffMs =
+    currentBackoffMs === 0
+      ? RATE_LIMIT_BACKOFF_BASE_MS
+      : Math.min(RATE_LIMIT_BACKOFF_CAP_MS, currentBackoffMs * 2);
+  nextAllowedAt = Date.now() + currentBackoffMs;
+}
+
 export interface LinkedinLiveStatus {
   /** The posting shows "No longer accepting applications". */
   closed: boolean;
@@ -120,21 +213,46 @@ export async function fetchLinkedinLiveStatus(
   }
 
   // The endpoint alternates its two renders per request (strict alternation
-  // in measurement), so a condensed no-verdict draw is retried: three
-  // attempts mean the browser tier fires only after three condensed draws in
-  // a row, which the observed alternation makes vanishingly unlikely.
-  const STATIC_ATTEMPTS = 3;
+  // in measurement), so a condensed no-verdict draw is retried: three such
+  // draws mean the browser tier fires only after three in a row, which the
+  // observed alternation makes vanishingly unlikely. 429s retry separately,
+  // bounded by the shared backoff + this job's deadline rather than a count.
+  const CONDENSED_DRAW_ATTEMPTS = 3;
+  const deadlineAt = startedAt + timeoutMs;
 
   try {
-    for (let attempt = 0; attempt < STATIC_ATTEMPTS; attempt++) {
-      const staticResult = await tryStaticFetch(guestUrl, controller.signal);
-      // Non-OK/empty body: repeating the identical request buys nothing —
-      // fall straight through to the browser tier.
-      if (!staticResult) break;
-      const status = parseLinkedinLiveStatus(staticResult.html);
-      if (status) return status;
+    let condensedDraws = 0;
+    let goToBrowser = false;
+    while (condensedDraws < CONDENSED_DRAW_ATTEMPTS && !goToBrowser) {
+      await acquireRequestSlot(deadlineAt);
+      let nonOkStatus: number | null = null;
+      const staticResult = await tryStaticFetch(guestUrl, controller.signal, {
+        onNonOkStatus: (status) => {
+          nonOkStatus = status;
+        },
+      });
+      if (staticResult) {
+        currentBackoffMs = 0;
+        const status = parseLinkedinLiveStatus(staticResult.html);
+        if (status) return status;
+        condensedDraws += 1;
+        continue;
+      }
+      if (nonOkStatus === 429) {
+        // Rate limited: open the shared backoff and retry within this job's
+        // budget. acquireRequestSlot throws the clear rate-limit error once
+        // the window no longer fits — and a 429 must NEVER launch the
+        // browser tier (a rate-limited IP just gets the authwall, and the
+        // launch adds more heat).
+        registerRateLimit();
+        continue;
+      }
+      // Any other non-OK/empty body: repeating the identical request buys
+      // nothing — fall through to the browser tier.
+      goToBrowser = true;
     }
 
+    await acquireRequestSlot(deadlineAt);
     const remainingMs = Math.max(1_000, timeoutMs - (Date.now() - startedAt));
     const browserResult = await tryBrowserFetch(
       guestUrl,

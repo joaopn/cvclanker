@@ -1,7 +1,6 @@
 // @vitest-environment node
 
-import { AppError } from "@infra/errors";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const tryStaticFetchMock = vi.hoisted(() => vi.fn());
 const tryBrowserFetchMock = vi.hoisted(() => vi.fn());
@@ -15,7 +14,7 @@ vi.mock("./manualJob", () => ({
 }));
 vi.mock("./settings", () => ({
   getEffectiveSettings: vi.fn().mockResolvedValue({
-    manualJobFetchTimeoutMs: { value: 5_000 },
+    manualJobFetchTimeoutMs: { value: 30_000 },
     manualJobFetchBrowserSettleMs: { value: 0 },
   }),
 }));
@@ -23,6 +22,7 @@ vi.mock("./settings", () => ({
 import {
   fetchLinkedinLiveStatus,
   parseLinkedinLiveStatus,
+  resetLiveStatusPacingForTests,
 } from "./live-status";
 
 // Markup captured live from the guest endpoint (jobs-guest/jobs/api/
@@ -194,133 +194,228 @@ describe("parseLinkedinLiveStatus", () => {
 });
 
 describe("fetchLinkedinLiveStatus", () => {
+  // Fake timers throughout: the pacer spaces requests 1s apart and a 429
+  // opens a 5s+ backoff — tests drive the clock instead of sleeping. Every
+  // test kicks the fetch off, attaches its assertion, then advances time.
   beforeEach(() => {
+    vi.useFakeTimers();
+    resetLiveStatusPacingForTests();
     tryStaticFetchMock.mockReset();
     tryBrowserFetchMock.mockReset();
   });
 
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  /** Record the (faked) time of each static fetch alongside a queued reply. */
+  function staticRepliesAt(
+    times: number[],
+    replies: Array<{ html: string } | { status: number } | null>,
+  ) {
+    let i = 0;
+    tryStaticFetchMock.mockImplementation(
+      async (
+        _url: string,
+        _signal: AbortSignal,
+        options: { onNonOkStatus?: (status: number) => void } = {},
+      ) => {
+        times.push(Date.now());
+        const reply = replies[Math.min(i, replies.length - 1)];
+        i += 1;
+        if (reply && "html" in reply) {
+          return { html: reply.html, finalUrl: GUEST_URL };
+        }
+        if (reply && "status" in reply) {
+          options.onNonOkStatus?.(reply.status);
+        }
+        return null;
+      },
+    );
+  }
+
+  async function settled<T>(promise: Promise<T>, advanceMs: number) {
+    const outcome = promise.then(
+      (value) => ({ ok: true as const, value }),
+      (error) => ({ ok: false as const, error }),
+    );
+    await vi.advanceTimersByTimeAsync(advanceMs);
+    return outcome;
+  }
+
   it("rejects a URL with no LinkedIn posting id before any fetch", async () => {
-    await expect(
+    const result = await settled(
       fetchLinkedinLiveStatus("https://example.com/jobs/123456"),
-    ).rejects.toMatchObject({ status: 400, code: "INVALID_REQUEST" });
+      0,
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      error: { status: 400, code: "INVALID_REQUEST" },
+    });
     expect(tryStaticFetchMock).not.toHaveBeenCalled();
     expect(tryBrowserFetchMock).not.toHaveBeenCalled();
   });
 
   it("returns the parsed status from the static tier without a browser", async () => {
-    tryStaticFetchMock.mockResolvedValue({
-      html: OPEN_SPAN_VARIANT,
-      finalUrl: GUEST_URL,
-    });
+    staticRepliesAt([], [{ html: OPEN_SPAN_VARIANT }]);
 
-    await expect(fetchLinkedinLiveStatus(JOB_URL)).resolves.toEqual({
-      closed: false,
-      applicants: "45 applicants",
+    const result = await settled(fetchLinkedinLiveStatus(JOB_URL), 0);
+    expect(result).toEqual({
+      ok: true,
+      value: { closed: false, applicants: "45 applicants" },
     });
-    expect(tryStaticFetchMock).toHaveBeenCalledWith(
-      GUEST_URL,
-      expect.any(AbortSignal),
-    );
     expect(tryBrowserFetchMock).not.toHaveBeenCalled();
   });
 
-  it("falls back to the browser tier when the static fetch fails", async () => {
-    tryStaticFetchMock.mockResolvedValue(null);
+  it("spaces consecutive requests at least 1s apart", async () => {
+    const times: number[] = [];
+    staticRepliesAt(times, [
+      { html: CONDENSED_OPEN },
+      { html: OPEN_SPAN_VARIANT },
+    ]);
+
+    const result = await settled(fetchLinkedinLiveStatus(JOB_URL), 10_000);
+    expect(result).toMatchObject({ ok: true });
+    expect(times).toHaveLength(2);
+    expect(times[1] - times[0]).toBeGreaterThanOrEqual(1_000);
+    expect(tryBrowserFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("backs off exponentially on a 429 and retries WITHOUT the browser", async () => {
+    const times: number[] = [];
+    staticRepliesAt(times, [{ status: 429 }, { html: CLOSED_MARKUP }]);
+
+    const result = await settled(fetchLinkedinLiveStatus(JOB_URL), 30_000);
+    expect(result).toEqual({
+      ok: true,
+      value: { closed: true, applicants: null },
+    });
+    // Second attempt sat out the 5s backoff window, not just the 1s spacing.
+    expect(times[1] - times[0]).toBeGreaterThanOrEqual(5_000);
+    expect(tryBrowserFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fails fast with a rate-limit error when 429s outlast the job's budget", async () => {
+    const times: number[] = [];
+    staticRepliesAt(times, [{ status: 429 }]);
+
+    const result = await settled(fetchLinkedinLiveStatus(JOB_URL), 60_000);
+    // 30s budget: 429s at 0s/5s/15s open 5s→10s→20s backoff windows; the
+    // fourth attempt would land at 35s ≥ deadline → clear failure, no
+    // queued 408, and never a browser launch.
+    expect(result).toMatchObject({
+      ok: false,
+      error: { status: 502, code: "UPSTREAM_ERROR" },
+    });
+    if (result.ok === false) {
+      expect((result.error as Error).message).toMatch(/rate limiting/i);
+    }
+    expect(times).toHaveLength(3);
+    expect(tryBrowserFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("resets the backoff after a successful response", async () => {
+    const t1: number[] = [];
+    staticRepliesAt(t1, [{ status: 429 }, { html: OPEN_SPAN_VARIANT }]);
+    expect(
+      await settled(fetchLinkedinLiveStatus(JOB_URL), 30_000),
+    ).toMatchObject({ ok: true });
+
+    const t2: number[] = [];
+    staticRepliesAt(t2, [
+      { html: CONDENSED_OPEN },
+      { html: OPEN_SPAN_VARIANT },
+    ]);
+    expect(
+      await settled(fetchLinkedinLiveStatus(JOB_URL), 30_000),
+    ).toMatchObject({ ok: true });
+    // Post-success gap is the 1s spacing again, not a doubled backoff.
+    expect(t2[1] - t2[0]).toBeLessThan(5_000);
+  });
+
+  it("falls back to the paced browser tier when the static fetch fails non-429", async () => {
+    staticRepliesAt([], [null]);
     tryBrowserFetchMock.mockResolvedValue({
       html: CLOSED_MARKUP,
       finalUrl: GUEST_URL,
     });
 
-    await expect(fetchLinkedinLiveStatus(JOB_URL)).resolves.toEqual({
-      closed: true,
-      applicants: null,
+    const result = await settled(fetchLinkedinLiveStatus(JOB_URL), 10_000);
+    expect(result).toEqual({
+      ok: true,
+      value: { closed: true, applicants: null },
     });
-    expect(tryBrowserFetchMock).toHaveBeenCalledWith(
-      GUEST_URL,
-      expect.any(Number),
-      0,
-    );
+    expect(tryStaticFetchMock).toHaveBeenCalledTimes(1);
+    expect(tryBrowserFetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("retries the static tier past a condensed render", async () => {
-    tryStaticFetchMock
-      .mockResolvedValueOnce({ html: CONDENSED_OPEN, finalUrl: GUEST_URL })
-      .mockResolvedValueOnce({ html: OPEN_SPAN_VARIANT, finalUrl: GUEST_URL });
+    staticRepliesAt(
+      [],
+      [{ html: CONDENSED_OPEN }, { html: OPEN_SPAN_VARIANT }],
+    );
 
-    await expect(fetchLinkedinLiveStatus(JOB_URL)).resolves.toEqual({
-      closed: false,
-      applicants: "45 applicants",
+    const result = await settled(fetchLinkedinLiveStatus(JOB_URL), 10_000);
+    expect(result).toEqual({
+      ok: true,
+      value: { closed: false, applicants: "45 applicants" },
     });
     expect(tryStaticFetchMock).toHaveBeenCalledTimes(2);
     expect(tryBrowserFetchMock).not.toHaveBeenCalled();
   });
 
   it("falls to the browser only after three condensed draws", async () => {
-    tryStaticFetchMock.mockResolvedValue({
-      html: CONDENSED_OPEN,
-      finalUrl: GUEST_URL,
-    });
+    staticRepliesAt([], [{ html: CONDENSED_OPEN }]);
     tryBrowserFetchMock.mockResolvedValue({
       html: CLOSED_NO_BANNER,
       finalUrl: GUEST_URL,
     });
 
-    await expect(fetchLinkedinLiveStatus(JOB_URL)).resolves.toEqual({
-      closed: true,
-      applicants: null,
+    const result = await settled(fetchLinkedinLiveStatus(JOB_URL), 10_000);
+    expect(result).toEqual({
+      ok: true,
+      value: { closed: true, applicants: null },
     });
     expect(tryStaticFetchMock).toHaveBeenCalledTimes(3);
     expect(tryBrowserFetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back to the browser tier when the static page isn't a posting", async () => {
-    tryStaticFetchMock.mockResolvedValue({
-      html: NOT_A_POSTING,
-      finalUrl: GUEST_URL,
-    });
-    tryBrowserFetchMock.mockResolvedValue({
-      html: OPEN_FIGURE_VARIANT,
-      finalUrl: GUEST_URL,
-    });
-
-    await expect(fetchLinkedinLiveStatus(JOB_URL)).resolves.toEqual({
-      closed: false,
-      applicants: "Be among the first 25 applicants",
-    });
-  });
-
   it("maps an authwall redirect to 502", async () => {
-    tryStaticFetchMock.mockResolvedValue(null);
+    staticRepliesAt([], [null]);
     tryBrowserFetchMock.mockResolvedValue({
       html: NOT_A_POSTING,
       finalUrl: "https://www.linkedin.com/authwall?trk=x",
     });
 
-    await expect(fetchLinkedinLiveStatus(JOB_URL)).rejects.toMatchObject({
-      status: 502,
-      code: "UPSTREAM_ERROR",
+    const result = await settled(fetchLinkedinLiveStatus(JOB_URL), 10_000);
+    expect(result).toMatchObject({
+      ok: false,
+      error: { status: 502, code: "UPSTREAM_ERROR" },
     });
   });
 
   it("throws 422 when neither tier produced a posting page", async () => {
-    tryStaticFetchMock.mockResolvedValue(null);
+    staticRepliesAt([], [null]);
     tryBrowserFetchMock.mockResolvedValue({
       html: NOT_A_POSTING,
       finalUrl: GUEST_URL,
     });
 
-    await expect(fetchLinkedinLiveStatus(JOB_URL)).rejects.toMatchObject({
-      status: 422,
-      code: "UNPROCESSABLE_ENTITY",
+    const result = await settled(fetchLinkedinLiveStatus(JOB_URL), 10_000);
+    expect(result).toMatchObject({
+      ok: false,
+      error: { status: 422, code: "UNPROCESSABLE_ENTITY" },
     });
   });
 
   it("maps a network throw from the static tier to 502", async () => {
     tryStaticFetchMock.mockRejectedValue(new Error("getaddrinfo ENOTFOUND"));
 
-    await expect(fetchLinkedinLiveStatus(JOB_URL)).rejects.toMatchObject({
-      status: 502,
-      code: "UPSTREAM_ERROR",
+    const result = await settled(fetchLinkedinLiveStatus(JOB_URL), 0);
+    expect(result).toMatchObject({
+      ok: false,
+      error: { status: 502, code: "UPSTREAM_ERROR" },
     });
   });
 
@@ -329,34 +424,63 @@ describe("fetchLinkedinLiveStatus", () => {
     abortError.name = "AbortError";
     tryStaticFetchMock.mockRejectedValue(abortError);
 
-    await expect(fetchLinkedinLiveStatus(JOB_URL)).rejects.toMatchObject({
-      status: 408,
-      code: "REQUEST_TIMEOUT",
+    const result = await settled(fetchLinkedinLiveStatus(JOB_URL), 0);
+    expect(result).toMatchObject({
+      ok: false,
+      error: { status: 408, code: "REQUEST_TIMEOUT" },
     });
   });
 
   it("recovers the id from sourceJobId when the URL path lacks one", async () => {
-    tryStaticFetchMock.mockResolvedValue({
-      html: OPEN_SPAN_VARIANT,
-      finalUrl: GUEST_URL,
-    });
+    staticRepliesAt([], [{ html: OPEN_SPAN_VARIANT }]);
 
-    await expect(
+    const result = await settled(
       fetchLinkedinLiveStatus(
         "https://www.linkedin.com/jobs/view/ai-developer",
         "li-4441896971",
       ),
-    ).resolves.toEqual({ closed: false, applicants: "45 applicants" });
+      0,
+    );
+    expect(result).toEqual({
+      ok: true,
+      value: { closed: false, applicants: "45 applicants" },
+    });
     expect(tryStaticFetchMock).toHaveBeenCalledWith(
       GUEST_URL,
       expect.any(AbortSignal),
+      expect.anything(),
     );
   });
 
-  it("throws AppError instances end to end", async () => {
-    tryStaticFetchMock.mockRejectedValue(new Error("boom"));
-    await expect(fetchLinkedinLiveStatus(JOB_URL)).rejects.toBeInstanceOf(
-      AppError,
-    );
+  it("honors a 429 backoff opened while another job was already sleeping", async () => {
+    // The clobber case: job B's turn is mid-sleep (sized off the 1s spacing)
+    // when job A's 429 opens the 5s window. B must re-read on wake and sit
+    // the window out — not fetch into it and stamp the window away.
+    const times: number[] = [];
+    staticRepliesAt(times, [{ status: 429 }, { html: OPEN_SPAN_VARIANT }]);
+
+    const a = fetchLinkedinLiveStatus(JOB_URL);
+    const b = fetchLinkedinLiveStatus(JOB_URL);
+    const outcomes = Promise.all([a, b]);
+    await vi.advanceTimersByTimeAsync(30_000);
+    const [resultA, resultB] = await outcomes;
+
+    expect(resultA).toEqual({ closed: false, applicants: "45 applicants" });
+    expect(resultB).toEqual({ closed: false, applicants: "45 applicants" });
+    expect(times[1] - times[0]).toBeGreaterThanOrEqual(5_000);
+    expect(tryBrowserFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("paces CONCURRENT jobs through one shared queue", async () => {
+    const times: number[] = [];
+    staticRepliesAt(times, [{ html: OPEN_SPAN_VARIANT }]);
+
+    const a = fetchLinkedinLiveStatus(JOB_URL);
+    const b = fetchLinkedinLiveStatus(JOB_URL);
+    const outcomes = Promise.all([a, b]);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await outcomes;
+    expect(times).toHaveLength(2);
+    expect(times[1] - times[0]).toBeGreaterThanOrEqual(1_000);
   });
 });

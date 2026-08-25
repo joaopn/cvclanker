@@ -97,10 +97,14 @@ function rewriteUrlForFetch(input: string): string {
 }
 
 // Exported: services/live-status.ts reuses the same fetch tiers (static
-// first, Camoufox on failure) for the LinkedIn live-status check.
+// first, Camoufox on failure) for the LinkedIn live-status check. The
+// optional `onNonOkStatus` surfaces the HTTP status a null return collapses
+// away — live-status needs to tell a 429 (back off, never launch the
+// browser) from every other failure (browser tier as usual).
 export async function tryStaticFetch(
   url: string,
   signal: AbortSignal,
+  options: { onNonOkStatus?: (status: number) => void } = {},
 ): Promise<{ html: string; finalUrl: string } | null> {
   // Many ATS / job-board hosts (SAP SuccessFactors, etc.) return 204 to
   // requests with no Referer as basic anti-scraping. Synthesize a same-origin
@@ -126,6 +130,7 @@ export async function tryStaticFetch(
       status: response.status,
       statusText: response.statusText,
     });
+    options.onNonOkStatus?.(response.status);
     return null;
   }
 
