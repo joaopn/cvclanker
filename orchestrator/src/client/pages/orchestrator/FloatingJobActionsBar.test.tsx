@@ -25,6 +25,9 @@ function renderBar(
       canReopenSelected={false}
       canDeleteSelected
       canFetchLiveStatusSelected={false}
+      canRetailorSelected={false}
+      retailorableCount={0}
+      activeCvName={null}
       hasScorerPrefilter={false}
       jobActionInFlight={false}
       onMoveToReady={noop}
@@ -40,6 +43,7 @@ function renderBar(
       onReopen={noop}
       onDelete={onDelete}
       onFetchLiveStatus={noop}
+      onRetailor={noop}
       onClear={noop}
       {...overrides}
     />,
@@ -183,6 +187,83 @@ describe("FloatingJobActionsBar delete", () => {
           screen.getByRole("button", { name: "Screen first" }),
         ).toBeInTheDocument();
         cleanup();
+      }
+    });
+  });
+
+  describe("Generate (bulk re-tailor)", () => {
+    it("quotes the READY subset, not the whole selection, and says what is skipped", () => {
+      renderBar({
+        activeTab: "tailoring",
+        selectedCount: 5,
+        canRetailorSelected: true,
+        retailorableCount: 3,
+        activeCvName: "Jane Doe CV",
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: /generate 3 jobs/i }));
+
+      expect(screen.getByText(/re-tailor 3 jobs\?/i)).toBeTruthy();
+      expect(screen.getByText(/"Jane Doe CV"/)).toBeTruthy();
+      expect(
+        screen.getByText(/2 of the 5 selected are not tailored yet/i),
+      ).toBeTruthy();
+    });
+
+    it("omits the skipped-rows note when the whole selection is tailored", () => {
+      renderBar({
+        activeTab: "tailoring",
+        selectedCount: 2,
+        canRetailorSelected: true,
+        retailorableCount: 2,
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: /generate 2 jobs/i }));
+
+      expect(screen.queryByText(/will be skipped/i)).toBeNull();
+      // No CV name known — the copy falls back rather than rendering "".
+      expect(screen.getByText(/the active CV/i)).toBeTruthy();
+    });
+
+    it("fires only on confirm, never on the trigger", () => {
+      const onRetailor = vi.fn();
+      renderBar({
+        activeTab: "tailoring",
+        selectedCount: 1,
+        canRetailorSelected: true,
+        retailorableCount: 1,
+        onRetailor,
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: /generate 1 job/i }));
+      expect(onRetailor).not.toHaveBeenCalled();
+
+      fireEvent.click(
+        screen.getByRole("button", { name: /^generate 1 job$/i }),
+      );
+      expect(onRetailor).toHaveBeenCalledTimes(1);
+    });
+
+    it("is absent when nothing selected is tailored", () => {
+      renderBar({
+        activeTab: "tailoring",
+        canRetailorSelected: false,
+        retailorableCount: 0,
+      });
+
+      expect(screen.queryByRole("button", { name: /generate/i })).toBeNull();
+    });
+
+    // Re-tailoring is only reachable where tailored rows live.
+    it("is absent on other tabs even when the selection qualifies", () => {
+      for (const tab of ["inbox", "backlog", "closed"] as const) {
+        cleanup();
+        renderBar({
+          activeTab: tab,
+          canRetailorSelected: true,
+          retailorableCount: 2,
+        });
+        expect(screen.queryByRole("button", { name: /generate/i })).toBeNull();
       }
     });
   });

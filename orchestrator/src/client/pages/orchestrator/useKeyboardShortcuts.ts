@@ -32,9 +32,13 @@ type UseKeyboardShortcutsArgs = {
   clearSelection: () => void;
   toggleSelectJob: (id: string, options?: { range?: boolean }) => void;
   // Same exclusions as the hook's dispatcher: mark_closed needs an outcome,
-  // fetch_live_status must go through its subset-filtering dispatcher.
+  // fetch_live_status and retailor must go through their subset-filtering
+  // dispatchers.
   runJobAction: (
-    action: Exclude<JobAction, "mark_closed" | "fetch_live_status">,
+    action: Exclude<
+      JobAction,
+      "mark_closed" | "fetch_live_status" | "retailor"
+    >,
   ) => Promise<void>;
   loadJobs: () => Promise<void>;
   onUndo: () => void;

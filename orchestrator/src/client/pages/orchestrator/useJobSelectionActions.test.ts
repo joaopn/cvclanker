@@ -275,6 +275,98 @@ describe("useJobSelectionActions", () => {
     );
   });
 
+  it("sends only the ready subset of a mixed selection to retailor", async () => {
+    const activeJobs = [
+      createJob({ id: "job-ready", status: "ready" }),
+      createJob({ id: "job-running", status: "processing" }),
+      createJob({
+        id: "job-failed",
+        status: "processing",
+        tailoringFailureReason: "tectonic exited 1",
+      }),
+    ];
+    const loadJobs = vi.fn().mockResolvedValue(undefined);
+    mockStreamJobAction({
+      action: "retailor",
+      requested: 1,
+      succeeded: 1,
+      failed: 0,
+      results: [
+        {
+          jobId: "job-ready",
+          ok: true,
+          job: createJob({ id: "job-ready", status: "processing" }),
+        },
+      ],
+    });
+
+    const { result } = renderHook(() =>
+      useJobSelectionActions({
+        activeJobs,
+        activeTab: "tailoring",
+        loadJobs,
+        maxBulkActionJobs: 100,
+      }),
+    );
+
+    act(() => {
+      result.current.toggleSelectJob("job-ready");
+      result.current.toggleSelectJob("job-running");
+      result.current.toggleSelectJob("job-failed");
+    });
+
+    // The count the confirm dialog quotes is the subset, not the selection —
+    // a dialog promising 3 jobs' worth of spend while firing 1 is a lie.
+    expect(result.current.retailorableCount).toBe(1);
+    expect(result.current.canRetailorSelected).toBe(true);
+
+    await act(async () => {
+      await result.current.runRetailorAction();
+    });
+
+    // The in-flight row would be re-enqueued mid-run and the failed one belongs
+    // to Tailor's retry path; neither is sent to fail server-side.
+    expect(api.streamJobAction).toHaveBeenCalledWith(
+      { action: "retailor", jobIds: ["job-ready"] },
+      expect.objectContaining({ onEvent: expect.any(Function) }),
+    );
+  });
+
+  // Pins the OFFER, not the dispatch mechanism: an all-ineligible selection
+  // must expose no button and spend nothing. It deliberately claims no more
+  // than that — either early return alone would produce it: the dispatcher's
+  // own empty check returns first, and runStreamingAction's would too if it
+  // were reached, so no assertion here can tell them apart. The subset RULE is
+  // pinned by the mixed-selection test above, which
+  // is mutation-checked: point the dispatcher at the full selection and that
+  // one fails.
+  it("dispatches nothing and offers nothing when no selected row is tailored", async () => {
+    const activeJobs = [createJob({ id: "job-x", status: "processing" })];
+    const loadJobs = vi.fn().mockResolvedValue(undefined);
+
+    const { result } = renderHook(() =>
+      useJobSelectionActions({
+        activeJobs,
+        activeTab: "tailoring",
+        loadJobs,
+        maxBulkActionJobs: 100,
+      }),
+    );
+
+    act(() => {
+      result.current.toggleSelectJob("job-x");
+    });
+
+    expect(result.current.canRetailorSelected).toBe(false);
+    expect(result.current.retailorableCount).toBe(0);
+
+    await act(async () => {
+      await result.current.runRetailorAction();
+    });
+
+    expect(api.streamJobAction).not.toHaveBeenCalled();
+  });
+
   it("runs rescore and reports success copy", async () => {
     const activeJobs = [
       createJob({ id: "job-1", status: "ready" }),

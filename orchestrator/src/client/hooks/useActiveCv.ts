@@ -39,6 +39,21 @@ export function useActiveCv() {
   };
 }
 
+/**
+ * Just the active CV's NAME, without the detail fetch `useActiveCv` does — for
+ * surfaces that only need to say which CV an action will run against. Gated by
+ * `enabled` so a page that merely might show that copy does not pay for the
+ * request until it actually can.
+ */
+export function useActiveCvName(enabled: boolean): string | null {
+  const summariesQuery = useQuery<CvDocumentSummary[]>({
+    queryKey: queryKeys.cvDocuments.list(),
+    queryFn: api.listCvDocuments,
+    enabled,
+  });
+  return summariesQuery.data?.[0]?.name?.trim() || null;
+}
+
 function readPersonName(cv: CvDocument | null): string {
   if (!cv) return "";
   // Pick the first field whose role is "name" — by convention the

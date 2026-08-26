@@ -48,6 +48,21 @@ export function canMoveToReady(jobs: JobListItem[]): boolean {
   );
 }
 
+/**
+ * Re-tailoring (the bulk "Generate") targets rows that are ALREADY tailored,
+ * i.e. `ready`. `some`, not `every`: the Tailoring tab also holds `processing`
+ * rows, so select-all there is a mixed selection by construction — the
+ * dispatcher sends the `ready` subset (same shape as `canFetchLiveStatus`)
+ * instead of spraying per-job failures for rows the user did not single out.
+ */
+export function isRetailorable(job: JobListItem): boolean {
+  return job.status === "ready";
+}
+
+export function canRetailor(jobs: JobListItem[]): boolean {
+  return jobs.some(isRetailorable);
+}
+
 export function canRescore(jobs: JobListItem[]): boolean {
   return jobs.length > 0 && jobs.every((job) => job.status !== "processing");
 }

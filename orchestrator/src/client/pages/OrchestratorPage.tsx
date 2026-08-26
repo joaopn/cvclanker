@@ -1,5 +1,6 @@
 import * as api from "@client/api";
 import { PipelineRunBanner } from "@client/components/PipelineRunBanner";
+import { useActiveCvName } from "@client/hooks/useActiveCv";
 import { useKeyboardAvailability } from "@client/hooks/useKeyboardAvailability";
 import { useLlmCallQueue } from "@client/hooks/useLlmCallQueue";
 import {
@@ -496,6 +497,8 @@ export const OrchestratorPage: React.FC = () => {
     canReopenSelected,
     canDeleteSelected,
     canFetchLiveStatusSelected,
+    canRetailorSelected,
+    retailorableCount,
     jobActionInFlight,
     toggleSelectJob,
     toggleSelectAll,
@@ -503,6 +506,7 @@ export const OrchestratorPage: React.FC = () => {
     runJobAction,
     runScreenedRescoreAction,
     runFetchLiveStatusAction,
+    runRetailorAction,
     runMarkClosedAction,
   } = useJobSelectionActions({
     activeJobs,
@@ -512,6 +516,13 @@ export const OrchestratorPage: React.FC = () => {
     pushUndo: undoController.pushUndo,
     undo: undoController.undo,
   });
+
+  // Only fetched when the Generate confirm can actually be opened — the dialog
+  // names the CV the re-tailor will run against, and "active" here means the
+  // most recently updated document, not a user-chosen one.
+  const activeCvName = useActiveCvName(
+    activeTab === "tailoring" && canRetailorSelected,
+  );
 
   const handleSelectJob = (id: string) => {
     handleSelectJobId(id);
@@ -955,6 +966,9 @@ export const OrchestratorPage: React.FC = () => {
           canReopenSelected={canReopenSelected}
           canDeleteSelected={canDeleteSelected}
           canFetchLiveStatusSelected={canFetchLiveStatusSelected}
+          canRetailorSelected={canRetailorSelected}
+          retailorableCount={retailorableCount}
+          activeCvName={activeCvName}
           hasScorerPrefilter={hasScorerPrefilter}
           jobActionInFlight={jobActionInFlight !== null}
           onMoveToReady={() => void runJobAction("move_to_ready")}
@@ -970,6 +984,7 @@ export const OrchestratorPage: React.FC = () => {
           onReopen={() => void runJobAction("reopen")}
           onDelete={() => void runJobAction("delete")}
           onFetchLiveStatus={() => void runFetchLiveStatusAction()}
+          onRetailor={() => void runRetailorAction()}
           onClear={clearSelection}
         />
 

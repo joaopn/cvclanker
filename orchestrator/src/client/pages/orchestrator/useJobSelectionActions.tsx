@@ -23,9 +23,11 @@ import {
   canReopen,
   canRescore,
   canRescrape,
+  canRetailor,
   canSkip,
   getFailedJobIds,
   hasLinkedinPostingId,
+  isRetailorable,
 } from "./jobActions";
 import { clampNumber } from "./utils";
 
@@ -43,6 +45,7 @@ const jobActionLabel: Record<JobAction, string> = {
   reopen: "Reopening...",
   fetch_live_status: "Checking LinkedIn status...",
   delete: "Deleting jobs...",
+  retailor: "Re-tailoring selected jobs...",
 };
 
 const jobActionSuccessLabel: Record<JobAction, string> = {
@@ -59,14 +62,16 @@ const jobActionSuccessLabel: Record<JobAction, string> = {
   reopen: "jobs reopened",
   fetch_live_status: "live statuses checked",
   delete: "jobs deleted",
+  retailor: "jobs sent for re-tailoring",
 };
 
 // Triage status moves whose prior {status, outcome, closedAt} can be restored.
 // `delete` is excluded because nothing can restore it — a PATCH cannot recreate
 // a row, so listing it would render an Undo button that silently does nothing.
-// Tailor (move_to_ready), rescore and clear_score are excluded — they create or
-// destroy PDFs/scores that a status-revert can't cleanly undo (clear_score
-// drops the suitability reason, which nothing here retains).
+// Tailor (move_to_ready), Generate (retailor), rescore and clear_score are
+// excluded — they create or destroy PDFs/scores that a status-revert can't
+// cleanly undo (clear_score drops the suitability reason, which nothing here
+// retains; retailor overwrites tailoredFields, of which no prior copy is kept).
 const undoActionLabel: Partial<Record<JobAction, string>> = {
   skip: "Skip",
   move_to_backlog: "Move to Backlog",
@@ -157,6 +162,14 @@ export function useJobSelectionActions({
   );
   const canFetchLiveStatusSelected = useMemo(
     () => canFetchLiveStatus(selectedJobs),
+    [selectedJobs],
+  );
+  const retailorableJobIds = useMemo(
+    () => selectedJobs.filter(isRetailorable).map((job) => job.id),
+    [selectedJobs],
+  );
+  const canRetailorSelected = useMemo(
+    () => canRetailor(selectedJobs),
     [selectedJobs],
   );
 
@@ -427,11 +440,17 @@ export function useJobSelectionActions({
   );
 
   // Option-less variants. mark_closed needs an outcome and goes through
-  // runMarkClosedAction below; fetch_live_status must go through
-  // runFetchLiveStatusAction, which sends only the LinkedIn subset — a bare
-  // dispatch would spray per-job "no LinkedIn id" failures on mixed input.
+  // runMarkClosedAction below; fetch_live_status and retailor must go through
+  // their own dispatchers, which send only the LinkedIn / `ready` subset — a
+  // bare dispatch would spray per-job failures on the mixed selections both
+  // are designed for.
   const runJobAction = useCallback(
-    async (action: Exclude<JobAction, "mark_closed" | "fetch_live_status">) => {
+    async (
+      action: Exclude<
+        JobAction,
+        "mark_closed" | "fetch_live_status" | "retailor"
+      >,
+    ) => {
       const jobIds = Array.from(selectedJobIds);
       if (jobIds.length === 0) return;
       await runStreamingAction({ action, jobIds } as JobActionRequest);
@@ -468,6 +487,20 @@ export function useJobSelectionActions({
     await runStreamingAction({ action: "fetch_live_status", jobIds });
   }, [selectedJobs, runStreamingAction]);
 
+  /**
+   * The bulk "Generate": re-tailor the ALREADY-TAILORED subset of the
+   * selection against the active CV. Subset-dispatched for the same reason as
+   * live status — the Tailoring tab holds `processing` rows too, so select-all
+   * is mixed by construction.
+   */
+  const runRetailorAction = useCallback(async () => {
+    if (retailorableJobIds.length === 0) return;
+    await runStreamingAction({
+      action: "retailor",
+      jobIds: retailorableJobIds,
+    });
+  }, [retailorableJobIds, runStreamingAction]);
+
   const runMarkClosedAction = useCallback(
     async (outcome: JobOutcome) => {
       const jobIds = Array.from(selectedJobIds);
@@ -495,6 +528,8 @@ export function useJobSelectionActions({
     canReopenSelected,
     canDeleteSelected,
     canFetchLiveStatusSelected,
+    canRetailorSelected,
+    retailorableCount: retailorableJobIds.length,
     jobActionInFlight,
     toggleSelectJob,
     toggleSelectAll,
@@ -502,6 +537,7 @@ export function useJobSelectionActions({
     runJobAction,
     runScreenedRescoreAction,
     runFetchLiveStatusAction,
+    runRetailorAction,
     runMarkClosedAction,
   };
 }

@@ -31,6 +31,16 @@ interface FloatingJobActionsBarProps {
   canReopenSelected: boolean;
   canDeleteSelected: boolean;
   canFetchLiveStatusSelected: boolean;
+  canRetailorSelected: boolean;
+  /**
+   * How many of the selection are actually `ready`, i.e. how many Generate
+   * will act on. Its own prop because `selectedCount` is the WHOLE selection
+   * and this action dispatches a subset — spending numbers quoted at the user
+   * have to be the ones that get spent.
+   */
+  retailorableCount: number;
+  /** Name of the CV the re-tailor will run against, when known. */
+  activeCvName: string | null;
   /** A pre-filter model is configured, so the screened variant is on offer. */
   hasScorerPrefilter: boolean;
   jobActionInFlight: boolean;
@@ -47,6 +57,7 @@ interface FloatingJobActionsBarProps {
   onReopen: () => void;
   onDelete: () => void;
   onFetchLiveStatus: () => void;
+  onRetailor: () => void;
   onClear: () => void;
 }
 
@@ -67,6 +78,9 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
   canReopenSelected,
   canDeleteSelected,
   canFetchLiveStatusSelected,
+  canRetailorSelected,
+  retailorableCount,
+  activeCvName,
   hasScorerPrefilter,
   jobActionInFlight,
   onMoveToReady,
@@ -82,6 +96,7 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
   onReopen,
   onDelete,
   onFetchLiveStatus,
+  onRetailor,
   onClear,
 }) => {
   const buttonClass = "w-full sm:w-auto";
@@ -214,6 +229,53 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
               >
                 Tailor {selectedCount} {jobOrJobs(selectedCount)}
               </Button>
+            )}
+            {canRetailorSelected && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="default"
+                    className={buttonClass}
+                    disabled={jobActionInFlight}
+                  >
+                    Generate {retailorableCount} {jobOrJobs(retailorableCount)}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      Re-tailor {retailorableCount}{" "}
+                      {jobOrJobs(retailorableCount)}?
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Each one is tailored again from scratch against
+                      {activeCvName ? ` "${activeCvName}"` : " the active CV"} —
+                      one AI call and one LaTeX compile per job, replacing the
+                      tailored text and PDF{" "}
+                      {retailorableCount === 1 ? "it has" : "they have"} now.
+                      Pick this after changing your CV template; a plain
+                      re-render would keep the old wording. Rows show as
+                      Processing until they finish, and anything that fails
+                      stays here to retry. It cannot be cancelled once started.
+                      {retailorableCount !== selectedCount &&
+                        ` ${selectedCount - retailorableCount} of the ${selectedCount} selected ${
+                          selectedCount - retailorableCount === 1
+                            ? "is not tailored yet and will be skipped"
+                            : "are not tailored yet and will be skipped"
+                        }.`}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={onRetailor}>
+                      Generate {retailorableCount}{" "}
+                      {jobOrJobs(retailorableCount)}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             )}
             {rescoreButtons}
             {canSkipSelected && (

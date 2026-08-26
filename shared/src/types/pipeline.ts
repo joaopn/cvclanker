@@ -322,7 +322,16 @@ export type JobAction =
   // Irreversible: removes the row and everything hanging off it. Deliberately
   // absent from the client's `undoActionLabel` — undo restores {status,
   // outcome, closedAt} via PATCH, which cannot bring a deleted row back.
-  | "delete";
+  | "delete"
+  // Re-tailors an ALREADY-TAILORED (`ready`) row against the currently active
+  // CV document — the bulk form of the per-job "Generate" button. Re-running
+  // the tailoring LLM rather than just re-rendering the PDF is what makes a CV
+  // template change land: CV field ids are LLM-authored and nothing pins them
+  // across extractions, so stored `tailoredFields` keyed on ids the new
+  // template renamed are silently dropped at render time (and if ALL of them
+  // die the baseline guard hard-fails the render). Also absent from
+  // `undoActionLabel` — a PATCH cannot restore overwritten tailoredFields.
+  | "retailor";
 
 export type JobActionRequest =
   | {
@@ -336,7 +345,8 @@ export type JobActionRequest =
         | "mark_duplicated"
         | "reopen"
         | "fetch_live_status"
-        | "delete";
+        | "delete"
+        | "retailor";
       jobIds: string[];
     }
   | {

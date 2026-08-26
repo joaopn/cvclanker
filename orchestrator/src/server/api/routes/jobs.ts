@@ -125,6 +125,7 @@ const LLM_DRIVING_ACTIONS = new Set<JobAction>([
   "rescore",
   "rescrape",
   "move_to_ready",
+  "retailor",
 ]);
 
 const jobActionRequestSchema = z.discriminatedUnion("action", [
@@ -147,6 +148,10 @@ const jobActionRequestSchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("rescrape"),
+    jobIds: z.array(z.string().min(1)).min(1),
+  }),
+  z.object({
+    action: z.literal("retailor"),
     jobIds: z.array(z.string().min(1)).min(1),
   }),
   z.object({
@@ -853,6 +858,57 @@ async function executeJobActionForJob(
       return { jobId, ok: true, job: updated };
     }
 
+    if (action === "retailor") {
+      // `ready` ONLY, and deliberately narrow on both sides.
+      //
+      // Not `applied`/`in_progress`/`closed`: the PDF there is the record of
+      // what was actually sent, and flipping one to `processing` would move
+      // the row out of its own tab (the bug `generateFinalPdf`'s comment
+      // records). Not a failed `processing` row either — that is `move_to_ready`'s
+      // retry path, so the two buttons never overlap, and it means a second
+      // press of Generate on an in-flight batch is a no-op rather than a
+      // double-enqueue.
+      if (job.status !== "ready") {
+        throw badRequest(
+          `Job is not re-tailorable from status "${job.status}"`,
+          { jobId, status: job.status, allowedStatuses: ["ready"] },
+        );
+      }
+
+      // Same move-then-tailor shape as `move_to_ready`: flip synchronously so
+      // the row shows as in-flight, then tailor detached. The round trip needs
+      // no engine change — pre-setting `processing` puts the job in
+      // `generateFinalPdf`'s initial-tailoring funnel, whose success path
+      // writes `ready` back. A failure leaves it at `processing` with a reason,
+      // which the Tailoring tab renders as retryable in place.
+      const updated = await jobsRepo.updateJob(jobId, {
+        status: "processing",
+        tailoringFailureReason: null,
+      });
+      if (!updated) {
+        throw new AppError({
+          status: 404,
+          code: "NOT_FOUND",
+          message: "Job not found",
+        });
+      }
+
+      // `requestOrigin` is threaded for parity with `move_to_ready` and with
+      // the single-job `/:id/re-tailor`, both of which reach this same FIFO.
+      // Both ProcessJobOptions fields are unread today (summarizeJob and
+      // generateFinalPdf take them as `_options`); requestOrigin is a vestige
+      // of the stripped tracer-link and analytics stack, which did build
+      // absolute URLs from it. Keeping the tailoring entrances identical costs
+      // nothing and means none of them silently lacks it if it is ever wired up
+      // again. `force` is left off because nothing has ever read it and no
+      // in-repo caller sets it.
+      scheduleBackgroundTailor(jobId, {
+        requestOrigin: options?.requestOrigin ?? null,
+      });
+
+      return { jobId, ok: true, job: updated };
+    }
+
     // NOTE: everything past this point is the `rescore` arm — it is a bare
     // fallthrough, not an `action === "rescore"` guard, so a new action arm
     // MUST be inserted above or it silently rescores.
@@ -1150,7 +1206,9 @@ jobsRouter.post("/actions", async (req: Request, res: Response) => {
       parsed.options?.force !== undefined
         ? { forceMoveToReady: parsed.options.force }
         : {}),
-      ...(parsed.action === "move_to_ready" ? { requestOrigin } : {}),
+      ...(parsed.action === "move_to_ready" || parsed.action === "retailor"
+        ? { requestOrigin }
+        : {}),
       ...(parsed.action === "mark_closed"
         ? { markClosedOutcome: parsed.options.outcome }
         : {}),
@@ -1255,7 +1313,10 @@ jobsRouter.post("/actions/stream", async (req: Request, res: Response) => {
     parsed.data.options?.force !== undefined
       ? { forceMoveToReady: parsed.data.options.force }
       : {}),
-    ...(parsed.data.action === "move_to_ready" ? { requestOrigin } : {}),
+    ...(parsed.data.action === "move_to_ready" ||
+    parsed.data.action === "retailor"
+      ? { requestOrigin }
+      : {}),
     ...(parsed.data.action === "mark_closed"
       ? { markClosedOutcome: parsed.data.options.outcome }
       : {}),

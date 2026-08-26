@@ -797,6 +797,136 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     expect(body.data.succeeded).toBe(1);
   });
 
+  it("retailor flips a tailored row to processing and schedules the tailor", async () => {
+    await seedJob({ id: "job-rt-1", status: "ready" });
+
+    const { body } = await postAction({
+      action: "retailor",
+      jobIds: ["job-rt-1"],
+    });
+
+    expect(body.data.succeeded).toBe(1);
+    expect(body.data.results[0].job.status).toBe("processing");
+    // Cleared so the Tailoring tab reads the row as actively running rather
+    // than as a previous failure.
+    expect(body.data.results[0].job.tailoringFailureReason).toBeNull();
+
+    // Pins BOTH halves of the options object. The key set is asserted
+    // explicitly rather than via toHaveBeenCalledWith, whose toEqual semantics
+    // ignore undefined-valued keys — a copy-pasted `force: options?.force`
+    // would slip through that and plant the dead plumbing this guards against.
+    // The origin proves the PLAIN handler's requestOrigin gate covers retailor
+    // (gate it back out and this is null); the streaming twin is pinned
+    // separately below, since that is the route the UI actually uses.
+    const { processJob } = await import("@server/pipeline/index");
+    const call = vi
+      .mocked(processJob)
+      .mock.calls.find(([id]) => id === "job-rt-1");
+    expect(call).toBeDefined();
+    expect(Object.keys(call?.[1] ?? {})).toEqual(["requestOrigin"]);
+    expect(call?.[1]?.requestOrigin).toMatch(/^https?:\/\//);
+  });
+
+  // The UI dispatches every bulk action through /actions/stream, not /actions,
+  // so the gate edited for retailor has to be pinned on THAT handler too — the
+  // two are separate literal blocks and reverting either alone is silent.
+  it("retailor over the streaming route flips the row and threads the origin", async () => {
+    await seedJob({ id: "job-rt-sse", status: "ready" });
+
+    const res = await fetch(`${baseUrl}/api/jobs/actions/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "retailor", jobIds: ["job-rt-sse"] }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+
+    const reader = res.body?.getReader();
+    let text = "";
+    if (reader) {
+      const decoder = new TextDecoder();
+      // The tailor is detached and processJob is mocked, so the stream reaches
+      // its terminal event immediately; read until it does rather than after a
+      // fixed number of chunks.
+      while (!text.includes('"completed"')) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+      }
+      await reader.cancel();
+    }
+
+    expect(text).toContain('"completed"');
+
+    const { db, schema } = await import("@server/db/index");
+    const rows = await db.select().from(schema.jobs);
+    expect(rows.find((r) => r.id === "job-rt-sse")?.status).toBe("processing");
+
+    const { processJob } = await import("@server/pipeline/index");
+    const call = vi
+      .mocked(processJob)
+      .mock.calls.find(([id]) => id === "job-rt-sse");
+    expect(call).toBeDefined();
+    expect(call?.[1]?.requestOrigin).toMatch(/^https?:\/\//);
+  });
+
+  it("retailor clears a stale failure reason on the row it re-runs", async () => {
+    await seedJob({
+      id: "job-rt-2",
+      status: "ready",
+      tailoringFailureReason: "tectonic exited 1",
+    });
+
+    const { body } = await postAction({
+      action: "retailor",
+      jobIds: ["job-rt-2"],
+    });
+
+    expect(body.data.succeeded).toBe(1);
+    expect(body.data.results[0].job.tailoringFailureReason).toBeNull();
+  });
+
+  // Only `ready`. A clean `processing` row is mid-tailor, a reason-carrying one
+  // is move_to_ready's retry, and applied/in_progress/closed hold the PDF that
+  // was actually sent — flipping any of them to `processing` would also move
+  // the row out of its own tab.
+  it("retailor refuses every status that is not ready", async () => {
+    const cases: Array<{ id: string; status: string; reason?: string }> = [
+      { id: "job-rt-3", status: "discovered" },
+      { id: "job-rt-4", status: "processing" },
+      { id: "job-rt-5", status: "processing", reason: "boom" },
+      { id: "job-rt-6", status: "applied" },
+      { id: "job-rt-7", status: "in_progress" },
+      { id: "job-rt-8", status: "closed" },
+      { id: "job-rt-9", status: "backlog" },
+      { id: "job-rt-10", status: "stale" },
+    ];
+    for (const c of cases) {
+      await seedJob({
+        id: c.id,
+        status: c.status,
+        tailoringFailureReason: c.reason ?? null,
+      });
+    }
+
+    const { body } = await postAction({
+      action: "retailor",
+      jobIds: cases.map((c) => c.id),
+    });
+
+    expect(body.data.succeeded).toBe(0);
+    expect(body.data.failed).toBe(cases.length);
+    expect(body.data.results[0].error.message).toMatch(/not re-tailorable/i);
+
+    const { db, schema } = await import("@server/db/index");
+    const rows = await db.select().from(schema.jobs);
+    for (const c of cases) {
+      const row = rows.find((r) => r.id === c.id);
+      expect(row?.status).toBe(c.status);
+    }
+  });
+
   it("delete reports a missing job without failing its siblings", async () => {
     await seedJob({ id: "job-del-6", status: "discovered" });
 

@@ -8,6 +8,7 @@ import {
   canMoveToReady,
   canRescore,
   canRescrape,
+  canRetailor,
   canSkip,
   getFailedJobIds,
 } from "./jobActions";
@@ -241,6 +242,60 @@ describe("jobActions", () => {
 
     it("is false for an empty selection", () => {
       expect(canFetchLiveStatus([])).toBe(false);
+    });
+  });
+
+  describe("canRetailor", () => {
+    it("allows a selection of already-tailored rows", () => {
+      expect(
+        canRetailor([
+          createJob({ id: "1", status: "ready" }),
+          createJob({ id: "2", status: "ready" }),
+        ]),
+      ).toBe(true);
+    });
+
+    it("allows a MIXED selection — the dispatcher acts on the ready subset", () => {
+      expect(
+        canRetailor([
+          createJob({ id: "1", status: "ready" }),
+          createJob({ id: "2", status: "processing" }),
+        ]),
+      ).toBe(true);
+    });
+
+    // The Tailoring tab holds `processing` too. A clean one is mid-tailor and a
+    // reason-carrying one is `move_to_ready`'s retry — neither is Generate's
+    // job, and excluding both is what makes a second press a no-op rather than
+    // a double-enqueue.
+    it("refuses a selection with no tailored row, in-flight or failed", () => {
+      expect(canRetailor([createJob({ id: "1", status: "processing" })])).toBe(
+        false,
+      );
+      expect(
+        canRetailor([
+          createJob({
+            id: "2",
+            status: "processing",
+            tailoringFailureReason: "boom",
+          }),
+        ]),
+      ).toBe(false);
+      expect(canRetailor([createJob({ id: "3", status: "discovered" })])).toBe(
+        false,
+      );
+    });
+
+    // Re-tailoring one of these would flip it to `processing`, moving the row
+    // out of its own tab — and the PDF there is the record of what was sent.
+    it("refuses rows that are past tailoring", () => {
+      for (const status of ["applied", "in_progress", "closed"] as const) {
+        expect(canRetailor([createJob({ id: status, status })])).toBe(false);
+      }
+    });
+
+    it("is false for an empty selection", () => {
+      expect(canRetailor([])).toBe(false);
     });
   });
 });
