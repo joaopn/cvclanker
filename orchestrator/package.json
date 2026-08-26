@@ -21,6 +21,7 @@
     "repro:llm-timeout": "tsx scripts/repro-llm-request-timeout.ts",
     "repro:date-posted": "tsx scripts/repro-date-posted-drop.ts",
     "repro:mapper-drops": "tsx scripts/repro-silent-mapper-drops.ts",
+    "repro:pdf-filename": "tsx scripts/repro-pdf-download-filename.ts",
     "verify:dup-identity": "tsx scripts/verify-duplicate-identity.ts",
     "db:migrate": "tsx src/server/db/migrate.ts",
     "db:migrate:prod": "tsx src/server/db/migrate.ts",

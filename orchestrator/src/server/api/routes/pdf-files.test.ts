@@ -27,9 +27,11 @@ describe.sequential("GET /pdfs/:filename", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/pdf");
-    expect(res.headers.get("content-disposition")).toBe(
-      'inline; filename="resume_job-1.pdf"',
-    );
+    // Disposition TYPE only. A `filename` parameter here would take
+    // precedence over the download surfaces' `download` attribute and save
+    // every CV as `resume_<jobId>.pdf` — B47, which this assertion previously
+    // pinned in place.
+    expect(res.headers.get("content-disposition")).toBe("inline");
     const body = Buffer.from(await res.arrayBuffer());
     expect(body).toEqual(PDF_BYTES);
   });
@@ -46,6 +48,25 @@ describe.sequential("GET /pdfs/:filename", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/pdf");
+  });
+
+  // B47: the value is irrelevant — ANY filename the server pins wins over the
+  // client's `download` attribute, so the guard is that the parameter is
+  // absent, not that it holds some particular name.
+  it("pins no filename on either format, so the download attribute wins", async () => {
+    const { upsertJobPdf } = await import("@server/repositories/job-pdfs");
+    await upsertJobPdf({ jobId: "job-b47", kind: "resume", data: PDF_BYTES });
+    await upsertJobPdf({
+      jobId: "job-b47",
+      kind: "resume_docx",
+      data: DOCX_BYTES,
+    });
+
+    for (const name of ["resume_job-b47.pdf", "resume_job-b47.docx"]) {
+      const res = await fetch(`${baseUrl}/pdfs/${name}`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-disposition")).not.toMatch(/filename/i);
+    }
   });
 
   it("404s when no blob row exists", async () => {
@@ -72,9 +93,9 @@ describe.sequential("GET /pdfs/:filename", () => {
     expect(res.headers.get("content-type")).toBe(
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     );
-    expect(res.headers.get("content-disposition")).toBe(
-      'attachment; filename="resume_job-4.docx"',
-    );
+    // The type is the explicit signal; the filename parameter is the part that
+    // overrode the client — see the resume-PDF case above.
+    expect(res.headers.get("content-disposition")).toBe("attachment");
     const body = Buffer.from(await res.arrayBuffer());
     expect(body).toEqual(DOCX_BYTES);
   });
