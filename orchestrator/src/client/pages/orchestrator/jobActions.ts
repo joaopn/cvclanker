@@ -49,14 +49,25 @@ export function canMoveToReady(jobs: JobListItem[]): boolean {
 }
 
 /**
- * Re-tailoring (the bulk "Generate") targets rows that are ALREADY tailored,
- * i.e. `ready`. `some`, not `every`: the Tailoring tab also holds `processing`
- * rows, so select-all there is a mixed selection by construction — the
- * dispatcher sends the `ready` subset (same shape as `canFetchLiveStatus`)
- * instead of spraying per-job failures for rows the user did not single out.
+ * Re-tailoring (the bulk "Generate") takes everything on the Tailoring tab
+ * EXCEPT a row a tailor is writing to right now: a tailored (`ready`) row is
+ * re-tailored, and a failed one (`processing` WITH a reason) is retried. The
+ * tab holds only those two statuses, so this is "all of it but the live runs".
+ *
+ * The live-run exclusion is what makes a second press of Generate a no-op for
+ * every row still running — the first press clears every reason, so the rows
+ * it is still working on look exactly like this. A row that has already FAILED
+ * becomes eligible again the moment its reason lands; re-offering it is the
+ * retry, not a double-enqueue.
+ *
+ * `some`, not `every`: select-all on this tab is a mixed selection by
+ * construction, so the dispatcher sends the eligible subset (same shape as
+ * `canFetchLiveStatus`) instead of spraying per-job failures for rows the user
+ * did not single out.
  */
 export function isRetailorable(job: JobListItem): boolean {
-  return job.status === "ready";
+  if (job.status === "ready") return true;
+  return isFailedProcessing(job);
 }
 
 export function canRetailor(jobs: JobListItem[]): boolean {

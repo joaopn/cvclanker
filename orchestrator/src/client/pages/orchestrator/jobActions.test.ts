@@ -255,7 +255,7 @@ describe("jobActions", () => {
       ).toBe(true);
     });
 
-    it("allows a MIXED selection — the dispatcher acts on the ready subset", () => {
+    it("allows a MIXED selection — the dispatcher acts on the eligible subset", () => {
       expect(
         canRetailor([
           createJob({ id: "1", status: "ready" }),
@@ -264,23 +264,27 @@ describe("jobActions", () => {
       ).toBe(true);
     });
 
-    // The Tailoring tab holds `processing` too. A clean one is mid-tailor and a
-    // reason-carrying one is `move_to_ready`'s retry — neither is Generate's
-    // job, and excluding both is what makes a second press a no-op rather than
-    // a double-enqueue.
-    it("refuses a selection with no tailored row, in-flight or failed", () => {
-      expect(canRetailor([createJob({ id: "1", status: "processing" })])).toBe(
-        false,
-      );
+    // A failed tailor is not tailored, so Generate retries it in the same press
+    // rather than making the user hunt it out separately afterwards.
+    it("includes a FAILED tailor, which sits at processing with a reason", () => {
       expect(
         canRetailor([
           createJob({
-            id: "2",
+            id: "1",
             status: "processing",
-            tailoringFailureReason: "boom",
+            tailoringFailureReason: "tectonic exited 1",
           }),
         ]),
-      ).toBe(false);
+      ).toBe(true);
+    });
+
+    // The one exclusion: a detached tailor is mid-write on this row. It is also
+    // what makes a second press on an in-flight batch a no-op — the first press
+    // cleared every reason, so each row it touched looks exactly like this.
+    it("refuses a LIVE tailor, and anything off this tab", () => {
+      expect(canRetailor([createJob({ id: "1", status: "processing" })])).toBe(
+        false,
+      );
       expect(canRetailor([createJob({ id: "3", status: "discovered" })])).toBe(
         false,
       );
@@ -288,6 +292,7 @@ describe("jobActions", () => {
 
     // Re-tailoring one of these would flip it to `processing`, moving the row
     // out of its own tab — and the PDF there is the record of what was sent.
+    // They cannot be selected on the Tailoring tab anyway.
     it("refuses rows that are past tailoring", () => {
       for (const status of ["applied", "in_progress", "closed"] as const) {
         expect(canRetailor([createJob({ id: status, status })])).toBe(false);

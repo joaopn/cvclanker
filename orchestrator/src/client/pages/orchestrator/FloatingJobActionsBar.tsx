@@ -33,10 +33,12 @@ interface FloatingJobActionsBarProps {
   canFetchLiveStatusSelected: boolean;
   canRetailorSelected: boolean;
   /**
-   * How many of the selection are actually `ready`, i.e. how many Generate
-   * will act on. Its own prop because `selectedCount` is the WHOLE selection
-   * and this action dispatches a subset — spending numbers quoted at the user
-   * have to be the ones that get spent.
+   * How many of the selection Generate will actually act on — the tailored
+   * rows plus the failed tailors it retries, i.e. everything on that tab but
+   * the ones a tailor is running on right now. Its own prop because
+   * `selectedCount` is
+   * the WHOLE selection and this action dispatches a subset — spending numbers
+   * quoted at the user have to be the ones that get spent.
    */
   retailorableCount: number;
   /** Name of the CV the re-tailor will run against, when known. */
@@ -218,18 +220,14 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
       case "tailoring":
         return (
           <>
-            {canMoveSelected && (
-              <Button
-                type="button"
-                size="sm"
-                variant="default"
-                className={buttonClass}
-                disabled={jobActionInFlight}
-                onClick={onMoveToReady}
-              >
-                Tailor {selectedCount} {jobOrJobs(selectedCount)}
-              </Button>
-            )}
+            {/* No Tailor button here. This tab holds only `processing` and
+                `ready`, so `canMoveToReady`'s `every` is true ONLY when every
+                selected row is a failed tailor — and in exactly that case
+                Generate offers the same count, does the same thing, and asks
+                for confirmation first. Two primary buttons quoting one number
+                where the cheaper-looking one silently spends the same money is
+                a trap, so Generate is the single entrance. Tailor still owns
+                the untailored shelves on the other tabs. */}
             {canRetailorSelected && (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -250,10 +248,10 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
                       {jobOrJobs(retailorableCount)}?
                     </AlertDialogTitle>
                     <AlertDialogDescription>
-                      Each one is tailored again from scratch against
+                      Each one is tailored from scratch against
                       {activeCvName ? ` "${activeCvName}"` : " the active CV"} —
-                      one AI call and one LaTeX compile per job, replacing the
-                      tailored text and PDF{" "}
+                      one AI call and one LaTeX compile per job, replacing
+                      whatever tailored text and PDF{" "}
                       {retailorableCount === 1 ? "it has" : "they have"} now.
                       Pick this after changing your CV template; a plain
                       re-render would keep the old wording. Rows show as
@@ -262,8 +260,8 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
                       {retailorableCount !== selectedCount &&
                         ` ${selectedCount - retailorableCount} of the ${selectedCount} selected ${
                           selectedCount - retailorableCount === 1
-                            ? "is not tailored yet and will be skipped"
-                            : "are not tailored yet and will be skipped"
+                            ? "is being tailored right now and will be skipped"
+                            : "are being tailored right now and will be skipped"
                         }.`}
                     </AlertDialogDescription>
                   </AlertDialogHeader>

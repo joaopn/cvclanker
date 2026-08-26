@@ -887,15 +887,57 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     expect(body.data.results[0].job.tailoringFailureReason).toBeNull();
   });
 
-  // Only `ready`. A clean `processing` row is mid-tailor, a reason-carrying one
-  // is move_to_ready's retry, and applied/in_progress/closed hold the PDF that
-  // was actually sent — flipping any of them to `processing` would also move
-  // the row out of its own tab.
-  it("retailor refuses every status that is not ready", async () => {
-    const cases: Array<{ id: string; status: string; reason?: string }> = [
+  // A FAILED tailor is not tailored, so Generate retries it in the same press.
+  it("retailor retries a FAILED tailor, clearing its reason", async () => {
+    await seedJob({
+      id: "job-rt-failed",
+      status: "processing",
+      tailoringFailureReason: "tectonic exited 1",
+    });
+
+    const { body } = await postAction({
+      action: "retailor",
+      jobIds: ["job-rt-failed"],
+    });
+
+    expect(body.data.succeeded).toBe(1);
+    expect(body.data.results[0].job.status).toBe("processing");
+    expect(body.data.results[0].job.tailoringFailureReason).toBeNull();
+
+    const { processJob } = await import("@server/pipeline/index");
+    expect(
+      vi.mocked(processJob).mock.calls.some(([id]) => id === "job-rt-failed"),
+    ).toBe(true);
+  });
+
+  // The one row Generate must never touch: a detached tailor is mid-write on
+  // it, so re-entering would run two tailors against one row. This is also what
+  // keeps a second press on an in-flight batch a no-op.
+  it("retailor refuses a LIVE tailor and never schedules a second run", async () => {
+    await seedJob({ id: "job-rt-live", status: "processing" });
+
+    const { body } = await postAction({
+      action: "retailor",
+      jobIds: ["job-rt-live"],
+    });
+
+    expect(body.data.failed).toBe(1);
+    expect(body.data.results[0].ok).toBe(false);
+    expect(body.data.results[0].error.message).toMatch(
+      /already being tailored/i,
+    );
+
+    const { processJob } = await import("@server/pipeline/index");
+    expect(
+      vi.mocked(processJob).mock.calls.some(([id]) => id === "job-rt-live"),
+    ).toBe(false);
+  });
+
+  // Off-tab statuses stay refused: applied/in_progress/closed hold the PDF that
+  // was actually sent, and the untailored shelves belong to move_to_ready.
+  it("retailor refuses every status off the Tailoring tab", async () => {
+    const cases: Array<{ id: string; status: string }> = [
       { id: "job-rt-3", status: "discovered" },
-      { id: "job-rt-4", status: "processing" },
-      { id: "job-rt-5", status: "processing", reason: "boom" },
       { id: "job-rt-6", status: "applied" },
       { id: "job-rt-7", status: "in_progress" },
       { id: "job-rt-8", status: "closed" },
@@ -903,11 +945,7 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
       { id: "job-rt-10", status: "stale" },
     ];
     for (const c of cases) {
-      await seedJob({
-        id: c.id,
-        status: c.status,
-        tailoringFailureReason: c.reason ?? null,
-      });
+      await seedJob({ id: c.id, status: c.status });
     }
 
     const { body } = await postAction({
@@ -918,6 +956,12 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     expect(body.data.succeeded).toBe(0);
     expect(body.data.failed).toBe(cases.length);
     expect(body.data.results[0].error.message).toMatch(/not re-tailorable/i);
+    // The message must name the status, not the generic in-flight refusal —
+    // those are different causes and a user reading the toast needs to know
+    // which one they hit.
+    expect(body.data.results[0].error.message).not.toMatch(
+      /already being tailored/i,
+    );
 
     const { db, schema } = await import("@server/db/index");
     const rows = await db.select().from(schema.jobs);

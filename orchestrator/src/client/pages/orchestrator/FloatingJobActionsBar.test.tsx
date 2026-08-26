@@ -192,7 +192,7 @@ describe("FloatingJobActionsBar delete", () => {
   });
 
   describe("Generate (bulk re-tailor)", () => {
-    it("quotes the READY subset, not the whole selection, and says what is skipped", () => {
+    it("quotes the ELIGIBLE subset, not the whole selection, and says what is skipped", () => {
       renderBar({
         activeTab: "tailoring",
         selectedCount: 5,
@@ -206,11 +206,11 @@ describe("FloatingJobActionsBar delete", () => {
       expect(screen.getByText(/re-tailor 3 jobs\?/i)).toBeTruthy();
       expect(screen.getByText(/"Jane Doe CV"/)).toBeTruthy();
       expect(
-        screen.getByText(/2 of the 5 selected are not tailored yet/i),
+        screen.getByText(/2 of the 5 selected are being tailored right now/i),
       ).toBeTruthy();
     });
 
-    it("omits the skipped-rows note when the whole selection is tailored", () => {
+    it("omits the skipped-rows note when every selected row is eligible", () => {
       renderBar({
         activeTab: "tailoring",
         selectedCount: 2,
@@ -244,7 +244,36 @@ describe("FloatingJobActionsBar delete", () => {
       expect(onRetailor).toHaveBeenCalledTimes(1);
     });
 
-    it("is absent when nothing selected is tailored", () => {
+    // Both buttons would quote the same count and do the same thing here, and
+    // only Generate confirms the spend first.
+    it("is the only tailoring entrance — no Tailor button beside it", () => {
+      renderBar({
+        activeTab: "tailoring",
+        selectedCount: 3,
+        canMoveSelected: true,
+        canRetailorSelected: true,
+        retailorableCount: 3,
+      });
+
+      expect(screen.queryByRole("button", { name: /^tailor /i })).toBeNull();
+      expect(
+        screen.getByRole("button", { name: /generate 3 jobs/i }),
+      ).toBeTruthy();
+    });
+
+    // Tailor still owns the untailored shelves everywhere else — `all`
+    // included, which is why the spend confirmation is tab-local, not global.
+    it("leaves the Tailor button alone on other tabs", () => {
+      for (const tab of ["inbox", "backlog", "stale", "all"] as const) {
+        cleanup();
+        renderBar({ activeTab: tab, selectedCount: 3, canMoveSelected: true });
+        expect(
+          screen.getByRole("button", { name: /^tailor 3 jobs$/i }),
+        ).toBeTruthy();
+      }
+    });
+
+    it("is absent when nothing selected is eligible", () => {
       renderBar({
         activeTab: "tailoring",
         canRetailorSelected: false,

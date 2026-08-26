@@ -275,7 +275,7 @@ describe("useJobSelectionActions", () => {
     );
   });
 
-  it("sends only the ready subset of a mixed selection to retailor", async () => {
+  it("sends the tailored AND failed rows of a mixed selection, never the live one", async () => {
     const activeJobs = [
       createJob({ id: "job-ready", status: "ready" }),
       createJob({ id: "job-running", status: "processing" }),
@@ -288,14 +288,19 @@ describe("useJobSelectionActions", () => {
     const loadJobs = vi.fn().mockResolvedValue(undefined);
     mockStreamJobAction({
       action: "retailor",
-      requested: 1,
-      succeeded: 1,
+      requested: 2,
+      succeeded: 2,
       failed: 0,
       results: [
         {
           jobId: "job-ready",
           ok: true,
           job: createJob({ id: "job-ready", status: "processing" }),
+        },
+        {
+          jobId: "job-failed",
+          ok: true,
+          job: createJob({ id: "job-failed", status: "processing" }),
         },
       ],
     });
@@ -316,18 +321,18 @@ describe("useJobSelectionActions", () => {
     });
 
     // The count the confirm dialog quotes is the subset, not the selection —
-    // a dialog promising 3 jobs' worth of spend while firing 1 is a lie.
-    expect(result.current.retailorableCount).toBe(1);
+    // a dialog promising 3 jobs' worth of spend while firing 2 is a lie.
+    expect(result.current.retailorableCount).toBe(2);
     expect(result.current.canRetailorSelected).toBe(true);
 
     await act(async () => {
       await result.current.runRetailorAction();
     });
 
-    // The in-flight row would be re-enqueued mid-run and the failed one belongs
-    // to Tailor's retry path; neither is sent to fail server-side.
+    // The failed row is retried in the same press; the live one is dropped,
+    // because a detached tailor is mid-write on it.
     expect(api.streamJobAction).toHaveBeenCalledWith(
-      { action: "retailor", jobIds: ["job-ready"] },
+      { action: "retailor", jobIds: ["job-ready", "job-failed"] },
       expect.objectContaining({ onEvent: expect.any(Function) }),
     );
   });
@@ -341,6 +346,7 @@ describe("useJobSelectionActions", () => {
   // is mutation-checked: point the dispatcher at the full selection and that
   // one fails.
   it("dispatches nothing and offers nothing when no selected row is tailored", async () => {
+    // A LIVE tailor — the only thing Generate refuses on this tab.
     const activeJobs = [createJob({ id: "job-x", status: "processing" })];
     const loadJobs = vi.fn().mockResolvedValue(undefined);
 

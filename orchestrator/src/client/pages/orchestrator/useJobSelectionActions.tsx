@@ -441,7 +441,7 @@ export function useJobSelectionActions({
 
   // Option-less variants. mark_closed needs an outcome and goes through
   // runMarkClosedAction below; fetch_live_status and retailor must go through
-  // their own dispatchers, which send only the LinkedIn / `ready` subset — a
+  // their own dispatchers, which send only the LinkedIn / eligible subset — a
   // bare dispatch would spray per-job failures on the mixed selections both
   // are designed for.
   const runJobAction = useCallback(
@@ -488,10 +488,11 @@ export function useJobSelectionActions({
   }, [selectedJobs, runStreamingAction]);
 
   /**
-   * The bulk "Generate": re-tailor the ALREADY-TAILORED subset of the
-   * selection against the active CV. Subset-dispatched for the same reason as
-   * live status — the Tailoring tab holds `processing` rows too, so select-all
-   * is mixed by construction.
+   * The bulk "Generate": re-tailor the eligible subset of the selection
+   * against the active CV — tailored rows, plus failed tailors it retries in
+   * the same press. Subset-dispatched for the same reason as live status: the
+   * Tailoring tab also holds rows a tailor is running on right now, which must
+   * not be re-entered, so select-all is mixed by construction.
    */
   const runRetailorAction = useCallback(async () => {
     if (retailorableJobIds.length === 0) return;

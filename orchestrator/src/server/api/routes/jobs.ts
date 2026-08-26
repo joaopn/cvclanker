@@ -859,19 +859,43 @@ async function executeJobActionForJob(
     }
 
     if (action === "retailor") {
-      // `ready` ONLY, and deliberately narrow on both sides.
+      // Everything the Tailoring tab holds EXCEPT a live run: a tailored
+      // (`ready`) row is re-tailored, a failed one (`processing` WITH a reason)
+      // is retried in the same press.
       //
-      // Not `applied`/`in_progress`/`closed`: the PDF there is the record of
-      // what was actually sent, and flipping one to `processing` would move
+      // Rejecting a LIVE `processing` row (no reason) is the load-bearing half:
+      // a detached tailor is queued or mid-write on it, and re-entering would
+      // run two tailors against one row. It is also what keeps a second press of
+      // Generate a no-op FOR EVERY ROW STILL RUNNING — the first press clears
+      // every reason, so the rows it is still working on look exactly like
+      // this. A row that has already FAILED is eligible again the moment its
+      // reason lands, which is the retry this action exists to offer.
+      // (Property of this action, not of the codebase: `POST /:id/re-tailor`
+      // has no status guard at all and bypasses the FIFO — see B46.)
+      //
+      // Still not `applied`/`in_progress`/`closed`: the PDF there is the record
+      // of what was actually sent, and flipping one to `processing` would move
       // the row out of its own tab (the bug `generateFinalPdf`'s comment
-      // records). Not a failed `processing` row either — that is `move_to_ready`'s
-      // retry path, so the two buttons never overlap, and it means a second
-      // press of Generate on an in-flight batch is a no-op rather than a
-      // double-enqueue.
-      if (job.status !== "ready") {
+      // records). Nor the untailored shelves — `move_to_ready` owns those, and
+      // they cannot be selected on this tab anyway.
+      const isRetryableFailure =
+        job.status === "processing" && job.tailoringFailureReason != null;
+      if (job.status !== "ready" && !isRetryableFailure) {
         throw badRequest(
-          `Job is not re-tailorable from status "${job.status}"`,
-          { jobId, status: job.status, allowedStatuses: ["ready"] },
+          job.status === "processing"
+            ? "Job is already being tailored"
+            : `Job is not re-tailorable from status "${job.status}"`,
+          {
+            jobId,
+            status: job.status,
+            // Real JobStatus values only, like every other arm (`skip` and
+            // `move_to_ready` likewise omit their own failed-`processing`
+            // allowance here). A "(failed)" pseudo-status would be prose in a
+            // list a future consumer would try to map, and a boolean beside
+            // `jobId`/`status` would read as a fact about THIS job — which it
+            // never is, since the throw only fires on a live or off-tab row.
+            allowedStatuses: ["ready"],
+          },
         );
       }
 
@@ -894,7 +918,9 @@ async function executeJobActionForJob(
       }
 
       // `requestOrigin` is threaded for parity with `move_to_ready` and with
-      // the single-job `/:id/re-tailor`, both of which reach this same FIFO.
+      // the single-job `/:id/re-tailor` — both reach the same `processJob`,
+      // though only `move_to_ready` goes through this FIFO; `/:id/re-tailor`
+      // calls it directly and unguarded (B46).
       // Both ProcessJobOptions fields are unread today (summarizeJob and
       // generateFinalPdf take them as `_options`); requestOrigin is a vestige
       // of the stripped tracer-link and analytics stack, which did build
