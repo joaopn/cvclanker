@@ -1,8 +1,10 @@
 import { SettingsSectionFrame } from "@client/pages/settings/components/SettingsSectionFrame";
 import type { PipelineSettingsValues } from "@client/pages/settings/types";
 import {
+  MAX_LATEX_COMPILE_TIMEOUT_MS,
   MAX_LLM_REQUEST_TIMEOUT_MS,
   MAX_POOL_CONCURRENCY,
+  MIN_LATEX_COMPILE_TIMEOUT_MS,
   MIN_LLM_REQUEST_TIMEOUT_MS,
 } from "@shared/settings-registry";
 import type { UpdateSettingsInput } from "@shared/settings-schema.js";
@@ -148,6 +150,7 @@ export const PipelineSettingsSection: React.FC<
     maxBulkActionJobs,
     llmRateLimitRetries,
     llmRequestTimeoutMs,
+    latexCompileTimeoutMs,
     discoveryConcurrency,
     scoringConcurrency,
     tailoringConcurrency,
@@ -528,6 +531,65 @@ export const PipelineSettingsSection: React.FC<
           <div className="text-xs text-muted-foreground">
             Current:{" "}
             <span className="font-mono">{llmRequestTimeoutMs.effective}</span>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label
+            htmlFor="latexCompileTimeoutMs"
+            className="text-sm font-medium"
+          >
+            LaTeX compile timeout (ms)
+          </label>
+          <Controller
+            name="latexCompileTimeoutMs"
+            control={control}
+            rules={{
+              validate: (v) =>
+                v === null ||
+                v === undefined ||
+                (Number.isInteger(v) &&
+                  v >= MIN_LATEX_COMPILE_TIMEOUT_MS &&
+                  v <= MAX_LATEX_COMPILE_TIMEOUT_MS) ||
+                `Must be between ${MIN_LATEX_COMPILE_TIMEOUT_MS} and ${MAX_LATEX_COMPILE_TIMEOUT_MS}`,
+            }}
+            render={({ field }) => (
+              <Input
+                id="latexCompileTimeoutMs"
+                type="number"
+                min={MIN_LATEX_COMPILE_TIMEOUT_MS}
+                max={MAX_LATEX_COMPILE_TIMEOUT_MS}
+                step={1000}
+                placeholder={String(latexCompileTimeoutMs.default)}
+                disabled={isLoading || isSaving}
+                value={field.value ?? ""}
+                onChange={(e) => {
+                  const value = e.target.valueAsNumber;
+                  field.onChange(Number.isFinite(value) ? value : null);
+                }}
+              />
+            )}
+          />
+          {errors.latexCompileTimeoutMs && (
+            <div className="text-xs text-destructive">
+              {errors.latexCompileTimeoutMs.message as string}
+            </div>
+          )}
+          <div className="text-xs text-muted-foreground">
+            How long one tectonic run may take before it is killed. On a LaTeX
+            profile the CV uploads, per-job renders and previews all spawn it; a
+            Word CV converts through LibreOffice instead. Cover letters are
+            LaTeX on either profile, so their uploads, renders and previews are
+            always bounded by this. The first compile on a fresh container also
+            downloads the LaTeX packages the document pulls in, so it is far
+            slower than every one after it — raise this if a cold upload fails
+            with a timeout rather than a LaTeX error. Applies per spawn, and a
+            gated upload compiles once for the original plus once per extraction
+            attempt.
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Current:{" "}
+            <span className="font-mono">{latexCompileTimeoutMs.effective}</span>
           </div>
         </div>
 

@@ -114,6 +114,7 @@ const PipelineSettingsHarness = ({
             bulkActionConcurrency: { effective: 5, default: 5 },
             batchUrlImportConcurrency: { effective: 3, default: 3 },
             llmRequestTimeoutMs: { effective: 300_000, default: 300_000 },
+            latexCompileTimeoutMs: { effective: 600_000, default: 600_000 },
             manualJobFetchTimeoutMs: { effective: 20_000, default: 20_000 },
             manualJobFetchMinExtractedChars: { effective: 200, default: 200 },
             manualJobFetchBrowserSettleMs: { effective: 4000, default: 4000 },

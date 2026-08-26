@@ -59,6 +59,7 @@ export type PipelineSettingsValues = {
   discoveryConcurrency: EffectiveDefault<number>;
   llmRateLimitRetries: EffectiveDefault<number>;
   llmRequestTimeoutMs: EffectiveDefault<number>;
+  latexCompileTimeoutMs: EffectiveDefault<number>;
   scoringConcurrency: EffectiveDefault<number>;
   tailoringConcurrency: EffectiveDefault<number>;
   bulkActionConcurrency: EffectiveDefault<number>;

@@ -48,20 +48,50 @@ export const MIN_LLM_REQUEST_TIMEOUT_MS = 5_000;
 // that legitimately runs a single call this long.
 export const MAX_LLM_REQUEST_TIMEOUT_MS = 1_800_000;
 
+// A tectonic run is bounded for the same reason an LLM call is: the process
+// is spawned and awaited, so one that never exits holds the request (and, on
+// the gated CV upload, the whole accept/reject decision) open forever.
+//
+// 10 minutes because the FIRST compile on a fresh container is not a compile:
+// tectonic downloads the packages the document pulls in before it typesets
+// anything, over whatever network the box has. The 60s this replaced was
+// measured against a warm run and truncated cold ones. The gated upload also
+// compiles up to four times (the original, then once per extract attempt), so
+// this bounds each spawn, not the request.
+export const DEFAULT_LATEX_COMPILE_TIMEOUT_MS = 600_000;
+// Below this even a warm compile of a real CV can trip, which turns the
+// stuck-detector into the thing that breaks uploads.
+export const MIN_LATEX_COMPILE_TIMEOUT_MS = 5_000;
+// 30 minutes: far past any legitimate CV compile, but the point of a ceiling
+// is that the process is eventually reclaimed rather than leaked.
+export const MAX_LATEX_COMPILE_TIMEOUT_MS = 1_800_000;
+
 // Clamped on READ for the same reason as the concurrency values below: an
 // out-of-band stored value (hand-edited DB row, crafted snapshot) must not be
 // able to reintroduce the unbounded wait — 0 would otherwise disable the
-// deadline entirely, which is the bug this setting exists to prevent.
-function parseTimeoutMsOrNull(raw: string | undefined): number | null {
-  if (!raw) return null;
-  const parsed = parseInt(raw, 10);
-  return Number.isNaN(parsed)
-    ? null
-    : Math.min(
-        MAX_LLM_REQUEST_TIMEOUT_MS,
-        Math.max(MIN_LLM_REQUEST_TIMEOUT_MS, parsed),
-      );
+// deadline entirely, which is the bug these settings exist to prevent.
+function timeoutMsParser(
+  minMs: number,
+  maxMs: number,
+): (raw: string | undefined) => number | null {
+  return (raw) => {
+    if (!raw) return null;
+    const parsed = parseInt(raw, 10);
+    return Number.isNaN(parsed)
+      ? null
+      : Math.min(maxMs, Math.max(minMs, parsed));
+  };
 }
+
+const parseTimeoutMsOrNull = timeoutMsParser(
+  MIN_LLM_REQUEST_TIMEOUT_MS,
+  MAX_LLM_REQUEST_TIMEOUT_MS,
+);
+
+const parseLatexTimeoutMsOrNull = timeoutMsParser(
+  MIN_LATEX_COMPILE_TIMEOUT_MS,
+  MAX_LATEX_COMPILE_TIMEOUT_MS,
+);
 
 // Clamps to the same 1..MAX_POOL_CONCURRENCY the concurrency schemas enforce,
 // so an out-of-band stored value (hand-edited DB row, crafted snapshot) can
@@ -517,6 +547,24 @@ export const settingsRegistry = {
       .max(MAX_LLM_REQUEST_TIMEOUT_MS),
     default: (): number => DEFAULT_LLM_REQUEST_TIMEOUT_MS,
     parse: parseTimeoutMsOrNull,
+    serialize: serializeNullableNumber,
+  },
+  // Rides LATEX_COMPILE_TIMEOUT_MS into process.env the same way, because
+  // run-tectonic is called from routes, the pipeline and the gated upload loop
+  // alike — an env read there costs nothing and needs no settings round trip
+  // threaded through ten call sites. Same trap as above: `default()` must not
+  // read process.env, or the override echoes back as the default and the
+  // client's nullIfSame collapses an unchanged save.
+  latexCompileTimeoutMs: {
+    kind: "typed" as const,
+    envKey: "LATEX_COMPILE_TIMEOUT_MS",
+    schema: z
+      .number()
+      .int()
+      .min(MIN_LATEX_COMPILE_TIMEOUT_MS)
+      .max(MAX_LATEX_COMPILE_TIMEOUT_MS),
+    default: (): number => DEFAULT_LATEX_COMPILE_TIMEOUT_MS,
+    parse: parseLatexTimeoutMsOrNull,
     serialize: serializeNullableNumber,
   },
   scoringConcurrency: {

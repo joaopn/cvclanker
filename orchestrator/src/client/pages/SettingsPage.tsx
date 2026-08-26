@@ -98,6 +98,7 @@ const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
   discoveryConcurrency: null,
   llmRateLimitRetries: null,
   llmRequestTimeoutMs: null,
+  latexCompileTimeoutMs: null,
   scoringConcurrency: null,
   tailoringConcurrency: null,
   bulkActionConcurrency: null,
@@ -353,6 +354,7 @@ export const SECTION_FIELD_MAP: Record<
     "discoveryConcurrency",
     "llmRateLimitRetries",
     "llmRequestTimeoutMs",
+    "latexCompileTimeoutMs",
     "scoringConcurrency",
     "tailoringConcurrency",
     "bulkActionConcurrency",
@@ -431,6 +433,7 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   discoveryConcurrency: null,
   llmRateLimitRetries: null,
   llmRequestTimeoutMs: null,
+  latexCompileTimeoutMs: null,
   scoringConcurrency: null,
   tailoringConcurrency: null,
   bulkActionConcurrency: null,
@@ -532,6 +535,7 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   discoveryConcurrency: data.discoveryConcurrency.override,
   llmRateLimitRetries: data.llmRateLimitRetries.override,
   llmRequestTimeoutMs: data.llmRequestTimeoutMs.override,
+  latexCompileTimeoutMs: data.latexCompileTimeoutMs.override,
   scoringConcurrency: data.scoringConcurrency.override,
   tailoringConcurrency: data.tailoringConcurrency.override,
   bulkActionConcurrency: data.bulkActionConcurrency.override,
@@ -684,6 +688,10 @@ const getDerivedSettings = (settings: AppSettings | null) => {
       llmRequestTimeoutMs: {
         effective: settings?.llmRequestTimeoutMs?.value ?? 300_000,
         default: settings?.llmRequestTimeoutMs?.default ?? 300_000,
+      },
+      latexCompileTimeoutMs: {
+        effective: settings?.latexCompileTimeoutMs?.value ?? 600_000,
+        default: settings?.latexCompileTimeoutMs?.default ?? 600_000,
       },
       scoringConcurrency: {
         effective: settings?.scoringConcurrency?.value ?? 4,
@@ -976,6 +984,10 @@ export const SettingsPage: React.FC = () => {
         llmRequestTimeoutMs: nullIfSame(
           data.llmRequestTimeoutMs,
           pipeline.llmRequestTimeoutMs.default,
+        ),
+        latexCompileTimeoutMs: nullIfSame(
+          data.latexCompileTimeoutMs,
+          pipeline.latexCompileTimeoutMs.default,
         ),
         scoringConcurrency: nullIfSame(
           data.scoringConcurrency,

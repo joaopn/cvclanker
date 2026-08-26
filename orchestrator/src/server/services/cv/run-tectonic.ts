@@ -2,10 +2,33 @@ import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { DEFAULT_LATEX_COMPILE_TIMEOUT_MS } from "@shared/settings-registry";
 import AdmZip from "adm-zip";
 
-const DEFAULT_TIMEOUT_MS = 60_000;
 const TECTONIC_BIN = process.env.TECTONIC_BIN ?? "tectonic";
+
+/**
+ * The deadline one tectonic spawn gets, in ms.
+ *
+ * Read from process.env rather than the settings table because runTectonic is
+ * called from routes, the pipeline and the gated upload loop alike: the
+ * `latexCompileTimeoutMs` setting carries envKey LATEX_COMPILE_TIMEOUT_MS, so
+ * the registry already syncs the stored value into process.env at boot and on
+ * save — no round trip, no staleness, and no timeout threaded through ten call
+ * sites. An explicit per-call `timeoutMs` still wins.
+ */
+export function resolveLatexCompileTimeoutMs(explicit?: number): number {
+  if (explicit !== undefined && Number.isFinite(explicit) && explicit > 0) {
+    return Math.floor(explicit);
+  }
+  const raw = process.env.LATEX_COMPILE_TIMEOUT_MS?.trim();
+  if (!raw) return DEFAULT_LATEX_COMPILE_TIMEOUT_MS;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_LATEX_COMPILE_TIMEOUT_MS;
+  }
+  return parsed;
+}
 
 export interface RunTectonicArgs {
   renderedTex: string;
@@ -13,7 +36,7 @@ export interface RunTectonicArgs {
   archive?: Uint8Array;
   /** Entrypoint name (path inside the archive). Defaults to "main.tex". */
   entrypoint?: string;
-  /** Timeout in ms. Default: 60_000. */
+  /** Timeout in ms. Default: the `latexCompileTimeoutMs` setting. */
   timeoutMs?: number;
 }
 
@@ -37,7 +60,7 @@ export async function runTectonic(
   args: RunTectonicArgs,
 ): Promise<RunTectonicResult> {
   const entrypointName = args.entrypoint ?? "main.tex";
-  const timeoutMs = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = resolveLatexCompileTimeoutMs(args.timeoutMs);
 
   const tempDir = await fs.mkdtemp(path.join(tmpdir(), "cv-tectonic-"));
   try {

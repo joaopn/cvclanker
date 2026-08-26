@@ -81,6 +81,7 @@ export interface AppSettings {
   discoveryConcurrency: Resolved<number>;
   llmRateLimitRetries: Resolved<number>;
   llmRequestTimeoutMs: Resolved<number>;
+  latexCompileTimeoutMs: Resolved<number>;
   scoringConcurrency: Resolved<number>;
   tailoringConcurrency: Resolved<number>;
   bulkActionConcurrency: Resolved<number>;

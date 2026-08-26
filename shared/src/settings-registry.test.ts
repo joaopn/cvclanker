@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   CLAUDE_CODE_EFFORT_LEVELS,
+  DEFAULT_LATEX_COMPILE_TIMEOUT_MS,
+  DEFAULT_LLM_REQUEST_TIMEOUT_MS,
   getDefaultModelForProvider,
+  MAX_LATEX_COMPILE_TIMEOUT_MS,
+  MAX_LLM_REQUEST_TIMEOUT_MS,
   MAX_POOL_CONCURRENCY,
+  MIN_LATEX_COMPILE_TIMEOUT_MS,
+  MIN_LLM_REQUEST_TIMEOUT_MS,
   settingsRegistry,
 } from "./settings-registry";
 
@@ -83,6 +89,87 @@ describe("settingsRegistry helpers", () => {
         expect(settingsRegistry[key].parse("5")).toBe(5);
         expect(settingsRegistry[key].parse("abc")).toBeNull();
         expect(settingsRegistry[key].parse(undefined)).toBeNull();
+      }
+    });
+  });
+
+  // Both timeout keys are built from one clamping parser factory. The two
+  // windows happen to be identical today, so asserting bounds alone would NOT
+  // catch a key wired to the other key's parser — the wiring is pinned
+  // structurally instead, and the bounds are pinned so a future divergence of
+  // the two windows stays honest.
+  describe("timeout limits", () => {
+    const cases = [
+      {
+        key: "llmRequestTimeoutMs",
+        min: MIN_LLM_REQUEST_TIMEOUT_MS,
+        max: MAX_LLM_REQUEST_TIMEOUT_MS,
+        expectedDefault: DEFAULT_LLM_REQUEST_TIMEOUT_MS,
+      },
+      {
+        key: "latexCompileTimeoutMs",
+        min: MIN_LATEX_COMPILE_TIMEOUT_MS,
+        max: MAX_LATEX_COMPILE_TIMEOUT_MS,
+        expectedDefault: DEFAULT_LATEX_COMPILE_TIMEOUT_MS,
+      },
+    ] as const;
+
+    it("carries the documented defaults", () => {
+      expect(settingsRegistry.llmRequestTimeoutMs.default()).toBe(300_000);
+      expect(settingsRegistry.latexCompileTimeoutMs.default()).toBe(600_000);
+    });
+
+    // timeoutMsParser builds a new closure on every call, so sharing one
+    // exported parser between the two keys is the mis-wiring this catches. It
+    // cannot catch a factory called with the wrong constants: while the two
+    // windows are numerically identical, nothing here can.
+    it("gives each key its own parser rather than sharing one closure", () => {
+      expect(settingsRegistry.latexCompileTimeoutMs.parse).not.toBe(
+        settingsRegistry.llmRequestTimeoutMs.parse,
+      );
+    });
+
+    it("accepts its own window and rejects out-of-range or fractional values", () => {
+      for (const { key, min, max } of cases) {
+        const schema = settingsRegistry[key].schema;
+        expect(schema.safeParse(min).success).toBe(true);
+        expect(schema.safeParse(max).success).toBe(true);
+        expect(schema.safeParse(min - 1).success).toBe(false);
+        expect(schema.safeParse(max + 1).success).toBe(false);
+        expect(schema.safeParse(min + 0.5).success).toBe(false);
+      }
+    });
+
+    // A 0 stored out of band would disable the deadline entirely, which is
+    // the failure both settings exist to prevent.
+    it("clamps out-of-band stored values to its own bounds on read", () => {
+      for (const { key, min, max, expectedDefault } of cases) {
+        expect(settingsRegistry[key].parse("0")).toBe(min);
+        expect(settingsRegistry[key].parse("-3")).toBe(min);
+        expect(settingsRegistry[key].parse("99999999")).toBe(max);
+        expect(settingsRegistry[key].parse(String(expectedDefault))).toBe(
+          expectedDefault,
+        );
+        expect(settingsRegistry[key].parse("abc")).toBeNull();
+        expect(settingsRegistry[key].parse(undefined)).toBeNull();
+      }
+    });
+
+    // The envKey trap: an env-reading default() echoes a stored override back
+    // as the default, and the client's nullIfSame then drops an unchanged save.
+    it("does not read process.env in default()", () => {
+      const previous = process.env.LATEX_COMPILE_TIMEOUT_MS;
+      process.env.LATEX_COMPILE_TIMEOUT_MS = "123456";
+      try {
+        expect(settingsRegistry.latexCompileTimeoutMs.default()).toBe(
+          DEFAULT_LATEX_COMPILE_TIMEOUT_MS,
+        );
+      } finally {
+        if (previous === undefined) {
+          delete process.env.LATEX_COMPILE_TIMEOUT_MS;
+        } else {
+          process.env.LATEX_COMPILE_TIMEOUT_MS = previous;
+        }
       }
     });
   });

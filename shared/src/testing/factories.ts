@@ -232,6 +232,11 @@ export const createAppSettings = (
   discoveryConcurrency: { value: 3, default: 3, override: null },
   llmRateLimitRetries: { value: 3, default: 3, override: null },
   llmRequestTimeoutMs: { value: 300_000, default: 300_000, override: null },
+  latexCompileTimeoutMs: {
+    value: 600_000,
+    default: 600_000,
+    override: null,
+  },
   scoringConcurrency: { value: 4, default: 4, override: null },
   tailoringConcurrency: { value: 3, default: 3, override: null },
   bulkActionConcurrency: { value: 4, default: 4, override: null },
