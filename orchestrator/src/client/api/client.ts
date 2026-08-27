@@ -964,7 +964,7 @@ function getSingleJobFromActionResult(
 
 export async function sweepStaleJobs(
   thresholdDays: number,
-  scope: "shelf" | "active" = "shelf",
+  scope: "shelf" | "tailoring" = "shelf",
 ): Promise<{
   moved: number;
   breakdown: Partial<Record<JobStatus, number>>;

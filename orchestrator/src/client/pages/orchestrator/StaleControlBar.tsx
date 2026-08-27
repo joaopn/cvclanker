@@ -12,7 +12,7 @@ interface StaleControlBarProps {
   onSwept: () => Promise<void> | void;
 }
 
-type SweepScope = "shelf" | "active" | "liveClosed";
+type SweepScope = "shelf" | "tailoring" | "liveClosed";
 
 const MIN_DAYS = 1;
 const MAX_DAYS = 365;
@@ -20,14 +20,15 @@ const MAX_DAYS = 365;
 const clampDays = (value: number): number =>
   Math.max(MIN_DAYS, Math.min(MAX_DAYS, Math.floor(value)));
 
-// Friendly tab labels for the toast breakdown. applied surfaces as the "Live"
-// tab; in_progress as the "Interviewing" tab.
+// Friendly tab labels for the toast breakdown, covering every status the bar's
+// three sweeps can report: shelf and liveClosed both draw from {discovered,
+// selected, backlog}, tailoring from {ready}. `selected` is a retired status
+// with no tab of its own, so it falls through to describeBreakdown's
+// raw-status fallback.
 const STATUS_LABELS: Partial<Record<JobStatus, string>> = {
   discovered: "Inbox",
   backlog: "Backlog",
   ready: "Ready",
-  applied: "Live",
-  in_progress: "Interviewing",
 };
 
 function describeBreakdown(
@@ -143,16 +144,16 @@ export const StaleControlBar = ({
         size="sm"
         variant="outline"
         disabled={busy}
-        onClick={() => void runSweep("active")}
+        onClick={() => void runSweep("tailoring")}
         className="h-7 px-3 text-xs sm:ml-auto sm:w-auto"
       >
-        {busyScope === "active" ? (
+        {busyScope === "tailoring" ? (
           <>
             <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
             Sweeping...
           </>
         ) : (
-          "Also move aged Ready & Live here"
+          "Move Tailoring"
         )}
       </Button>
       <Button

@@ -35,6 +35,7 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
       status: overrides.status as
         | "discovered"
         | "selected"
+        | "processing"
         | "ready"
         | "applied"
         | "in_progress"
@@ -367,43 +368,57 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     expect(payload.data.moved).toBe(0);
   });
 
-  it("sweep-stale scope=active sweeps aged ready/applied/in_progress, leaves shelf rows", async () => {
+  it("sweep-stale scope=tailoring sweeps aged ready rows only", async () => {
     const { db, schema } = await import("@server/db/index");
     const { sql } = await import("drizzle-orm");
-    await seedJob({ id: "sweep-active-ready", status: "ready" });
-    await seedJob({ id: "sweep-active-applied", status: "applied" });
-    await seedJob({ id: "sweep-active-inprogress", status: "in_progress" });
-    // Shelf row must NOT be swept under the active scope.
-    await seedJob({ id: "sweep-active-discovered", status: "discovered" });
+    await seedJob({ id: "sweep-tailoring-ready", status: "ready" });
+    // Live/Interviewing rows are out of every sweep scope, and a `processing`
+    // row is a tailor in flight — neither may move.
+    await seedJob({ id: "sweep-tailoring-applied", status: "applied" });
+    await seedJob({ id: "sweep-tailoring-inprogress", status: "in_progress" });
+    await seedJob({ id: "sweep-tailoring-processing", status: "processing" });
+    // Shelf row must NOT be swept under the tailoring scope.
+    await seedJob({ id: "sweep-tailoring-discovered", status: "discovered" });
 
     await db
       .update(schema.jobs)
       .set({ discoveredAt: sql`datetime('now', '-30 days')` })
       .where(
-        sql`${schema.jobs.id} IN ('sweep-active-ready', 'sweep-active-applied', 'sweep-active-inprogress', 'sweep-active-discovered')`,
+        sql`${schema.jobs.id} IN ('sweep-tailoring-ready', 'sweep-tailoring-applied', 'sweep-tailoring-inprogress', 'sweep-tailoring-processing', 'sweep-tailoring-discovered')`,
       );
 
     const res = await fetch(`${baseUrl}/api/jobs/sweep-stale`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ thresholdDays: 14, scope: "active" }),
+      body: JSON.stringify({ thresholdDays: 14, scope: "tailoring" }),
     });
     expect(res.status).toBe(200);
     const payload = (await res.json()) as {
       ok: boolean;
-      data: { moved: number };
+      data: { moved: number; breakdown: Record<string, number> };
     };
     expect(payload.ok).toBe(true);
-    expect(payload.data.moved).toBe(3);
+    expect(payload.data.moved).toBe(1);
+    expect(payload.data.breakdown).toEqual({ ready: 1 });
 
     const rows = await db
       .select({ id: schema.jobs.id, status: schema.jobs.status })
       .from(schema.jobs);
     const byId = Object.fromEntries(rows.map((r) => [r.id, r.status]));
-    expect(byId["sweep-active-ready"]).toBe("stale");
-    expect(byId["sweep-active-applied"]).toBe("stale");
-    expect(byId["sweep-active-inprogress"]).toBe("stale");
-    expect(byId["sweep-active-discovered"]).toBe("discovered");
+    expect(byId["sweep-tailoring-ready"]).toBe("stale");
+    expect(byId["sweep-tailoring-applied"]).toBe("applied");
+    expect(byId["sweep-tailoring-inprogress"]).toBe("in_progress");
+    expect(byId["sweep-tailoring-processing"]).toBe("processing");
+    expect(byId["sweep-tailoring-discovered"]).toBe("discovered");
+  });
+
+  it("sweep-stale rejects the retired active scope", async () => {
+    const res = await fetch(`${baseUrl}/api/jobs/sweep-stale`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ thresholdDays: 14, scope: "active" }),
+    });
+    expect(res.status).toBe(400);
   });
 
   it("sweep-stale prefers date_posted over discovered_at and handles Unix-ms strings", async () => {

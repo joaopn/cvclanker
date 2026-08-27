@@ -1005,14 +1005,19 @@ export async function deleteJobsByStatus(status: JobStatus): Promise<number> {
 
 /**
  * Statuses each sweep scope is allowed to pull aged rows from.
- *  - `shelf`  — the passive holding tiers (Inbox / Selected / Backlog).
- *  - `active` — in-flight rows (Ready / Live), swept on explicit request only.
+ *  - `shelf`     — the passive holding tiers (Inbox / Selected / Backlog).
+ *  - `tailoring` — the Tailoring tab's finished rows (Ready), swept on
+ *    explicit request only. Deliberately excludes the tab's other status,
+ *    `processing`: with a null failure reason it is a tailor running right
+ *    now, and with a reason set it is a failed one the user can still retry —
+ *    shelving either buries work in progress. Applied/Interviewing rows are
+ *    out of every scope: moving a job the user has applied to is their call.
  * Both target the same `stale` status; the scope just bounds the source set so
- * the default sweep never touches a user's tailored/applied rows by surprise.
+ * the default sweep never touches a user's tailored rows by surprise.
  */
 const STALE_SWEEP_SCOPE_STATUSES = {
   shelf: ["discovered", "selected", "backlog"],
-  active: ["ready", "applied", "in_progress"],
+  tailoring: ["ready"],
 } satisfies Record<string, JobStatus[]>;
 
 export type StaleSweepScope = keyof typeof STALE_SWEEP_SCOPE_STATUSES;
@@ -1079,11 +1084,12 @@ export async function sweepStaleJobs(
 
 /**
  * Move every shelf row (Inbox/Selected/Backlog) whose live LinkedIn check
- * found the posting no longer accepting applications into `stale`. The
- * active statuses are deliberately out of scope — an applied/interviewing
- * job whose posting closed is the user's call to mark closed, and a tailored
- * `ready` row is work they may still want visible. Returns the total moved
- * plus a per-source-status breakdown, same shape as sweepStaleJobs.
+ * found the posting no longer accepting applications into `stale`. Deliberately
+ * shelf-only: an applied/interviewing job whose posting closed is the user's
+ * call to mark closed, and a tailored `ready` row is work they may still want
+ * visible — the `tailoring` sweep shelves those on an explicit age request,
+ * never on a closed-posting verdict. Returns the total moved plus a
+ * per-source-status breakdown, same shape as sweepStaleJobs.
  */
 export async function sweepLiveClosedJobs(): Promise<{
   moved: number;

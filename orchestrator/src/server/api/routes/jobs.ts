@@ -1478,9 +1478,9 @@ jobsRouter.post(
 
 const sweepStaleRequestSchema = z.object({
   thresholdDays: z.number().int().min(1).max(365),
-  // `shelf` (default) sweeps Inbox/Selected/Backlog; `active` sweeps the
-  // in-flight Ready/Live rows on explicit request.
-  scope: z.enum(["shelf", "active"]).optional(),
+  // `shelf` (default) sweeps Inbox/Selected/Backlog; `tailoring` sweeps the
+  // Tailoring tab's finished Ready rows on explicit request.
+  scope: z.enum(["shelf", "tailoring"]).optional(),
 });
 
 /**
@@ -1524,9 +1524,8 @@ jobsRouter.post("/sweep-live-closed", async (_req: Request, res: Response) => {
 /**
  * POST /api/jobs/sweep-stale - Bulk-move aged rows into `stale`. The `scope`
  * bounds the source statuses: `shelf` (default) covers {discovered, selected,
- * backlog}; `active` covers {ready, applied, in_progress}. Single transaction;
- * returns the row count plus a per-source-status breakdown so the UI can
- * render a meaningful toast.
+ * backlog}; `tailoring` covers {ready}. Returns the row count plus a
+ * per-source-status breakdown so the UI can render a meaningful toast.
  */
 jobsRouter.post("/sweep-stale", async (req: Request, res: Response) => {
   try {
