@@ -484,6 +484,78 @@ export type BatchUrlImportStreamEvent =
       requestId: string;
     };
 
+export type JobActionBatchStatus =
+  | "running"
+  | "completed"
+  | "cancelled"
+  | "failed";
+
+/**
+ * Counters-only view of a bulk action running detached from any browser.
+ *
+ * Deliberately carries no `Job` payloads. `JobActionResult` embeds a whole
+ * `Job` on success and `maxBulkActionJobs` defaults to 1000, while every
+ * attached tab receives every batch's events — today only the one initiating
+ * request did. The stream's consumers only ever read ok flags, job ids and
+ * error messages, so the full rows would be pure broadcast weight.
+ */
+export interface JobActionBatchSnapshot {
+  batchId: string;
+  action: JobAction;
+  status: JobActionBatchStatus;
+  requested: number;
+  /**
+   * Dispatched and settled. MAY stop short of `requested` on a cancel — the
+   * pool is stopped between dispatches, so undispatched items are dropped —
+   * but a cancel arriving while the last tasks are in flight still settles at
+   * `completed === requested`. Never assume cancelled implies a shortfall.
+   */
+  completed: number;
+  succeeded: number;
+  failed: number;
+  startedAt: string;
+  finishedAt: string | null;
+  /**
+   * Bounded by `failed`, not `requested`. The tab that STARTED the batch needs
+   * these after any reconnect, for two things the counters cannot supply: the
+   * undo set, and the selection reconciliation that keeps failed rows selected
+   * for retry.
+   */
+  failedJobIds: string[];
+  firstFailureMessage: string | null;
+}
+
+/** Slim per-job outcome — the counters-only stream's replacement for JobActionResult. */
+export interface JobActionBatchItemOutcome {
+  jobId: string;
+  ok: boolean;
+  errorMessage: string | null;
+}
+
+/**
+ * Multiplexed viewer feed: one connection carries every batch, so each event
+ * names its batch. `snapshot` is the COMPLETE enumeration of retained batches,
+ * which is what lets a client treat absence as meaningful — a batch that
+ * vanishes without ever going terminal was lost with the process.
+ */
+export type JobActionBatchStreamEvent =
+  | {
+      type: "snapshot";
+      batches: JobActionBatchSnapshot[];
+      requestId: string;
+    }
+  | {
+      type: "progress";
+      batch: JobActionBatchSnapshot;
+      lastResult: JobActionBatchItemOutcome;
+      requestId: string;
+    }
+  | {
+      type: "terminal";
+      batch: JobActionBatchSnapshot;
+      requestId: string;
+    };
+
 export type JobActionStreamEvent =
   | {
       type: "started";

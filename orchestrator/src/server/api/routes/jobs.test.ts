@@ -1051,3 +1051,274 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     });
   });
 });
+
+describe.sequential("detached job action batches", () => {
+  let server: Server;
+  let baseUrl: string;
+  let closeDb: () => void;
+  let tempDir: string;
+
+  beforeEach(async () => {
+    ({ server, baseUrl, closeDb, tempDir } = await startServer());
+    const { resetJobActionBatchesForTests } = await import(
+      "@server/services/job-actions/batch-store"
+    );
+    resetJobActionBatchesForTests();
+  });
+
+  afterEach(async () => {
+    await stopServer({ server, closeDb, tempDir });
+  });
+
+  async function seedReadyJob(id: string) {
+    const { db, schema } = await import("@server/db/index");
+    await db.insert(schema.jobs).values({
+      id,
+      source: "linkedin",
+      title: "Backend Engineer",
+      employer: "Acme",
+      jobUrl: `https://example.com/${id}`,
+      status: "ready",
+    });
+  }
+
+  async function startBatch(body: unknown): Promise<Response> {
+    return fetch(`${baseUrl}/api/jobs/actions/batch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  async function waitForTerminal(batchId: string) {
+    return vi.waitFor(async () => {
+      const res = await fetch(`${baseUrl}/api/jobs/actions/batches`);
+      const payload = await res.json();
+      const batch = payload.data.batches.find(
+        (entry: { batchId: string }) => entry.batchId === batchId,
+      );
+      expect(batch).toBeDefined();
+      expect(batch.status).not.toBe("running");
+      return batch;
+    });
+  }
+
+  // The batch route is the successor to /actions/stream, and the gate that
+  // route pins is per-handler: `requestOrigin` is threaded only for specific
+  // action literals, in a block each handler carries separately, so reverting
+  // one alone is silent. Same assertion, new handler.
+  it("retailor over the batch route flips the row and threads the origin", async () => {
+    await seedReadyJob("job-batch-rt");
+
+    const res = await startBatch({
+      action: "retailor",
+      jobIds: ["job-batch-rt"],
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(typeof data.batchId).toBe("string");
+
+    const batch = await waitForTerminal(data.batchId);
+    expect(batch.status).toBe("completed");
+    expect(batch.succeeded).toBe(1);
+
+    const { db, schema } = await import("@server/db/index");
+    const rows = await db.select().from(schema.jobs);
+    expect(rows.find((r) => r.id === "job-batch-rt")?.status).toBe(
+      "processing",
+    );
+
+    const { processJob } = await import("@server/pipeline/index");
+    const call = vi
+      .mocked(processJob)
+      .mock.calls.find(([id]) => id === "job-batch-rt");
+    expect(call).toBeDefined();
+    expect(call?.[1]?.requestOrigin).toMatch(/^https?:\/\//);
+  });
+
+  it("answers with the batch id alone, carrying no results", async () => {
+    await seedReadyJob("job-batch-fast");
+    const res = await startBatch({
+      action: "retailor",
+      jobIds: ["job-batch-fast"],
+    });
+    const { data } = await res.json();
+    // The response carries the id and nothing else — no results, no counters.
+    expect(Object.keys(data)).toEqual(["batchId"]);
+    await waitForTerminal(data.batchId);
+  });
+
+  it("still enforces the bulk cap synchronously, before any batch exists", async () => {
+    const { setSetting } = await import("@server/repositories/settings");
+    await setSetting("maxBulkActionJobs", "2");
+
+    const res = await startBatch({
+      action: "skip",
+      jobIds: ["a", "b", "c"],
+    });
+    expect(res.status).toBe(400);
+
+    const listRes = await fetch(`${baseUrl}/api/jobs/actions/batches`);
+    const listed = await listRes.json();
+    expect(listed.data.batches).toEqual([]);
+  });
+
+  it("reports a failed job on the batch without failing the batch", async () => {
+    const res = await startBatch({
+      action: "retailor",
+      jobIds: ["job-does-not-exist"],
+    });
+    const { data } = await res.json();
+    const batch = await waitForTerminal(data.batchId);
+
+    expect(batch.status).toBe("completed");
+    expect(batch.failed).toBe(1);
+    expect(batch.failedJobIds).toEqual(["job-does-not-exist"]);
+    expect(batch.firstFailureMessage).toBeTruthy();
+  });
+
+  // The guard lives in TWO separate literal blocks — the shared prepare helper
+  // and /actions/stream's own — so reverting either alone is silent to types,
+  // tests and biome. Both are exercised here.
+  it("never clears the account-wide rate-limit latch while an LLM batch runs", async () => {
+    const { consumeRateLimitRetry, isRateLimitStopped, resetRateLimitBudget } =
+      await import("@server/services/llm/rate-limit-budget");
+    const { resetJobActionBatchesForTests, startJobActionBatch } = await import(
+      "@server/services/job-actions/batch-store"
+    );
+
+    const latch = () => {
+      resetRateLimitBudget(0);
+      consumeRateLimitRetry("session limit reached");
+      expect(isRateLimitStopped()).toBe(true);
+    };
+
+    // With nothing running, a user-triggered LLM action IS a fresh attempt and
+    // must clear a limit that has since reset.
+    await seedReadyJob("job-latch-a");
+    latch();
+    const first = await startBatch({
+      action: "rescore",
+      jobIds: ["job-latch-a"],
+    });
+    await waitForTerminal((await first.json()).data.batchId);
+    expect(isRateLimitStopped()).toBe(false);
+
+    // Hold an LLM batch open. The latch is account-wide, so clearing it now
+    // would send the running batch straight back into the same wall.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const held = startJobActionBatch({
+      action: "rescore",
+      jobIds: ["job-held"],
+      concurrency: 1,
+      runJob: async (jobId) => {
+        await gate;
+        return { jobId, ok: false, error: { code: "X", message: "x" } };
+      },
+    });
+
+    try {
+      latch();
+      const second = await startBatch({
+        action: "rescore",
+        jobIds: ["job-latch-b"],
+      });
+      const secondId = (await second.json()).data.batchId;
+      await waitForTerminal(secondId);
+      expect(isRateLimitStopped()).toBe(true);
+
+      latch();
+      const streamed = await fetch(`${baseUrl}/api/jobs/actions/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "rescore", jobIds: ["job-latch-c"] }),
+      });
+      // Drained rather than cancelled, so its work cannot outlive the server.
+      await streamed.text();
+      expect(isRateLimitStopped()).toBe(true);
+    } finally {
+      release();
+      await held.done;
+      resetJobActionBatchesForTests();
+    }
+  });
+
+  it("streams progress for each job and exactly one terminal at the end", async () => {
+    const { startJobActionBatch } = await import(
+      "@server/services/job-actions/batch-store"
+    );
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const batch = startJobActionBatch({
+      action: "rescore",
+      jobIds: ["sse-a", "sse-b"],
+      concurrency: 1,
+      runJob: async (jobId) => {
+        await gate;
+        return { jobId, ok: true, job: { id: jobId } } as never;
+      },
+    });
+
+    const res = await fetch(`${baseUrl}/api/jobs/actions/batches/stream`);
+    const reader = res.body?.getReader();
+    const decoder = new TextDecoder();
+    let text = "";
+    // The snapshot lands first, before any work is released.
+    while (reader && !text.includes('"snapshot"')) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+
+    release();
+    await batch.done;
+    while (reader && !text.includes('"terminal"')) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+    await reader?.cancel();
+
+    const types = [...text.matchAll(/"type":"(\w+)"/g)].map((m) => m[1]);
+    expect(types).toEqual(["snapshot", "progress", "progress", "terminal"]);
+  });
+
+  it("cancel refuses an id with no running batch", async () => {
+    const res = await fetch(`${baseUrl}/api/jobs/actions/batches/nope/cancel`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("streams a snapshot of retained batches on connect", async () => {
+    await seedReadyJob("job-batch-sse");
+    const started = await startBatch({
+      action: "retailor",
+      jobIds: ["job-batch-sse"],
+    });
+    const { data } = await started.json();
+    await waitForTerminal(data.batchId);
+
+    const res = await fetch(`${baseUrl}/api/jobs/actions/batches/stream`);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+
+    const reader = res.body?.getReader();
+    let text = "";
+    if (reader) {
+      const decoder = new TextDecoder();
+      while (!text.includes('"snapshot"')) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+      }
+      await reader.cancel();
+    }
+    expect(text).toContain('"snapshot"');
+    expect(text).toContain(data.batchId);
+  });
+});

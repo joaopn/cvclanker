@@ -15,6 +15,8 @@ import {
   upsertProviderCredential,
 } from "@server/repositories/llm-provider-credentials";
 import { getSetting } from "@server/repositories/settings";
+import { hasRunningJobActionBatchWithAction } from "@server/services/job-actions/batch-store";
+import { LLM_DRIVING_ACTIONS } from "@server/services/job-actions/llm-actions";
 import {
   getClaudeCodeCliStatus,
   InvalidClaudeCodeVersionError,
@@ -411,6 +413,21 @@ settingsRouter.post(
         res,
         conflict(
           "A pipeline run is in progress. Update the CLI after it finishes.",
+        ),
+      );
+      return;
+    }
+
+    // A detached rescore on the claude_code provider spawns this very binary
+    // once per call, and the batch outlives the browser that started it. Gated
+    // on the LLM-driving actions specifically: a bulk skip or delete touches
+    // no CLI, and 409ing a long one would be a refusal with no hazard behind
+    // it.
+    if (hasRunningJobActionBatchWithAction(LLM_DRIVING_ACTIONS)) {
+      fail(
+        res,
+        conflict(
+          "A bulk job action is in progress. Update the CLI after it finishes.",
         ),
       );
       return;

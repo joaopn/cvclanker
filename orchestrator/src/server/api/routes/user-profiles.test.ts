@@ -200,6 +200,51 @@ describe.sequential("User profiles API routes", () => {
     expect(exitSpy).not.toHaveBeenCalled();
   });
 
+  it("refuses to activate while a bulk job action is in flight", async () => {
+    const id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeef";
+    const storedPath = join(storeDir(tempDir), `${id}.db`);
+    makeProfileDb(storedPath, "Waiting");
+
+    // A detached batch outlives the browser that started it, so the user is
+    // not necessarily watching one when they switch — and a swap closes the
+    // database and exits the process out from under its writes.
+    const { startJobActionBatch, resetJobActionBatchesForTests } = await import(
+      "@server/services/job-actions/batch-store"
+    );
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const batch = startJobActionBatch({
+      action: "rescore",
+      jobIds: ["held"],
+      concurrency: 1,
+      runJob: async (jobId) => {
+        await gate;
+        return { jobId, ok: false, error: { code: "X", message: "x" } };
+      },
+    });
+
+    try {
+      const res = await fetch(`${baseUrl}/api/user-profiles/${id}/activate`, {
+        method: "POST",
+      });
+      const body = await res.json();
+
+      expect(res.status).toBe(409);
+      expect(body.ok).toBe(false);
+      expect(existsSync(storedPath)).toBe(true);
+      expect(existsSync(join(tempDir, "jobs.db"))).toBe(true);
+      expect(exitSpy).not.toHaveBeenCalled();
+    } finally {
+      // A failed assertion must not strand a running batch in module state —
+      // every later swap test in this file would 409 on it.
+      release();
+      await batch.done;
+      resetJobActionBatchesForTests();
+    }
+  });
+
   it("validates activation input", async () => {
     const badId = await fetch(
       `${baseUrl}/api/user-profiles/not-a-uuid/activate`,

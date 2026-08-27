@@ -28,6 +28,14 @@ import {
 } from "@server/services/cv/ats-coverage";
 import { renderCvPdf } from "@server/services/cv/render-cv";
 import { getActiveCvDocument } from "@server/services/cv-active";
+import {
+  cancelJobActionBatch,
+  getJobActionBatches,
+  hasRunningJobActionBatchWithAction,
+  startJobActionBatch,
+  subscribeToJobActionBatches,
+} from "@server/services/job-actions/batch-store";
+import { LLM_DRIVING_ACTIONS } from "@server/services/job-actions/llm-actions";
 import { isJobScoringEnabled } from "@server/services/job-scoring-settings";
 import { fetchLinkedinLiveStatus } from "@server/services/live-status";
 import { fetchJobDraft } from "@server/services/manualJob";
@@ -45,6 +53,7 @@ import {
   type DuplicateJobGroupsResponse,
   type Job,
   type JobAction,
+  type JobActionBatchStreamEvent,
   type JobActionResponse,
   type JobActionResult,
   type JobActionStreamEvent,
@@ -114,19 +123,6 @@ const updateOutcomeSchema = z.object({
   outcome: z.enum(APPLICATION_OUTCOMES).nullable(),
   closedAt: z.number().int().nullable().optional(),
 });
-
-/**
- * Actions that actually drive LLM work. Only these clear the global
- * rate-limit stop latch: triage actions (skip, move_to_backlog, the Swipe
- * deck's every-swipe calls) touch no provider, and letting them reset would
- * silently resume a run the limit had stopped.
- */
-const LLM_DRIVING_ACTIONS = new Set<JobAction>([
-  "rescore",
-  "rescrape",
-  "move_to_ready",
-  "retailor",
-]);
 
 const jobActionRequestSchema = z.discriminatedUnion("action", [
   z.object({
@@ -1192,60 +1188,104 @@ jobsRouter.get("/duplicates", async (_req: Request, res: Response) => {
   }
 });
 
+type JobActionRequestInput = z.infer<typeof jobActionRequestSchema>;
+
+interface PreparedJobAction {
+  jobIds: string[];
+  concurrency: number;
+  options: JobActionExecutionOptions;
+}
+
+/**
+ * The rate-limit latch is account-wide, so a second action must not clear it
+ * while an LLM batch is still running: detachment turns "fired a second action
+ * mid-batch" from a two-tab accident into the designed workflow, and unlatching
+ * there just sends the running batch back into the same wall.
+ */
+function hasRunningLlmDrivingBatch(): boolean {
+  return hasRunningJobActionBatchWithAction(LLM_DRIVING_ACTIONS);
+}
+
+/**
+ * Everything a bulk action needs resolved BEFORE its batch record exists, so a
+ * registered batch's only failure mode is the pool itself. Keeping both awaits
+ * here is what leaves the `maxBulkActionJobs` cap a real synchronous 400 and
+ * stops a settings read from stranding a record in a non-terminal state.
+ */
+async function prepareJobActionExecution(
+  req: Request,
+  parsed: JobActionRequestInput,
+): Promise<PreparedJobAction> {
+  const settings = await getEffectiveSettings();
+  if (LLM_DRIVING_ACTIONS.has(parsed.action) && !hasRunningLlmDrivingBatch()) {
+    resetRateLimitBudget(settings.llmRateLimitRetries.value);
+  }
+  const maxBulkActionJobs = settings.maxBulkActionJobs.value;
+  if (parsed.jobIds.length > maxBulkActionJobs) {
+    throw badRequest(
+      `Too many jobs for one action (max ${maxBulkActionJobs}).`,
+    );
+  }
+  const requestOrigin = resolveRequestOrigin(req);
+  const rescrapeScoringEnabled =
+    parsed.action === "rescrape" ? await isJobScoringEnabled() : false;
+  const options: JobActionExecutionOptions = {
+    ...(parsed.action === "rescore"
+      ? {
+          getBriefForRescore: createSharedRescoreBriefLoader(),
+          rescorePrefilter: parsed.options?.prefilter === true,
+        }
+      : {}),
+    ...(parsed.action === "rescrape"
+      ? {
+          getBriefForRescore: createSharedRescoreBriefLoader(),
+          rescrapeScoringEnabled,
+        }
+      : {}),
+    ...(parsed.action === "move_to_ready" && parsed.options?.force !== undefined
+      ? { forceMoveToReady: parsed.options.force }
+      : {}),
+    ...(parsed.action === "move_to_ready" || parsed.action === "retailor"
+      ? { requestOrigin }
+      : {}),
+    ...(parsed.action === "mark_closed"
+      ? { markClosedOutcome: parsed.options.outcome }
+      : {}),
+  };
+  return {
+    jobIds: Array.from(new Set(parsed.jobIds)),
+    concurrency: settings.bulkActionConcurrency.value,
+    options,
+  };
+}
+
 /**
  * POST /api/jobs/actions - Run a job action across selected jobs
  */
 jobsRouter.post("/actions", async (req: Request, res: Response) => {
   try {
     const parsed = jobActionRequestSchema.parse(req.body);
-    const settings = await getEffectiveSettings();
-    // A user-triggered LLM action is a fresh attempt: clear the stop latch so a
-    // limit that has since reset doesn't keep blocking work.
-    if (LLM_DRIVING_ACTIONS.has(parsed.action)) {
-      resetRateLimitBudget(settings.llmRateLimitRetries.value);
-    }
-    const maxBulkActionJobs = settings.maxBulkActionJobs.value;
-    const bulkActionConcurrency = settings.bulkActionConcurrency.value;
-    if (parsed.jobIds.length > maxBulkActionJobs) {
-      throw badRequest(
-        `Too many jobs for one action (max ${maxBulkActionJobs}).`,
-      );
-    }
-    const dedupedJobIds = Array.from(new Set(parsed.jobIds));
-    const requestOrigin = resolveRequestOrigin(req);
-    const rescrapeScoringEnabled =
-      parsed.action === "rescrape" ? await isJobScoringEnabled() : false;
-    const executionOptions: JobActionExecutionOptions = {
-      ...(parsed.action === "rescore"
-        ? {
-            getBriefForRescore: createSharedRescoreBriefLoader(),
-            rescorePrefilter: parsed.options?.prefilter === true,
-          }
-        : {}),
-      ...(parsed.action === "rescrape"
-        ? {
-            getBriefForRescore: createSharedRescoreBriefLoader(),
-            rescrapeScoringEnabled,
-          }
-        : {}),
-      ...(parsed.action === "move_to_ready" &&
-      parsed.options?.force !== undefined
-        ? { forceMoveToReady: parsed.options.force }
-        : {}),
-      ...(parsed.action === "move_to_ready" || parsed.action === "retailor"
-        ? { requestOrigin }
-        : {}),
-      ...(parsed.action === "mark_closed"
-        ? { markClosedOutcome: parsed.options.outcome }
-        : {}),
-    };
+    const prepared = await prepareJobActionExecution(req, parsed);
+    const dedupedJobIds = prepared.jobIds;
 
-    const results = await asyncPool({
-      items: dedupedJobIds,
-      concurrency: bulkActionConcurrency,
-      task: async (jobId) =>
-        executeJobActionForJob(parsed.action, jobId, executionOptions),
+    // Registered in the batch registry like every other sweep, even though this
+    // route still waits for its own result: the DB-swap and CLI-update guards
+    // read that registry, and a sweep invisible to them gets its database
+    // closed mid-write.
+    const { done } = startJobActionBatch({
+      action: parsed.action,
+      jobIds: dedupedJobIds,
+      concurrency: prepared.concurrency,
+      retainResults: true,
+      // This route answers with the full result set, so an unrelated client
+      // must not be able to truncate it through the cancel endpoint.
+      cancellable: false,
+      runJob: (jobId) =>
+        executeJobActionForJob(parsed.action, jobId, prepared.options),
     });
+    const outcome = await done;
+    if (outcome.error) throw outcome.error;
+    const results = outcome.results;
 
     const succeeded = results.filter((result) => result.ok).length;
     const failed = results.length - succeeded;
@@ -1263,7 +1303,7 @@ jobsRouter.post("/actions", async (req: Request, res: Response) => {
       requested: dedupedJobIds.length,
       succeeded,
       failed,
-      concurrency: bulkActionConcurrency,
+      concurrency: prepared.concurrency,
     });
 
     ok(res, payload);
@@ -1291,6 +1331,148 @@ jobsRouter.post("/actions", async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/jobs/actions/batch - Start a bulk action DETACHED from this request.
+ *
+ * Answers with the batch id and nothing else; progress is watched over
+ * `/actions/batches/stream` by any client, including one that never saw the
+ * request that started it. Closing the browser cancels nothing.
+ */
+jobsRouter.post("/actions/batch", async (req: Request, res: Response) => {
+  try {
+    const parsed = jobActionRequestSchema.parse(req.body);
+    const prepared = await prepareJobActionExecution(req, parsed);
+
+    const { batchId, done } = startJobActionBatch({
+      action: parsed.action,
+      jobIds: prepared.jobIds,
+      concurrency: prepared.concurrency,
+      runJob: (jobId) =>
+        executeJobActionForJob(parsed.action, jobId, prepared.options),
+    });
+    // `done` cannot reject by construction; the catch keeps a future edit to
+    // the store's finish path from turning that into a process-killer.
+    void done.catch(() => {});
+
+    logger.info("Job action batch started", {
+      route: "POST /api/jobs/actions/batch",
+      action: parsed.action,
+      requested: prepared.jobIds.length,
+      concurrency: prepared.concurrency,
+      batchId,
+    });
+
+    ok(res, { batchId });
+  } catch (error) {
+    const err =
+      error instanceof z.ZodError
+        ? badRequest("Invalid job action request", error.flatten())
+        : error instanceof AppError
+          ? error
+          : new AppError({
+              status: 500,
+              code: "INTERNAL_ERROR",
+              message: error instanceof Error ? error.message : "Unknown error",
+            });
+    fail(res, err);
+  }
+});
+
+/**
+ * GET /api/jobs/actions/batches - Every retained batch, for mount-time discovery
+ * without opening a stream.
+ */
+jobsRouter.get("/actions/batches", (_req: Request, res: Response) => {
+  ok(res, { batches: getJobActionBatches() });
+});
+
+/**
+ * GET /api/jobs/actions/batches/stream - One multiplexed viewer over every
+ * batch. A snapshot on connect, then per-batch progress and terminal events.
+ *
+ * One stream rather than one per batch: the client's SSE helper reconnects
+ * indefinitely on a closed body, so a per-batch route would turn every evicted
+ * batch into an endless reconnect loop — and the app already holds several
+ * streams against the browser's per-origin cap.
+ */
+jobsRouter.get("/actions/batches/stream", (req: Request, res: Response) => {
+  const requestId = String(res.getHeader("x-request-id") || "unknown");
+
+  setupSse(res, {
+    cacheControl: "no-cache, no-transform",
+    disableBuffering: true,
+    flushHeaders: true,
+  });
+  const stopHeartbeat = startSseHeartbeat(res);
+
+  let clientDisconnected = false;
+  const isWritable = () =>
+    !clientDisconnected && !res.writableEnded && !res.destroyed;
+
+  const sendEvent = (event: JobActionBatchStreamEvent) => {
+    if (!isWritable()) return;
+    writeSseData(res, event);
+  };
+
+  sendEvent({
+    type: "snapshot",
+    batches: getJobActionBatches(),
+    requestId,
+  });
+
+  const unsubscribe = subscribeToJobActionBatches((update) => {
+    if (update.batch.status !== "running") {
+      sendEvent({ type: "terminal", batch: update.batch, requestId });
+      return;
+    }
+    if (update.lastResult) {
+      sendEvent({
+        type: "progress",
+        batch: update.batch,
+        lastResult: update.lastResult,
+        requestId,
+      });
+    }
+  });
+
+  const cleanup = () => {
+    clientDisconnected = true;
+    stopHeartbeat();
+    unsubscribe();
+    if (!res.writableEnded && !res.destroyed) res.end();
+  };
+
+  res.on("close", () => {
+    logger.debug("Job action batch stream client disconnected", { requestId });
+    cleanup();
+  });
+  req.on("close", cleanup);
+});
+
+/**
+ * POST /api/jobs/actions/batches/:id/cancel - Stop dispatching a running batch.
+ *
+ * Tasks already awaiting a provider run to completion; only undispatched items
+ * are dropped, so the batch settles at `completed < requested`.
+ */
+jobsRouter.post(
+  "/actions/batches/:id/cancel",
+  (req: Request, res: Response) => {
+    // Refused for three distinct reasons — unknown id, already finished, or a
+    // batch whose caller returns the full result set itself — so the message
+    // covers all three rather than claiming the id does not exist.
+    const cancelled = cancelJobActionBatch(req.params.id);
+    if (!cancelled) {
+      return fail(res, notFound("No cancellable batch running with that id"));
+    }
+    logger.info("Job action batch cancellation requested", {
+      route: "POST /api/jobs/actions/batches/:id/cancel",
+      batchId: req.params.id,
+    });
+    ok(res, { cancelled: true });
+  },
+);
+
+/**
  * POST /api/jobs/actions/stream - Run a job action and stream per-job progress via SSE
  */
 jobsRouter.post("/actions/stream", async (req: Request, res: Response) => {
@@ -1303,8 +1485,12 @@ jobsRouter.post("/actions/stream", async (req: Request, res: Response) => {
   }
 
   const settings = await getEffectiveSettings();
-  // Same fresh-attempt reset as the non-streaming handler.
-  if (LLM_DRIVING_ACTIONS.has(parsed.data.action)) {
+  // Same fresh-attempt reset as the non-streaming handler, and the same
+  // account-wide guard: never unlatch while another LLM batch is running.
+  if (
+    LLM_DRIVING_ACTIONS.has(parsed.data.action) &&
+    !hasRunningLlmDrivingBatch()
+  ) {
     resetRateLimitBudget(settings.llmRateLimitRetries.value);
   }
   const maxBulkActionJobs = settings.maxBulkActionJobs.value;

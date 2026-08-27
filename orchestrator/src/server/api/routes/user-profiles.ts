@@ -26,6 +26,7 @@ import {
 } from "@server/db/user-profiles";
 import { getPipelineStatus } from "@server/pipeline/index";
 import * as settingsRepo from "@server/repositories/settings";
+import { hasRunningJobActionBatches } from "@server/services/job-actions/batch-store";
 import { type Request, type Response, Router } from "express";
 import { z } from "zod";
 import { receiveUpload } from "../uploads";
@@ -40,6 +41,12 @@ const newProfileSchema = z.object({
 
 const PIPELINE_RUNNING_MESSAGE =
   "Cannot switch user profiles while a pipeline run is in progress.";
+
+// Bulk actions outlive the browser that started them, so the user is no longer
+// necessarily watching one when they switch profiles — and a swap closes the
+// database and exits the process out from under any in-flight writes.
+const BATCH_RUNNING_MESSAGE =
+  "Cannot switch user profiles while a bulk job action is in progress.";
 
 async function activeProfileName(): Promise<string> {
   return (await settingsRepo.getSetting("userProfileName")) ?? "Default";
@@ -176,6 +183,11 @@ userProfilesRouter.post("/new", async (req: Request, res: Response) => {
     if (getPipelineStatus().isRunning) {
       return fail(res, conflict(PIPELINE_RUNNING_MESSAGE));
     }
+    // Synchronous by contract, like the check above it: these guards are
+    // atomic only because nothing awaits between here and closeDb().
+    if (hasRunningJobActionBatches()) {
+      return fail(res, conflict(BATCH_RUNNING_MESSAGE));
+    }
 
     swapStarted = true;
     closeDb();
@@ -255,6 +267,11 @@ userProfilesRouter.post(
       const id = idSchema.parse(req.params.id);
       if (getPipelineStatus().isRunning) {
         return fail(res, conflict(PIPELINE_RUNNING_MESSAGE));
+      }
+      // Synchronous by contract, like the check above it: these guards are
+      // atomic only because nothing awaits between here and closeDb().
+      if (hasRunningJobActionBatches()) {
+        return fail(res, conflict(BATCH_RUNNING_MESSAGE));
       }
       const path = storedProfilePath(id);
       if (!existsSync(path)) {
