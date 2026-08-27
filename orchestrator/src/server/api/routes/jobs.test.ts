@@ -827,50 +827,6 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     expect(call?.[1]?.requestOrigin).toMatch(/^https?:\/\//);
   });
 
-  // The UI dispatches every bulk action through /actions/stream, not /actions,
-  // so the gate edited for retailor has to be pinned on THAT handler too — the
-  // two are separate literal blocks and reverting either alone is silent.
-  it("retailor over the streaming route flips the row and threads the origin", async () => {
-    await seedJob({ id: "job-rt-sse", status: "ready" });
-
-    const res = await fetch(`${baseUrl}/api/jobs/actions/stream`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "retailor", jobIds: ["job-rt-sse"] }),
-    });
-
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toContain("text/event-stream");
-
-    const reader = res.body?.getReader();
-    let text = "";
-    if (reader) {
-      const decoder = new TextDecoder();
-      // The tailor is detached and processJob is mocked, so the stream reaches
-      // its terminal event immediately; read until it does rather than after a
-      // fixed number of chunks.
-      while (!text.includes('"completed"')) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        text += decoder.decode(value, { stream: true });
-      }
-      await reader.cancel();
-    }
-
-    expect(text).toContain('"completed"');
-
-    const { db, schema } = await import("@server/db/index");
-    const rows = await db.select().from(schema.jobs);
-    expect(rows.find((r) => r.id === "job-rt-sse")?.status).toBe("processing");
-
-    const { processJob } = await import("@server/pipeline/index");
-    const call = vi
-      .mocked(processJob)
-      .mock.calls.find(([id]) => id === "job-rt-sse");
-    expect(call).toBeDefined();
-    expect(call?.[1]?.requestOrigin).toMatch(/^https?:\/\//);
-  });
-
   it("retailor clears a stale failure reason on the row it re-runs", async () => {
     await seedJob({
       id: "job-rt-2",
@@ -1177,9 +1133,9 @@ describe.sequential("detached job action batches", () => {
     expect(batch.firstFailureMessage).toBeTruthy();
   });
 
-  // The guard lives in TWO separate literal blocks — the shared prepare helper
-  // and /actions/stream's own — so reverting either alone is silent to types,
-  // tests and biome. Both are exercised here.
+  // Nothing else pins this: deleting the conjunct is silent to types, tests
+  // and biome, and the failure it re-opens is a phone's batch resuming spend
+  // against a limit it had already hit.
   it("never clears the account-wide rate-limit latch while an LLM batch runs", async () => {
     const { consumeRateLimitRetry, isRateLimitStopped, resetRateLimitBudget } =
       await import("@server/services/llm/rate-limit-budget");
@@ -1228,16 +1184,6 @@ describe.sequential("detached job action batches", () => {
       });
       const secondId = (await second.json()).data.batchId;
       await waitForTerminal(secondId);
-      expect(isRateLimitStopped()).toBe(true);
-
-      latch();
-      const streamed = await fetch(`${baseUrl}/api/jobs/actions/stream`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "rescore", jobIds: ["job-latch-c"] }),
-      });
-      // Drained rather than cancelled, so its work cannot outlive the server.
-      await streamed.text();
       expect(isRateLimitStopped()).toBe(true);
     } finally {
       release();

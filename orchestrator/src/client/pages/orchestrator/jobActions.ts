@@ -1,5 +1,5 @@
 import { extractExternalId } from "@shared/duplicate-identity";
-import type { JobActionResponse, JobListItem } from "@shared/types";
+import type { JobListItem } from "@shared/types";
 
 const SKIPPABLE_STATUSES = new Set([
   "discovered",
@@ -169,11 +169,4 @@ export function hasLinkedinPostingId(job: JobListItem): boolean {
  */
 export function canFetchLiveStatus(jobs: JobListItem[]): boolean {
   return jobs.some(hasLinkedinPostingId);
-}
-
-export function getFailedJobIds(response: JobActionResponse): Set<string> {
-  const failedIds = response.results
-    .filter((result) => !result.ok)
-    .map((result) => result.jobId);
-  return new Set(failedIds);
 }

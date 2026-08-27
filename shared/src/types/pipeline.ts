@@ -484,6 +484,21 @@ export type BatchUrlImportStreamEvent =
       requestId: string;
     };
 
+/**
+ * How many finished batches stay readable — on the server, and mirrored in the
+ * client's own cache. One constant so the two cannot drift: a client that
+ * remembered fewer than the server retains would forget outcomes it could
+ * still have read back.
+ *
+ * Retention has to outlive the gap between starting a batch and attaching to
+ * it, and a page reload with a summary still unread. At 5, a burst of swipes —
+ * one batch each — would evict an unread bulk summary within seconds; at 500
+ * the retained `failedJobIds` arrays (up to `maxBulkActionJobs` ids apiece)
+ * stop being bounded in any useful sense. 50 also matches the LLM call
+ * observer's window, which holds the same kind of recent-work history.
+ */
+export const MAX_RETAINED_TERMINAL_BATCHES = 50;
+
 export type JobActionBatchStatus =
   | "running"
   | "completed"
@@ -553,42 +568,5 @@ export type JobActionBatchStreamEvent =
   | {
       type: "terminal";
       batch: JobActionBatchSnapshot;
-      requestId: string;
-    };
-
-export type JobActionStreamEvent =
-  | {
-      type: "started";
-      action: JobAction;
-      requested: number;
-      completed: number;
-      succeeded: number;
-      failed: number;
-      requestId: string;
-    }
-  | {
-      type: "progress";
-      action: JobAction;
-      requested: number;
-      completed: number;
-      succeeded: number;
-      failed: number;
-      result: JobActionResult;
-      requestId: string;
-    }
-  | {
-      type: "completed";
-      action: JobAction;
-      requested: number;
-      completed: number;
-      succeeded: number;
-      failed: number;
-      results: JobActionResult[];
-      requestId: string;
-    }
-  | {
-      type: "error";
-      code: string;
-      message: string;
       requestId: string;
     };

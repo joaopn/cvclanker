@@ -1,13 +1,27 @@
-import * as api from "@client/api";
+import {
+  startJobActionBatch,
+  watchJobActionBatch,
+} from "@client/lib/job-action-batches";
 import { createJob } from "@shared/testing/factories.js";
-import type { JobActionResponse, JobActionStreamEvent } from "@shared/types.js";
+import type {
+  JobActionBatchSnapshot,
+  JobActionResponse,
+} from "@shared/types.js";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useJobSelectionActions } from "./useJobSelectionActions";
 
 vi.mock("@client/api", () => ({
-  streamJobAction: vi.fn(),
+  ApiClientError: class ApiClientError extends Error {},
+}));
+
+vi.mock("@client/lib/job-action-batches", () => ({
+  startJobActionBatch: vi.fn(),
+  watchJobActionBatch: vi.fn(),
+  cancelJobActionBatch: vi.fn(),
+  subscribeToJobActionBatches: vi.fn(() => () => {}),
+  getJobActionBatchSnapshots: vi.fn(() => []),
 }));
 
 vi.mock("sonner", () => ({
@@ -16,6 +30,7 @@ vi.mock("sonner", () => ({
     dismiss: vi.fn(),
     error: vi.fn(),
     success: vi.fn(),
+    warning: vi.fn(),
   },
 }));
 
@@ -32,69 +47,44 @@ const deferred = <T>(): Deferred<T> => {
   return { promise, resolve };
 };
 
-const asStreamEvents = (
+/**
+ * The batch API's counters-only view of a finished action. Derived from the
+ * old response fixture so the existing expectations still describe the same
+ * outcomes.
+ */
+const asBatchSnapshot = (
   response: JobActionResponse,
-  requestId = "req-action",
-): JobActionStreamEvent[] => {
-  const events: JobActionStreamEvent[] = [
-    {
-      type: "started",
-      action: response.action,
-      requested: response.requested,
-      completed: 0,
-      succeeded: 0,
-      failed: 0,
-      requestId,
-    },
-  ];
-
-  let succeeded = 0;
-  let failed = 0;
-  response.results.forEach((result, index) => {
-    if (result.ok) succeeded += 1;
-    else failed += 1;
-    events.push({
-      type: "progress",
-      action: response.action,
-      requested: response.requested,
-      completed: index + 1,
-      succeeded,
-      failed,
-      result,
-      requestId,
-    });
-  });
-
-  events.push({
-    type: "completed",
+  batchId = "batch-1",
+  status: JobActionBatchSnapshot["status"] = "completed",
+): JobActionBatchSnapshot => {
+  const failures = response.results.filter(
+    (result): result is Extract<typeof result, { ok: false }> => !result.ok,
+  );
+  return {
+    batchId,
     action: response.action,
+    status,
     requested: response.requested,
-    completed: response.requested,
+    completed: response.results.length,
     succeeded: response.succeeded,
     failed: response.failed,
-    results: response.results,
-    requestId,
-  });
-
-  return events;
+    startedAt: "2026-08-27T00:00:00.000Z",
+    finishedAt: "2026-08-27T00:00:01.000Z",
+    failedJobIds: failures.map((result) => result.jobId),
+    firstFailureMessage: failures[0]?.error.message ?? null,
+  };
 };
 
-const mockStreamJobAction = (
+const mockBatch = (
   response: JobActionResponse,
   waitForRelease?: Promise<void>,
+  status: JobActionBatchSnapshot["status"] = "completed",
 ) => {
-  vi.mocked(api.streamJobAction).mockImplementation(
-    async (_input, handlers) => {
-      for (const event of asStreamEvents(response)) {
-        if (event.type === "started") handlers.onEvent(event);
-      }
-      if (waitForRelease) await waitForRelease;
-      for (const event of asStreamEvents(response)) {
-        if (event.type !== "started") handlers.onEvent(event);
-      }
-      return;
-    },
-  );
+  vi.mocked(startJobActionBatch).mockResolvedValue("batch-1");
+  vi.mocked(watchJobActionBatch).mockImplementation(async () => {
+    if (waitForRelease) await waitForRelease;
+    return asBatchSnapshot(response, "batch-1", status);
+  });
 };
 
 describe("useJobSelectionActions", () => {
@@ -148,7 +138,114 @@ describe("useJobSelectionActions", () => {
       await result.current.runJobAction("skip");
     });
 
-    expect(api.streamJobAction).not.toHaveBeenCalled();
+    expect(startJobActionBatch).not.toHaveBeenCalled();
+  });
+
+  // A cancelled batch names the rows that FAILED but not the ones that
+  // succeeded, so "which never ran" is unknowable here. The selection is left
+  // untouched so the undispatched rows are still there to re-run, and no undo
+  // is offered over a set it could only half-restore.
+  it("keeps the selection and offers no undo when a batch is stopped", async () => {
+    const activeJobs = [
+      createJob({ id: "job-1", status: "discovered" }),
+      createJob({ id: "job-2", status: "discovered" }),
+    ];
+    const pushUndo = vi.fn();
+    mockBatch(
+      {
+        action: "skip",
+        requested: 2,
+        succeeded: 1,
+        failed: 0,
+        results: [
+          {
+            jobId: "job-1",
+            ok: true,
+            job: createJob({ id: "job-1", status: "skipped" }),
+          },
+        ],
+      },
+      undefined,
+      "cancelled",
+    );
+
+    const { result } = renderHook(() =>
+      useJobSelectionActions({
+        activeJobs,
+        activeTab: "inbox",
+        loadJobs: vi.fn().mockResolvedValue(undefined),
+        maxBulkActionJobs: 100,
+        pushUndo,
+      }),
+    );
+
+    act(() => {
+      result.current.toggleSelectJob("job-1");
+      result.current.toggleSelectJob("job-2");
+    });
+
+    await act(async () => {
+      await result.current.runJobAction("skip");
+    });
+
+    expect(pushUndo).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalled();
+    expect(Array.from(result.current.selectedJobIds).sort()).toEqual([
+      "job-1",
+      "job-2",
+    ]);
+  });
+
+  // The POST answers immediately now. If the lock were released there, the bar
+  // would re-enable mid-batch and a second press would dispatch the same rows
+  // again — and rescore/rescrape/delete have no server-side guard against it.
+  it("keeps the action bar locked until the batch itself finishes", async () => {
+    const activeJobs = [createJob({ id: "job-1", status: "discovered" })];
+    const release = deferred<void>();
+    mockBatch(
+      {
+        action: "skip",
+        requested: 1,
+        succeeded: 1,
+        failed: 0,
+        results: [
+          {
+            jobId: "job-1",
+            ok: true,
+            job: createJob({ id: "job-1", status: "skipped" }),
+          },
+        ],
+      },
+      release.promise,
+    );
+
+    const { result } = renderHook(() =>
+      useJobSelectionActions({
+        activeJobs,
+        activeTab: "inbox",
+        loadJobs: vi.fn().mockResolvedValue(undefined),
+        maxBulkActionJobs: 100,
+      }),
+    );
+
+    act(() => {
+      result.current.toggleSelectJob("job-1");
+    });
+
+    let running!: Promise<void>;
+    await act(async () => {
+      running = result.current.runJobAction("skip");
+      // Let the POST resolve; the batch is still going.
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(startJobActionBatch).toHaveBeenCalled());
+    expect(result.current.jobActionInFlight).toBe("skip");
+
+    await act(async () => {
+      release.resolve();
+      await running;
+    });
+    expect(result.current.jobActionInFlight).toBeNull();
   });
 
   it("reconciles failures with selection changes made during in-flight action", async () => {
@@ -159,7 +256,7 @@ describe("useJobSelectionActions", () => {
     ];
     const loadJobs = vi.fn().mockResolvedValue(undefined);
     const release = deferred<void>();
-    mockStreamJobAction(
+    mockBatch(
       {
         action: "skip",
         requested: 2,
@@ -234,7 +331,7 @@ describe("useJobSelectionActions", () => {
       }),
     ];
     const loadJobs = vi.fn().mockResolvedValue(undefined);
-    mockStreamJobAction({
+    mockBatch({
       action: "fetch_live_status",
       requested: 1,
       succeeded: 1,
@@ -267,12 +364,10 @@ describe("useJobSelectionActions", () => {
     });
 
     // The non-LinkedIn row is skipped, not sent to fail server-side.
-    expect(api.streamJobAction).toHaveBeenCalledWith(
-      { action: "fetch_live_status", jobIds: ["job-li"] },
-      expect.objectContaining({
-        onEvent: expect.any(Function),
-      }),
-    );
+    expect(startJobActionBatch).toHaveBeenCalledWith({
+      action: "fetch_live_status",
+      jobIds: ["job-li"],
+    });
   });
 
   it("sends the tailored AND failed rows of a mixed selection, never the live one", async () => {
@@ -286,7 +381,7 @@ describe("useJobSelectionActions", () => {
       }),
     ];
     const loadJobs = vi.fn().mockResolvedValue(undefined);
-    mockStreamJobAction({
+    mockBatch({
       action: "retailor",
       requested: 2,
       succeeded: 2,
@@ -331,10 +426,10 @@ describe("useJobSelectionActions", () => {
 
     // The failed row is retried in the same press; the live one is dropped,
     // because a detached tailor is mid-write on it.
-    expect(api.streamJobAction).toHaveBeenCalledWith(
-      { action: "retailor", jobIds: ["job-ready", "job-failed"] },
-      expect.objectContaining({ onEvent: expect.any(Function) }),
-    );
+    expect(startJobActionBatch).toHaveBeenCalledWith({
+      action: "retailor",
+      jobIds: ["job-ready", "job-failed"],
+    });
   });
 
   // Pins the OFFER, not the dispatch mechanism: an all-ineligible selection
@@ -370,7 +465,7 @@ describe("useJobSelectionActions", () => {
       await result.current.runRetailorAction();
     });
 
-    expect(api.streamJobAction).not.toHaveBeenCalled();
+    expect(startJobActionBatch).not.toHaveBeenCalled();
   });
 
   it("runs rescore and reports success copy", async () => {
@@ -379,7 +474,7 @@ describe("useJobSelectionActions", () => {
       createJob({ id: "job-2", status: "ready" }),
     ];
     const loadJobs = vi.fn().mockResolvedValue(undefined);
-    mockStreamJobAction({
+    mockBatch({
       action: "rescore",
       requested: 2,
       succeeded: 2,
@@ -416,12 +511,10 @@ describe("useJobSelectionActions", () => {
       await result.current.runJobAction("rescore");
     });
 
-    expect(api.streamJobAction).toHaveBeenCalledWith(
-      { action: "rescore", jobIds: ["job-1", "job-2"] },
-      expect.objectContaining({
-        onEvent: expect.any(Function),
-      }),
-    );
+    expect(startJobActionBatch).toHaveBeenCalledWith({
+      action: "rescore",
+      jobIds: ["job-1", "job-2"],
+    });
     expect(toast.success).toHaveBeenCalledWith("2 matches recalculated");
   });
 });

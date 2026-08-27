@@ -8,6 +8,10 @@
  */
 
 import * as api from "@client/api";
+import {
+  startJobActionBatch,
+  watchJobActionBatch,
+} from "@client/lib/job-action-batches";
 import { toast } from "@client/lib/toast";
 import { useQuery } from "@tanstack/react-query";
 import type { Job, SuitabilityCategory } from "@shared/types.js";
@@ -105,15 +109,12 @@ export function useSwipeDeck({
 
     let failed = false;
     try {
-      await api.streamJobAction(
-        { action, jobIds: [job.id] },
-        {
-          onEvent: (event) => {
-            if (event.type === "progress" && !event.result.ok) failed = true;
-            if (event.type === "error") failed = true;
-          },
-        },
-      );
+      // Detached like every other bulk action, so a swipe survives the tab
+      // closing mid-flight. Awaited all the same: the deck rolls the card back
+      // on failure, so it needs the outcome.
+      const batchId = await startJobActionBatch({ action, jobIds: [job.id] });
+      const final = await watchJobActionBatch(batchId);
+      if (final.failed > 0 || final.status !== "completed") failed = true;
     } catch {
       failed = true;
     }

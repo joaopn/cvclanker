@@ -20,9 +20,9 @@ import type {
   CvUploadTemplateResponse,
   DuplicateJobGroupsResponse,
   Job,
+  JobActionBatchSnapshot,
   JobActionRequest,
   JobActionResponse,
-  JobActionStreamEvent,
   JobChatMessage,
   JobChatStreamEvent,
   JobChatThread,
@@ -991,17 +991,35 @@ export async function sweepLiveClosedJobs(): Promise<{
   });
 }
 
-export async function streamJobAction(
+/**
+ * Start a bulk action that runs DETACHED from this request. Answers with the
+ * batch id; progress is watched over the batches stream, by this client or any
+ * other. Replaces the old streaming action call, which died with its request.
+ */
+export async function startJobActionBatch(
   input: JobActionRequest,
-  handlers: {
-    onEvent: (event: JobActionStreamEvent) => void;
-    signal?: AbortSignal;
-  },
-): Promise<void> {
-  return streamSseEvents<JobActionStreamEvent>(
-    "/jobs/actions/stream",
-    input,
-    handlers,
+): Promise<string> {
+  const { batchId } = await fetchApi<{ batchId: string }>(
+    "/jobs/actions/batch",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+  return batchId;
+}
+
+export async function getJobActionBatches(): Promise<JobActionBatchSnapshot[]> {
+  const { batches } = await fetchApi<{ batches: JobActionBatchSnapshot[] }>(
+    "/jobs/actions/batches",
+  );
+  return batches;
+}
+
+export async function cancelJobActionBatch(batchId: string): Promise<void> {
+  await fetchApi<{ cancelled: boolean }>(
+    `/jobs/actions/batches/${encodeURIComponent(batchId)}/cancel`,
+    { method: "POST" },
   );
 }
 

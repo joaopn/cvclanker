@@ -1,8 +1,14 @@
-import * as api from "@client/api";
+import { ApiClientError } from "@client/api";
+import {
+  cancelJobActionBatch,
+  getJobActionBatchSnapshots,
+  startJobActionBatch,
+  subscribeToJobActionBatches,
+  watchJobActionBatch,
+} from "@client/lib/job-action-batches";
 import type {
   JobAction,
   JobActionRequest,
-  JobActionResponse,
   JobListItem,
   JobOutcome,
 } from "@shared/types.js";
@@ -25,7 +31,6 @@ import {
   canRescrape,
   canRetailor,
   canSkip,
-  getFailedJobIds,
   hasLinkedinPostingId,
   isRetailorable,
 } from "./jobActions";
@@ -88,6 +93,13 @@ interface UseJobSelectionActionsArgs {
   maxBulkActionJobs: number;
   pushUndo?: (entry: { label: string; restore: () => Promise<void> }) => void;
   undo?: () => void;
+}
+
+/** Provider messages can be arbitrarily long; a toast cannot. */
+function truncateFailure(message: string | null): string | null {
+  const detail = message?.trim();
+  if (!detail) return null;
+  return detail.length > 200 ? `${detail.slice(0, 200)}…` : detail;
 }
 
 export function useJobSelectionActions({
@@ -275,14 +287,13 @@ export function useJobSelectionActions({
             .map(snapshotJob)
         : [];
       let progressToastId: string | number | undefined;
-      let finalResult: JobActionResponse | null = null;
-      let streamError: string | null = null;
       let latestProgress = {
         requested: selectedAtStart.length,
         completed: 0,
         succeeded: 0,
         failed: 0,
       };
+      let batchId: string | null = null;
 
       const getProgressTitle = () => {
         const safeRequested = Math.max(latestProgress.requested, 1);
@@ -306,74 +317,72 @@ export function useJobSelectionActions({
           ),
           ...(progressToastId !== undefined ? { id: progressToastId } : {}),
           duration: Number.POSITIVE_INFINITY,
+          // The work outlives this page now, so the only way to stop a runaway
+          // sweep used to be closing the tab. This is its replacement. Spread
+          // conditionally rather than set to undefined: a present-but-undefined
+          // key is still a present key to an object matcher.
+          ...(batchId
+            ? {
+                cancel: {
+                  label: "Stop",
+                  onClick: () => {
+                    const id = batchId;
+                    if (!id) return;
+                    void cancelJobActionBatch(id).catch((error: unknown) => {
+                      // It finished in the moment before the press; that is
+                      // the outcome the user wanted, not a failure.
+                      const status =
+                        error instanceof ApiClientError ? error.status : null;
+                      if (status === 404) return;
+                      toast.error("Couldn't stop the batch");
+                    });
+                  },
+                },
+              }
+            : {}),
         });
       };
+
+      // Repaint the toast from whatever the server last said about OUR batch.
+      const unsubscribe = subscribeToJobActionBatches(() => {
+        if (!batchId) return;
+        const batch = getJobActionBatchSnapshots().find(
+          (entry) => entry.batchId === batchId,
+        );
+        if (!batch) return;
+        latestProgress = {
+          requested: batch.requested,
+          completed: batch.completed,
+          succeeded: batch.succeeded,
+          failed: batch.failed,
+        };
+        upsertProgressToast();
+      });
 
       try {
         setJobActionInFlight(action);
         upsertProgressToast();
-        await api.streamJobAction(request, {
-          onEvent: (event) => {
-            if (event.type === "error") {
-              streamError = event.message || "Failed to run job action";
-              return;
-            }
+        batchId = await startJobActionBatch(request);
+        // Re-rendered so the Stop button appears now that there is an id.
+        upsertProgressToast();
 
-            if (event.type === "started") {
-              latestProgress = {
-                requested: event.requested,
-                completed: event.completed,
-                succeeded: event.succeeded,
-                failed: event.failed,
-              };
-              upsertProgressToast();
-              return;
-            }
+        const final = await watchJobActionBatch(batchId);
 
-            if (event.type === "progress") {
-              latestProgress = {
-                requested: event.requested,
-                completed: event.completed,
-                succeeded: event.succeeded,
-                failed: event.failed,
-              };
-              upsertProgressToast();
-              return;
-            }
-
-            latestProgress = {
-              requested: event.requested,
-              completed: event.completed,
-              succeeded: event.succeeded,
-              failed: event.failed,
-            };
-            finalResult = {
-              action: event.action,
-              requested: event.requested,
-              succeeded: event.succeeded,
-              failed: event.failed,
-              results: event.results,
-            };
-            upsertProgressToast();
-          },
-        });
-
-        if (streamError) {
-          throw new Error(streamError);
-        }
-
-        if (!finalResult) {
-          throw new Error("Job action stream ended before completion");
-        }
-
-        const result = finalResult as JobActionResponse;
-        const failedIds = getFailedJobIds(result);
+        const failedIds = new Set(final.failedJobIds);
         const successLabel = jobActionSuccessLabel[action];
+        // Anything that is not a clean completion — a user Stop, or a batch the
+        // server could not finish. Neither reports which rows SUCCEEDED, only
+        // which failed, so "what actually changed" is unknowable here: undo is
+        // skipped rather than offered over a set it would half-restore, and the
+        // selection is left exactly as it was so the rows that never ran are
+        // still there to re-run, at the cost of keeping the successful ones
+        // selected too.
+        const stopped = final.status !== "completed";
 
         // Register undo for the rows that actually changed.
-        const undoSnapshots = preSnapshots.filter(
-          (snap) => !failedIds.has(snap.jobId),
-        );
+        const undoSnapshots = stopped
+          ? []
+          : preSnapshots.filter((snap) => !failedIds.has(snap.jobId));
         const undoAction =
           undoLabel && undoSnapshots.length > 0
             ? { label: "Undo", onClick: () => undo?.() }
@@ -387,30 +396,31 @@ export function useJobSelectionActions({
           });
         }
 
-        if (result.failed === 0) {
+        // A batch-level exception lands here, and those messages have no length
+        // discipline at all — truncated like the per-job ones below.
+        const failureDetail = truncateFailure(final.firstFailureMessage);
+        if (stopped) {
+          toast.warning(
+            `${final.status === "cancelled" ? "Stopped" : "Interrupted"} after ${final.completed} of ${final.requested}. ${final.succeeded} ${successLabel}.${
+              failureDetail ? ` First error: ${failureDetail}` : ""
+            }`,
+          );
+        } else if (final.failed === 0) {
           toast.success(
-            `${result.succeeded} ${successLabel}`,
+            `${final.succeeded} ${successLabel}`,
             undoAction ? { action: undoAction } : undefined,
           );
         } else {
-          const firstFailure = result.results.find(
-            (entry): entry is Extract<typeof entry, { ok: false }> =>
-              entry.ok === false,
-          );
-          const detail = firstFailure?.error?.message?.trim();
-          const truncated =
-            detail && detail.length > 200
-              ? `${detail.slice(0, 200)}…`
-              : detail;
           toast.error(
-            `${result.succeeded} succeeded, ${result.failed} failed.${
-              truncated ? ` First error: ${truncated}` : ""
+            `${final.succeeded} succeeded, ${final.failed} failed.${
+              failureDetail ? ` First error: ${failureDetail}` : ""
             }`,
             undoAction ? { action: undoAction } : undefined,
           );
         }
 
         await loadJobs();
+        if (stopped) return;
         setSelectedJobIds((current) => {
           const addedDuringRequest = Array.from(current).filter(
             (jobId) => !selectedAtStartSet.has(jobId),
@@ -430,9 +440,13 @@ export function useJobSelectionActions({
           error instanceof Error ? error.message : "Failed to run job action";
         toast.error(message);
       } finally {
+        unsubscribe();
         if (progressToastId !== undefined) {
           toast.dismiss(progressToastId);
         }
+        // Held until the BATCH is terminal, not until the POST returns: the
+        // request answers immediately now, and re-enabling the bar mid-batch
+        // would let a second press dispatch the same rows again.
         setJobActionInFlight(null);
       }
     },

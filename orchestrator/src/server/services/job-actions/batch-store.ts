@@ -16,23 +16,14 @@
 import { randomUUID } from "node:crypto";
 import { logger } from "@infra/logger";
 import { asyncPool } from "@server/utils/async-pool";
-import type {
-  JobAction,
-  JobActionBatchItemOutcome,
-  JobActionBatchSnapshot,
-  JobActionBatchStatus,
-  JobActionResult,
+import {
+  type JobAction,
+  type JobActionBatchItemOutcome,
+  type JobActionBatchSnapshot,
+  type JobActionBatchStatus,
+  type JobActionResult,
+  MAX_RETAINED_TERMINAL_BATCHES,
 } from "@shared/types";
-
-/**
- * How many finished batches stay readable. Mirrors the LLM call observer's
- * window deliberately rather than picking a fresh number: retention has to
- * outlive the gap between a POST and the viewer opening, and a page reload with
- * an unread summary. At 5, a burst of swipes — one batch each — would evict an
- * unread bulk summary within seconds; at 500 the retained failedJobIds arrays
- * (up to `maxBulkActionJobs` ids apiece) stop being bounded in any useful sense.
- */
-export const MAX_RETAINED_TERMINAL_BATCHES = 50;
 
 export interface JobActionBatchOutcome {
   status: Exclude<JobActionBatchStatus, "running">;

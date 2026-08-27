@@ -6,7 +6,13 @@ import {
 interface EventSourceSubscriptionHandlers<T> {
   onOpen?: () => void;
   onMessage: (payload: T) => void;
-  onError?: () => void;
+  /**
+   * `fatal` distinguishes "this subscription is over" from "backing off and
+   * will retry". Only a 401 is fatal; every other failure is followed by the
+   * reconnect loop below, so a caller that tears down and re-subscribes on one
+   * would abort the pending backoff and hammer the server instead.
+   */
+  onError?: (info: { fatal: boolean }) => void;
 }
 
 function parseSseFrame(frame: string): string | null {
@@ -66,12 +72,12 @@ export function subscribeToEventSource<T>(
 
         if (response.status === 401) {
           await recoverAuthHeaderAfterUnauthorized();
-          handlers.onError?.();
+          handlers.onError?.({ fatal: true });
           return;
         }
 
         if (!response.ok || !response.body) {
-          handlers.onError?.();
+          handlers.onError?.({ fatal: false });
           await delay(reconnectDelay, controller.signal);
           reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_DELAY_MS);
           continue;
@@ -119,13 +125,13 @@ export function subscribeToEventSource<T>(
         // Stream ended without an explicit unsubscribe (server closed it or the
         // connection dropped) — surface disconnected state and reconnect.
         if (!isClosed) {
-          handlers.onError?.();
+          handlers.onError?.({ fatal: false });
           await delay(reconnectDelay, controller.signal);
           reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_DELAY_MS);
         }
       } catch {
         if (isClosed || controller.signal.aborted) return;
-        handlers.onError?.();
+        handlers.onError?.({ fatal: false });
         await delay(reconnectDelay, controller.signal);
         reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_DELAY_MS);
       }

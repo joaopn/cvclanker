@@ -7,13 +7,17 @@ describe("API client SSE streaming", () => {
     api.__resetApiClientAuthForTests();
   });
 
+  // Guards the generic `streamSseEvents` reader, not any one endpoint. It used
+  // to ride on streamJobAction; that call is gone now that bulk actions are
+  // detached, so it rides on the ghostwriter stream instead — leaving the
+  // reader itself uncovered was the alternative.
   it("propagates handler errors and cancels the stream reader", async () => {
     const encoder = new TextEncoder();
     const cancelSpy = vi.fn();
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(
-          encoder.encode('data: {"type":"started","requestId":"req-1"}\n\n'),
+          encoder.encode('data: {"type":"delta","text":"hi"}\n\n'),
         );
       },
       cancel() {
@@ -28,8 +32,9 @@ describe("API client SSE streaming", () => {
     } as Response);
 
     await expect(
-      api.streamJobAction(
-        { action: "skip", jobIds: ["job-1"] },
+      api.streamJobGhostwriterMessage(
+        "job-1",
+        { content: "hello" },
         {
           onEvent: () => {
             throw new Error("handler exploded");

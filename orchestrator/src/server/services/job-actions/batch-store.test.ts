@@ -1,12 +1,15 @@
 // @vitest-environment node
-import type { Job, JobActionResult } from "@shared/types";
+import {
+  type Job,
+  type JobActionResult,
+  MAX_RETAINED_TERMINAL_BATCHES,
+} from "@shared/types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   cancelJobActionBatch,
   getClaimedJobIds,
   getJobActionBatches,
   hasRunningJobActionBatches,
-  MAX_RETAINED_TERMINAL_BATCHES,
   resetJobActionBatchesForTests,
   startJobActionBatch,
   subscribeToJobActionBatches,

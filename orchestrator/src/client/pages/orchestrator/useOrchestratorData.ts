@@ -1,4 +1,5 @@
 import * as api from "@client/api";
+import { useDetachedJobActionBatches } from "@client/hooks/useDetachedJobActionBatches";
 import { subscribeToEventSource } from "@client/lib/sse";
 import { toast } from "@client/lib/toast";
 import type {
@@ -463,6 +464,11 @@ export const useOrchestratorData = (
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [checkForJobChanges, isRefreshPaused]);
+
+  // Lives here rather than on the Manage page because SwipePage calls this
+  // hook too — a watcher mounted on one page would leave the other's batches
+  // unwatched, and a swipe waiting on one would hang.
+  useDetachedJobActionBatches();
 
   useEffect(() => {
     if (typeof EventSource === "undefined") return;
