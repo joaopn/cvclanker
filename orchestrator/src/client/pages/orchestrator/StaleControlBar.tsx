@@ -135,7 +135,7 @@ export const StaleControlBar = ({
               Sweeping...
             </>
           ) : (
-            "Move stale rows here"
+            "Move stale rows"
           )}
         </Button>
       </div>
@@ -171,7 +171,7 @@ export const StaleControlBar = ({
             Sweeping...
           </>
         ) : (
-          "Move closed postings here"
+          "Move closed postings"
         )}
       </Button>
     </form>
