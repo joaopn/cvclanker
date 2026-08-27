@@ -36,6 +36,7 @@ import { normalizeProviderId } from "@server/services/llm/provider-credentials";
 import { LlmService } from "@server/services/llm/service";
 import { getEffectiveSettings } from "@server/services/settings";
 import { applySettingsUpdates } from "@server/services/settings-update";
+import { isUrlImportRunning } from "@server/services/url-import/batch-store";
 import { providerUsesBaseUrl } from "@shared/settings-registry";
 import { updateSettingsSchema } from "@shared/settings-schema";
 import { type Request, type Response, Router } from "express";
@@ -428,6 +429,16 @@ settingsRouter.post(
         res,
         conflict(
           "A bulk job action is in progress. Update the CLI after it finishes.",
+        ),
+      );
+      return;
+    }
+
+    if (isUrlImportRunning()) {
+      fail(
+        res,
+        conflict(
+          "A URL import is in progress. Update the CLI after it finishes.",
         ),
       );
       return;

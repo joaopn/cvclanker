@@ -36,6 +36,7 @@ import {
   subscribeToJobActionBatches,
 } from "@server/services/job-actions/batch-store";
 import { LLM_DRIVING_ACTIONS } from "@server/services/job-actions/llm-actions";
+import { isUrlImportRunning } from "@server/services/url-import/batch-store";
 import { isJobScoringEnabled } from "@server/services/job-scoring-settings";
 import { fetchLinkedinLiveStatus } from "@server/services/live-status";
 import { fetchJobDraft } from "@server/services/manualJob";
@@ -1201,7 +1202,12 @@ interface PreparedJobAction {
  * there just sends the running batch back into the same wall.
  */
 function hasRunningLlmDrivingBatch(): boolean {
-  return hasRunningJobActionBatchWithAction(LLM_DRIVING_ACTIONS);
+  return (
+    hasRunningJobActionBatchWithAction(LLM_DRIVING_ACTIONS) ||
+    // A URL import infers each row through the LLM and scores what it creates, so
+    // it hits the same account-wide limit a rescore would.
+    isUrlImportRunning()
+  );
 }
 
 /**

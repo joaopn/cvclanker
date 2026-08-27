@@ -454,49 +454,60 @@ export type BatchUrlImportItemResult =
       usage?: BatchUrlImportTokenUsage | null;
     };
 
-export type BatchUrlImportStreamEvent =
+/**
+ * Cap on one pasted import. Shared because the client renders it in its own
+ * copy ("up to N at a time") and the server enforces it — two literals that
+ * would drift into a form promising more than the route accepts.
+ */
+export const BATCH_URL_IMPORT_MAX_URLS = 50;
+
+/**
+ * A URL import running detached from any browser.
+ *
+ * Unlike a job-action batch this DOES carry its per-item results, because the
+ * import sheet's whole surface is a row per URL saying imported / duplicate /
+ * failed-and-why — a second device that could only see counters could not
+ * render it. That is affordable here and was not there: a job-action result
+ * embeds a whole `Job` and its cap is 1000, while these are a few short fields
+ * capped at 50.
+ */
+export interface UrlImportBatchSnapshot {
+  batchId: string;
+  status: JobActionBatchStatus;
+  /**
+   * Every URL the import was asked for, deduped, in the order the server took
+   * them. Load-bearing, not decoration: the sheet CREATES its rows from this
+   * list and MATCHES results onto them, so a client attaching at 10/50 would
+   * otherwise render ten rows and retry against a truncated list.
+   */
+  urls: string[];
+  /** Settled items, rebuilt in request order. */
+  results: BatchUrlImportItemResult[];
+  requested: number;
+  completed: number;
+  succeeded: number;
+  duplicates: number;
+  failed: number;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+/**
+ * One import at a time, so the viewer carries one record rather than a
+ * registry. `batch: null` means no import is retained at all.
+ */
+export type UrlImportBatchStreamEvent =
   | {
-      type: "started";
-      requested: number;
+      type: "snapshot";
+      batch: UrlImportBatchSnapshot | null;
       requestId: string;
     }
   | {
-      type: "progress";
-      result: BatchUrlImportItemResult;
-      completed: number;
-      succeeded: number;
-      duplicates: number;
-      failed: number;
-      requestId: string;
-    }
-  | {
-      type: "completed";
-      results: BatchUrlImportItemResult[];
-      succeeded: number;
-      duplicates: number;
-      failed: number;
-      requestId: string;
-    }
-  | {
-      type: "error";
-      code: string;
-      message: string;
+      type: "update";
+      batch: UrlImportBatchSnapshot;
       requestId: string;
     };
 
-/**
- * How many finished batches stay readable — on the server, and mirrored in the
- * client's own cache. One constant so the two cannot drift: a client that
- * remembered fewer than the server retains would forget outcomes it could
- * still have read back.
- *
- * Retention has to outlive the gap between starting a batch and attaching to
- * it, and a page reload with a summary still unread. At 5, a burst of swipes —
- * one batch each — would evict an unread bulk summary within seconds; at 500
- * the retained `failedJobIds` arrays (up to `maxBulkActionJobs` ids apiece)
- * stop being bounded in any useful sense. 50 also matches the LLM call
- * observer's window, which holds the same kind of recent-work history.
- */
 export const MAX_RETAINED_TERMINAL_BATCHES = 50;
 
 export type JobActionBatchStatus =

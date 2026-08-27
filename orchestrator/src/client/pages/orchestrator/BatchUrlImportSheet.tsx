@@ -1,5 +1,11 @@
-import * as api from "@client/api";
-import type { BatchUrlImportItemResult } from "@shared/types";
+import {
+  cancelUrlImportBatch,
+  getUrlImportBatch,
+  refreshUrlImportBatch,
+  startUrlImportBatch,
+  subscribeToUrlImportBatch,
+} from "@client/lib/url-import-batch";
+import { BATCH_URL_IMPORT_MAX_URLS } from "@shared/types";
 import {
   CheckCircle2,
   Copy,
@@ -22,7 +28,10 @@ import {
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 
-type RowStatus = "pending" | "in_flight" | "saved" | "duplicate" | "failed";
+// No `in_flight`: the snapshot says which URLs have SETTLED, not which of the
+// three concurrent fetches are in the air right now. Unsettled rows all render
+// the same way, which is what they did before anyway.
+type RowStatus = "pending" | "saved" | "duplicate" | "failed";
 
 interface UrlRowUsage {
   promptTokens: number | null;
@@ -101,8 +110,7 @@ function truncateUrl(url: string): string {
 }
 
 const STATUS_LABEL: Record<RowStatus, string> = {
-  pending: "pending",
-  in_flight: "fetching",
+  pending: "fetching",
   saved: "saved",
   duplicate: "duplicate",
   failed: "failed",
@@ -112,8 +120,7 @@ const STATUS_VARIANT: Record<
   RowStatus,
   "default" | "secondary" | "destructive" | "outline"
 > = {
-  pending: "outline",
-  in_flight: "secondary",
+  pending: "secondary",
   saved: "default",
   duplicate: "secondary",
   failed: "destructive",
@@ -125,147 +132,158 @@ export const BatchUrlImportSheet: React.FC<BatchUrlImportSheetProps> = ({
   onCompleted,
 }) => {
   const [textValue, setTextValue] = useState("");
-  const [rows, setRows] = useState<UrlRow[]>([]);
-  const [phase, setPhase] = useState<"idle" | "running" | "done">("idle");
-  const [completed, setCompleted] = useState(0);
-  const [succeeded, setSucceeded] = useState(0);
-  const [duplicates, setDuplicates] = useState(0);
-  const [failed, setFailed] = useState(0);
-  const [requested, setRequested] = useState(0);
-  const abortRef = useRef<AbortController | null>(null);
+  // The server's record is the source of truth: it is what a second device
+  // reads, and what this one re-reads after a reload. Nothing about the run is
+  // accumulated locally any more.
+  const [batch, setBatch] = useState(() => getUrlImportBatch());
+  // Which import this tab started, so a replacement by another device can be
+  // named rather than silently painted over this tab's URLs.
+  const [myBatchId, setMyBatchId] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState(false);
+  const [starting, setStarting] = useState(false);
   const onCompletedRef = useRef(onCompleted);
   onCompletedRef.current = onCompleted;
-  const completionFiredRef = useRef(false);
+  // Terminal is REPORTED only for a transition this tab watched. The finished
+  // record is retained so a device arriving afterwards can read which URLs
+  // failed — without this guard, reopening the sheet an hour later would fire
+  // the completion path again and close the sheet the instant it opened.
+  const watchedRunningRef = useRef<string | null>(null);
 
   const parsed = useMemo(() => parseUrls(textValue), [textValue]);
 
-  const resetForm = useCallback(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setTextValue("");
-    setRows([]);
-    setPhase("idle");
-    setCompleted(0);
-    setSucceeded(0);
-    setDuplicates(0);
-    setFailed(0);
-    setRequested(0);
-    completionFiredRef.current = false;
-  }, []);
-
   useEffect(() => {
+    const sync = () => setBatch(getUrlImportBatch());
+    const unsubscribe = subscribeToUrlImportBatch(sync);
+    const discover = () => {
+      void refreshUrlImportBatch().catch(() => {
+        // A failed poll is not worth a toast; the next signal retries.
+      });
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") discover();
+    };
+
+    // Mount alone is not enough: this component is mounted for the life of the
+    // page, so a tab open since this morning would never learn about an import
+    // started on another device — and would then meet a 409 it could not
+    // explain. These are the moments someone picks work up on another device.
+    discover();
+    window.addEventListener("focus", discover);
+    window.addEventListener("online", discover);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     return () => {
-      abortRef.current?.abort();
+      unsubscribe();
+      window.removeEventListener("focus", discover);
+      window.removeEventListener("online", discover);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, []);
 
-  const startImport = useCallback(
-    async (urls: string[]) => {
-      if (urls.length === 0) return;
-      const controller = new AbortController();
-      abortRef.current?.abort();
-      abortRef.current = controller;
-      completionFiredRef.current = false;
-      setPhase("running");
-      setRequested(urls.length);
-      setCompleted(0);
-      setSucceeded(0);
-      setDuplicates(0);
-      setFailed(0);
-      setRows(urls.map((url) => ({ url, status: "pending" })));
-
-      const applyResult = (result: BatchUrlImportItemResult) => {
-        setRows((prev) =>
-          prev.map((row) => {
-            if (row.url !== result.url) return row;
-            if (result.ok) {
-              return {
-                ...row,
-                status: result.status === "created" ? "saved" : "duplicate",
-                jobId: result.jobId,
-                title: result.title,
-                employer: result.employer,
-                errorCode: undefined,
-                errorMessage: undefined,
-                usage: result.usage ?? null,
-              };
-            }
-            return {
-              ...row,
-              status: "failed",
-              errorCode: result.code,
-              errorMessage: result.message,
-              usage: result.usage ?? null,
-            };
-          }),
-        );
-      };
-
-      try {
-        await api.streamBatchUrlImport(
-          { urls },
-          {
-            signal: controller.signal,
-            onEvent: (event) => {
-              if (event.type === "started") {
-                setRows((prev) =>
-                  prev.map((row, idx) =>
-                    idx < urls.length ? { ...row, status: "in_flight" } : row,
-                  ),
-                );
-              } else if (event.type === "progress") {
-                applyResult(event.result);
-                setCompleted(event.completed);
-                setSucceeded(event.succeeded);
-                setDuplicates(event.duplicates);
-                setFailed(event.failed);
-              } else if (event.type === "completed") {
-                event.results.forEach(applyResult);
-                setCompleted(event.results.length);
-                setSucceeded(event.succeeded);
-                setDuplicates(event.duplicates);
-                setFailed(event.failed);
-                setPhase("done");
-
-                void Promise.resolve(onCompletedRef.current()).catch(() => {});
-                completionFiredRef.current = true;
-
-                if (event.failed === 0) {
-                  const created = event.succeeded;
-                  const dup = event.duplicates;
-                  toast.success(
-                    dup === 0
-                      ? `${created} ${created === 1 ? "job" : "jobs"} imported`
-                      : `${created} imported, ${dup} duplicate${dup === 1 ? "" : "s"}`,
-                  );
-                  onOpenChange(false);
-                  resetForm();
-                }
-              } else if (event.type === "error") {
-                toast.error(event.message);
-                setPhase("done");
-              }
-            },
-          },
-        );
-      } catch (error) {
-        if (controller.signal.aborted) return;
-        const message =
-          error instanceof Error ? error.message : "Batch import failed";
-        toast.error(message);
-        setPhase("done");
+  // Fire the completion side effects once, and only for an import this sheet
+  // saw running.
+  useEffect(() => {
+    if (!batch) {
+      // The record is gone without ever going terminal — the server lost it.
+      // Silence here would just make a 40-URL run vanish from the table.
+      if (watchedRunningRef.current !== null) {
+        watchedRunningRef.current = null;
+        toast.warning("Lost track of the URL import.");
       }
-    },
-    [onOpenChange, resetForm],
-  );
+      return;
+    }
+    if (batch.status === "running") {
+      watchedRunningRef.current = batch.batchId;
+      return;
+    }
+    if (watchedRunningRef.current !== batch.batchId) return;
+    watchedRunningRef.current = null;
+
+    void Promise.resolve(onCompletedRef.current()).catch(() => {});
+    if (batch.failed === 0 && batch.status === "completed") {
+      const created = batch.succeeded;
+      const dup = batch.duplicates;
+      toast.success(
+        dup === 0
+          ? `${created} ${created === 1 ? "job" : "jobs"} imported`
+          : `${created} imported, ${dup} duplicate${dup === 1 ? "" : "s"}`,
+      );
+      onOpenChange(false);
+    }
+  }, [batch, onOpenChange]);
+
+  const rows = useMemo<UrlRow[]>(() => {
+    if (!batch) return [];
+    const byUrl = new Map(batch.results.map((result) => [result.url, result]));
+    // Rows come from the REQUESTED list, not from the results: a tab attaching
+    // at 10/50 has ten results, and building rows from those would show ten
+    // URLs and retry against a truncated list.
+    return batch.urls.map((url): UrlRow => {
+      const result = byUrl.get(url);
+      if (!result) return { url, status: "pending" };
+      if (result.ok) {
+        return {
+          url,
+          status: result.status === "created" ? "saved" : "duplicate",
+          jobId: result.jobId,
+          title: result.title,
+          employer: result.employer,
+          usage: result.usage ?? null,
+        };
+      }
+      return {
+        url,
+        status: "failed",
+        errorCode: result.code,
+        errorMessage: result.message,
+        usage: result.usage ?? null,
+      };
+    });
+  }, [batch]);
+
+  const resetForm = useCallback(() => {
+    setTextValue("");
+    setMyBatchId(null);
+    // Clears the retained record from view only; the server keeps it until the
+    // next import replaces it.
+    setDismissed(true);
+  }, []);
+
+  const startImport = useCallback(async (urls: string[]) => {
+    if (urls.length === 0) return;
+    setStarting(true);
+    setDismissed(false);
+    try {
+      const batchId = await startUrlImportBatch(urls);
+      setMyBatchId(batchId);
+      watchedRunningRef.current = batchId;
+      setBatch(getUrlImportBatch());
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Batch import failed";
+      toast.error(message);
+      // Most likely a 409 from an import started elsewhere. Re-read so the
+      // user is looking at that run — with its Stop button — instead of a
+      // paste form that will keep refusing them.
+      void refreshUrlImportBatch().catch(() => {});
+    } finally {
+      setStarting(false);
+    }
+  }, []);
+
+  const handleStop = useCallback(() => {
+    void cancelUrlImportBatch().catch(() => {
+      toast.error("Couldn't stop the import");
+    });
+  }, []);
 
   const handleSubmit = useCallback(() => {
     if (parsed.valid.length === 0) {
       toast.error("Paste at least one valid URL");
       return;
     }
-    if (parsed.valid.length > 50) {
-      toast.error("Up to 50 URLs per batch");
+    if (parsed.valid.length > BATCH_URL_IMPORT_MAX_URLS) {
+      toast.error(`Up to ${BATCH_URL_IMPORT_MAX_URLS} URLs per batch`);
       return;
     }
     void startImport(parsed.valid);
@@ -279,9 +297,13 @@ export const BatchUrlImportSheet: React.FC<BatchUrlImportSheetProps> = ({
     void startImport(failedUrls);
   }, [rows, startImport]);
 
-  const isInFlight = phase === "running";
-  const showResults = phase !== "idle" && rows.length > 0;
-  const allDone = phase === "done";
+  const isInFlight = batch?.status === "running";
+  const showResults = !dismissed && rows.length > 0;
+  const allDone = Boolean(batch) && !isInFlight;
+  // Showing a run this tab did not start — either it never started one, or
+  // another device has since replaced it. Either way, say so rather than
+  // passing someone else's URLs off as this tab's run.
+  const startedElsewhere = Boolean(batch && batch.batchId !== myBatchId);
   const failedCount = rows.filter((row) => row.status === "failed").length;
   const totalTokens = rows.reduce(
     (acc, row) => acc + (row.usage?.totalTokens ?? 0),
@@ -289,14 +311,13 @@ export const BatchUrlImportSheet: React.FC<BatchUrlImportSheetProps> = ({
   );
   const totalMillions = totalTokens / 1_000_000;
 
-  const headerTitle =
-    phase === "idle"
-      ? "Import URLs"
-      : isInFlight
-        ? `Importing ${completed}/${requested}`
-        : failedCount > 0
-          ? `Done with ${failedCount} failure${failedCount === 1 ? "" : "s"}`
-          : `Imported ${succeeded + duplicates}`;
+  const headerTitle = !showResults
+    ? "Import URLs"
+    : isInFlight
+      ? `Importing ${batch?.completed ?? 0}/${batch?.requested ?? 0}`
+      : failedCount > 0
+        ? `Done with ${failedCount} failure${failedCount === 1 ? "" : "s"}`
+        : `Imported ${(batch?.succeeded ?? 0) + (batch?.duplicates ?? 0)}`;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -351,7 +372,7 @@ export const BatchUrlImportSheet: React.FC<BatchUrlImportSheetProps> = ({
 
               <Button
                 onClick={handleSubmit}
-                disabled={parsed.valid.length === 0}
+                disabled={parsed.valid.length === 0 || starting}
                 className="h-10 gap-2"
               >
                 <LinkIcon className="h-4 w-4" />
@@ -364,12 +385,16 @@ export const BatchUrlImportSheet: React.FC<BatchUrlImportSheetProps> = ({
             <div className="flex min-h-0 flex-1 flex-col gap-3">
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <Badge variant="outline">
-                  {completed}/{requested}
+                  {batch?.completed ?? 0}/{batch?.requested ?? 0}
                 </Badge>
-                <Badge variant="default">{succeeded} saved</Badge>
-                <Badge variant="secondary">{duplicates} duplicate</Badge>
-                <Badge variant={failed > 0 ? "destructive" : "outline"}>
-                  {failed} failed
+                <Badge variant="default">{batch?.succeeded ?? 0} saved</Badge>
+                <Badge variant="secondary">
+                  {batch?.duplicates ?? 0} duplicate
+                </Badge>
+                <Badge
+                  variant={(batch?.failed ?? 0) > 0 ? "destructive" : "outline"}
+                >
+                  {batch?.failed ?? 0} failed
                 </Badge>
                 {totalTokens > 0 && (
                   <Badge variant="outline" className="font-mono">
@@ -380,7 +405,12 @@ export const BatchUrlImportSheet: React.FC<BatchUrlImportSheetProps> = ({
                 {isInFlight && (
                   <span className="flex items-center gap-1 text-muted-foreground">
                     <Loader2 className="h-3 w-3 animate-spin" />
-                    streaming...
+                    running
+                  </span>
+                )}
+                {startedElsewhere && (
+                  <span className="text-muted-foreground">
+                    showing an import started elsewhere
                   </span>
                 )}
               </div>
@@ -393,6 +423,23 @@ export const BatchUrlImportSheet: React.FC<BatchUrlImportSheetProps> = ({
                 </ul>
               </div>
 
+              {isInFlight && (
+                <div className="flex items-center justify-end gap-2">
+                  {/* The import outlives this sheet now, so closing it is no
+                      longer a way to stop one. */}
+                  <Button
+                    variant="outline"
+                    onClick={handleStop}
+                    className="gap-2"
+                  >
+                    Stop
+                  </Button>
+                  <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                    Close
+                  </Button>
+                </div>
+              )}
+
               {allDone && (
                 <div className="flex items-center justify-end gap-2">
                   <Button variant="ghost" onClick={resetForm} className="gap-2">
@@ -402,6 +449,7 @@ export const BatchUrlImportSheet: React.FC<BatchUrlImportSheetProps> = ({
                     <Button
                       variant="outline"
                       onClick={handleRetryFailed}
+                      disabled={starting}
                       className="gap-2"
                     >
                       Retry failed only
@@ -429,14 +477,8 @@ const UrlRowView: React.FC<{ row: UrlRow }> = ({ row }) => {
   return (
     <li className="flex items-start gap-3 px-3 py-2 text-xs">
       <div className="mt-0.5 shrink-0">
-        {row.status === "in_flight" || row.status === "pending" ? (
-          <Loader2
-            className={`h-3.5 w-3.5 ${
-              row.status === "in_flight"
-                ? "animate-spin text-muted-foreground"
-                : "text-muted-foreground/60"
-            }`}
-          />
+        {row.status === "pending" ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
         ) : row.status === "failed" ? (
           <XCircle className="h-3.5 w-3.5 text-destructive" />
         ) : (

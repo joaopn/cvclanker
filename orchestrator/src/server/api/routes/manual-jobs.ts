@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { AppError, badRequest, notFound, toAppError } from "@infra/errors";
+import {
+  AppError,
+  badRequest,
+  conflict,
+  notFound,
+  toAppError,
+} from "@infra/errors";
 import { fail, ok } from "@infra/http";
 import { logger } from "@infra/logger";
 import { setupSse, startSseHeartbeat, writeSseData } from "@infra/sse";
@@ -17,10 +23,16 @@ import {
   scoreJobSuitability,
 } from "@server/services/scorer";
 import { getEffectiveSettings } from "@server/services/settings";
-import { asyncPool } from "@server/utils/async-pool";
-import type {
-  BatchUrlImportItemResult,
-  BatchUrlImportStreamEvent,
+import {
+  cancelUrlImportBatch,
+  getUrlImportBatch,
+  startUrlImportBatch,
+  subscribeToUrlImportBatch,
+} from "@server/services/url-import/batch-store";
+import {
+  BATCH_URL_IMPORT_MAX_URLS,
+  type BatchUrlImportItemResult,
+  type UrlImportBatchStreamEvent,
 } from "@shared/types";
 import { type Request, type Response, Router } from "express";
 import { z } from "zod";
@@ -191,8 +203,6 @@ manualJobsRouter.post("/import", async (req: Request, res: Response) => {
   }
 });
 
-const BATCH_URL_IMPORT_MAX_URLS = 50;
-
 const batchUrlImportSchema = z.object({
   urls: z
     .array(z.string().trim().url().max(2000))
@@ -330,148 +340,119 @@ async function importSingleUrl(
 }
 
 /**
- * POST /api/manual-jobs/import-batch/stream - Fetch + import a batch of job URLs
- * with live SSE progress.
+ * POST /api/manual-jobs/import-batch - Start an import DETACHED from this
+ * request, answering with its id. Progress is watched over the stream below by
+ * any client, including one that never saw this request.
  */
-manualJobsRouter.post(
-  "/import-batch/stream",
-  async (req: Request, res: Response) => {
+manualJobsRouter.post("/import-batch", async (req: Request, res: Response) => {
+  try {
     const parsed = batchUrlImportSchema.safeParse(req.body);
     if (!parsed.success) {
       return fail(
         res,
-        badRequest(
-          "Invalid batch URL import request",
-          parsed.error.flatten(),
-        ),
+        badRequest("Invalid batch URL import request", parsed.error.flatten()),
       );
     }
 
-    const dedupedUrls = Array.from(new Set(parsed.data.urls));
-    const requestId = String(res.getHeader("x-request-id") || "unknown");
-    const requested = dedupedUrls.length;
-    const results: BatchUrlImportItemResult[] = [];
-    let succeeded = 0;
-    let duplicates = 0;
-    let failed = 0;
+    // Resolved BEFORE the record exists, so the import's only failure mode is
+    // the pool itself and a settings read cannot strand a non-terminal record.
+    const scoringEnabled = await isJobScoringEnabled();
+    const batchUrlImportConcurrency = (await getEffectiveSettings())
+      .batchUrlImportConcurrency.value;
 
-    setupSse(res, {
-      cacheControl: "no-cache, no-transform",
-      disableBuffering: true,
-      flushHeaders: true,
+    const urls = Array.from(new Set(parsed.data.urls));
+    const started = startUrlImportBatch({
+      urls,
+      concurrency: batchUrlImportConcurrency,
+      importUrl: (url) => importSingleUrl(url, { scoringEnabled }),
     });
-    const stopHeartbeat = startSseHeartbeat(res);
-
-    let clientDisconnected = false;
-    res.on("close", () => {
-      clientDisconnected = true;
-      stopHeartbeat();
-    });
-
-    const isResponseWritable = () =>
-      !clientDisconnected && !res.writableEnded && !res.destroyed;
-
-    const sendEvent = (event: BatchUrlImportStreamEvent) => {
-      if (!isResponseWritable()) return false;
-      writeSseData(res, event);
-      return true;
-    };
-
-    try {
-      const scoringEnabled = await isJobScoringEnabled();
-      const batchUrlImportConcurrency = (await getEffectiveSettings())
-        .batchUrlImportConcurrency.value;
-
-      if (!sendEvent({ type: "started", requested, requestId })) {
-        logger.info("Client disconnected before batch URL import started", {
-          route: "POST /api/manual-jobs/import-batch/stream",
-          requested,
-          requestId,
-        });
-        return;
-      }
-
-      await asyncPool({
-        items: dedupedUrls,
-        concurrency: batchUrlImportConcurrency,
-        shouldStop: () => !isResponseWritable(),
-        task: async (url) => {
-          if (!isResponseWritable()) return;
-
-          const result = await importSingleUrl(url, { scoringEnabled });
-          results.push(result);
-          if (result.ok && result.status === "created") succeeded += 1;
-          else if (result.ok && result.status === "duplicate") duplicates += 1;
-          else failed += 1;
-
-          if (
-            !sendEvent({
-              type: "progress",
-              result,
-              completed: results.length,
-              succeeded,
-              duplicates,
-              failed,
-              requestId,
-            })
-          ) {
-            logger.info(
-              "Client disconnected during batch URL import progress",
-              {
-                route: "POST /api/manual-jobs/import-batch/stream",
-                requested,
-                succeeded,
-                duplicates,
-                failed,
-                requestId,
-              },
-            );
-          }
-        },
-      });
-
-      sendEvent({
-        type: "completed",
-        results,
-        succeeded,
-        duplicates,
-        failed,
-        requestId,
-      });
-
-      logger.info("Batch URL import stream completed", {
-        route: "POST /api/manual-jobs/import-batch/stream",
-        requested,
-        succeeded,
-        duplicates,
-        failed,
-        concurrency: batchUrlImportConcurrency,
-        requestId,
-      });
-    } catch (error) {
-      const err = toAppError(error);
-      logger.error("Batch URL import stream failed", {
-        route: "POST /api/manual-jobs/import-batch/stream",
-        requested,
-        succeeded,
-        duplicates,
-        failed,
-        status: err.status,
-        code: err.code,
-        requestId,
-      });
-
-      sendEvent({
-        type: "error",
-        code: err.code,
-        message: err.message,
-        requestId,
-      });
-    } finally {
-      stopHeartbeat();
-      if (!res.writableEnded && !res.destroyed) {
-        res.end();
-      }
+    if (!started) {
+      return fail(
+        res,
+        conflict(
+          "An import is already running. Stop it before starting another.",
+        ),
+      );
     }
+    // Cannot reject by construction; the catch keeps a future edit to the
+    // store from turning that into a process-killer.
+    void started.done.catch(() => {});
+
+    logger.info("Batch URL import started", {
+      route: "POST /api/manual-jobs/import-batch",
+      requested: urls.length,
+      concurrency: batchUrlImportConcurrency,
+      batchId: started.batchId,
+    });
+
+    ok(res, { batchId: started.batchId });
+  } catch (error) {
+    fail(res, toAppError(error));
+  }
+});
+
+/** GET /api/manual-jobs/import-batch - The retained import, or null. */
+manualJobsRouter.get("/import-batch", (_req: Request, res: Response) => {
+  ok(res, { batch: getUrlImportBatch() });
+});
+
+/**
+ * GET /api/manual-jobs/import-batch/stream - Viewer over the one import: a
+ * snapshot on connect, then an update per settled URL and at the end. Closing
+ * the page cancels nothing.
+ */
+manualJobsRouter.get("/import-batch/stream", (req: Request, res: Response) => {
+  const requestId = String(res.getHeader("x-request-id") || "unknown");
+
+  setupSse(res, {
+    cacheControl: "no-cache, no-transform",
+    disableBuffering: true,
+    flushHeaders: true,
+  });
+  const stopHeartbeat = startSseHeartbeat(res);
+
+  let clientDisconnected = false;
+  const isWritable = () =>
+    !clientDisconnected && !res.writableEnded && !res.destroyed;
+
+  const sendEvent = (event: UrlImportBatchStreamEvent) => {
+    if (!isWritable()) return;
+    writeSseData(res, event);
+  };
+
+  sendEvent({ type: "snapshot", batch: getUrlImportBatch(), requestId });
+  const unsubscribe = subscribeToUrlImportBatch((batch) => {
+    sendEvent({ type: "update", batch, requestId });
+  });
+
+  const cleanup = () => {
+    clientDisconnected = true;
+    stopHeartbeat();
+    unsubscribe();
+    if (!res.writableEnded && !res.destroyed) res.end();
+  };
+
+  res.on("close", () => {
+    logger.debug("Batch URL import stream client disconnected", {
+      requestId,
+    });
+    cleanup();
+  });
+  req.on("close", cleanup);
+});
+
+/**
+ * POST /api/manual-jobs/import-batch/cancel - Stop dispatching. URLs already
+ * being fetched finish; the rest are dropped, so the import settles with
+ * `completed` short of `requested`.
+ */
+manualJobsRouter.post(
+  "/import-batch/cancel",
+  (_req: Request, res: Response) => {
+    const cancelled = cancelUrlImportBatch();
+    if (!cancelled) {
+      return fail(res, notFound("No import running"));
+    }
+    ok(res, { cancelled: true });
   },
 );

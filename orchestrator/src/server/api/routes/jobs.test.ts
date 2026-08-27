@@ -1192,6 +1192,43 @@ describe.sequential("detached job action batches", () => {
     }
   });
 
+  // A URL import infers each row through the LLM and scores what it creates,
+  // so it hits the same account-wide limit a rescore would. Without this the
+  // desktop's rescore unlatches a stop the phone's IMPORT just hit.
+  it("never clears the rate-limit latch while a URL import runs", async () => {
+    const { consumeRateLimitRetry, isRateLimitStopped, resetRateLimitBudget } =
+      await import("@server/services/llm/rate-limit-budget");
+    const { startUrlImportBatch, resetUrlImportBatchForTests } = await import(
+      "@server/services/url-import/batch-store"
+    );
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = startUrlImportBatch({
+      urls: ["https://example.com/held"],
+      concurrency: 1,
+      importUrl: async (url) => {
+        await gate;
+        return { ok: false, status: "failed", url, code: "X", message: "x" };
+      },
+    });
+
+    try {
+      resetRateLimitBudget(0);
+      consumeRateLimitRetry("session limit reached");
+      expect(isRateLimitStopped()).toBe(true);
+
+      await startBatch({ action: "rescore", jobIds: ["job-latch-import"] });
+      expect(isRateLimitStopped()).toBe(true);
+    } finally {
+      release();
+      await started?.done;
+      resetUrlImportBatchForTests();
+    }
+  });
+
   it("streams progress for each job and exactly one terminal at the end", async () => {
     const { startJobActionBatch } = await import(
       "@server/services/job-actions/batch-store"

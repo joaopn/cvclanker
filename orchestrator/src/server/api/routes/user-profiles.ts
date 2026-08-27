@@ -27,6 +27,7 @@ import {
 import { getPipelineStatus } from "@server/pipeline/index";
 import * as settingsRepo from "@server/repositories/settings";
 import { hasRunningJobActionBatches } from "@server/services/job-actions/batch-store";
+import { isUrlImportRunning } from "@server/services/url-import/batch-store";
 import { type Request, type Response, Router } from "express";
 import { z } from "zod";
 import { receiveUpload } from "../uploads";
@@ -47,6 +48,9 @@ const PIPELINE_RUNNING_MESSAGE =
 // database and exits the process out from under any in-flight writes.
 const BATCH_RUNNING_MESSAGE =
   "Cannot switch user profiles while a bulk job action is in progress.";
+
+const IMPORT_RUNNING_MESSAGE =
+  "Cannot switch user profiles while a URL import is in progress.";
 
 async function activeProfileName(): Promise<string> {
   return (await settingsRepo.getSetting("userProfileName")) ?? "Default";
@@ -188,6 +192,9 @@ userProfilesRouter.post("/new", async (req: Request, res: Response) => {
     if (hasRunningJobActionBatches()) {
       return fail(res, conflict(BATCH_RUNNING_MESSAGE));
     }
+    if (isUrlImportRunning()) {
+      return fail(res, conflict(IMPORT_RUNNING_MESSAGE));
+    }
 
     swapStarted = true;
     closeDb();
@@ -272,6 +279,9 @@ userProfilesRouter.post(
       // atomic only because nothing awaits between here and closeDb().
       if (hasRunningJobActionBatches()) {
         return fail(res, conflict(BATCH_RUNNING_MESSAGE));
+      }
+      if (isUrlImportRunning()) {
+        return fail(res, conflict(IMPORT_RUNNING_MESSAGE));
       }
       const path = storedProfilePath(id);
       if (!existsSync(path)) {

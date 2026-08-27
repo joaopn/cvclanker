@@ -245,6 +245,74 @@ describe.sequential("User profiles API routes", () => {
     }
   });
 
+  it("refuses to activate while a URL import is in flight", async () => {
+    const id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01";
+    const storedPath = join(storeDir(tempDir), `${id}.db`);
+    makeProfileDb(storedPath, "Waiting");
+
+    const { startUrlImportBatch, resetUrlImportBatchForTests } = await import(
+      "@server/services/url-import/batch-store"
+    );
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = startUrlImportBatch({
+      urls: ["https://example.com/held"],
+      concurrency: 1,
+      importUrl: async (url) => {
+        await gate;
+        return { ok: false, status: "failed", url, code: "X", message: "x" };
+      },
+    });
+
+    try {
+      const res = await fetch(`${baseUrl}/api/user-profiles/${id}/activate`, {
+        method: "POST",
+      });
+      expect(res.status).toBe(409);
+      expect(existsSync(join(tempDir, "jobs.db"))).toBe(true);
+      expect(exitSpy).not.toHaveBeenCalled();
+    } finally {
+      release();
+      await started?.done;
+      resetUrlImportBatchForTests();
+    }
+  });
+
+  it("refuses a fresh profile while a URL import is in flight", async () => {
+    const { startUrlImportBatch, resetUrlImportBatchForTests } = await import(
+      "@server/services/url-import/batch-store"
+    );
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = startUrlImportBatch({
+      urls: ["https://example.com/held"],
+      concurrency: 1,
+      importUrl: async (url) => {
+        await gate;
+        return { ok: false, status: "failed", url, code: "X", message: "x" };
+      },
+    });
+
+    try {
+      const res = await fetch(`${baseUrl}/api/user-profiles/new`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(409);
+      expect(existsSync(join(tempDir, "jobs.db"))).toBe(true);
+      expect(exitSpy).not.toHaveBeenCalled();
+    } finally {
+      release();
+      await started?.done;
+      resetUrlImportBatchForTests();
+    }
+  });
+
   it("validates activation input", async () => {
     const badId = await fetch(
       `${baseUrl}/api/user-profiles/not-a-uuid/activate`,

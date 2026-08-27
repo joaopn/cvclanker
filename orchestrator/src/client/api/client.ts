@@ -7,7 +7,6 @@ import type { UpdateSettingsInput } from "@shared/settings-schema";
 import type {
   ApiResponse,
   AppSettings,
-  BatchUrlImportStreamEvent,
   BenchRun,
   BranchInfo,
   ClaudeCodeCliStatus,
@@ -49,6 +48,7 @@ import type {
   StoredUserProfile,
   SuitabilityCategory,
   UpdateJobNoteInput,
+  UrlImportBatchSnapshot,
   UserProfilesListResponse,
   ValidationResult,
 } from "@shared/types";
@@ -1129,18 +1129,25 @@ export async function importManualJob(input: {
   });
 }
 
-export async function streamBatchUrlImport(
-  input: { urls: string[] },
-  handlers: {
-    onEvent: (event: BatchUrlImportStreamEvent) => void;
-    signal?: AbortSignal;
-  },
-): Promise<void> {
-  return streamSseEvents<BatchUrlImportStreamEvent>(
-    "/manual-jobs/import-batch/stream",
-    input,
-    handlers,
+export async function startUrlImportBatch(urls: string[]): Promise<string> {
+  const { batchId } = await fetchApi<{ batchId: string }>(
+    "/manual-jobs/import-batch",
+    { method: "POST", body: JSON.stringify({ urls }) },
   );
+  return batchId;
+}
+
+export async function getUrlImportBatch(): Promise<UrlImportBatchSnapshot | null> {
+  const { batch } = await fetchApi<{ batch: UrlImportBatchSnapshot | null }>(
+    "/manual-jobs/import-batch",
+  );
+  return batch;
+}
+
+export async function cancelUrlImportBatch(): Promise<void> {
+  await fetchApi<{ cancelled: boolean }>("/manual-jobs/import-batch/cancel", {
+    method: "POST",
+  });
 }
 
 // Settings & Profile API
