@@ -14,7 +14,7 @@
  */
 
 import * as api from "@client/api/client";
-import { subscribeToEventSource } from "@client/lib/sse";
+import { createLazyEventStream } from "@client/lib/batch-stream";
 import {
   type JobActionBatchSnapshot,
   type JobActionBatchStreamEvent,
@@ -52,10 +52,6 @@ const settled = new Set<string>();
  * twice.
  */
 const ownedHere = new Set<string>();
-
-let unsubscribe: (() => void) | null = null;
-/** False once the stream errors, until a fresh connection opens. */
-let streamHealthy = false;
 
 function notify() {
   for (const listener of listeners) {
@@ -179,62 +175,30 @@ function forgetOldestSettled() {
     });
 }
 
-function openStream() {
-  if (unsubscribe && streamHealthy) return;
-  // Re-opening over a subscription the helper has abandoned for good (a 401):
-  // its loop has returned, so it must be released explicitly before a new one
-  // can take over. Transient failures never get here — they stay inside the
-  // helper's own backoff.
-  if (unsubscribe) {
-    unsubscribe();
-    unsubscribe = null;
-  }
-  streamHealthy = true;
-  unsubscribe = subscribeToEventSource<JobActionBatchStreamEvent>(
-    "/api/jobs/actions/batches/stream",
-    {
-      onOpen: () => {
-        streamHealthy = true;
-      },
-      onError: ({ fatal }) => {
-        // A transient failure is the helper's own business: it is already
-        // backing off and will replay a snapshot when it reconnects. Tearing
-        // down here would abort that backoff and restart it from the floor,
-        // turning a broken stream route into a request storm.
-        if (!fatal) return;
-        // Fatal means a 401, which clears the session and redirects to sign
-        // in. Nothing can be recovered now; marking the subscription unhealthy
-        // is what lets discovery re-open a live one after signing back in,
-        // instead of finding a dead `unsubscribe` and returning early.
-        streamHealthy = false;
-      },
-      onMessage: (event) => {
-        if (event.type === "snapshot")
-          applySnapshot(event.batches, { authoritative: true });
-        else record(event.batch);
-        notify();
-        // Re-evaluated on every event, not only when a watcher settles: a tab
-        // that merely WATCHES another device's batch has no waiter to hang the
-        // close off, and would otherwise hold the connection for the life of
-        // the page. Deferred a microtask because one read can carry several
-        // frames and the reader drains them all before re-checking whether it
-        // was closed.
-        queueMicrotask(closeStreamIfIdle);
-      },
-    },
-  );
-}
+/**
+ * The viewer. Its idleness rule is this module's: nothing running, nobody
+ * waiting. Everything subtle about opening and closing it lives in the shared
+ * helper — see `lib/batch-stream.ts`.
+ */
+const stream = createLazyEventStream<JobActionBatchStreamEvent>({
+  url: "/api/jobs/actions/batches/stream",
+  isIdle: () => {
+    if (waiters.size > 0) return false;
+    for (const batch of batches.values()) {
+      if (batch.status === "running") return false;
+    }
+    return true;
+  },
+  onEvent: (event) => {
+    if (event.type === "snapshot")
+      applySnapshot(event.batches, { authoritative: true });
+    else record(event.batch);
+    notify();
+  },
+});
 
-/** Close once nothing is running and nobody is waiting, so the idle app holds no extra connection. */
-function closeStreamIfIdle() {
-  if (!unsubscribe) return;
-  if (waiters.size > 0) return;
-  for (const batch of batches.values()) {
-    if (batch.status === "running") return;
-  }
-  unsubscribe();
-  unsubscribe = null;
-}
+const openStream = () => stream.ensureOpen();
+const closeStreamIfIdle = () => stream.closeIfIdle();
 
 export function subscribeToJobActionBatches(listener: () => void): () => void {
   listeners.add(listener);
@@ -313,9 +277,7 @@ export async function cancelJobActionBatch(batchId: string): Promise<void> {
 
 /** Test-only: drop every trace so files don't leak batches into each other. */
 export function resetJobActionBatchClientForTests(): void {
-  unsubscribe?.();
-  unsubscribe = null;
-  streamHealthy = false;
+  stream.reset();
   batches.clear();
   listeners.clear();
   waiters.clear();

@@ -15,7 +15,7 @@
 
 import { randomUUID } from "node:crypto";
 import { logger } from "@infra/logger";
-import { asyncPool } from "@server/utils/async-pool";
+import { runBatchItems } from "@server/services/batches/run-batch-items";
 import {
   type JobAction,
   type JobActionBatchItemOutcome,
@@ -293,28 +293,22 @@ export function startJobActionBatch(input: StartJobActionBatchInput): {
   }
 
   const done = (async (): Promise<JobActionBatchOutcome> => {
-    try {
-      await asyncPool<string, void>({
-        items: dispatchable,
-        concurrency: input.concurrency,
-        // Read between dispatches, so tasks already awaiting a provider run to
-        // completion. Terminal is only written once the pool has resolved.
-        shouldStop: () => record.cancelRequested,
-        task: async (jobId) => {
-          const result = await input.runJob(jobId);
-          recordResult(result);
-        },
-      });
-      return finish(record.cancelRequested ? "cancelled" : "completed", null);
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
+    const outcome = await runBatchItems({
+      items: dispatchable,
+      concurrency: input.concurrency,
+      isCancelled: () => record.cancelRequested,
+      runItem: async (jobId) => {
+        recordResult(await input.runJob(jobId));
+      },
+    });
+    if (outcome.error) {
       logger.error("Job action batch failed", {
         batchId: record.id,
         action: record.action,
-        error: err.message,
+        error: outcome.error.message,
       });
-      return finish("failed", err);
     }
+    return finish(outcome.status, outcome.error);
   })();
 
   return { batchId: record.id, done };
