@@ -1,3 +1,4 @@
+import type { ExtractorSourceId } from "@shared/extractors";
 import { bucketWindowDays } from "@shared/scrape-window.js";
 import type { RunOptionSource } from "@shared/types";
 
@@ -9,7 +10,7 @@ export interface RunMenuSelection {
    * list follows the Profile, while an explicit one freezes this moment's set
    * and is validated against enablement and location compatibility.
    */
-  sources?: string[];
+  sources?: ExtractorSourceId[];
   providerInstanceIds?: string[];
 }
 
@@ -18,7 +19,8 @@ export function runnableSources(
   sources: readonly RunOptionSource[],
 ): RunOptionSource[] {
   return sources.filter(
-    (source) => source.kind === "provider_instance" || source.platforms.length > 0,
+    (source) =>
+      source.kind === "provider_instance" || source.platforms.length > 0,
   );
 }
 

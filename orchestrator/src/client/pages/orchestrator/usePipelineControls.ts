@@ -10,9 +10,20 @@ type UsePipelineControlsArgs = {
   pipelineTerminalEvent: { status: string; errorMessage: string | null } | null;
 };
 
+/** Per-run scoping the run menu adds on top of the selected Profiles. */
+export type RunPipelineOverrides = {
+  sources?: JobSource[];
+  providerInstanceIds?: string[];
+  scrapeWindowDays?: number;
+  scrapeSinceLastRun?: boolean;
+};
+
 export type UsePipelineControlsResult = {
   isCancelling: boolean;
-  runPipelineNow: (profileIds?: string[]) => Promise<void>;
+  runPipelineNow: (
+    profileIds?: string[],
+    overrides?: RunPipelineOverrides,
+  ) => Promise<void>;
   handleCancelPipeline: () => Promise<void>;
   handleRerunSource: (source: JobSource, profileId?: string) => Promise<void>;
   // Re-run several sources in one partial run, one source at a time.
@@ -62,6 +73,8 @@ export function usePipelineControls(
       providerInstanceIds?: string[];
       partial?: boolean;
       discoveryConcurrency?: number;
+      scrapeWindowDays?: number;
+      scrapeSinceLastRun?: boolean;
       scopeLabel?: string;
     }) => {
       try {
@@ -74,6 +87,8 @@ export function usePipelineControls(
           providerInstanceIds: config.providerInstanceIds,
           partial: config.partial,
           discoveryConcurrency: config.discoveryConcurrency,
+          scrapeWindowDays: config.scrapeWindowDays,
+          scrapeSinceLastRun: config.scrapeSinceLastRun,
         });
         const sources = config.sources ?? [];
         const scopeCount =
@@ -109,14 +124,21 @@ export function usePipelineControls(
   );
 
   const runPipelineNow = useCallback(
-    async (profileIds?: string[]) => {
+    async (profileIds?: string[], overrides?: RunPipelineOverrides) => {
       // One profile keeps the single-run shape (`profileId`), which the server
       // runs directly; several go through `profileIds` and the sequence runner.
       if (profileIds && profileIds.length > 1) {
-        await startPipelineRun({ profileIds });
+        // The run route refuses source scoping alongside `profileIds`, so a
+        // chain carries only the window — which does have a coherent meaning
+        // per profile.
+        await startPipelineRun({
+          profileIds,
+          scrapeWindowDays: overrides?.scrapeWindowDays,
+          scrapeSinceLastRun: overrides?.scrapeSinceLastRun,
+        });
         return;
       }
-      await startPipelineRun({ profileId: profileIds?.[0] });
+      await startPipelineRun({ profileId: profileIds?.[0], ...overrides });
     },
     [startPipelineRun],
   );

@@ -626,7 +626,7 @@ export interface RunOptionSource {
    * instance (those go in `providerInstanceIds` instead) and for a task nothing
    * of which can run.
    */
-  platforms: string[];
+  platforms: ExtractorSourceId[];
   /** Platforms this profile's location setup rules out, with the reason. */
   incompatible: Array<{ platform: string; reasons: string[] }>;
   /** When this source last scraped successfully for the profile. */

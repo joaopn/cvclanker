@@ -29,6 +29,8 @@ interface OrchestratorHeaderProps {
   undoLabel: string | null;
   onUndo: () => void;
   profileSelect?: React.ReactNode;
+  /** The Run button plus its scoping menu; falls back to a plain button. */
+  runControl?: React.ReactNode;
 }
 
 export const OrchestratorHeader: React.FC<OrchestratorHeaderProps> = ({
@@ -46,6 +48,7 @@ export const OrchestratorHeader: React.FC<OrchestratorHeaderProps> = ({
   undoLabel,
   onUndo,
   profileSelect,
+  runControl,
 }) => {
   const undoButton = (
     <Button
@@ -123,10 +126,12 @@ export const OrchestratorHeader: React.FC<OrchestratorHeaderProps> = ({
         <LinkIcon className="h-4 w-4" />
         <span className="hidden sm:inline">Fetch URLs</span>
       </Button>
-      <Button size="sm" onClick={onRunPipeline} className="gap-2">
-        <Play className="h-4 w-4" />
-        <span className="hidden sm:inline">Run pipeline</span>
-      </Button>
+      {runControl ?? (
+        <Button size="sm" onClick={onRunPipeline} className="gap-2">
+          <Play className="h-4 w-4" />
+          <span className="hidden sm:inline">Run pipeline</span>
+        </Button>
+      )}
     </div>
   );
 

@@ -645,7 +645,9 @@ pipelineRouter.get("/run-options", async (req: Request, res: Response) => {
       // Only the compatible platforms: an explicit `sources` list is gated on
       // location compatibility, so sending an incompatible one would 400 the
       // run — where an omitted list has those same sources skipped silently.
-      platforms: [...plans.compatibleSources],
+      // `providesSources` is the manifest's own list, so every entry is an
+      // extractor source id; `planLocationSources` widens it to `string`.
+      platforms: plans.compatibleSources as ExtractorSourceId[],
       incompatible: plans.plans
         .filter((plan) => !plan.isCompatible)
         .map((plan) => ({ platform: plan.source, reasons: plan.reasons })),

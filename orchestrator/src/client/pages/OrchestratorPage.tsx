@@ -50,6 +50,7 @@ import { LlmCallQueueSheet } from "./orchestrator/LlmCallQueueSheet";
 import { OrchestratorFilters } from "./orchestrator/OrchestratorFilters";
 import { OrchestratorHeader } from "./orchestrator/OrchestratorHeader";
 import { ProfileSelect } from "./orchestrator/ProfileSelect";
+import { RunPipelineMenu } from "./orchestrator/RunPipelineMenu";
 import { StaleControlBar } from "./orchestrator/StaleControlBar";
 import { useDuplicateGroups } from "./orchestrator/useDuplicateGroups";
 import { useFacetFilters } from "./orchestrator/useFacetFilters";
@@ -746,6 +747,14 @@ export const OrchestratorPage: React.FC = () => {
               />
             }
             onRunPipeline={() => runPipelineNow(selectedProfileIds)}
+            runControl={
+              <RunPipelineMenu
+                selectedProfileIds={selectedProfileIds}
+                onRun={(config) => {
+                  void runPipelineNow(selectedProfileIds, config);
+                }}
+              />
+            }
             onOpenBatchUrlImport={() => setIsBatchUrlImportOpen(true)}
             onOpenLlmQueue={() => setIsLlmQueueOpen(true)}
             llmActiveCount={llmQueue.active.length}
