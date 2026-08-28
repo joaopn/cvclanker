@@ -39,7 +39,7 @@ const renderHeader = (
     isPipelineRunning: false,
     isCancelling: false,
     pipelineSources: ["linkedin"],
-    onRunPipeline: vi.fn(),
+    runControl: <button type="button">Run pipeline</button>,
     onOpenBatchUrlImport: vi.fn(),
     onOpenLlmQueue: vi.fn(),
     llmActiveCount: 0,
@@ -67,10 +67,9 @@ const renderHeader = (
 };
 
 describe("OrchestratorHeader", () => {
-  it("runs the pipeline from the navbar button", () => {
-    const { props } = renderHeader();
-    fireEvent.click(screen.getByRole("button", { name: /run pipeline/i }));
-    expect(props.onRunPipeline).toHaveBeenCalled();
+  it("renders the supplied run control in the navbar", () => {
+    renderHeader();
+    expect(screen.getByRole("button", { name: /run pipeline/i })).toBeTruthy();
   });
 
   it("does not render manual import button", () => {

@@ -57,10 +57,9 @@ const options = (
   overrides: Partial<RunOptionsResponse> = {},
 ): RunOptionsResponse => ({
   profileId: "p1",
-  profileName: "Test",
   sources: [source({})],
   capDays: null,
-  defaultSinceLastRun: false,
+  defaultSinceLastRun: true,
   ...overrides,
 });
 
@@ -91,7 +90,27 @@ describe("RunPipelineMenu", () => {
     );
 
     fireEvent.click(runButton());
-    expect(onRun).toHaveBeenCalledWith({});
+    // The mode rides along even when nothing is scoped: omitting it would fall
+    // through to the Profile's own flag, making this button a no-op on any
+    // Profile that has not ticked it.
+    expect(onRun).toHaveBeenCalledWith({ scrapeSinceLastRun: true });
+  });
+
+  /**
+   * The Profile's flag decides which button opens pressed, and its max job age
+   * seeds the input — so an untouched menu reproduces what a plain Run would
+   * have done.
+   */
+  it("opens on the explicit window when the Profile does not narrow", async () => {
+    const onRun = await renderMenu(
+      options({ defaultSinceLastRun: false, capDays: 14 }),
+    );
+
+    fireEvent.click(runButton());
+    expect(onRun).toHaveBeenCalledWith({
+      scrapeWindowDays: 14,
+      scrapeSinceLastRun: false,
+    });
   });
 
   it("expands a deselection into the remaining platforms", async () => {
@@ -114,6 +133,7 @@ describe("RunPipelineMenu", () => {
     expect(onRun).toHaveBeenCalledWith({
       sources: ["indeed", "linkedin"],
       providerInstanceIds: [],
+      scrapeSinceLastRun: true,
     });
   });
 
@@ -215,6 +235,26 @@ describe("RunPipelineMenu", () => {
     expect(screen.queryByText("Sources")).toBeNull();
 
     fireEvent.click(runButton());
-    expect(onRun).toHaveBeenCalledWith({});
+    // The mode rides along even when nothing is scoped: omitting it would fall
+    // through to the Profile's own flag, making this button a no-op on any
+    // Profile that has not ticked it.
+    expect(onRun).toHaveBeenCalledWith({ scrapeSinceLastRun: true });
+  });
+
+  /**
+   * The Profile's flag decides which button opens pressed, and its max job age
+   * seeds the input — so an untouched menu reproduces what a plain Run would
+   * have done.
+   */
+  it("opens on the explicit window when the Profile does not narrow", async () => {
+    const onRun = await renderMenu(
+      options({ defaultSinceLastRun: false, capDays: 14 }),
+    );
+
+    fireEvent.click(runButton());
+    expect(onRun).toHaveBeenCalledWith({
+      scrapeWindowDays: 14,
+      scrapeSinceLastRun: false,
+    });
   });
 });

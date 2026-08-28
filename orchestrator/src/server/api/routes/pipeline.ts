@@ -6,7 +6,7 @@ import {
   requestTimeout,
   serviceUnavailable,
 } from "@infra/errors";
-import { fail, ok } from "@infra/http";
+import { asyncRoute, fail, ok } from "@infra/http";
 import { logger } from "@infra/logger";
 import { runWithRequestContext } from "@infra/request-context";
 import { setupSse, startSseHeartbeat, writeSseData } from "@infra/sse";
@@ -518,10 +518,26 @@ async function resolveProfileRunConfig(
     const gatedInstances = enabledInstances.filter((instance) =>
       effectiveInstanceIds.includes(instance.id),
     );
+    // Gate only what the run will ACTUALLY touch. `resolvedSources` is every
+    // platform of every pinned manifest, which still includes ones disabled on
+    // the Sources page and ones this profile's location setup rules out —
+    // discovery drops both silently. Refusing a run over the ceiling of a
+    // source that was never going to run is worse than not gating: the menu
+    // greys such a source out, so there is no tick to clear and no way forward.
+    const gatedSources = resolvedSources?.filter((source) => {
+      const manifest = registry?.manifestBySource.get(source);
+      if (!manifest || !enabledExtractorIds.has(manifest.id)) return false;
+      return (
+        planLocationSources({
+          intent: locationIntent,
+          sources: [source],
+        }).compatibleSources.length > 0
+      );
+    });
     const violations = findRunWindowViolations({
       windowDays: body.scrapeWindowDays,
       profileMaxAgeDays: profileConfig?.scrapeMaxAgeDays,
-      sources: resolvedSources,
+      sources: gatedSources,
       registry,
       sourceConfigs,
       instances: gatedInstances,
@@ -582,129 +598,137 @@ const registryUnavailable = () =>
  * profile the same way `POST /run` does, so the menu never offers a set the
  * run would not use.
  */
-pipelineRouter.get("/run-options", async (req: Request, res: Response) => {
-  const requestedProfileId =
-    typeof req.query.profileId === "string" && req.query.profileId.length > 0
-      ? req.query.profileId
-      : undefined;
+pipelineRouter.get(
+  "/run-options",
+  asyncRoute(async (req: Request, res: Response) => {
+    const requestedProfileId =
+      typeof req.query.profileId === "string" && req.query.profileId.length > 0
+        ? req.query.profileId
+        : undefined;
 
-  const profile = requestedProfileId
-    ? await getProfile(requestedProfileId)
-    : await getDefaultProfile();
-  if (requestedProfileId && !profile) {
-    return fail(res, notFound(`Profile not found: ${requestedProfileId}`));
-  }
-  const profileConfig = profile?.config ?? null;
+    const profile = requestedProfileId
+      ? await getProfile(requestedProfileId)
+      : await getDefaultProfile();
+    if (requestedProfileId && !profile) {
+      return fail(res, notFound(`Profile not found: ${requestedProfileId}`));
+    }
+    const profileConfig = profile?.config ?? null;
 
-  const registry = await getExtractorRegistry().catch(() => null);
-  if (!registry) return fail(res, registryUnavailable());
+    const registry = await getExtractorRegistry().catch(() => null);
+    if (!registry) return fail(res, registryUnavailable());
 
-  const enabledExtractorIds = new Set(await getEnabledExtractorIds());
-  const sourceConfigs = await getAllSourceConfigs();
-  const configByExtractor = new Map(
-    sourceConfigs.map((row) => [row.extractorId, row]),
-  );
-  const enabledInstances = await getEnabledProviderInstances();
-  const watermarks = profile
-    ? await getScrapeWatermarks(profile.id)
-    : new Map<string, string>();
-
-  const capDays = profileConfig?.scrapeMaxAgeDays ?? null;
-  const locationIntent = buildRunLocationIntent(profileConfig);
-
-  // EFFECTIVE = enabled on the Sources page AND pinned by the Profile. That is
-  // exactly what a plain Run would use, which is what makes the menu purely
-  // subtractive: unticking narrows a run, it can never widen one.
-  const pinnedExtractorIds = profileConfig
-    ? new Set(profileConfig.enabledSourceIds)
-    : enabledExtractorIds;
-
-  const sources: RunOptionSource[] = [];
-
-  for (const [manifestId, manifest] of registry.manifests) {
-    if (!enabledExtractorIds.has(manifestId)) continue;
-    if (!pinnedExtractorIds.has(manifestId)) continue;
-
-    const plans = planLocationSources({
-      intent: locationIntent,
-      sources: manifest.providesSources,
-    });
-    const honoursRunWindow = extractorHonoursRunWindow(
-      manifest,
-      configByExtractor.get(manifestId),
+    const enabledExtractorIds = new Set(await getEnabledExtractorIds());
+    const sourceConfigs = await getAllSourceConfigs();
+    const configByExtractor = new Map(
+      sourceConfigs.map((row) => [row.extractorId, row]),
     );
-    const hasOwnMaxAge =
-      manifest.configSchema?.fields.some(
-        (field) => field.key === "max_age_days",
-      ) === true;
+    const enabledInstances = await getEnabledProviderInstances();
+    const watermarks = profile
+      ? await getScrapeWatermarks(profile.id)
+      : new Map<string, string>();
 
-    sources.push({
-      key: manifestId,
-      kind: "extractor",
-      label: manifest.displayName,
-      // Only the compatible platforms: an explicit `sources` list is gated on
-      // location compatibility, so sending an incompatible one would 400 the
-      // run — where an omitted list has those same sources skipped silently.
-      // `providesSources` is the manifest's own list, so every entry is an
-      // extractor source id; `planLocationSources` widens it to `string`.
-      platforms: plans.compatibleSources as ExtractorSourceId[],
-      incompatible: plans.plans
-        .filter((plan) => !plan.isCompatible)
-        .map((plan) => ({ platform: plan.source, reasons: plan.reasons })),
-      lastScrapedAt: watermarks.get(manifestId) ?? null,
-      capDays: honoursRunWindow ? capDays : null,
-      windowSupport: honoursRunWindow
-        ? "run_window"
-        : hasOwnMaxAge
-          ? "own_max_age"
-          : "ignores",
-      maxAgeBuckets: null,
-      note: manifest.description ?? null,
-    });
-  }
+    const capDays = profileConfig?.scrapeMaxAgeDays ?? null;
+    const locationIntent = buildRunLocationIntent(profileConfig);
 
-  // A remote-type Profile never runs Apify instances, so offering them would
-  // show buttons that do nothing.
-  const pinnedInstanceIds =
-    profileConfig?.remoteProfile === true
-      ? new Set<string>()
-      : new Set(
-          profileConfig?.providerInstanceIds ??
-            enabledInstances.map((instance) => instance.id),
-        );
+    // EFFECTIVE = enabled on the Sources page AND pinned by the Profile. That is
+    // exactly what a plain Run would use, which is what makes the menu purely
+    // subtractive: unticking narrows a run, it can never widen one.
+    const pinnedExtractorIds = profileConfig
+      ? new Set(profileConfig.enabledSourceIds)
+      : enabledExtractorIds;
 
-  for (const instance of enabledInstances) {
-    if (!pinnedInstanceIds.has(instance.id)) continue;
-    const key = `${instance.providerId}:${instance.id}`;
-    const buckets = instanceMaxAgeBuckets(instance);
-    const template = instance.templateId
-      ? getProvider(instance.providerId)?.templates.find(
-          (candidate) => candidate.id === instance.templateId,
-        )
-      : undefined;
+    const sources: RunOptionSource[] = [];
 
-    sources.push({
-      key,
-      kind: "provider_instance",
-      label: instance.label,
-      platforms: [],
-      incompatible: [],
-      lastScrapedAt: watermarks.get(key) ?? null,
-      capDays: instance.maxAgeDays ?? capDays,
-      windowSupport: "run_window",
-      maxAgeBuckets: buckets ? [...buckets] : null,
-      note: template?.maxAgeNote ?? null,
-    });
-  }
+    for (const [manifestId, manifest] of registry.manifests) {
+      if (!enabledExtractorIds.has(manifestId)) continue;
+      if (!pinnedExtractorIds.has(manifestId)) continue;
 
-  return ok(res, {
-    profileId: profile?.id ?? null,
-    profileName: profile?.name ?? null,
-    sources,
-    capDays,
-    defaultSinceLastRun: profileConfig?.scrapeSinceLastRun === true,
-  } satisfies RunOptionsResponse);
-});
+      const plans = planLocationSources({
+        intent: locationIntent,
+        sources: manifest.providesSources,
+      });
+      const honoursRunWindow = extractorHonoursRunWindow(
+        manifest,
+        configByExtractor.get(manifestId),
+      );
+      // Derived, not hardcoded: a manifest naming its field something else
+      // would otherwise be reported as having no max-age concept at all.
+      const maxAgeFieldKey =
+        manifest.configSchema?.globalMappings.find(
+          (mapping) => mapping.globalField === "maxAgeDays",
+        )?.sourceField ?? "max_age_days";
+      const hasOwnMaxAge =
+        manifest.configSchema?.fields.some(
+          (field) => field.key === maxAgeFieldKey,
+        ) === true;
+
+      sources.push({
+        key: manifestId,
+        kind: "extractor",
+        label: manifest.displayName,
+        // Only the compatible platforms: an explicit `sources` list is gated on
+        // location compatibility, so sending an incompatible one would 400 the
+        // run — where an omitted list has those same sources skipped silently.
+        // `providesSources` is the manifest's own list, so every entry is an
+        // extractor source id; `planLocationSources` widens it to `string`.
+        platforms: plans.compatibleSources as ExtractorSourceId[],
+        incompatible: plans.plans
+          .filter((plan) => !plan.isCompatible)
+          .map((plan) => ({ platform: plan.source, reasons: plan.reasons })),
+        lastScrapedAt: watermarks.get(manifestId) ?? null,
+        capDays: honoursRunWindow ? capDays : null,
+        windowSupport: honoursRunWindow
+          ? "run_window"
+          : hasOwnMaxAge
+            ? "own_max_age"
+            : "ignores",
+        maxAgeBuckets: null,
+        note: manifest.description ?? null,
+      });
+    }
+
+    // A remote-type Profile never runs Apify instances, so offering them would
+    // show buttons that do nothing.
+    const pinnedInstanceIds =
+      profileConfig?.remoteProfile === true
+        ? new Set<string>()
+        : new Set(
+            profileConfig?.providerInstanceIds ??
+              enabledInstances.map((instance) => instance.id),
+          );
+
+    for (const instance of enabledInstances) {
+      if (!pinnedInstanceIds.has(instance.id)) continue;
+      const key = `${instance.providerId}:${instance.id}`;
+      const buckets = instanceMaxAgeBuckets(instance);
+      const template = instance.templateId
+        ? getProvider(instance.providerId)?.templates.find(
+            (candidate) => candidate.id === instance.templateId,
+          )
+        : undefined;
+
+      sources.push({
+        key,
+        kind: "provider_instance",
+        label: instance.label,
+        platforms: [],
+        incompatible: [],
+        lastScrapedAt: watermarks.get(key) ?? null,
+        capDays: instance.maxAgeDays ?? capDays,
+        windowSupport: "run_window",
+        maxAgeBuckets: buckets ? [...buckets] : null,
+        note: template?.maxAgeNote ?? null,
+      });
+    }
+
+    return ok(res, {
+      profileId: profile?.id ?? null,
+      sources,
+      capDays,
+      defaultSinceLastRun: profileConfig?.scrapeSinceLastRun === true,
+    } satisfies RunOptionsResponse);
+  }),
+);
 
 pipelineRouter.post("/run", async (req: Request, res: Response) => {
   // Set once the sequence slot is claimed and still owned by THIS handler.

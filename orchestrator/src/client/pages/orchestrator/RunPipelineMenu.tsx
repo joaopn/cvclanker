@@ -1,5 +1,6 @@
 import * as api from "@client/api";
 import type { ExtractorSourceId } from "@shared/extractors";
+import { SCRAPE_WINDOW_MAX_DAYS } from "@shared/scrape-window.js";
 import type { RunOptionSource } from "@shared/types";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, Play } from "lucide-react";
@@ -30,7 +31,6 @@ export interface RunPipelineMenuProps {
     scrapeWindowDays?: number;
     scrapeSinceLastRun?: boolean;
   }) => void;
-  disabled?: boolean;
 }
 
 const windowSupportNote: Record<RunOptionSource["windowSupport"], string> = {
@@ -49,7 +49,6 @@ const windowSupportNote: Record<RunOptionSource["windowSupport"], string> = {
 export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
   selectedProfileIds,
   onRun,
-  disabled,
 }) => {
   const [open, setOpen] = useState(false);
   // Source scoping cannot ride a chain: the run route refuses `sources`
@@ -58,10 +57,15 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
   const isChain = selectedProfileIds.length > 1;
   const profileId = isChain ? undefined : selectedProfileIds[0];
 
+  // Skipped entirely for a chain: the options describe ONE profile, and asking
+  // without an id would answer for the DEFAULT profile — whose sources and cap
+  // have nothing to do with the profiles being chained. Gating the Run button
+  // on that set left it permanently disabled whenever the default profile had
+  // no runnable source.
   const optionsQuery = useQuery({
     queryKey: ["run-options", profileId ?? null],
     queryFn: () => api.getRunOptions(profileId),
-    enabled: open,
+    enabled: open && !isChain,
     staleTime: 0,
   });
 
@@ -74,19 +78,39 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [manualWindow, setManualWindow] = useState(false);
   const [windowInput, setWindowInput] = useState("1");
+  const [seededFor, setSeededFor] = useState<string | null>(null);
 
-  // Re-seeded whenever the offered set changes: every runnable source ticked,
-  // and the mode the Profile is configured for.
+  /**
+   * Seed once per opening, not on every payload: react-query returns the SAME
+   * object reference when a refetch is deep-equal, so keying the reset on the
+   * data would wipe the user's ticks exactly when something moved (a run
+   * advancing a watermark) and keep them when nothing did — the same gesture
+   * with two outcomes.
+   */
   useEffect(() => {
-    if (!optionsQuery.data) return;
+    if (!open) {
+      setSeededFor(null);
+      return;
+    }
+    if (!optionsQuery.data || seededFor === (profileId ?? "")) return;
+    setSeededFor(profileId ?? "");
     setSelectedKeys(new Set(runnable.map((source) => source.key)));
-    setManualWindow(false);
-  }, [optionsQuery.data, runnable]);
+    // The Profile's own flag decides which button opens pressed; its max job
+    // age is the window it would otherwise have run, so it seeds the input.
+    setManualWindow(!optionsQuery.data.defaultSinceLastRun);
+    setWindowInput(String(optionsQuery.data.capDays ?? 1));
+  }, [open, optionsQuery.data, runnable, profileId, seededFor]);
 
   const windowDays = useMemo(() => {
     if (!manualWindow) return null;
     const parsed = Number.parseInt(windowInput, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    // Bounded by the same constant the request schema uses, so an out-of-range
+    // value is refused here rather than coming back as a raw Zod 400 in a toast.
+    return Number.isFinite(parsed) &&
+      parsed > 0 &&
+      parsed <= SCRAPE_WINDOW_MAX_DAYS
+      ? parsed
+      : null;
   }, [manualWindow, windowInput]);
 
   const issues = useMemo(
@@ -98,8 +122,7 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
   const capDays = optionsQuery.data?.capDays ?? null;
   const windowInvalid = manualWindow && windowDays === null;
   const canRun =
-    !optionsQuery.isLoading &&
-    selectedKeys.size > 0 &&
+    (isChain || (!optionsQuery.isLoading && selectedKeys.size > 0)) &&
     blocking.length === 0 &&
     !windowInvalid;
 
@@ -116,15 +139,18 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
     setOpen(false);
     onRun({
       ...selection,
+      // The mode is ALWAYS sent. Omitting it would fall through to the
+      // Profile's own flag, so the button labelled "Since last run" would do
+      // nothing on any Profile that has not ticked it — which is the default.
       ...(windowDays !== null
         ? { scrapeWindowDays: windowDays, scrapeSinceLastRun: false }
-        : {}),
+        : { scrapeSinceLastRun: true }),
     });
   };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild disabled={disabled}>
+      <PopoverTrigger asChild>
         <Button size="sm" className="gap-2">
           <Play className="h-4 w-4" />
           <span className="hidden sm:inline">Run pipeline</span>
@@ -152,8 +178,11 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
                     No ceiling configured
                   </span>
                 ) : (
+                  // The PROFILE's ceiling. A provider instance carrying its own
+                  // max age is judged against that instead, so this is named
+                  // rather than presented as the run's single limit.
                   <span className="text-[11px] text-muted-foreground">
-                    Max {capDays}d
+                    Profile max {capDays}d
                   </span>
                 )}
               </div>
@@ -238,7 +267,12 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
                               ? (source.incompatible[0]?.reasons[0] ??
                                 "Not available for this location")
                               : [
-                                  describeLastScraped(source.lastScrapedAt),
+                                  // "covered to", not "last scraped": the mark
+                                  // moves only when a run closed the gap, so a
+                                  // narrow run leaves it deliberately behind.
+                                  source.lastScrapedAt
+                                    ? `covered to ${describeLastScraped(source.lastScrapedAt)}`
+                                    : "never covered",
                                   note,
                                 ]
                                   .filter(Boolean)

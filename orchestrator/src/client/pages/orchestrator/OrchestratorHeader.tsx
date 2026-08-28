@@ -6,7 +6,6 @@ import {
   Activity,
   Link as LinkIcon,
   Loader2,
-  Play,
   RotateCcw,
   Square,
 } from "lucide-react";
@@ -20,7 +19,6 @@ interface OrchestratorHeaderProps {
   isPipelineRunning: boolean;
   isCancelling: boolean;
   pipelineSources: JobSource[];
-  onRunPipeline: () => void;
   onOpenBatchUrlImport: () => void;
   onOpenLlmQueue: () => void;
   llmActiveCount: number;
@@ -29,8 +27,9 @@ interface OrchestratorHeaderProps {
   undoLabel: string | null;
   onUndo: () => void;
   profileSelect?: React.ReactNode;
-  /** The Run button plus its scoping menu; falls back to a plain button. */
-  runControl?: React.ReactNode;
+  /** The Run button and its scoping menu. Required: there is no plain-button
+   * fallback, so the header cannot render a Run control that bypasses it. */
+  runControl: React.ReactNode;
 }
 
 export const OrchestratorHeader: React.FC<OrchestratorHeaderProps> = ({
@@ -39,7 +38,6 @@ export const OrchestratorHeader: React.FC<OrchestratorHeaderProps> = ({
   isPipelineRunning,
   isCancelling,
   pipelineSources,
-  onRunPipeline,
   onOpenBatchUrlImport,
   onOpenLlmQueue,
   llmActiveCount,
@@ -126,12 +124,7 @@ export const OrchestratorHeader: React.FC<OrchestratorHeaderProps> = ({
         <LinkIcon className="h-4 w-4" />
         <span className="hidden sm:inline">Fetch URLs</span>
       </Button>
-      {runControl ?? (
-        <Button size="sm" onClick={onRunPipeline} className="gap-2">
-          <Play className="h-4 w-4" />
-          <span className="hidden sm:inline">Run pipeline</span>
-        </Button>
-      )}
+      {runControl}
     </div>
   );
 

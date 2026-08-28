@@ -1,8 +1,12 @@
-import { getProvider } from "@server/providers";
 import type { ExtractorRegistry } from "@server/extractors/registry";
-import { bucketWindowDays } from "@shared/scrape-window.js";
+import { getProvider } from "@server/providers";
 import type { ExtractorSourceId } from "@shared/extractors";
-import type { ProviderInstanceRow, SourceConfigRow } from "@shared/types";
+import { bucketWindowDays } from "@shared/scrape-window.js";
+import type {
+  ProviderInstanceRow,
+  SourceConfigRow,
+  SourceConfigSchema,
+} from "@shared/types";
 
 /**
  * Why a run's requested scrape window is refused.
@@ -16,6 +20,13 @@ import type { ProviderInstanceRow, SourceConfigRow } from "@shared/types";
  * would snap the request DOWN to its widest one. Same failure as `over_cap`
  * from the user's side (less coverage than asked for) but invisible to the cap
  * check, since the request is under the ceiling.
+ *
+ * Only an EXPLICIT window is gated. The "since last run" narrowing can reach a
+ * clamping actor too — a 45-day gap on an uncapped profile asks for 45 and gets
+ * 30 — but that path is self-correcting rather than lossy: the mark records the
+ * BUCKETED window (`instanceWindowFrom` in `discover-jobs.ts`), so it holds and
+ * the next run reaches back over what was missed. An explicit window has no
+ * such second chance, because the user asked for exactly this span once.
  */
 export type RunWindowViolationKind = "over_cap" | "over_bucket";
 
@@ -38,15 +49,19 @@ export interface RunWindowViolation {
  * would refuse a run over a limit that does not apply.
  */
 export function extractorHonoursRunWindow(
-  manifest: { configSchema?: { globalMappings: readonly { globalField: string }[] } },
+  manifest: { configSchema?: SourceConfigSchema },
   row: Pick<SourceConfigRow, "mappings"> | undefined,
 ): boolean {
   const mapping = manifest.configSchema?.globalMappings.find(
     (candidate) => candidate.globalField === "maxAgeDays",
   );
   if (!mapping) return false;
+  // Same expression as `resolveSourceContextSettings` — the runtime authority.
+  // Defaulting to `true` instead would disagree with it for any manifest that
+  // ships `enabledByDefault: false`, refusing runs over a ceiling that never
+  // reaches the source.
   const userMapped = row?.mappings?.maxAgeDays;
-  return userMapped ?? true;
+  return userMapped ?? mapping.enabledByDefault;
 }
 
 /** The fixed windows an instance's actor accepts, if it has any. */
@@ -90,7 +105,9 @@ export function findRunWindowViolations(args: {
     const manifest = args.registry?.manifestBySource.get(source);
     if (!manifest || seenManifests.has(manifest.id)) continue;
     seenManifests.add(manifest.id);
-    if (!extractorHonoursRunWindow(manifest, configByExtractor.get(manifest.id)))
+    if (
+      !extractorHonoursRunWindow(manifest, configByExtractor.get(manifest.id))
+    )
       continue;
     const cap = args.profileMaxAgeDays;
     if (typeof cap === "number" && cap > 0 && windowDays > cap) {
@@ -145,5 +162,16 @@ export function describeRunWindowViolations(
           : `cannot look back past ${violation.limitDays}d`
       })`,
   );
-  return `A ${windowDays}-day run window is wider than these sources allow: ${parts.join(", ")}. Lower the window, raise their max job age, or deselect them.`;
+  // The remedy differs by kind: a cap is the user's own setting and can be
+  // raised, while a bucket is the actor's fixed enum and cannot — telling
+  // someone to raise a max job age they cannot escape would send them in
+  // circles.
+  const remedy = violations.every(
+    (violation) => violation.kind === "over_bucket",
+  )
+    ? "Lower the window or deselect them."
+    : violations.some((violation) => violation.kind === "over_bucket")
+      ? "Lower the window, raise the max job age where it is a setting, or deselect them."
+      : "Lower the window, raise their max job age, or deselect them.";
+  return `A ${windowDays}-day run window is wider than these sources allow: ${parts.join(", ")}. ${remedy}`;
 }

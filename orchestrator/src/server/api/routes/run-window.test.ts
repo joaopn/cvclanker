@@ -13,6 +13,7 @@ vi.mock("@server/providers", () => ({
   ),
 }));
 
+import type { ExtractorRegistry } from "@server/extractors/registry";
 import type { ProviderInstanceRow, SourceConfigRow } from "@shared/types";
 import {
   extractorHonoursRunWindow,
@@ -21,7 +22,7 @@ import {
 
 const manifest = (
   id: string,
-  options: { mapsMaxAge?: boolean } = {},
+  options: { mapsMaxAge?: boolean; enabledByDefault?: boolean } = {},
 ) => ({
   id,
   displayName: id.toUpperCase(),
@@ -29,7 +30,13 @@ const manifest = (
   configSchema: {
     fields: [],
     globalMappings: options.mapsMaxAge
-      ? [{ globalField: "maxAgeDays", sourceField: "max_age_days" }]
+      ? ([
+          {
+            globalField: "maxAgeDays",
+            sourceField: "max_age_days",
+            enabledByDefault: options.enabledByDefault ?? true,
+          },
+        ] as const)
       : [],
   },
 });
@@ -39,8 +46,7 @@ const registryOf = (manifests: ReturnType<typeof manifest>[]) =>
     manifests: new Map(manifests.map((m) => [m.id, m])),
     manifestBySource: new Map(manifests.map((m) => [m.id, m])),
     availableSources: manifests.map((m) => m.id),
-    // biome-ignore lint/suspicious/noExplicitAny: partial registry stub
-  }) as any;
+  }) as unknown as ExtractorRegistry;
 
 const instance = (
   overrides: Partial<ProviderInstanceRow> = {},
@@ -61,14 +67,14 @@ const instance = (
 const row = (
   extractorId: string,
   mappings: SourceConfigRow["mappings"],
-  // biome-ignore lint/suspicious/noExplicitAny: partial row stub
-): SourceConfigRow => ({ extractorId, mappings, config: {} }) as any;
+): SourceConfigRow =>
+  ({ extractorId, mappings, config: {} }) as unknown as SourceConfigRow;
 
 describe("extractorHonoursRunWindow", () => {
   it("is false for a manifest with no maxAgeDays mapping", () => {
-    expect(
-      extractorHonoursRunWindow(manifest("startupjobs"), undefined),
-    ).toBe(false);
+    expect(extractorHonoursRunWindow(manifest("startupjobs"), undefined)).toBe(
+      false,
+    );
   });
 
   it("is true when the mapping exists and was never touched", () => {
@@ -85,6 +91,30 @@ describe("extractorHonoursRunWindow", () => {
    * ignore the run entirely, so the run's window cannot exceed a limit that
    * never applies to it.
    */
+  /**
+   * `resolveSourceContextSettings` falls back to the mapping's own
+   * `enabledByDefault`, so defaulting to `true` here would disagree with the
+   * runtime for any manifest shipping `false` — refusing a run over a ceiling
+   * that never reaches the source.
+   */
+  it("honours a mapping that is off by default", () => {
+    expect(
+      extractorHonoursRunWindow(
+        manifest("quiet", { mapsMaxAge: true, enabledByDefault: false }),
+        undefined,
+      ),
+    ).toBe(false);
+  });
+
+  it("lets an explicit tick override enabledByDefault: false", () => {
+    expect(
+      extractorHonoursRunWindow(
+        manifest("quiet", { mapsMaxAge: true, enabledByDefault: false }),
+        row("quiet", { maxAgeDays: true }),
+      ),
+    ).toBe(true);
+  });
+
   it("is false when the user unticked the mapping", () => {
     expect(
       extractorHonoursRunWindow(
@@ -105,9 +135,9 @@ describe("findRunWindowViolations", () => {
   };
 
   it("returns nothing when no explicit window was requested", () => {
-    expect(
-      findRunWindowViolations({ ...base, windowDays: undefined }),
-    ).toEqual([]);
+    expect(findRunWindowViolations({ ...base, windowDays: undefined })).toEqual(
+      [],
+    );
   });
 
   it("returns nothing for a window within the cap", () => {
@@ -170,8 +200,7 @@ describe("findRunWindowViolations", () => {
             ["glassdoor", jobspy],
           ]),
           availableSources: [],
-          // biome-ignore lint/suspicious/noExplicitAny: partial registry stub
-        } as any,
+        } as unknown as ExtractorRegistry,
         sources: ["indeed", "linkedin", "glassdoor"] as never,
       }),
     ).toHaveLength(1);

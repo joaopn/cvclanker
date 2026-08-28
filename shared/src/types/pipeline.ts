@@ -644,7 +644,6 @@ export interface RunOptionSource {
 export interface RunOptionsResponse {
   /** The Profile these options describe — the default one when none was asked for. */
   profileId: string | null;
-  profileName: string | null;
   sources: RunOptionSource[];
   /** The Profile's configured max job age; null = no ceiling configured. */
   capDays: number | null;

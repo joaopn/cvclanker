@@ -579,6 +579,134 @@ describe.sequential("Pipeline API routes", () => {
       );
     });
 
+    const seedInstance = async (
+      overrides: Record<string, unknown> = {},
+    ): Promise<string> => {
+      const { db, schema } = await import("@server/db");
+      await db.insert(schema.providerInstances).values({
+        id: "inst-window",
+        providerId: "apify",
+        actorRef: "cheap_scraper/linkedin-job-scraper",
+        label: "Cheap scraper",
+        templateId: "cheap-scraper-linkedin",
+        enabled: true,
+        inputTemplateJson: "{}",
+        outputMappingJson: "{}",
+        mappingsJson: {},
+        ...overrides,
+      });
+      return "inst-window";
+    };
+
+    it("refuses a window over a provider instance's own max age", async () => {
+      const { runPipeline } = await import("@server/pipeline/index");
+      const instanceId = await seedInstance({ maxAgeDays: 3 });
+      const profileId = await createProfile(
+        baseUrl,
+        windowProfile({
+          scrapeMaxAgeDays: 30,
+          providerInstanceIds: [instanceId],
+        }),
+      );
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId, scrapeWindowDays: 10 }),
+      });
+      const body = await res.json();
+
+      expect(res.status).toBe(400);
+      // The instance's own max age wins over the Profile's 30, so it is the
+      // ceiling — this is the half of the gate no route test covered.
+      expect(body.error.details.violations).toEqual([
+        expect.objectContaining({
+          sourceKey: `apify:${instanceId}`,
+          kind: "over_cap",
+          limitDays: 3,
+        }),
+      ]);
+      expect(runPipeline).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The window is under every configured ceiling, so the cap check is silent
+     * — but cheap_scraper cannot look back past 30 days and would scrape half
+     * of what was asked.
+     */
+    it("refuses a window a bucketing actor would clamp down", async () => {
+      const instanceId = await seedInstance();
+      const profileId = await createProfile(
+        baseUrl,
+        windowProfile({
+          scrapeMaxAgeDays: null,
+          providerInstanceIds: [instanceId],
+        }),
+      );
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId, scrapeWindowDays: 60 }),
+      });
+      const body = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(body.error.details.violations).toEqual([
+        expect.objectContaining({ kind: "over_bucket", limitDays: 30 }),
+      ]);
+      expect(body.error.message).toMatch(/Lower the window or deselect them/);
+    });
+
+    it("allows a window a bucketing actor merely rounds up", async () => {
+      const { runPipeline } = await import("@server/pipeline/index");
+      const instanceId = await seedInstance();
+      const profileId = await createProfile(
+        baseUrl,
+        windowProfile({
+          scrapeMaxAgeDays: null,
+          providerInstanceIds: [instanceId],
+        }),
+      );
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId, scrapeWindowDays: 2 }),
+      });
+
+      expect((await res.json()).ok).toBe(true);
+      expect(runPipeline).toHaveBeenCalled();
+    });
+
+    /**
+     * A source the run would never touch must not be able to refuse it: the
+     * menu greys such a source out, so there is no tick to clear.
+     */
+    it("ignores a pinned source the Sources page has disabled", async () => {
+      const { runPipeline } = await import("@server/pipeline/index");
+      const configs = await import("@server/repositories/source-configs");
+      await configs.upsertSourceConfig("test-linkedin", { enabled: true });
+      await configs.upsertSourceConfig("test-indeed", { enabled: false });
+
+      const profileId = await createProfile(
+        baseUrl,
+        windowProfile({
+          scrapeMaxAgeDays: 30,
+          enabledSourceIds: ["test-linkedin", "test-indeed"],
+        }),
+      );
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId, scrapeWindowDays: 30 }),
+      });
+
+      expect((await res.json()).ok).toBe(true);
+      expect(runPipeline).toHaveBeenCalled();
+    });
+
     it("allows a window up to the cap", async () => {
       const { runPipeline } = await import("@server/pipeline/index");
       const profileId = await createProfile(

@@ -66,6 +66,15 @@ describe("buildRunSelection", () => {
     ).toEqual({});
   });
 
+  it("does not read 'nothing runnable' as 'run everything'", () => {
+    // `0 === 0` is the trap: an empty selection over an empty runnable set must
+    // stay an explicit empty scope, never the follow-the-Profile shape.
+    expect(buildRunSelection([source({ platforms: [] })], new Set())).toEqual({
+      sources: [],
+      providerInstanceIds: [],
+    });
+  });
+
   it("expands a selected extractor to its compatible platforms", () => {
     expect(buildRunSelection(sources, new Set(["jobspy"]))).toEqual({
       sources: ["indeed", "linkedin"],
@@ -85,8 +94,9 @@ describe("buildRunSelection", () => {
       platforms: ["indeed"],
       incompatible: [{ platform: "glassdoor", reasons: ["needs a city"] }],
     });
-    expect(buildRunSelection([partial, instance()], new Set(["jobspy"])))
-      .toEqual({ sources: ["indeed"], providerInstanceIds: [] });
+    expect(
+      buildRunSelection([partial, instance()], new Set(["jobspy"])),
+    ).toEqual({ sources: ["indeed"], providerInstanceIds: [] });
   });
 });
 
@@ -95,7 +105,11 @@ describe("findWindowIssues", () => {
 
   it("reports nothing without an explicit window", () => {
     expect(
-      findWindowIssues({ windowDays: null, sources: [source({})], selectedKeys: selected }),
+      findWindowIssues({
+        windowDays: null,
+        sources: [source({})],
+        selectedKeys: selected,
+      }),
     ).toEqual([]);
   });
 
@@ -106,7 +120,10 @@ describe("findWindowIssues", () => {
       selectedKeys: selected,
     });
     expect(issues).toEqual([
-      expect.objectContaining({ blocking: true, message: "only allows 7 days" }),
+      expect.objectContaining({
+        blocking: true,
+        message: "only allows 7 days",
+      }),
     ]);
   });
 

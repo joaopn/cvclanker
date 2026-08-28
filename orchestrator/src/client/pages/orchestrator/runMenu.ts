@@ -37,7 +37,9 @@ export function buildRunSelection(
 ): RunMenuSelection {
   const runnable = runnableSources(sources);
   const selected = runnable.filter((source) => selectedKeys.has(source.key));
-  if (selected.length === runnable.length) return {};
+  // `0 === 0` would otherwise make "nothing selectable" mean "send no scoping",
+  // i.e. run everything the Profile pins — the opposite of what was asked.
+  if (runnable.length > 0 && selected.length === runnable.length) return {};
 
   return {
     sources: selected

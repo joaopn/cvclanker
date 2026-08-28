@@ -746,7 +746,6 @@ export const OrchestratorPage: React.FC = () => {
                 onToggle={toggleProfile}
               />
             }
-            onRunPipeline={() => runPipelineNow(selectedProfileIds)}
             runControl={
               <RunPipelineMenu
                 selectedProfileIds={selectedProfileIds}

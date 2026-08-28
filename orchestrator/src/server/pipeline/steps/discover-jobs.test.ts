@@ -1051,6 +1051,68 @@ describe("discoverJobsStep scrape-since-last-run window", () => {
     );
   });
 
+  /**
+   * The route validates an explicit window; this is the half that makes it
+   * REACH a source. Without it nothing pinned that `scrapeWindowDays` does
+   * anything at all beyond being forwarded to `runPipeline`.
+   */
+  it("sends an explicit run window to the source", async () => {
+    const manifest = makeJobspyManifest();
+    await mockRegistry(manifest);
+    await setWatermarks([]);
+
+    await discoverJobsStep({
+      mergedConfig: withFlag({
+        scrapeSinceLastRun: false,
+        scrapeWindowDays: 1,
+      }),
+    });
+
+    expect(manifest.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settings: expect.objectContaining({ max_age_days: "1" }),
+      }),
+    );
+  });
+
+  it("prefers an explicit window over the since-last-run narrowing", async () => {
+    const manifest = makeJobspyManifest();
+    await mockRegistry(manifest);
+    // A watermark that would narrow to 3 days; the explicit 1 must win.
+    await setWatermarks([["jobspy", daysAgo(3)]]);
+
+    await discoverJobsStep({
+      mergedConfig: withFlag({ scrapeWindowDays: 1 }),
+    });
+
+    expect(manifest.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settings: expect.objectContaining({ max_age_days: "1" }),
+      }),
+    );
+  });
+
+  it("never lets an explicit window exceed the configured cap", async () => {
+    const manifest = makeJobspyManifest();
+    await mockRegistry(manifest);
+    await setWatermarks([]);
+
+    await discoverJobsStep({
+      mergedConfig: withFlag({
+        scrapeSinceLastRun: false,
+        scrapeWindowDays: 90,
+      }),
+    });
+
+    // The route refuses this before it gets here; the min keeps the function
+    // total for any caller that reaches it without the gate.
+    expect(manifest.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settings: expect.objectContaining({ max_age_days: "30" }),
+      }),
+    );
+  });
+
   it("keeps the configured window for a source with no watermark", async () => {
     const manifest = makeJobspyManifest();
     await mockRegistry(manifest);
