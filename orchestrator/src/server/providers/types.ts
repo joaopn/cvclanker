@@ -29,6 +29,14 @@ export interface ProviderActorTemplate {
    */
   maxAgeNote?: string;
   /**
+   * The discrete recency windows this actor accepts, in ascending days, when it
+   * cannot take an arbitrary day count. A request between two entries rounds UP
+   * to the next; a request wider than the LAST entry is clamped to it, which
+   * scrapes less than was asked for. `bucketWindowDays` owns the rule and the
+   * run-window gate reads this to refuse a request the actor would truncate.
+   */
+  maxAgeBuckets?: readonly number[];
+  /**
    * Lower bounds for numeric placeholders this actor enforces server-side
    * (e.g. curious_coder/linkedin-jobs-scraper rejects count < 10). Clamped
    * during input substitution so a small maxJobsPerTerm never 400s the run.

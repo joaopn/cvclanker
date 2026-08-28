@@ -2,6 +2,7 @@ import { logger } from "@infra/logger";
 import { sanitizeUnknown } from "@infra/sanitize";
 import { getExtractorRegistry } from "@server/extractors/registry";
 import { getProvider } from "@server/providers";
+import type { ProviderRunner } from "@server/providers/types";
 import { getAllJobUrls } from "@server/repositories/jobs";
 import * as providerInstancesRepo from "@server/repositories/provider-instances";
 import * as settingsRepo from "@server/repositories/settings";
@@ -22,14 +23,20 @@ import {
   planLocationSource,
 } from "@shared/location-domain.js";
 import { formatCountryLabel } from "@shared/location-support.js";
-import { resolveScrapeWindowDays } from "@shared/scrape-window.js";
+import {
+  bucketWindowDays,
+  resolveScrapeWindowDays,
+  type ScrapedSourceMark,
+} from "@shared/scrape-window.js";
 import { serializeSearchCitiesSetting } from "@shared/search-cities.js";
 import type {
   CapturedRunJob,
   CreateJobInput,
   PipelineConfig,
+  ProviderInstanceRow,
   SourceConfigRow,
   SourceConfigRunGlobals,
+  SourceConfigSchema,
 } from "@shared/types";
 import { type CrawlSource, progressHelpers, updateProgress } from "../progress";
 import { captureRunJobs, toCapturedRunJob } from "../run-job-capture";
@@ -54,6 +61,15 @@ type DiscoverySourceTask = {
   // their user-set name so the pipeline table shows it instead of the raw
   // `<provider>:<uuid>` synthetic id.
   label?: string;
+  /**
+   * The window this task actually runs with, in days — the run override when
+   * one applies, else the configured cap, else null when nothing bounds it.
+   * Carried on the task so the watermark write can tell whether the run
+   * covered the gap since the last one; see `resolveWatermarkAdvance`.
+   */
+  effectiveWindowDays: number | null;
+  /** The standing max job age for this source; see `ScrapedSourceMark`. */
+  policyWindowDays: number | null;
   run: () => Promise<DiscoveryTaskResult>;
 };
 
@@ -112,11 +128,12 @@ export async function discoverJobsStep(args: {
   discoveredJobs: CreateJobInput[];
   sourceErrors: string[];
   /**
-   * Source keys that scraped without error this run, and the timestamp their
-   * watermark should carry. The caller advances the watermarks once the jobs
-   * are imported — see `recordScrapeWatermarks`.
+   * Sources that scraped without error this run, each with the window it ran
+   * with, and the timestamp their watermark should be measured against. The
+   * caller advances the watermarks once the jobs are imported — see
+   * `recordScrapeWatermarks`.
    */
-  scrapedSources: string[];
+  scrapedSources: ScrapedSourceMark[];
   scrapeStartedAt: string;
 }> {
   logger.info("Running discovery step");
@@ -127,7 +144,7 @@ export async function discoverJobsStep(args: {
   // request it stands for, or the next run's window starts after postings the
   // previous run had not yet seen.
   const scrapeStartedAt = new Date().toISOString();
-  const scrapedSources: string[] = [];
+  const scrapedSources: ScrapedSourceMark[] = [];
 
   const registry = await getExtractorRegistry();
 
@@ -224,6 +241,79 @@ export async function discoverJobsStep(args: {
     windowDays === null
       ? runGlobals
       : { ...runGlobals, maxAgeDays: String(windowDays) };
+
+  /**
+   * The `max_age_days` a source resolved to, read back out of the settings the
+   * source is actually handed rather than re-derived from the run's cap.
+   *
+   * That distinction is load-bearing: `resolveSourceContextSettings` applies the
+   * per-source config BEFORE the global-mapping loop, so an extractor whose
+   * `maxAgeDays` mapping is unticked honours its OWN stored value and ignores
+   * the run entirely. Reporting the run's cap for such a source would claim
+   * coverage it never had.
+   *
+   * `Infinity` for a manifest with no max-age concept at all (it returns its
+   * whole feed, so it covers any gap); `null` when the field exists but is
+   * blank, i.e. the extractor fell back to a default this layer cannot see.
+   */
+  const extractorWindowFrom = (
+    manifest: { configSchema?: SourceConfigSchema },
+    settings: Record<string, string>,
+  ): number | null => {
+    const mapping = manifest.configSchema?.globalMappings.find(
+      (candidate) => candidate.globalField === "maxAgeDays",
+    );
+    const fieldKey = mapping?.sourceField ?? "max_age_days";
+    const hasMaxAgeConcept =
+      mapping !== undefined ||
+      manifest.configSchema?.fields.some((field) => field.key === fieldKey) ===
+        true;
+    if (!hasMaxAgeConcept) return Number.POSITIVE_INFINITY;
+
+    const parsed = Number.parseInt(settings[fieldKey] ?? "", 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  };
+
+  /**
+   * The window a provider instance actually ran with. An actor that expresses
+   * recency as a fixed set of windows silently snaps the request onto them —
+   * upwards below its widest entry, and DOWNWARDS above it — so the requested
+   * value is not what it covered.
+   */
+  const instanceWindowFrom = (
+    provider: ProviderRunner,
+    instance: ProviderInstanceRow,
+    requestedDays: number | null,
+  ): number | null => {
+    if (requestedDays === null) return null;
+    const buckets = instance.templateId
+      ? provider.templates.find(
+          (template) => template.id === instance.templateId,
+        )?.maxAgeBuckets
+      : undefined;
+    return buckets && buckets.length > 0
+      ? bucketWindowDays(requestedDays, buckets)
+      : requestedDays;
+  };
+
+  /**
+   * What a source was asked for: the run's override when one applies, else the
+   * cap it would otherwise use. Null when nothing bounds it at all.
+   *
+   * Takes the ALREADY-COMPUTED override rather than re-deriving it, so the
+   * value the mark describes cannot drift from the value the source was handed.
+   */
+  const requestedWindow = (
+    appliedDays: number | null,
+    capDays: number | null | undefined,
+  ): number | null => {
+    if (appliedDays !== null) return appliedDays;
+    return typeof capDays === "number" &&
+      Number.isFinite(capDays) &&
+      capDays > 0
+      ? Math.floor(capDays)
+      : null;
+  };
 
   const sourcePlans = requestedSources.map((source) => ({
     source,
@@ -354,10 +444,11 @@ export async function discoverJobsStep(args: {
       // the window narrows against. The narrowed value is written back onto
       // both the instance and the run globals: `resolveMaxAgeDays` and the
       // `{{maxAgeDays}}` placeholder both read the instance first.
-      const instanceWindow = scrapeWindowFor(
-        syntheticSource,
-        instance.maxAgeDays ?? args.mergedConfig.scrapeMaxAgeDays,
-      );
+      // One expression for the cap, reused by the override, the mark and the
+      // policy it is judged against — three readings of the same number.
+      const instanceCapDays =
+        instance.maxAgeDays ?? args.mergedConfig.scrapeMaxAgeDays ?? null;
+      const instanceWindow = scrapeWindowFor(syntheticSource, instanceCapDays);
       const effectiveInstance =
         instanceWindow === null
           ? instance
@@ -369,6 +460,12 @@ export async function discoverJobsStep(args: {
         termsTotal: searchTerms.length,
         detail: `${instance.label}: fetching jobs...`,
         label: instance.label,
+        effectiveWindowDays: instanceWindowFrom(
+          provider,
+          instance,
+          requestedWindow(instanceWindow, instanceCapDays),
+        ),
+        policyWindowDays: instanceCapDays,
         run: async () => {
           const result = await provider.run({
             instance: effectiveInstance,
@@ -421,6 +518,19 @@ export async function discoverJobsStep(args: {
     const manifest = registry.manifests.get(manifestId);
     if (!manifest) continue;
 
+    // Resolved here rather than inside `run()` so the task can carry the window
+    // it ran with. Every input is fixed before any task starts, so the values
+    // are identical to resolving them lazily.
+    const extractorWindow = scrapeWindowFor(
+      manifest.id,
+      args.mergedConfig.scrapeMaxAgeDays,
+    );
+    const extractorRow = sourceConfigByExtractor.get(manifest.id);
+    const extractorSettings = resolveSourceContextSettings({
+      schema: manifest.configSchema,
+      row: extractorRow ?? { config: {}, mappings: {} },
+      runGlobals: runGlobalsFor(extractorWindow),
+    });
     sourceTasks.push({
       source: manifest.id,
       platforms: [...grouped.sources],
@@ -429,15 +539,10 @@ export async function discoverJobsStep(args: {
         grouped.sources.length > 1
           ? `${manifest.displayName}: ${grouped.sources.join(", ")}...`
           : grouped.detail,
+      effectiveWindowDays: extractorWindowFrom(manifest, extractorSettings),
+      policyWindowDays: args.mergedConfig.scrapeMaxAgeDays ?? null,
       run: async () => {
-        const row = sourceConfigByExtractor.get(manifest.id);
-        const perSourceSettings = resolveSourceContextSettings({
-          schema: manifest.configSchema,
-          row: row ?? { config: {}, mappings: {} },
-          runGlobals: runGlobalsFor(
-            scrapeWindowFor(manifest.id, args.mergedConfig.scrapeMaxAgeDays),
-          ),
-        });
+        const perSourceSettings = extractorSettings;
 
         const result = await manifest.run({
           source: grouped.sources[0],
@@ -581,7 +686,11 @@ export async function discoverJobsStep(args: {
       // platform ids it fans out to — that is the granularity the next run
       // resolves its window at. A failed source keeps its old watermark, so
       // its next window reaches back over everything it missed.
-      scrapedSources.push(sourceTask.source);
+      scrapedSources.push({
+        sourceKey: sourceTask.source,
+        windowDays: sourceTask.effectiveWindowDays,
+        policyWindowDays: sourceTask.policyWindowDays,
+      });
 
       for (const platform of sourceTask.platforms) {
         const platformJobs = taskResult.discoveredJobs.filter(

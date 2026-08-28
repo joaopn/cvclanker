@@ -1,3 +1,4 @@
+import { bucketWindowDays } from "@shared/scrape-window.js";
 import type { CreateJobInput, JobSource } from "@shared/types";
 import type { ProviderActorTemplate } from "../../types";
 import {
@@ -15,14 +16,22 @@ import {
 // unpredictably under pay-per-result) and clamp up to the floor.
 const ACTOR_MIN_MAX_ITEMS = 150;
 
-// The actor's `publishedAt` filter is an enum of relative windows. Bucket the
-// resolved max-age-in-days into the tightest window that still covers it,
-// rounding UP so nothing in range is excluded (30 days is the widest bucket).
+/**
+ * The windows the actor's `publishedAt` filter accepts, in ascending days.
+ * 30 is the widest it has, so a wider request is clamped to it rather than
+ * rounded up — see `bucketWindowDays`.
+ */
+const CHEAP_SCRAPER_MAX_AGE_BUCKETS = [1, 7, 30] as const;
+
+const SECONDS_PER_DAY = 86_400;
+
+// The filter is an enum of relative windows expressed in seconds (`r86400` =
+// 24h). Derived from the bucket list rather than spelled out, so the list the
+// run-window gate reads is the same one the request is built from.
 function toPublishedAt(maxAgeDays: number | undefined): string | undefined {
   if (typeof maxAgeDays !== "number" || maxAgeDays <= 0) return undefined;
-  if (maxAgeDays <= 1) return "r86400";
-  if (maxAgeDays <= 7) return "r604800";
-  return "r2592000";
+  const bucket = bucketWindowDays(maxAgeDays, CHEAP_SCRAPER_MAX_AGE_BUCKETS);
+  return `r${bucket * SECONDS_PER_DAY}`;
 }
 
 export const cheapScraperLinkedinTemplate: ProviderActorTemplate = {
@@ -40,8 +49,9 @@ export const cheapScraperLinkedinTemplate: ProviderActorTemplate = {
     null,
     2,
   ),
+  maxAgeBuckets: CHEAP_SCRAPER_MAX_AGE_BUCKETS,
   maxAgeNote:
-    "This actor only accepts 24 hours, 7 days or 30 days and offers no newest-first sort, so anything in between rounds UP: a 2-day window buys a week of postings, on an actor that bills per result.",
+    "This actor only accepts 24 hours, 7 days or 30 days and offers no newest-first sort, so anything in between rounds UP: a 2-day window buys a week of postings, on an actor that bills per result. It cannot look back further than 30 days at all.",
   defaultMappings: {
     maxJobsPerTerm: true,
     maxAgeDays: true,

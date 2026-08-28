@@ -23,7 +23,10 @@ vi.mock("./steps", () => ({
   discoverJobsStep: vi.fn(async () => ({
     discoveredJobs: [],
     sourceErrors: [],
-    scrapedSources: ["jobspy", "apify:abc"],
+    scrapedSources: [
+      { sourceKey: "jobspy", windowDays: 30, policyWindowDays: 30 },
+      { sourceKey: "apify:abc", windowDays: 30, policyWindowDays: 30 },
+    ],
     scrapeStartedAt: SCRAPE_STARTED_AT,
   })),
   importJobsStep: vi.fn(async () => ({
@@ -103,19 +106,46 @@ describe.sequential("pipeline scrape watermarks", () => {
     );
   });
 
-  it("records nothing when the flag is off or the run has no profile", async () => {
+  /**
+   * The mark records what a run COVERED, so a run with the flag off still moved
+   * the boundary — gating the write on the flag would leave a later narrowing
+   * measuring against a mark that ignores every run in between.
+   */
+  it("records them for a run with the flag off", async () => {
     const pipeline = await import("./orchestrator");
     const watermarks = await import("../repositories/source-scrape-watermarks");
 
-    await pipeline.runPipeline({
+    const result = await pipeline.runPipeline({
       sources: [],
       profileId: "profile-flag-off",
       scrapeSinceLastRun: false,
     });
+
+    expect(result.success).toBe(true);
+    expect(await watermarks.getScrapeWatermarks("profile-flag-off")).toEqual(
+      new Map([
+        ["jobspy", SCRAPE_STARTED_AT],
+        ["apify:abc", SCRAPE_STARTED_AT],
+      ]),
+    );
+  });
+
+  it("records nothing when the run has no profile", async () => {
+    const pipeline = await import("./orchestrator");
+    const { db, schema } = await import("../db/index");
+
     await pipeline.runPipeline({ sources: [], scrapeSinceLastRun: true });
 
-    expect(
-      (await watermarks.getScrapeWatermarks("profile-flag-off")).size,
-    ).toBe(0);
+    // Counted across the whole table rather than looked up by profile id: a
+    // profile-less run has no id to query, so asking for one (the previous
+    // shape of this test) was satisfied whatever the code did.
+    //
+    // What this pins is the user-visible contract — no rows — not the guard
+    // itself: removing the `profileId` check leaves the insert throwing on a
+    // NOT NULL column, and `advanceScrapeWatermarks` swallows that into a warn,
+    // so the table ends up empty either way. The guard makes the outcome
+    // deliberate rather than exception-driven.
+    const rows = await db.select().from(schema.sourceScrapeWatermarks);
+    expect(rows).toEqual([]);
   });
 });

@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { logger } from "@infra/logger";
 import { runWithRequestContext } from "@infra/request-context";
 import { createLocationIntentFromLegacyInputs } from "@shared/location-domain.js";
+import type { ScrapedSourceMark } from "@shared/scrape-window.js";
 import type { PipelineConfig, PipelineRunSavedDetails } from "@shared/types";
 import { getDataDir } from "../config/dataDir";
 import * as jobsRepo from "../repositories/jobs";
@@ -54,14 +55,21 @@ const DEFAULT_CONFIG: PipelineConfig = {
  * the profile's next run can narrow its max-age window to the elapsed time.
  * Best-effort: a failed write only means the next run scrapes the full
  * configured window, which is the pre-flag behaviour.
+ *
+ * Recorded for EVERY run of a profile, not only "since last run" ones. This is
+ * an efficiency choice, not a correctness one: gating on the flag would leave a
+ * later narrowing measuring against a mark that ignores every run in between,
+ * which is merely WIDER than it needs to be — a stale mark re-scrapes, it never
+ * skips. Recording every run is what makes a daily narrow run cheap, and it is
+ * only safe because each mark carries the window its source actually ran with.
+ * Whether a given source's mark moves is `resolveWatermarkAdvance`'s call.
  */
 async function advanceScrapeWatermarks(args: {
   config: PipelineConfig;
-  scrapedSources: string[];
+  scrapedSources: ScrapedSourceMark[];
   scrapeStartedAt: string;
 }): Promise<void> {
   const { config, scrapedSources, scrapeStartedAt } = args;
-  if (config.scrapeSinceLastRun !== true) return;
   if (!config.profileId || scrapedSources.length === 0) return;
   try {
     await recordScrapeWatermarks(

@@ -76,21 +76,40 @@ describe("cheapScraperLinkedinTemplate.buildInput", () => {
   });
 
   it("buckets the resolved max age into the actor's date filter", () => {
-    expect(
+    const publishedAtFor = (maxAgeDays: string) =>
       buildInput({
-        runGlobals: { city: "Dublin", country: "ireland", maxAgeDays: "1" },
-      }).publishedAt,
-    ).toBe("r86400");
-    expect(
-      buildInput({
-        runGlobals: { city: "Dublin", country: "ireland", maxAgeDays: "7" },
-      }).publishedAt,
-    ).toBe("r604800");
+        runGlobals: { city: "Dublin", country: "ireland", maxAgeDays },
+      }).publishedAt;
+
+    // Exact bucket boundaries.
+    expect(publishedAtFor("1")).toBe("r86400");
+    expect(publishedAtFor("7")).toBe("r604800");
+    expect(publishedAtFor("30")).toBe("r2592000");
+
+    // Between boundaries: rounds UP, so nothing in range is excluded.
+    expect(publishedAtFor("2")).toBe("r604800");
+    expect(publishedAtFor("8")).toBe("r2592000");
+
+    // Wider than the widest bucket: CLAMPED to it. The actor cannot look back
+    // further, so this scrapes less than was asked — pinned because deriving
+    // the filter from a bucket list makes it easy to turn this into "no filter"
+    // by accident, and the run-window gate refuses the request on this basis.
+    expect(publishedAtFor("31")).toBe("r2592000");
+    expect(publishedAtFor("365")).toBe("r2592000");
+
+    // No usable age → no filter at all.
+    expect(publishedAtFor("0")).toBeUndefined();
+    expect(publishedAtFor("")).toBeUndefined();
+  });
+
+  it("publishes the bucket list the gate and the UI read", () => {
+    expect(cheapScraperLinkedinTemplate.maxAgeBuckets).toEqual([1, 7, 30]);
   });
   it("carries a max-age note, since its window is bucketed and rounds up", () => {
     // The bucketing is a vendor limit we cannot fix; the field that sets it has
     // to say so, or a 2-day window silently buys a week on a per-result actor.
     expect(cheapScraperLinkedinTemplate.maxAgeNote).toMatch(/24 hours/);
     expect(cheapScraperLinkedinTemplate.maxAgeNote).toMatch(/rounds UP/);
+    expect(cheapScraperLinkedinTemplate.maxAgeNote).toMatch(/30 days/);
   });
 });

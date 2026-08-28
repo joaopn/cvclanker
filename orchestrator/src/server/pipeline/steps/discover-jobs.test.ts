@@ -203,7 +203,9 @@ describe("discoverJobsStep", () => {
       "Acme actor: Actor run timed out after scraping 3 item(s); kept the 1 job(s) mapped from them",
     ]);
     // …and its watermark does not advance over the window it missed.
-    expect(result.scrapedSources).not.toContain("apify:inst-1");
+    expect(result.scrapedSources.map((mark) => mark.sourceKey)).not.toContain(
+      "apify:inst-1",
+    );
 
     const row = getProgress().sourceStats.find(
       (candidate) => candidate.id === "apify:inst-1",
@@ -1142,7 +1144,11 @@ describe("discoverJobsStep scrape-since-last-run window", () => {
       mergedConfig: withFlag({ sources: ["linkedin", "hiringcafe"] }),
     });
 
-    expect(result.scrapedSources).toEqual(["jobspy"]);
+    // No watermark is seeded here, so nothing narrows and the source ran with
+    // the configured cap — which is the window the mark must be judged against.
+    expect(result.scrapedSources).toEqual([
+      { sourceKey: "jobspy", windowDays: 30, policyWindowDays: 30 },
+    ]);
     expect(Date.parse(result.scrapeStartedAt)).not.toBeNaN();
   });
 
@@ -1193,6 +1199,8 @@ describe("discoverJobsStep scrape-since-last-run window", () => {
         runGlobals: expect.objectContaining({ maxAgeDays: "2" }),
       }),
     );
-    expect(result.scrapedSources).toEqual(["apify:abc"]);
+    expect(result.scrapedSources).toEqual([
+      { sourceKey: "apify:abc", windowDays: 2, policyWindowDays: 14 },
+    ]);
   });
 });

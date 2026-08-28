@@ -1,4 +1,8 @@
-import { eq } from "drizzle-orm";
+import {
+  resolveWatermarkAdvance,
+  type ScrapedSourceMark,
+} from "@shared/scrape-window.js";
+import { eq, sql } from "drizzle-orm";
 import { db, schema } from "../db/index";
 
 const { sourceScrapeWatermarks } = schema;
@@ -23,31 +27,68 @@ export async function getScrapeWatermarks(
  * only once the run's jobs are imported — advancing on discovery alone would
  * narrow the next run's window past postings that never reached the DB.
  *
- * `scrapedAt` is the run's START, not the moment each source ran, so the next
- * window always reaches back at least as far as the previous run's coverage.
+ * `scrapedAt` is the run's START, not the moment each source ran, so a window
+ * that reaches back to the previous mark always covers the gap with slack.
+ *
+ * A source only advances when its window actually closed that gap;
+ * `resolveWatermarkAdvance` owns the rule, and a source it declines is left
+ * exactly as it was rather than written with an older value.
  */
 export async function recordScrapeWatermarks(
   profileId: string,
-  sourceKeys: readonly string[],
+  marks: readonly ScrapedSourceMark[],
   scrapedAt: string,
 ): Promise<void> {
-  if (sourceKeys.length === 0) return;
-  const unique = Array.from(new Set(sourceKeys));
+  if (marks.length === 0) return;
+
+  const existing = await getScrapeWatermarks(profileId);
+  const rows: Array<{
+    profileId: string;
+    sourceKey: string;
+    lastScrapedAt: string;
+  }> = [];
+
+  // Unreachable today — discovery tasks are unique by construction — but a
+  // duplicate must not let a narrow reading veto a wide one, so the widest
+  // window for a key is the one judged. Collapsing arbitrarily could hold a
+  // mark that should have advanced.
+  const widest = new Map<string, ScrapedSourceMark>();
+  for (const mark of marks) {
+    const current = widest.get(mark.sourceKey);
+    if (
+      current === undefined ||
+      (mark.windowDays ?? -1) > (current.windowDays ?? -1)
+    ) {
+      widest.set(mark.sourceKey, mark);
+    }
+  }
+
+  for (const mark of widest.values()) {
+    const lastScrapedAt = resolveWatermarkAdvance({
+      previous: existing.get(mark.sourceKey),
+      runStartedAt: scrapedAt,
+      windowDays: mark.windowDays,
+      policyWindowDays: mark.policyWindowDays,
+    });
+    if (lastScrapedAt === null) continue;
+    rows.push({ profileId, sourceKey: mark.sourceKey, lastScrapedAt });
+  }
+
+  if (rows.length === 0) return;
   await db
     .insert(sourceScrapeWatermarks)
-    .values(
-      unique.map((sourceKey) => ({
-        profileId,
-        sourceKey,
-        lastScrapedAt: scrapedAt,
-      })),
-    )
+    .values(rows)
     .onConflictDoUpdate({
       target: [
         sourceScrapeWatermarks.profileId,
         sourceScrapeWatermarks.sourceKey,
       ],
-      set: { lastScrapedAt: scrapedAt },
+      // Write back whatever the row carries rather than the scalar
+      // `scrapedAt`. Identical today (an advancing source always lands on the
+      // run's start), but it stays correct if the advance rule ever returns
+      // something else, instead of silently writing a value the row disagrees
+      // with.
+      set: { lastScrapedAt: sql`excluded.last_scraped_at` },
     });
 }
 

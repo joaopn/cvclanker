@@ -161,7 +161,7 @@ describe.sequential("profiles repository CRUD", () => {
       watermarksRepo = await import("./source-scrape-watermarks");
       await watermarksRepo.recordScrapeWatermarks(
         profileId,
-        ["jobspy"],
+        [{ sourceKey: "jobspy", windowDays: 30, policyWindowDays: null }],
         "2026-08-01T00:00:00.000Z",
       );
       expect(await watermarksRepo.getScrapeWatermarks(profileId)).toEqual(
@@ -233,9 +233,14 @@ describe.sequential("profiles repository CRUD", () => {
       const created = await profilesRepo.createProfile({ name: "Upsert" });
       await seed(created.id);
 
+      // A 30-day window comfortably covers the 4 days since the seed, so both
+      // marks advance — this test is about the upsert, not the advance rule.
       await watermarksRepo.recordScrapeWatermarks(
         created.id,
-        ["jobspy", "apify:abc"],
+        [
+          { sourceKey: "jobspy", windowDays: 30, policyWindowDays: null },
+          { sourceKey: "apify:abc", windowDays: 30, policyWindowDays: null },
+        ],
         "2026-08-05T00:00:00.000Z",
       );
 
@@ -244,6 +249,84 @@ describe.sequential("profiles repository CRUD", () => {
           ["jobspy", "2026-08-05T00:00:00.000Z"],
           ["apify:abc", "2026-08-05T00:00:00.000Z"],
         ]),
+      );
+    });
+
+    it("leaves a mark alone when the run's window left a hole", async () => {
+      const created = await profilesRepo.createProfile({ name: "Hole" });
+      await seed(created.id);
+
+      // Four days later with a one-day window: the run covered [4th, 5th] and
+      // nothing fetched the 1st-4th band, so the boundary must not move over
+      // it — the next narrowed window has to reach back and re-cover it.
+      await watermarksRepo.recordScrapeWatermarks(
+        created.id,
+        [{ sourceKey: "jobspy", windowDays: 1, policyWindowDays: null }],
+        "2026-08-05T00:00:00.000Z",
+      );
+
+      expect(await watermarksRepo.getScrapeWatermarks(created.id)).toEqual(
+        new Map([["jobspy", "2026-08-01T00:00:00.000Z"]]),
+      );
+    });
+
+    it("decides per source within one call", async () => {
+      const created = await profilesRepo.createProfile({ name: "Mixed" });
+      await seed(created.id);
+
+      await watermarksRepo.recordScrapeWatermarks(
+        created.id,
+        [
+          { sourceKey: "jobspy", windowDays: 1, policyWindowDays: null },
+          { sourceKey: "apify:abc", windowDays: 30, policyWindowDays: null },
+        ],
+        "2026-08-05T00:00:00.000Z",
+      );
+
+      expect(await watermarksRepo.getScrapeWatermarks(created.id)).toEqual(
+        new Map([
+          // Held: a 1-day window over a 4-day gap.
+          ["jobspy", "2026-08-01T00:00:00.000Z"],
+          // Written fresh: no prior mark, so this run is its boundary.
+          ["apify:abc", "2026-08-05T00:00:00.000Z"],
+        ]),
+      );
+    });
+
+    /**
+     * An unknown window still establishes a FIRST boundary — nothing before it
+     * was ever claimed. Declining here would leave an uncapped profile without
+     * a mark forever, making "scrape since the last run" a permanent no-op.
+     */
+    it("bootstraps a first mark even when the window is unknown", async () => {
+      // Imported here rather than via `seed`: this case has no prior mark, and
+      // the module is re-imported per test against a fresh connection.
+      watermarksRepo = await import("./source-scrape-watermarks");
+      const created = await profilesRepo.createProfile({ name: "Unknown" });
+
+      await watermarksRepo.recordScrapeWatermarks(
+        created.id,
+        [{ sourceKey: "jobspy", windowDays: null, policyWindowDays: null }],
+        "2026-08-05T00:00:00.000Z",
+      );
+
+      expect(await watermarksRepo.getScrapeWatermarks(created.id)).toEqual(
+        new Map([["jobspy", "2026-08-05T00:00:00.000Z"]]),
+      );
+    });
+
+    it("leaves an existing mark alone when the window is unknown", async () => {
+      const created = await profilesRepo.createProfile({ name: "Unknowable" });
+      await seed(created.id);
+
+      await watermarksRepo.recordScrapeWatermarks(
+        created.id,
+        [{ sourceKey: "jobspy", windowDays: null, policyWindowDays: null }],
+        "2026-08-05T00:00:00.000Z",
+      );
+
+      expect(await watermarksRepo.getScrapeWatermarks(created.id)).toEqual(
+        new Map([["jobspy", "2026-08-01T00:00:00.000Z"]]),
       );
     });
   });
