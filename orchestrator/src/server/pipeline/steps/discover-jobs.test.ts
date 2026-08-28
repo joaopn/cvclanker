@@ -1008,8 +1008,19 @@ describe("discoverJobsStep scrape-since-last-run window", () => {
     );
   }
 
+  /**
+   * A watermark `days` old, held a minute BACK OFF the day boundary.
+   *
+   * The window is elapsed time rounded UP, and the step reads its own
+   * `Date.now()` after the fixture is built — so an exactly-N-days-old mark
+   * rounds to N only while both reads land in the same millisecond, and to N+1
+   * the moment anything delays the step. That is a coin flip weighted to N,
+   * which is why it passed almost always and failed under load (B20, five
+   * sightings). A minute of slack costs the assertions nothing and removes the
+   * race: any delay short of 60s still rounds to N.
+   */
   const daysAgo = (days: number) =>
-    new Date(Date.now() - days * 86_400_000).toISOString();
+    new Date(Date.now() - (days * 86_400_000 - 60_000)).toISOString();
 
   const withFlag = (overrides: Partial<PipelineConfig> = {}) => ({
     ...baseConfig,
