@@ -10,6 +10,7 @@ import {
   RunTectonicError,
   runTectonic,
 } from "@server/services/cv/run-tectonic";
+import { coverLetterJobBaseline } from "@shared/cover-letter-fields";
 import type { CvFieldOverrides, Job } from "@shared/types";
 
 /**
@@ -66,8 +67,11 @@ export async function renderCoverLetterPdf(
     return { success: false, error: "Cover-letter archive missing." };
   }
 
+  // The body's per-job baseline is EMPTY, not the uploaded letter's prose —
+  // see coverLetterJobBaseline. A job that was never generated must not render
+  // a PDF carrying the letter the user wrote for some other application.
   const effectiveValues: CvFieldOverrides = {
-    ...document.defaultFieldValues,
+    ...coverLetterJobBaseline(document),
     ...(job.coverLetterFieldOverrides ?? {}),
   };
 

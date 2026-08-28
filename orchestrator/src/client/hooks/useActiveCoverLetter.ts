@@ -39,7 +39,6 @@ export function useActiveCoverLetter() {
   return {
     coverLetter,
     bodyFieldId: bodyField?.id ?? null,
-    bodyDefault: bodyField?.value ?? "",
     isLoading: summariesQuery.isLoading || detailQuery.isLoading,
     error: summariesQuery.error ?? detailQuery.error ?? null,
   };

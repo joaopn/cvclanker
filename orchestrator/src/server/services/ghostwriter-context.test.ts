@@ -1,5 +1,8 @@
 // @vitest-environment node
-import { createJob } from "@shared/testing/factories";
+import {
+  createCoverLetterDocument,
+  createJob,
+} from "@shared/testing/factories";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -98,6 +101,78 @@ describe("buildJobChatPromptContext", () => {
       "ghostwriter-system",
       expect.objectContaining({ cvFormatNote: "format-note:docx" }),
     );
+  });
+
+  describe("cover-letter snapshot", () => {
+    const doc = createCoverLetterDocument({
+      fields: [
+        {
+          id: "letter.body",
+          role: "body",
+          value: "Dear Other Company, I have long admired…",
+        },
+      ],
+      defaultFieldValues: {
+        "letter.body": "Dear Other Company, I have long admired…",
+      },
+    });
+
+    it("is EMPTY for a job that was never generated, never the template's own letter", async () => {
+      mocks.getActiveCoverLetterDocument.mockResolvedValue(doc);
+      mocks.getJobById.mockResolvedValue(
+        createJob({ id: "job-1", coverLetterFieldOverrides: {} }),
+      );
+
+      const context = await buildJobChatPromptContext("job-1");
+
+      // The pane shows the per-job baseline; a model told otherwise would
+      // tailor against text the user is not looking at.
+      expect(context.coverLetterSnapshot).toBe("");
+    });
+
+    it("uses the per-job override once one exists", async () => {
+      mocks.getActiveCoverLetterDocument.mockResolvedValue(doc);
+      mocks.getJobById.mockResolvedValue(
+        createJob({
+          id: "job-1",
+          coverLetterFieldOverrides: { "letter.body": "Written for Acme." },
+        }),
+      );
+
+      const context = await buildJobChatPromptContext("job-1");
+
+      expect(context.coverLetterSnapshot).toBe("Written for Acme.");
+    });
+
+    it("drops a legacy draft that is just the template body, as the pane does", async () => {
+      mocks.getActiveCoverLetterDocument.mockResolvedValue(doc);
+      mocks.getJobById.mockResolvedValue(
+        createJob({
+          id: "job-1",
+          coverLetterFieldOverrides: {},
+          coverLetterDraft: "Dear Other Company, I have long admired…",
+        }),
+      );
+
+      const context = await buildJobChatPromptContext("job-1");
+
+      expect(context.coverLetterSnapshot).toBe("");
+    });
+
+    it("still falls back to a legacy free-text draft", async () => {
+      mocks.getActiveCoverLetterDocument.mockResolvedValue(doc);
+      mocks.getJobById.mockResolvedValue(
+        createJob({
+          id: "job-1",
+          coverLetterFieldOverrides: {},
+          coverLetterDraft: "An older draft for this job.",
+        }),
+      );
+
+      const context = await buildJobChatPromptContext("job-1");
+
+      expect(context.coverLetterSnapshot).toBe("An older draft for this job.");
+    });
   });
 
   it("throws when the job does not exist", async () => {

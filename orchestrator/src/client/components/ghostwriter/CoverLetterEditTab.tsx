@@ -1,4 +1,5 @@
 import * as api from "@client/api";
+import { coverLetterJobBaseline } from "@shared/cover-letter-fields";
 import type { CoverLetterDocument, Job } from "@shared/types";
 import { useMutation } from "@tanstack/react-query";
 import {
@@ -35,17 +36,27 @@ type SubTab = "fields" | "raw";
 /**
  * Surface a legacy free-text `coverLetterDraft` as the body field's value so
  * it stays visible/editable after the move to the per-field override model.
- * Equal-to-default entries drop back out at diff time, so this is safe even
- * when the draft matches the template body.
+ *
+ * A draft equal to the template's own body is skipped: it is the uploaded
+ * letter, not something written for this job, and the per-job baseline is
+ * empty now — seeding it would put the boilerplate back on screen AND, since
+ * it no longer matches the baseline it is diffed against, open the job dirty
+ * and offer to persist it.
  */
 function seedOverrides(
   job: Job,
   bodyFieldId: string | null,
+  documentBody: string | undefined,
 ): Record<string, string> {
   const next: Record<string, string> = {
     ...(job.coverLetterFieldOverrides ?? {}),
   };
-  if (bodyFieldId && job.coverLetterDraft && next[bodyFieldId] === undefined) {
+  if (
+    bodyFieldId &&
+    job.coverLetterDraft &&
+    job.coverLetterDraft.trim() !== (documentBody ?? "").trim() &&
+    next[bodyFieldId] === undefined
+  ) {
     next[bodyFieldId] = job.coverLetterDraft;
   }
   return next;
@@ -67,12 +78,15 @@ function diffOverrides(
   return out;
 }
 
+/** A render that failed AFTER the draft was generated and persisted. */
+class CoverLetterRenderAfterGenerateError extends Error {}
+
 /**
  * Edit tab for `CoverLetterPane`: a per-field editor over the active
  * cover-letter document, mirroring `CvEditTab` but bound to
  * `coverLetterFieldOverrides` and without the lock model. All extracted
  * fields are editable (not just the body) via Fields/Raw sub-tabs, then
- * Generate (LLM re-draft), Render PDF, Copy (body), and Save.
+ * Generate (LLM re-draft, then render), Render PDF, Copy (body), and Save.
  */
 export const CoverLetterEditTab: React.FC<Props> = ({
   job,
@@ -82,17 +96,28 @@ export const CoverLetterEditTab: React.FC<Props> = ({
   onRendered,
   tabSwitch,
 }) => {
-  const defaults = coverLetter.defaultFieldValues ?? {};
+  // The body's per-job baseline is EMPTY — the uploaded letter's prose belongs
+  // to whatever application it was written for, not to this job. Every value
+  // the editor shows, diffs and copies resolves through this one object.
+  const defaults = coverLetterJobBaseline(coverLetter);
+  const documentBody = bodyFieldId
+    ? coverLetter.defaultFieldValues?.[bodyFieldId]
+    : undefined;
 
   const [overrides, setOverrides] = useState<Record<string, string>>(() =>
-    seedOverrides(job, bodyFieldId),
+    seedOverrides(job, bodyFieldId, documentBody),
   );
   const [subTab, setSubTab] = useState<SubTab>("fields");
   const rawHandleRef = useRef<CvRawEditorHandle | null>(null);
 
   useEffect(() => {
-    setOverrides(seedOverrides(job, bodyFieldId));
-  }, [job.coverLetterFieldOverrides, job.coverLetterDraft, bodyFieldId]);
+    setOverrides(seedOverrides(job, bodyFieldId, documentBody));
+  }, [
+    job.coverLetterFieldOverrides,
+    job.coverLetterDraft,
+    bodyFieldId,
+    documentBody,
+  ]);
 
   const buildPatch = (
     effectiveOverrides: Record<string, string>,
@@ -150,13 +175,41 @@ export const CoverLetterEditTab: React.FC<Props> = ({
     },
   });
 
+  /**
+   * Generate is draft-then-render: the LLM writes the letter, the template is
+   * compiled, and the pane switches to the PDF. Local edits are saved first
+   * the way Render does — generate reads the PERSISTED overrides, so an
+   * unsaved edit to a non-body field would otherwise be both discarded by the
+   * reseed and missing from the PDF this produces.
+   *
+   * The render failing after a successful generate is not a failed generate:
+   * the draft is already persisted, so the message says so.
+   */
   const generateMutation = useMutation({
-    mutationFn: () => api.generateCoverLetter(job.id),
-    onSuccess: async () => {
-      toast.success("Cover letter drafted");
-      await onJobUpdated();
+    mutationFn: async (patch: Partial<Job> | null) => {
+      if (patch) {
+        await saveMutation.mutateAsync(patch);
+      }
+      await api.generateCoverLetter(job.id);
+      try {
+        await api.renderCoverLetterPdf(job.id);
+      } catch (error) {
+        throw new CoverLetterRenderAfterGenerateError(
+          error instanceof Error ? error.message : "Failed to render the PDF",
+        );
+      }
     },
-    onError: (error) => {
+    onSuccess: async () => {
+      toast.success("Cover letter drafted and rendered");
+      await onJobUpdated();
+      onRendered();
+    },
+    onError: async (error) => {
+      if (error instanceof CoverLetterRenderAfterGenerateError) {
+        toast.error(`Drafted, but the PDF failed to render: ${error.message}`);
+        await onJobUpdated();
+        return;
+      }
       toast.error(
         error instanceof Error
           ? error.message
@@ -219,6 +272,12 @@ export const CoverLetterEditTab: React.FC<Props> = ({
     const patch = buildPatch(effective);
     if (!patch) return;
     saveMutation.mutate(patch);
+  };
+
+  const handleGenerate = () => {
+    const effective = resolveEffectiveOverrides();
+    if (effective === null) return;
+    generateMutation.mutate(buildPatch(effective));
   };
 
   const handleRender = () => {
@@ -291,9 +350,9 @@ export const CoverLetterEditTab: React.FC<Props> = ({
             variant="outline"
             size="sm"
             className="h-7 gap-1 px-2 text-xs"
-            onClick={() => generateMutation.mutate()}
+            onClick={handleGenerate}
             disabled={!canGenerate}
-            title="Draft this cover letter against the job with the LLM"
+            title="Draft this cover letter against the job with the LLM, then render the PDF"
           >
             {generateMutation.isPending ? (
               <Loader2 className="h-3 w-3 animate-spin" />

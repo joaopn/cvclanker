@@ -118,6 +118,53 @@ describe("renderCoverLetterPdf", () => {
     });
   });
 
+  it("renders an EMPTY body for a job that was never generated, keeping every other default", async () => {
+    const job = createJob({
+      id: "job-fresh",
+      coverLetterDocumentId: null,
+      coverLetterFieldOverrides: {},
+    });
+    const doc = createCoverLetterDocument({
+      id: "cl-fresh",
+      templatedTex: "\\begin{letter}{Acme}«body.text»«recipient»\\end{letter}",
+      defaultFieldValues: {
+        "body.text": "Dear Other Company, I have long admired…",
+        recipient: "Hiring Team",
+      },
+      fields: [
+        {
+          id: "body.text",
+          role: "body",
+          value: "Dear Other Company, I have long admired…",
+        },
+        { id: "recipient", role: "name", value: "Hiring Team" },
+      ],
+    });
+    mocks.getJobById.mockResolvedValueOnce(job).mockResolvedValueOnce({
+      ...job,
+      coverLetterDocumentId: "cl-fresh",
+      coverLetterPdfPath: "cover_letter_job-fresh.pdf",
+    });
+    mocks.listCoverLetterDocuments.mockResolvedValue([{ id: "cl-fresh" }]);
+    mocks.getCoverLetterDocumentById.mockResolvedValue(doc);
+    mocks.getCoverLetterDocumentArchive.mockResolvedValue(Buffer.from("PK"));
+    mocks.renderTemplate.mockReturnValue("rendered tex");
+    mocks.runTectonic.mockResolvedValue({
+      pdf: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+      log: "ok",
+    });
+
+    const result = await renderCoverLetterPdf({ jobId: "job-fresh" });
+
+    expect(result.success).toBe(true);
+    // The uploaded letter's prose belongs to whatever application it was
+    // written for — it must never reach this job's PDF.
+    expect(mocks.renderTemplate).toHaveBeenCalledWith(doc.templatedTex, {
+      "body.text": "",
+      recipient: "Hiring Team",
+    });
+  });
+
   it("rejects when no cover-letter doc has been uploaded", async () => {
     mocks.getJobById.mockResolvedValueOnce(createJob({ id: "job-1" }));
     mocks.listCoverLetterDocuments.mockResolvedValue([]);

@@ -1,6 +1,7 @@
 import { badRequest, notFound } from "@infra/errors";
 import { logger } from "@infra/logger";
 import { sanitizeUnknown } from "@infra/sanitize";
+import { coverLetterJobBaseline } from "@shared/cover-letter-fields";
 import type { CoverLetterDocument, CvDocument, Job } from "@shared/types";
 import * as jobsRepo from "../repositories/jobs";
 import { getActiveCoverLetterDocument } from "./cover-letter/active";
@@ -105,21 +106,33 @@ function buildCvSnapshot(job: Job, cv: CvDocument | null): string {
 
 /**
  * Resolve the cover letter the user actually sees, mirroring
- * `CoverLetterPane.persistedBody`: when an active template exists, the body
- * override wins, then the legacy draft, then the template default. Without a
- * template it's just the legacy `coverLetterDraft`. If this drifts from the
- * pane, the model tailors against text the user isn't looking at.
+ * `CoverLetterEditTab`: when an active template exists, the body override
+ * wins, then the legacy draft, then the per-job baseline — which is EMPTY,
+ * not the template's own letter. Without a template it's just the legacy
+ * `coverLetterDraft`. If this drifts from the pane, the model tailors against
+ * text the user isn't looking at.
  */
 function buildCoverLetterSnapshot(
   job: Job,
   coverLetter: CoverLetterDocument | null,
 ): string {
   const bodyField = coverLetter?.fields.find((field) => field.role === "body");
-  if (bodyField) {
+  if (bodyField && coverLetter) {
     const override = job.coverLetterFieldOverrides?.[bodyField.id];
     if (override) return override.trim();
-    if (job.coverLetterDraft) return job.coverLetterDraft.trim();
-    return bodyField.value.trim();
+    const draft = (job.coverLetterDraft ?? "").trim();
+    // A legacy draft equal to the template's own body is the uploaded letter,
+    // not something written for this job. The pane drops it for that reason
+    // (seedOverrides), and this must drop it for the same one — handing the
+    // model boilerplate the user cannot see is the drift this function exists
+    // to avoid.
+    const documentBody = (
+      coverLetter.defaultFieldValues[bodyField.id] ?? ""
+    ).trim();
+    if (draft && draft !== documentBody) return draft;
+    // NOT the template's body: the pane shows the per-job baseline, which is
+    // empty until something writes a real letter for THIS job.
+    return coverLetterJobBaseline(coverLetter)[bodyField.id] ?? "";
   }
   return (job.coverLetterDraft ?? "").trim();
 }
