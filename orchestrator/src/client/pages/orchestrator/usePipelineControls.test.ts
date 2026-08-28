@@ -35,6 +35,57 @@ describe("usePipelineControls", () => {
     } as never);
   });
 
+  /**
+   * The menu's whole point on a chain: without this the selection is built,
+   * validated and then dropped one layer above the API call, so unticking a
+   * source does nothing and every profile runs its full pin set.
+   */
+  it("carries the run menu's scoping into a multi-profile chain", async () => {
+    const { result } = renderControls();
+
+    await act(async () => {
+      await result.current.runPipelineNow(["p1", "p2"], {
+        sources: ["linkedin"],
+        providerInstanceIds: ["inst-1"],
+        scrapeWindowDays: 3,
+        scrapeSinceLastRun: false,
+      });
+    });
+
+    expect(api.runPipeline).toHaveBeenCalledWith(
+      expect.objectContaining({
+        profileIds: ["p1", "p2"],
+        sources: ["linkedin"],
+        providerInstanceIds: ["inst-1"],
+        scrapeWindowDays: 3,
+        scrapeSinceLastRun: false,
+      }),
+    );
+  });
+
+  it("reports the legs the server actually queued, not the ones asked for", async () => {
+    vi.mocked(api.runPipeline).mockResolvedValue({
+      message: "Pipeline started",
+      profileCount: 1,
+    } as never);
+    const { result } = renderControls();
+
+    await act(async () => {
+      await result.current.runPipelineNow(["p1", "p2", "p3"], {
+        sources: ["linkedin"],
+      });
+    });
+
+    // A leg the filter empties is dropped server-side, so the requested count
+    // would over-report what ran.
+    expect(toast.message).toHaveBeenCalledWith(
+      "Pipeline started",
+      expect.objectContaining({
+        description: expect.not.stringContaining("3 profiles"),
+      }),
+    );
+  });
+
   it("re-runs one extractor against the Search Profile it was fired from", async () => {
     const { result } = renderControls();
 

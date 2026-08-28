@@ -218,8 +218,9 @@ describe("RunPipelineMenu", () => {
   });
 
   /**
-   * The run route refuses `sources` alongside `profileIds`, so a chain must not
-   * offer source buttons at all — sending them would 400 the run.
+   * A chain's list narrows each leg's OWN pins rather than replacing them,
+   * which is what makes one selection meaningful across profiles that pin
+   * different sources.
    */
   it("scopes sources on a chain, and says the choice hits every leg", async () => {
     getRunOptions.mockResolvedValue(

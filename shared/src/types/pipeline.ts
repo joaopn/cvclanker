@@ -640,7 +640,7 @@ export interface RunOptionSource {
   note: string | null;
 }
 
-/** Everything the run menu needs to offer a scoped run for one Profile. */
+/** Everything the run menu needs to offer a scoped run, for one Profile or a chain. */
 export interface RunOptionsResponse {
   /**
    * The Profiles these options describe — the default one when none was asked

@@ -281,8 +281,9 @@ const runPipelineSchema = z.object({
   profileId: z.string().min(1).optional(),
   // Run several Profiles one after another. Deliberately no `.max()`: the count
   // is bounded by how many Profiles exist, and an invented ceiling would be a
-  // magic number. Cannot be combined with `profileId`, `partial`, `sources` or
-  // `providerInstanceIds` (see the guards in the handler).
+  // magic number. Cannot be combined with `profileId` or `partial` (see the
+  // guards in the handler). `sources` / `providerInstanceIds` ARE allowed:
+  // across a chain they narrow each profile's own selection, never replace it.
   profileIds: z.array(z.string().min(1)).min(1).optional(),
 });
 
@@ -505,7 +506,20 @@ async function resolveProfileRunConfig(
     // broken profile: the menu offers the union across profiles, so unticking
     // a source legitimately leaves the profiles that did not pin it with
     // nothing. The leg is dropped; the caller refuses only if every leg is.
-    if (sourceSelectionMode === "filter" && body.sources !== undefined) {
+    //
+    // Gated on the profile having pinned SOMETHING: a profile that selects no
+    // sources at all is broken however the request was scoped, and silently
+    // dropping it would hide a misconfiguration the old 400 named. Either list
+    // can do the emptying, so both are checked — an instance-only narrowing
+    // empties a leg exactly the same way.
+    const pinnedAnything =
+      (profileConfig?.enabledSourceIds.length ?? 0) > 0 ||
+      (profileConfig?.providerInstanceIds.length ?? 0) > 0;
+    if (
+      sourceSelectionMode === "filter" &&
+      pinnedAnything &&
+      (body.sources !== undefined || body.providerInstanceIds !== undefined)
+    ) {
       return { ok: true, config: null };
     }
     // Name the remote exclusion when it is what emptied the run — the generic
@@ -723,16 +737,33 @@ pipelineRouter.get(
       });
     };
 
-    for (const profile of profiles) {
-      const profileConfig = profile.config;
-      const capDays = profileConfig.scrapeMaxAgeDays ?? null;
+    // An install with no Profiles at all still runs: the route resolves no
+    // profile, so discovery falls back to every enabled source. The menu has to
+    // answer for that same run or its Run button is dead on a fresh install.
+    const views: Array<{
+      config: ProfileConfig | null;
+      watermarks: Map<string, string>;
+    }> =
+      profiles.length > 0
+        ? await Promise.all(
+            profiles.map(async (profile) => ({
+              config: profile.config,
+              watermarks: await getScrapeWatermarks(profile.id),
+            })),
+          )
+        : [{ config: null, watermarks: new Map<string, string>() }];
+
+    for (const { config: profileConfig, watermarks } of views) {
+      const capDays = profileConfig?.scrapeMaxAgeDays ?? null;
       const locationIntent = buildRunLocationIntent(profileConfig);
-      const watermarks = await getScrapeWatermarks(profile.id);
 
       // EFFECTIVE = enabled on the Sources page AND pinned by the Profile. That
       // is exactly what a plain Run would use, which is what makes the menu
       // purely subtractive: unticking narrows a run, it can never widen one.
-      const pinnedExtractorIds = new Set(profileConfig.enabledSourceIds);
+      // With no Profile there is nothing to pin, so every enabled source is on.
+      const pinnedExtractorIds = profileConfig
+        ? new Set(profileConfig.enabledSourceIds)
+        : enabledExtractorIds;
 
       for (const [manifestId, manifest] of registry.manifests) {
         if (!enabledExtractorIds.has(manifestId)) continue;
@@ -785,9 +816,12 @@ pipelineRouter.get(
       // A remote-type Profile never runs Apify instances, so offering them
       // would show buttons that do nothing.
       const pinnedInstanceIds =
-        profileConfig.remoteProfile === true
+        profileConfig?.remoteProfile === true
           ? new Set<string>()
-          : new Set(profileConfig.providerInstanceIds);
+          : new Set(
+              profileConfig?.providerInstanceIds ??
+                enabledInstances.map((instance) => instance.id),
+            );
 
       for (const instance of enabledInstances) {
         if (!pinnedInstanceIds.has(instance.id)) continue;
@@ -814,17 +848,18 @@ pipelineRouter.get(
       }
     }
 
-    const profileCaps = profiles.map(
-      (profile) => profile.config.scrapeMaxAgeDays ?? null,
-    );
+    // The tightest ceiling any leg imposes — the one a single window must
+    // satisfy for the whole chain. An uncapped profile imposes nothing, so it
+    // is skipped rather than nulling the answer; that would claim "no ceiling"
+    // while a sibling leg's gate still refused, and seed the day count from the
+    // wrong number. Same rule as the per-source merge, deliberately.
+    const profileCaps = profiles
+      .map((profile) => profile.config.scrapeMaxAgeDays)
+      .filter((cap): cap is number => typeof cap === "number" && cap > 0);
     return ok(res, {
       profileIds: profiles.map((profile) => profile.id),
       sources: Array.from(merged.values()),
-      // The tightest ceiling any leg imposes — the one a single window must
-      // satisfy for the whole chain.
-      capDays: profileCaps.some((cap) => cap === null)
-        ? null
-        : Math.min(...(profileCaps as number[])),
+      capDays: profileCaps.length > 0 ? Math.min(...profileCaps) : null,
       // Only pre-press "since last run" when EVERY leg narrows; otherwise the
       // menu would claim a mode half the chain is not configured for.
       defaultSinceLastRun:
@@ -1050,6 +1085,7 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
     // discovered after earlier profiles have already scraped.
     if (body.profileIds) {
       const entries: ProfileSequenceEntry[] = [];
+      const skippedProfiles: string[] = [];
       for (const profileId of body.profileIds) {
         const profile = await getProfile(profileId);
         if (!profile) {
@@ -1069,8 +1105,13 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
           return fail(res, resolved.error);
         }
         // `null` means the source filter left this profile nothing to run, so
-        // it is dropped rather than failing the chain around it.
-        if (resolved.config === null) continue;
+        // it is dropped rather than failing the chain around it. Named in the
+        // response: a leg vanishing from a chain with no signal is exactly the
+        // silence this whole surface exists to remove.
+        if (resolved.config === null) {
+          skippedProfiles.push(profile.name);
+          continue;
+        }
         entries.push({
           profile: { id: profile.id, name: profile.name },
           config: resolved.config,
@@ -1098,6 +1139,7 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
       return ok(res, {
         message: "Pipeline started",
         profileCount: entries.length,
+        skippedProfiles,
       });
     }
 

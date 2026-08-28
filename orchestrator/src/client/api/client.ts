@@ -1082,14 +1082,22 @@ export async function runPipeline(config?: {
   scrapeWindowDays?: number;
   /** Per-run override of the Profile's "only scrape since the last run". */
   scrapeSinceLastRun?: boolean;
-}): Promise<{ message: string; skippedDisabledSources?: string[] }> {
-  return fetchApi<{ message: string; skippedDisabledSources?: string[] }>(
-    "/pipeline/run",
-    {
-      method: "POST",
-      body: JSON.stringify(config || {}),
-    },
-  );
+}): Promise<{
+  message: string;
+  skippedDisabledSources?: string[];
+  /** Legs the server actually queued — a chain drops one the filter empties. */
+  profileCount?: number;
+  skippedProfiles?: string[];
+}> {
+  return fetchApi<{
+    message: string;
+    skippedDisabledSources?: string[];
+    profileCount?: number;
+    skippedProfiles?: string[];
+  }>("/pipeline/run", {
+    method: "POST",
+    body: JSON.stringify(config || {}),
+  });
 }
 
 export async function getRunJobs(

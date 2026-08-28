@@ -22,7 +22,7 @@ import {
 } from "./runMenu";
 
 export interface RunPipelineMenuProps {
-  /** Profiles this run would use. Source scoping needs exactly one. */
+  /** Profiles this run would use. Several run one after another. */
   selectedProfileIds: string[];
   onRun: (config: {
     sources?: ExtractorSourceId[];
@@ -235,7 +235,9 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
               )}
               {sources.length === 0 && (
                 <p className="text-xs text-muted-foreground">
-                  No sources are selected for this search profile.
+                  {isChain
+                    ? "No sources are selected for any of these search profiles."
+                    : "No sources are selected for this search profile."}
                 </p>
               )}
               <div className="flex flex-col gap-1">

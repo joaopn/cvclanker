@@ -93,7 +93,11 @@ export function usePipelineControls(
         const sources = config.sources ?? [];
         const scopeCount =
           sources.length + (config.providerInstanceIds?.length ?? 0);
-        const profileCount = config.profileIds?.length ?? 0;
+        // What the server actually queued, not what was asked for: a chain
+        // leg the source filter empties is dropped, so the requested count
+        // would over-report it.
+        const profileCount =
+          started.profileCount ?? config.profileIds?.length ?? 0;
         const scopeLabel =
           config.scopeLabel ??
           (sources.length > 0
@@ -128,14 +132,10 @@ export function usePipelineControls(
       // One profile keeps the single-run shape (`profileId`), which the server
       // runs directly; several go through `profileIds` and the sequence runner.
       if (profileIds && profileIds.length > 1) {
-        // The run route refuses source scoping alongside `profileIds`, so a
-        // chain carries only the window — which does have a coherent meaning
-        // per profile.
-        await startPipelineRun({
-          profileIds,
-          scrapeWindowDays: overrides?.scrapeWindowDays,
-          scrapeSinceLastRun: overrides?.scrapeSinceLastRun,
-        });
+        // Overrides ride a chain in full: the route narrows each profile's own
+        // pins by the source list rather than replacing them, so one list is
+        // meaningful across profiles that pin different sources.
+        await startPipelineRun({ profileIds, ...overrides });
         return;
       }
       await startPipelineRun({ profileId: profileIds?.[0], ...overrides });

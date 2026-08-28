@@ -440,6 +440,99 @@ describe.sequential("Pipeline API routes", () => {
       expect(data.defaultSinceLastRun).toBe(false);
     });
 
+    /**
+     * The merge only runs when a key appears for MORE than one profile, which
+     * the disjoint-sources case above never exercises. Every rule that can be
+     * wrong lives here.
+     */
+    it("merges a source two profiles share", async () => {
+      const watermarks = await import(
+        "@server/repositories/source-scrape-watermarks"
+      );
+      const shared = {
+        searchTerms: ["x"],
+        searchCountry: "united kingdom",
+        enabledSourceIds: ["test-linkedin"],
+      };
+      const covered = await createProfile(
+        baseUrl,
+        { ...shared, scrapeMaxAgeDays: 30 },
+        "Covered",
+      );
+      const uncovered = await createProfile(
+        baseUrl,
+        { ...shared, scrapeMaxAgeDays: 7 },
+        "Uncovered",
+      );
+      await watermarks.recordScrapeWatermarks(
+        covered,
+        [
+          {
+            sourceKey: "test-linkedin",
+            windowDays: 30,
+            policyWindowDays: null,
+          },
+        ],
+        "2026-08-20T00:00:00.000Z",
+      );
+
+      const res = await fetch(
+        `${baseUrl}/api/pipeline/run-options?profileIds=${covered},${uncovered}`,
+      );
+      const { data } = await res.json();
+
+      expect(data.sources).toHaveLength(1);
+      // The tightest ceiling binds: one window must pass every leg's gate.
+      expect(data.sources[0].capDays).toBe(7);
+      // A leg that has never covered this source makes the chain reach back as
+      // far as it ever would, so "never" wins over any date.
+      expect(data.sources[0].lastScrapedAt).toBeNull();
+    });
+
+    it("keeps a ceiling that only one profile sets", async () => {
+      const shared = {
+        searchTerms: ["x"],
+        searchCountry: "united kingdom",
+        enabledSourceIds: ["test-linkedin"],
+      };
+      const uncapped = await createProfile(
+        baseUrl,
+        { ...shared, scrapeMaxAgeDays: null },
+        "Uncapped",
+      );
+      const capped = await createProfile(
+        baseUrl,
+        { ...shared, scrapeMaxAgeDays: 7 },
+        "Capped",
+      );
+
+      const res = await fetch(
+        `${baseUrl}/api/pipeline/run-options?profileIds=${uncapped},${capped}`,
+      );
+      const { data } = await res.json();
+
+      // An uncapped leg imposes nothing, so it must not null the answer: the
+      // menu would say "no ceiling" while the capped leg's gate still refused.
+      expect(data.capDays).toBe(7);
+      expect(data.sources[0].capDays).toBe(7);
+    });
+
+    it("offers every enabled source when no Profile exists at all", async () => {
+      // Cleared directly: the API refuses to delete the LAST profile, and a
+      // fresh install genuinely has none.
+      const { db, schema } = await import("@server/db");
+      await db.delete(schema.profiles);
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run-options`);
+      const { data } = await res.json();
+
+      // A fresh install runs every enabled source, so the menu has to offer
+      // them or its Run button is dead with nothing to tick.
+      expect(data.profileIds).toEqual([]);
+      expect(data.capDays).toBeNull();
+      expect(data.sources.length).toBeGreaterThan(0);
+    });
+
     it("404s for a profileId that does not exist", async () => {
       const res = await fetch(
         `${baseUrl}/api/pipeline/run-options?profileId=nope`,
