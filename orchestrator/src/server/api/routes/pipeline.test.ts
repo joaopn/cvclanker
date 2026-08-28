@@ -352,7 +352,7 @@ describe.sequential("Pipeline API routes", () => {
 
       const data = await optionsFor(profileId);
 
-      expect(data.profileId).toBe(profileId);
+      expect(data.profileIds).toEqual([profileId]);
       expect(data.capDays).toBe(14);
       expect(data.sources.map((source: { key: string }) => source.key)).toEqual(
         ["test-linkedin"],
@@ -396,8 +396,48 @@ describe.sequential("Pipeline API routes", () => {
       });
 
       const data = await optionsFor();
-      expect(data.profileId).toBe(profileId);
+      expect(data.profileIds).toEqual([profileId]);
       expect(data.defaultSinceLastRun).toBe(true);
+    });
+
+    it("merges several profiles into one offered set", async () => {
+      const first = await createProfile(
+        baseUrl,
+        {
+          searchTerms: ["x"],
+          searchCountry: "united kingdom",
+          enabledSourceIds: ["test-linkedin"],
+          scrapeMaxAgeDays: 30,
+          scrapeSinceLastRun: true,
+        },
+        "First",
+      );
+      const second = await createProfile(
+        baseUrl,
+        {
+          searchTerms: ["y"],
+          searchCountry: "united kingdom",
+          enabledSourceIds: ["test-hiringcafe"],
+          scrapeMaxAgeDays: 7,
+          scrapeSinceLastRun: false,
+        },
+        "Second",
+      );
+
+      const res = await fetch(
+        `${baseUrl}/api/pipeline/run-options?profileIds=${first},${second}`,
+      );
+      const { data } = await res.json();
+
+      expect(data.profileIds).toEqual([first, second]);
+      expect(
+        data.sources.map((entry: { key: string }) => entry.key).sort(),
+      ).toEqual(["test-hiringcafe", "test-linkedin"]);
+      // The TIGHTEST ceiling governs: one window has to satisfy every leg.
+      expect(data.capDays).toBe(7);
+      // Only pre-press "since last run" when EVERY leg narrows, or the menu
+      // claims a mode half the chain is not configured for.
+      expect(data.defaultSinceLastRun).toBe(false);
     });
 
     it("404s for a profileId that does not exist", async () => {
@@ -1430,8 +1470,6 @@ describe.sequential("Pipeline API routes", () => {
     it.each([
       ["profileId", { profileId: "p1" }],
       ["partial", { partial: true }],
-      ["sources", { sources: ["linkedin"] }],
-      ["providerInstanceIds", { providerInstanceIds: ["x"] }],
     ])("rejects profileIds combined with %s", async (key, extra) => {
       const { runProfileSequence } = await import("@server/pipeline/index");
       const profileId = await createProfile(baseUrl, runnableConfig("backend"));
@@ -1446,6 +1484,175 @@ describe.sequential("Pipeline API routes", () => {
       expect(res.status).toBe(400);
       expect(body.error.message).toMatch(new RegExp(key));
       expect(runProfileSequence).not.toHaveBeenCalled();
+    });
+
+    /**
+     * A chain's list NARROWS each leg rather than replacing it. Overriding
+     * would hand a profile sources it never pinned — which is why this
+     * combination used to be refused outright.
+     */
+    it("narrows each profile's own sources rather than replacing them", async () => {
+      const { runProfileSequence } = await import("@server/pipeline/index");
+      const first = await createProfile(
+        baseUrl,
+        { ...runnableConfig("backend"), enabledSourceIds: ["test-linkedin"] },
+        "First",
+      );
+      const second = await createProfile(
+        baseUrl,
+        {
+          ...runnableConfig("data"),
+          enabledSourceIds: ["test-linkedin", "test-hiringcafe"],
+        },
+        "Second",
+      );
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profileIds: [first, second],
+          sources: ["hiringcafe"],
+        }),
+      });
+
+      expect((await res.json()).ok).toBe(true);
+      // The first profile never pinned Hiring Cafe, so the list leaves it
+      // nothing — and it is DROPPED from the chain rather than handed a source
+      // it did not select or run as an empty leg.
+      expect(runProfileSequence).toHaveBeenCalledWith([
+        expect.objectContaining({
+          profile: expect.objectContaining({ name: "Second" }),
+          config: expect.objectContaining({ sources: ["hiringcafe"] }),
+        }),
+      ]);
+    });
+
+    it("refuses only when the filter leaves EVERY profile empty", async () => {
+      const { runProfileSequence } = await import("@server/pipeline/index");
+      const first = await createProfile(
+        baseUrl,
+        { ...runnableConfig("backend"), enabledSourceIds: ["test-linkedin"] },
+        "First",
+      );
+      const second = await createProfile(
+        baseUrl,
+        { ...runnableConfig("data"), enabledSourceIds: ["test-linkedin"] },
+        "Second",
+      );
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profileIds: [first, second],
+          sources: ["hiringcafe"],
+          providerInstanceIds: [],
+        }),
+      });
+      const body = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(body.error.message).toMatch(/leave nothing to run/);
+      expect(runProfileSequence).not.toHaveBeenCalled();
+    });
+
+    it("narrows a chain's provider instances the same way", async () => {
+      const { runProfileSequence } = await import("@server/pipeline/index");
+      const { db, schema } = await import("@server/db");
+      await db.insert(schema.providerInstances).values([
+        {
+          id: "inst-a",
+          providerId: "apify",
+          actorRef: "acme/a",
+          label: "A",
+          templateId: null,
+          enabled: true,
+          inputTemplateJson: "{}",
+          outputMappingJson: "{}",
+          mappingsJson: {},
+        },
+        {
+          id: "inst-b",
+          providerId: "apify",
+          actorRef: "acme/b",
+          label: "B",
+          templateId: null,
+          enabled: true,
+          inputTemplateJson: "{}",
+          outputMappingJson: "{}",
+          mappingsJson: {},
+        },
+      ]);
+      const first = await createProfile(
+        baseUrl,
+        { ...runnableConfig("backend"), providerInstanceIds: ["inst-a"] },
+        "First",
+      );
+      const second = await createProfile(
+        baseUrl,
+        {
+          ...runnableConfig("data"),
+          providerInstanceIds: ["inst-a", "inst-b"],
+        },
+        "Second",
+      );
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profileIds: [first, second],
+          providerInstanceIds: ["inst-b"],
+        }),
+      });
+
+      expect((await res.json()).ok).toBe(true);
+      expect(runProfileSequence).toHaveBeenCalledWith([
+        expect.objectContaining({
+          config: expect.objectContaining({ providerInstanceIds: [] }),
+        }),
+        expect.objectContaining({
+          config: expect.objectContaining({ providerInstanceIds: ["inst-b"] }),
+        }),
+      ]);
+    });
+
+    /**
+     * A filter says "nothing outside this list", so an entry a given leg cannot
+     * run drops out for that leg. Gating it would let one profile's geography
+     * refuse the whole chain.
+     */
+    it("does not refuse a chain over a source one leg cannot run", async () => {
+      const { runProfileSequence } = await import("@server/pipeline/index");
+      const first = await createProfile(
+        baseUrl,
+        {
+          ...runnableConfig("backend"),
+          searchCities: "",
+          workplaceTypes: ["onsite"],
+          locationSearchScope: "selected_only",
+          enabledSourceIds: ["test-glassdoor", "test-linkedin"],
+        },
+        "No cities",
+      );
+      const second = await createProfile(
+        baseUrl,
+        { ...runnableConfig("data"), enabledSourceIds: ["test-linkedin"] },
+        "Second",
+      );
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profileIds: [first, second],
+          sources: ["glassdoor", "linkedin"],
+        }),
+      });
+
+      expect((await res.json()).ok).toBe(true);
+      expect(runProfileSequence).toHaveBeenCalled();
     });
 
     it("rejects duplicate profileIds", async () => {

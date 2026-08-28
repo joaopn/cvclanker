@@ -642,8 +642,11 @@ export interface RunOptionSource {
 
 /** Everything the run menu needs to offer a scoped run for one Profile. */
 export interface RunOptionsResponse {
-  /** The Profile these options describe — the default one when none was asked for. */
-  profileId: string | null;
+  /**
+   * The Profiles these options describe — the default one when none was asked
+   * for. Several means a chain, and the fields below are merged across them.
+   */
+  profileIds: string[];
   sources: RunOptionSource[];
   /** The Profile's configured max job age; null = no ceiling configured. */
   capDays: number | null;

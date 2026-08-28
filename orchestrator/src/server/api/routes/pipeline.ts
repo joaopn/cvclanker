@@ -298,11 +298,29 @@ interface ResolveRunConfigArgs {
   // Loaded once by the caller, above the per-profile loop.
   enabledInstances: readonly ProviderInstanceRow[];
   sourceConfigs: readonly SourceConfigRow[];
+  /**
+   * What a body-supplied source list MEANS for this profile.
+   *
+   * `override` (single run) — run exactly this list. That is the long-standing
+   * contract, and what the per-source re-run button depends on.
+   *
+   * `filter` (a chain) — run this profile's OWN pins, minus anything not in the
+   * list. A chain's profiles pin different sources, so overriding would make
+   * every profile run the same set and hand a profile sources it never
+   * selected; narrowing is the only reading that survives N profiles.
+   */
+  sourceSelectionMode: "override" | "filter";
   loadRegistry: () => Promise<ExtractorRegistry | null>;
 }
 
 type ResolveRunConfigResult =
   | { ok: true; config: Partial<PipelineConfig> }
+  /**
+   * This profile has nothing left to run because the chain's source filter
+   * removed everything it pinned — not a misconfiguration, so the caller drops
+   * the leg instead of failing. Only reachable in `filter` mode.
+   */
+  | { ok: true; config: null }
   | { ok: false; error: AppError };
 
 /**
@@ -365,6 +383,7 @@ async function resolveProfileRunConfig(
     enabledInstanceIds,
     enabledInstances,
     sourceConfigs,
+    sourceSelectionMode,
     loadRegistry,
   } = args;
   const profileConfig = profile?.config ?? null;
@@ -376,9 +395,17 @@ async function resolveProfileRunConfig(
   // filters to keyword soup, so every instance would bill for rows that are
   // not remote at all). An explicit body list still wins — the
   // escape hatch exists only for direct API callers.
+  const profilePinnedInstanceIds = isRemoteProfile
+    ? []
+    : profileConfig?.providerInstanceIds;
   const resolvedProviderInstanceIds =
-    body.providerInstanceIds ??
-    (isRemoteProfile ? [] : profileConfig?.providerInstanceIds);
+    body.providerInstanceIds === undefined
+      ? profilePinnedInstanceIds
+      : sourceSelectionMode === "override"
+        ? body.providerInstanceIds
+        : (profilePinnedInstanceIds ?? []).filter((id) =>
+            body.providerInstanceIds?.includes(id),
+          );
 
   const locationIntent = buildRunLocationIntent(profileConfig, body);
 
@@ -389,7 +416,7 @@ async function resolveProfileRunConfig(
   // fallback. No profile at all → undefined → discovery uses every enabled
   // extractor.
   let resolvedSources: ExtractorSourceId[] | undefined;
-  if (body.sources !== undefined) {
+  if (body.sources !== undefined && sourceSelectionMode === "override") {
     resolvedSources = body.sources;
   } else if (profileConfig) {
     if (profileConfig.enabledSourceIds.length === 0) {
@@ -406,11 +433,25 @@ async function resolveProfileRunConfig(
         .filter(([, manifest]) => pinned.has(manifest.id))
         .map(([platform]) => platform);
     }
+    // A chain's list narrows this profile's own pins. Applied AFTER the
+    // expansion so a profile keeps whatever it selected and simply loses what
+    // the user unticked.
+    if (body.sources !== undefined && sourceSelectionMode === "filter") {
+      const keep = new Set<string>(body.sources);
+      resolvedSources = resolvedSources?.filter((source) => keep.has(source));
+    }
   }
 
   // Location compatibility is profile-dependent (it reads the resolved intent),
-  // unlike the unknown/disabled source checks the caller already ran.
-  if (body.sources && body.sources.length > 0) {
+  // unlike the unknown/disabled source checks the caller already ran. Only an
+  // OVERRIDE is gated: a filter says "nothing outside this list", so an entry
+  // this profile cannot run simply drops out, exactly as a profile-derived
+  // source does. Gating it would let one profile's geography 400 a whole chain.
+  if (
+    sourceSelectionMode === "override" &&
+    body.sources &&
+    body.sources.length > 0
+  ) {
     const sourcePlans = planLocationSources({
       intent: locationIntent,
       sources: body.sources,
@@ -460,6 +501,13 @@ async function resolveProfileRunConfig(
   }
 
   if (effectiveSourceCount === 0 && effectiveInstanceIds.length === 0) {
+    // A chain's filter emptying ONE leg is the user's own narrowing, not a
+    // broken profile: the menu offers the union across profiles, so unticking
+    // a source legitimately leaves the profiles that did not pin it with
+    // nothing. The leg is dropped; the caller refuses only if every leg is.
+    if (sourceSelectionMode === "filter" && body.sources !== undefined) {
+      return { ok: true, config: null };
+    }
     // Name the remote exclusion when it is what emptied the run — the generic
     // "enable a source" copy would send the user hunting a Sources-page
     // problem that does not exist.
@@ -590,29 +638,44 @@ const registryUnavailable = () =>
   );
 
 /**
- * Everything the run menu needs to offer a scoped run for one Profile.
+ * Everything the run menu needs to offer a scoped run.
  *
  * Computed server-side because the client cannot see any of it: which sources
- * the Sources page has enabled, which the Profile pins, each one's max job age
- * and bucket set, and when it last scraped. It also resolves the DEFAULT
- * profile the same way `POST /run` does, so the menu never offers a set the
- * run would not use.
+ * the Sources page has enabled, which each Profile pins, every one's max job
+ * age and bucket set, and when it last covered its window. It also resolves the
+ * DEFAULT profile the same way `POST /run` does, so the menu never offers a set
+ * the run would not use.
+ *
+ * Several profile ids answer for a CHAIN: the offered set is the union of what
+ * each profile would run, because the chain runs each leg with its own pins and
+ * the menu's list narrows all of them. Where profiles disagree, the answer is
+ * the one that governs the whole chain — the TIGHTEST ceiling, and the OLDEST
+ * coverage, since a run window has to satisfy every leg.
  */
 pipelineRouter.get(
   "/run-options",
   asyncRoute(async (req: Request, res: Response) => {
-    const requestedProfileId =
-      typeof req.query.profileId === "string" && req.query.profileId.length > 0
-        ? req.query.profileId
-        : undefined;
+    const rawIds =
+      typeof req.query.profileIds === "string" &&
+      req.query.profileIds.length > 0
+        ? req.query.profileIds.split(",").filter(Boolean)
+        : typeof req.query.profileId === "string" &&
+            req.query.profileId.length > 0
+          ? [req.query.profileId]
+          : [];
 
-    const profile = requestedProfileId
-      ? await getProfile(requestedProfileId)
-      : await getDefaultProfile();
-    if (requestedProfileId && !profile) {
-      return fail(res, notFound(`Profile not found: ${requestedProfileId}`));
+    const profiles: Profile[] = [];
+    for (const id of rawIds) {
+      const profile = await getProfile(id);
+      if (!profile) {
+        return fail(res, notFound(`Profile not found: ${id}`));
+      }
+      profiles.push(profile);
     }
-    const profileConfig = profile?.config ?? null;
+    if (profiles.length === 0) {
+      const fallback = await getDefaultProfile();
+      if (fallback) profiles.push(fallback);
+    }
 
     const registry = await getExtractorRegistry().catch(() => null);
     if (!registry) return fail(res, registryUnavailable());
@@ -623,109 +686,150 @@ pipelineRouter.get(
       sourceConfigs.map((row) => [row.extractorId, row]),
     );
     const enabledInstances = await getEnabledProviderInstances();
-    const watermarks = profile
-      ? await getScrapeWatermarks(profile.id)
-      : new Map<string, string>();
 
-    const capDays = profileConfig?.scrapeMaxAgeDays ?? null;
-    const locationIntent = buildRunLocationIntent(profileConfig);
-
-    // EFFECTIVE = enabled on the Sources page AND pinned by the Profile. That is
-    // exactly what a plain Run would use, which is what makes the menu purely
-    // subtractive: unticking narrows a run, it can never widen one.
-    const pinnedExtractorIds = profileConfig
-      ? new Set(profileConfig.enabledSourceIds)
-      : enabledExtractorIds;
-
-    const sources: RunOptionSource[] = [];
-
-    for (const [manifestId, manifest] of registry.manifests) {
-      if (!enabledExtractorIds.has(manifestId)) continue;
-      if (!pinnedExtractorIds.has(manifestId)) continue;
-
-      const plans = planLocationSources({
-        intent: locationIntent,
-        sources: manifest.providesSources,
+    /** Merge one profile's view of a source into the union. */
+    const merged = new Map<string, RunOptionSource>();
+    const mergeSource = (next: RunOptionSource) => {
+      const current = merged.get(next.key);
+      if (!current) {
+        merged.set(next.key, next);
+        return;
+      }
+      merged.set(next.key, {
+        ...current,
+        // A platform one profile can run is runnable in the chain; only one no
+        // profile can run stays dead.
+        platforms: Array.from(
+          new Set([...current.platforms, ...next.platforms]),
+        ),
+        incompatible: current.incompatible.filter((entry) =>
+          next.incompatible.some((other) => other.platform === entry.platform),
+        ),
+        // Null dominates: a profile that has never covered this source makes
+        // the chain's next run reach back as far as it ever would.
+        lastScrapedAt:
+          current.lastScrapedAt === null || next.lastScrapedAt === null
+            ? null
+            : current.lastScrapedAt < next.lastScrapedAt
+              ? current.lastScrapedAt
+              : next.lastScrapedAt,
+        // The tightest ceiling governs: the window has to pass every leg's gate.
+        capDays:
+          current.capDays === null
+            ? next.capDays
+            : next.capDays === null
+              ? current.capDays
+              : Math.min(current.capDays, next.capDays),
       });
-      const honoursRunWindow = extractorHonoursRunWindow(
-        manifest,
-        configByExtractor.get(manifestId),
-      );
-      // Derived, not hardcoded: a manifest naming its field something else
-      // would otherwise be reported as having no max-age concept at all.
-      const maxAgeFieldKey =
-        manifest.configSchema?.globalMappings.find(
-          (mapping) => mapping.globalField === "maxAgeDays",
-        )?.sourceField ?? "max_age_days";
-      const hasOwnMaxAge =
-        manifest.configSchema?.fields.some(
-          (field) => field.key === maxAgeFieldKey,
-        ) === true;
+    };
 
-      sources.push({
-        key: manifestId,
-        kind: "extractor",
-        label: manifest.displayName,
-        // Only the compatible platforms: an explicit `sources` list is gated on
-        // location compatibility, so sending an incompatible one would 400 the
-        // run — where an omitted list has those same sources skipped silently.
-        // `providesSources` is the manifest's own list, so every entry is an
-        // extractor source id; `planLocationSources` widens it to `string`.
-        platforms: plans.compatibleSources as ExtractorSourceId[],
-        incompatible: plans.plans
-          .filter((plan) => !plan.isCompatible)
-          .map((plan) => ({ platform: plan.source, reasons: plan.reasons })),
-        lastScrapedAt: watermarks.get(manifestId) ?? null,
-        capDays: honoursRunWindow ? capDays : null,
-        windowSupport: honoursRunWindow
-          ? "run_window"
-          : hasOwnMaxAge
-            ? "own_max_age"
-            : "ignores",
-        maxAgeBuckets: null,
-        note: manifest.description ?? null,
-      });
+    for (const profile of profiles) {
+      const profileConfig = profile.config;
+      const capDays = profileConfig.scrapeMaxAgeDays ?? null;
+      const locationIntent = buildRunLocationIntent(profileConfig);
+      const watermarks = await getScrapeWatermarks(profile.id);
+
+      // EFFECTIVE = enabled on the Sources page AND pinned by the Profile. That
+      // is exactly what a plain Run would use, which is what makes the menu
+      // purely subtractive: unticking narrows a run, it can never widen one.
+      const pinnedExtractorIds = new Set(profileConfig.enabledSourceIds);
+
+      for (const [manifestId, manifest] of registry.manifests) {
+        if (!enabledExtractorIds.has(manifestId)) continue;
+        if (!pinnedExtractorIds.has(manifestId)) continue;
+
+        const plans = planLocationSources({
+          intent: locationIntent,
+          sources: manifest.providesSources,
+        });
+        const honoursRunWindow = extractorHonoursRunWindow(
+          manifest,
+          configByExtractor.get(manifestId),
+        );
+        // Derived, not hardcoded: a manifest naming its field something else
+        // would otherwise be reported as having no max-age concept at all.
+        const maxAgeFieldKey =
+          manifest.configSchema?.globalMappings.find(
+            (mapping) => mapping.globalField === "maxAgeDays",
+          )?.sourceField ?? "max_age_days";
+        const hasOwnMaxAge =
+          manifest.configSchema?.fields.some(
+            (field) => field.key === maxAgeFieldKey,
+          ) === true;
+
+        mergeSource({
+          key: manifestId,
+          kind: "extractor",
+          label: manifest.displayName,
+          // Only the compatible platforms: an explicit `sources` list is gated
+          // on location compatibility, so sending an incompatible one would 400
+          // the run — where an omitted list has those same sources skipped
+          // silently. `providesSources` is the manifest's own list, so every
+          // entry is an extractor source id; `planLocationSources` widens it.
+          platforms: plans.compatibleSources as ExtractorSourceId[],
+          incompatible: plans.plans
+            .filter((plan) => !plan.isCompatible)
+            .map((plan) => ({ platform: plan.source, reasons: plan.reasons })),
+          lastScrapedAt: watermarks.get(manifestId) ?? null,
+          capDays: honoursRunWindow ? capDays : null,
+          windowSupport: honoursRunWindow
+            ? "run_window"
+            : hasOwnMaxAge
+              ? "own_max_age"
+              : "ignores",
+          maxAgeBuckets: null,
+          note: manifest.description ?? null,
+        });
+      }
+
+      // A remote-type Profile never runs Apify instances, so offering them
+      // would show buttons that do nothing.
+      const pinnedInstanceIds =
+        profileConfig.remoteProfile === true
+          ? new Set<string>()
+          : new Set(profileConfig.providerInstanceIds);
+
+      for (const instance of enabledInstances) {
+        if (!pinnedInstanceIds.has(instance.id)) continue;
+        const key = `${instance.providerId}:${instance.id}`;
+        const buckets = instanceMaxAgeBuckets(instance);
+        const template = instance.templateId
+          ? getProvider(instance.providerId)?.templates.find(
+              (candidate) => candidate.id === instance.templateId,
+            )
+          : undefined;
+
+        mergeSource({
+          key,
+          kind: "provider_instance",
+          label: instance.label,
+          platforms: [],
+          incompatible: [],
+          lastScrapedAt: watermarks.get(key) ?? null,
+          capDays: instance.maxAgeDays ?? capDays,
+          windowSupport: "run_window",
+          maxAgeBuckets: buckets ? [...buckets] : null,
+          note: template?.maxAgeNote ?? null,
+        });
+      }
     }
 
-    // A remote-type Profile never runs Apify instances, so offering them would
-    // show buttons that do nothing.
-    const pinnedInstanceIds =
-      profileConfig?.remoteProfile === true
-        ? new Set<string>()
-        : new Set(
-            profileConfig?.providerInstanceIds ??
-              enabledInstances.map((instance) => instance.id),
-          );
-
-    for (const instance of enabledInstances) {
-      if (!pinnedInstanceIds.has(instance.id)) continue;
-      const key = `${instance.providerId}:${instance.id}`;
-      const buckets = instanceMaxAgeBuckets(instance);
-      const template = instance.templateId
-        ? getProvider(instance.providerId)?.templates.find(
-            (candidate) => candidate.id === instance.templateId,
-          )
-        : undefined;
-
-      sources.push({
-        key,
-        kind: "provider_instance",
-        label: instance.label,
-        platforms: [],
-        incompatible: [],
-        lastScrapedAt: watermarks.get(key) ?? null,
-        capDays: instance.maxAgeDays ?? capDays,
-        windowSupport: "run_window",
-        maxAgeBuckets: buckets ? [...buckets] : null,
-        note: template?.maxAgeNote ?? null,
-      });
-    }
-
+    const profileCaps = profiles.map(
+      (profile) => profile.config.scrapeMaxAgeDays ?? null,
+    );
     return ok(res, {
-      profileId: profile?.id ?? null,
-      sources,
-      capDays,
-      defaultSinceLastRun: profileConfig?.scrapeSinceLastRun === true,
+      profileIds: profiles.map((profile) => profile.id),
+      sources: Array.from(merged.values()),
+      // The tightest ceiling any leg imposes — the one a single window must
+      // satisfy for the whole chain.
+      capDays: profileCaps.some((cap) => cap === null)
+        ? null
+        : Math.min(...(profileCaps as number[])),
+      // Only pre-press "since last run" when EVERY leg narrows; otherwise the
+      // menu would claim a mode half the chain is not configured for.
+      defaultSinceLastRun:
+        profiles.length > 0 &&
+        profiles.every((profile) => profile.config.scrapeSinceLastRun === true),
     } satisfies RunOptionsResponse);
   }),
 );
@@ -773,20 +877,18 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
         );
       }
 
-      // These combinations have no coherent meaning across N profiles, and
+      // `profileId` names one profile where `profileIds` names several, and
       // `partial` would make each profile accrete the previous one's funnel
-      // rows and captures. Refusing them is also what keeps the multi path free
-      // of body-driven source validation entirely.
+      // rows and captures. `sources` / `providerInstanceIds` ARE allowed: they
+      // narrow each profile's own selection rather than replacing it (see
+      // `sourceSelectionMode`), which is the only reading that means anything
+      // across N profiles with different pins.
       const conflictingKey =
         body.profileId !== undefined
           ? "profileId"
           : body.partial !== undefined
             ? "partial"
-            : body.sources !== undefined
-              ? "sources"
-              : body.providerInstanceIds !== undefined
-                ? "providerInstanceIds"
-                : null;
+            : null;
       if (conflictingKey) {
         return fail(
           res,
@@ -960,15 +1062,28 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
           enabledInstanceIds,
           enabledInstances,
           sourceConfigs,
+          sourceSelectionMode: "filter",
           loadRegistry,
         });
         if (!resolved.ok) {
           return fail(res, resolved.error);
         }
+        // `null` means the source filter left this profile nothing to run, so
+        // it is dropped rather than failing the chain around it.
+        if (resolved.config === null) continue;
         entries.push({
           profile: { id: profile.id, name: profile.name },
           config: resolved.config,
         });
+      }
+
+      if (entries.length === 0) {
+        return fail(
+          res,
+          badRequest(
+            "The selected sources leave nothing to run for any of these search profiles.",
+          ),
+        );
       }
 
       runWithRequestContext({}, () => {
@@ -1012,10 +1127,17 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
       enabledInstanceIds,
       enabledInstances,
       sourceConfigs,
+      sourceSelectionMode: "override",
       loadRegistry,
     });
     if (!resolved.ok) {
       return fail(res, resolved.error);
+    }
+    if (resolved.config === null) {
+      // Unreachable: only `filter` mode empties a leg into `null`, and this
+      // path always overrides. Narrowed rather than asserted away so the type
+      // stays honest if the modes ever change.
+      return fail(res, badRequest("No sources are selected for this run."));
     }
 
     // A per-source re-run fired from one page of a multi-profile run reconciles

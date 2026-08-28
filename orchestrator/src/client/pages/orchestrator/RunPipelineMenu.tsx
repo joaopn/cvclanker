@@ -1,12 +1,11 @@
 import * as api from "@client/api";
-import type { ExtractorSourceId } from "@shared/extractors";
+import { type ExtractorSourceId, sourceLabel } from "@shared/extractors";
 import { SCRAPE_WINDOW_MAX_DAYS } from "@shared/scrape-window.js";
 import type { RunOptionSource } from "@shared/types";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, Play } from "lucide-react";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,21 +50,17 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
   onRun,
 }) => {
   const [open, setOpen] = useState(false);
-  // Source scoping cannot ride a chain: the run route refuses `sources`
-  // alongside `profileIds`, so the buttons are hidden rather than sent and
-  // rejected.
   const isChain = selectedProfileIds.length > 1;
-  const profileId = isChain ? undefined : selectedProfileIds[0];
+  // Every selected Profile, so a chain's options are the union of what its legs
+  // would run rather than the DEFAULT profile's — which is what they were when
+  // the id was dropped, and it left the Run button dead whenever that unrelated
+  // profile had no runnable source.
+  const profileKey = selectedProfileIds.join(",");
 
-  // Skipped entirely for a chain: the options describe ONE profile, and asking
-  // without an id would answer for the DEFAULT profile — whose sources and cap
-  // have nothing to do with the profiles being chained. Gating the Run button
-  // on that set left it permanently disabled whenever the default profile had
-  // no runnable source.
   const optionsQuery = useQuery({
-    queryKey: ["run-options", profileId ?? null],
-    queryFn: () => api.getRunOptions(profileId),
-    enabled: open && !isChain,
+    queryKey: ["run-options", profileKey],
+    queryFn: () => api.getRunOptions(selectedProfileIds),
+    enabled: open,
     staleTime: 0,
   });
 
@@ -92,14 +87,14 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
       setSeededFor(null);
       return;
     }
-    if (!optionsQuery.data || seededFor === (profileId ?? "")) return;
-    setSeededFor(profileId ?? "");
+    if (!optionsQuery.data || seededFor === profileKey) return;
+    setSeededFor(profileKey);
     setSelectedKeys(new Set(runnable.map((source) => source.key)));
     // The Profile's own flag decides which button opens pressed; its max job
     // age is the window it would otherwise have run, so it seeds the input.
     setManualWindow(!optionsQuery.data.defaultSinceLastRun);
     setWindowInput(String(optionsQuery.data.capDays ?? 1));
-  }, [open, optionsQuery.data, runnable, profileId, seededFor]);
+  }, [open, optionsQuery.data, runnable, profileKey, seededFor]);
 
   const windowDays = useMemo(() => {
     if (!manualWindow) return null;
@@ -122,7 +117,8 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
   const capDays = optionsQuery.data?.capDays ?? null;
   const windowInvalid = manualWindow && windowDays === null;
   const canRun =
-    (isChain || (!optionsQuery.isLoading && selectedKeys.size > 0)) &&
+    !optionsQuery.isLoading &&
+    selectedKeys.size > 0 &&
     blocking.length === 0 &&
     !windowInvalid;
 
@@ -135,7 +131,10 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
     });
 
   const handleRun = () => {
-    const selection = isChain ? {} : buildRunSelection(sources, selectedKeys);
+    // Sent for a chain too: the route narrows each Profile's own pins by this
+    // list rather than replacing them, so a leg keeps what it selected minus
+    // whatever was unticked here.
+    const selection = buildRunSelection(sources, selectedKeys);
     setOpen(false);
     onRun({
       ...selection,
@@ -224,72 +223,78 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
               )}
             </section>
 
-            {isChain ? (
-              <p className="text-xs text-muted-foreground">
-                Running {selectedProfileIds.length} profiles one after another.
-                Each uses its own sources; pick a single profile to choose them.
-              </p>
-            ) : (
-              <section className="flex flex-col gap-2">
-                <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Sources
-                </Label>
-                {sources.length === 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    This search profile has no sources selected.
-                  </p>
-                )}
-                <div className="flex flex-col gap-1">
-                  {sources.map((source) => {
-                    const dead = !runnable.includes(source);
-                    const selected = selectedKeys.has(source.key);
-                    const note = windowSupportNote[source.windowSupport];
-                    return (
-                      <button
-                        key={source.key}
-                        type="button"
-                        disabled={dead}
-                        onClick={() => toggle(source.key)}
-                        className={`flex items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-left text-sm transition-colors ${
-                          dead
-                            ? "cursor-not-allowed border-dashed opacity-60"
-                            : selected
-                              ? "border-primary bg-primary/10"
-                              : "border-border hover:bg-muted"
-                        }`}
-                      >
-                        <span className="flex min-w-0 flex-col">
-                          <span className="truncate font-medium">
-                            {source.label}
-                          </span>
-                          <span className="truncate text-[11px] text-muted-foreground">
-                            {dead
-                              ? (source.incompatible[0]?.reasons[0] ??
-                                "Not available for this location")
-                              : [
-                                  // "covered to", not "last scraped": the mark
-                                  // moves only when a run closed the gap, so a
-                                  // narrow run leaves it deliberately behind.
-                                  source.lastScrapedAt
-                                    ? `covered to ${describeLastScraped(source.lastScrapedAt)}`
-                                    : "never covered",
-                                  note,
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")}
-                          </span>
+            <section className="flex flex-col gap-2">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Sources
+              </Label>
+              {isChain && (
+                <p className="text-[11px] text-muted-foreground">
+                  {selectedProfileIds.length} profiles run one after another.
+                  Unticking removes a source from every one of them.
+                </p>
+              )}
+              {sources.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  No sources are selected for this search profile.
+                </p>
+              )}
+              <div className="flex flex-col gap-1">
+                {sources.map((source) => {
+                  const dead = !runnable.includes(source);
+                  const selected = selectedKeys.has(source.key);
+                  const note = windowSupportNote[source.windowSupport];
+                  return (
+                    <button
+                      key={source.key}
+                      type="button"
+                      disabled={dead}
+                      onClick={() => toggle(source.key)}
+                      className={`flex items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-left text-sm transition-colors ${
+                        dead
+                          ? "cursor-not-allowed border-dashed opacity-60"
+                          : selected
+                            ? "border-primary bg-primary/10"
+                            : "border-border hover:bg-muted"
+                      }`}
+                    >
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate font-medium">
+                          {source.label}
                         </span>
-                        {source.platforms.length > 1 && (
-                          <Badge variant="secondary" className="shrink-0">
-                            {source.platforms.length}
-                          </Badge>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-            )}
+                        {/* Every board this button covers, one per line: a
+                              fan-out task like JobSpy runs three of them, and a
+                              bare count said nothing about WHICH. */}
+                        {source.platforms.length > 1 &&
+                          source.platforms.map((platform) => (
+                            <span
+                              key={platform}
+                              className="truncate text-[11px] text-muted-foreground"
+                            >
+                              {sourceLabel(platform)}
+                            </span>
+                          ))}
+                        <span className="truncate text-[11px] text-muted-foreground">
+                          {dead
+                            ? (source.incompatible[0]?.reasons[0] ??
+                              "Not available for this location")
+                            : [
+                                // "covered to", not "last scraped": the mark
+                                // moves only when a run closed the gap, so a
+                                // narrow run leaves it deliberately behind.
+                                source.lastScrapedAt
+                                  ? `covered to ${describeLastScraped(source.lastScrapedAt)}`
+                                  : "never covered",
+                                note,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
 
             {issues.length > 0 && (
               <ul className="flex flex-col gap-1 text-xs">

@@ -56,7 +56,7 @@ const source = (overrides: Partial<RunOptionSource>): RunOptionSource => ({
 const options = (
   overrides: Partial<RunOptionsResponse> = {},
 ): RunOptionsResponse => ({
-  profileId: "p1",
+  profileIds: ["p1"],
   sources: [source({})],
   capDays: null,
   defaultSinceLastRun: true,
@@ -221,24 +221,76 @@ describe("RunPipelineMenu", () => {
    * The run route refuses `sources` alongside `profileIds`, so a chain must not
    * offer source buttons at all — sending them would 400 the run.
    */
-  it("hides source selection for a multi-profile chain", async () => {
-    getRunOptions.mockResolvedValue(options());
+  it("scopes sources on a chain, and says the choice hits every leg", async () => {
+    getRunOptions.mockResolvedValue(
+      options({
+        profileIds: ["p1", "p2"],
+        sources: [
+          source({}),
+          source({
+            key: "hiringcafe",
+            label: "Hiring Cafe",
+            platforms: ["hiringcafe"],
+          }),
+        ],
+      }),
+    );
     const onRun = vi.fn();
     renderWithQueryClient(
       <RunPipelineMenu selectedProfileIds={["p1", "p2"]} onRun={onRun} />,
     );
     fireEvent.click(screen.getByText("Run pipeline"));
 
-    await waitFor(() =>
-      expect(screen.getByText(/2 profiles one after another/)).toBeTruthy(),
-    );
-    expect(screen.queryByText("Sources")).toBeNull();
+    await waitFor(() => expect(screen.getByText("Sources")).toBeTruthy());
+    expect(screen.getByText(/2 profiles run one after another/)).toBeTruthy();
 
+    fireEvent.click(screen.getByText("Hiring Cafe"));
     fireEvent.click(runButton());
-    // The mode rides along even when nothing is scoped: omitting it would fall
-    // through to the Profile's own flag, making this button a no-op on any
-    // Profile that has not ticked it.
-    expect(onRun).toHaveBeenCalledWith({ scrapeSinceLastRun: true });
+
+    // The server narrows each leg's OWN pins by this list rather than replacing
+    // them, which is what makes one list safe across profiles that pin
+    // different sources.
+    expect(onRun).toHaveBeenCalledWith({
+      sources: ["indeed", "linkedin"],
+      providerInstanceIds: [],
+      scrapeSinceLastRun: true,
+    });
+  });
+
+  it("asks for every selected profile's options", async () => {
+    getRunOptions.mockResolvedValue(options({ profileIds: ["p1", "p2"] }));
+    renderWithQueryClient(
+      <RunPipelineMenu selectedProfileIds={["p1", "p2"]} onRun={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByText("Run pipeline"));
+
+    await waitFor(() => expect(runButton()).toBeTruthy());
+    expect(getRunOptions).toHaveBeenCalledWith(["p1", "p2"]);
+  });
+
+  it("lists every board a fan-out source covers, one per line", async () => {
+    await renderMenu(
+      options({ sources: [source({ platforms: ["indeed", "linkedin"] })] }),
+    );
+
+    expect(screen.getByText("Indeed")).toBeTruthy();
+    expect(screen.getByText("LinkedIn")).toBeTruthy();
+  });
+
+  it("does not repeat a single-board source under its own name", async () => {
+    await renderMenu(
+      options({
+        sources: [
+          source({
+            key: "hiringcafe",
+            label: "Hiring Cafe",
+            platforms: ["hiringcafe"],
+          }),
+        ],
+      }),
+    );
+
+    expect(screen.getAllByText(/Hiring Cafe/)).toHaveLength(1);
   });
 
   /**

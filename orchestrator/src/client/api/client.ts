@@ -1052,9 +1052,12 @@ export async function getPipelineRunInsights(
 }
 
 export async function getRunOptions(
-  profileId?: string,
+  profileIds: string[] = [],
 ): Promise<RunOptionsResponse> {
-  const query = profileId ? `?profileId=${encodeURIComponent(profileId)}` : "";
+  const query =
+    profileIds.length > 0
+      ? `?profileIds=${encodeURIComponent(profileIds.join(","))}`
+      : "";
   return fetchApi<RunOptionsResponse>(`/pipeline/run-options${query}`);
 }
 
