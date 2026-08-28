@@ -123,6 +123,22 @@ function createTestExtractorRegistry(): ExtractorRegistry {
       id: `test-${source}`,
       displayName: `Test ${source}`,
       providesSources: [source],
+      // Five of the seven real pipeline extractors declare this mapping, and
+      // anything gating on "does the run's max job age reach this source"
+      // reads it. Without it the harness describes a world where no extractor
+      // honours the run window, and such a gate is silently inert in tests.
+      configSchema: {
+        fields: [
+          { key: "max_age_days", label: "Max job age (days)", type: "number" },
+        ],
+        globalMappings: [
+          {
+            globalField: "maxAgeDays",
+            sourceField: "max_age_days",
+            enabledByDefault: true,
+          },
+        ],
+      },
       run: vi.fn().mockResolvedValue({
         success: true,
         jobs: [],

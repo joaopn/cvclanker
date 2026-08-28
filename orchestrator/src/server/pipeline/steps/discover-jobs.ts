@@ -228,14 +228,25 @@ export async function discoverJobsStep(args: {
   const scrapeWindowFor = (
     sourceKey: string,
     capDays: number | null | undefined,
-  ): number | null =>
-    watermarkProfileId
+  ): number | null => {
+    // An explicit per-run window wins over the watermark narrowing: the user
+    // asked for exactly this span, and the run route has already refused it if
+    // it exceeded the cap. Still min-ed against the cap so the function stays
+    // total for any caller that reaches it without the gate.
+    const requested = args.mergedConfig.scrapeWindowDays;
+    if (typeof requested === "number" && requested > 0) {
+      return typeof capDays === "number" && capDays > 0
+        ? Math.min(requested, Math.floor(capDays))
+        : requested;
+    }
+    return watermarkProfileId
       ? resolveScrapeWindowDays({
           lastScrapedAt: scrapeWatermarks.get(sourceKey),
           now: scrapeWindowNow,
           capDays,
         })
       : null;
+  };
 
   const runGlobalsFor = (windowDays: number | null): SourceConfigRunGlobals =>
     windowDays === null

@@ -43,6 +43,7 @@ import type {
   PipelineStatusResponse,
   RunJobBucket,
   RunJobsResponse,
+  RunOptionsResponse,
   SearchTermsSuggestionResponse,
   StartBenchRunInput,
   StoredUserProfile,
@@ -1050,6 +1051,13 @@ export async function getPipelineRunInsights(
   );
 }
 
+export async function getRunOptions(
+  profileId?: string,
+): Promise<RunOptionsResponse> {
+  const query = profileId ? `?profileId=${encodeURIComponent(profileId)}` : "";
+  return fetchApi<RunOptionsResponse>(`/pipeline/run-options${query}`);
+}
+
 export async function runPipeline(config?: {
   profileId?: string;
   /** Run several profiles one after another. Not combinable with profileId. */
@@ -1067,6 +1075,10 @@ export async function runPipeline(config?: {
   matchStrictness?: LocationMatchStrictness;
   partial?: boolean;
   discoveryConcurrency?: number;
+  /** Explicit scrape window for this run, in days. */
+  scrapeWindowDays?: number;
+  /** Per-run override of the Profile's "only scrape since the last run". */
+  scrapeSinceLastRun?: boolean;
 }): Promise<{ message: string; skippedDisabledSources?: string[] }> {
   return fetchApi<{ message: string; skippedDisabledSources?: string[] }>(
     "/pipeline/run",

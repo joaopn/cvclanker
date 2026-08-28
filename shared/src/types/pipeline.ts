@@ -28,7 +28,19 @@ export interface PipelineConfig {
   // over the global `settings` values; when absent, discover-jobs falls back
   // to settings so no-profile / transitional runs keep working.
   searchTerms?: string[];
+  /**
+   * The profile's configured max job age, in days. Under the run menu this is a
+   * CEILING as well as the default window: a run asking for more is refused
+   * outright rather than clamped, so "the run scraped less than I asked" is
+   * never a silent outcome.
+   */
   scrapeMaxAgeDays?: number | null;
+  /**
+   * An explicit per-run window, in days, overriding both the profile's default
+   * window and the "since last run" narrowing. Never wider than
+   * `scrapeMaxAgeDays` — the run route refuses the request instead.
+   */
+  scrapeWindowDays?: number;
   // The Search Profile backing this run. Identifies the scrape watermarks the
   // "since last run" window is measured against; absent for body-only runs
   // (no profile), where the feature is inert.
@@ -81,6 +93,14 @@ export interface PipelineRunRequestedConfig {
 
 export interface PipelineRunSourceLimitSnapshot {
   maxJobsPerTerm: number | null;
+  /**
+   * The window this run asked its sources for, in days, and whether it was
+   * narrowed per source from the scrape watermarks. Optional because runs saved
+   * before the window became per-run carry neither — without them a past run's
+   * coverage cannot be reconstructed from its own record.
+   */
+  maxAgeDays?: number | null;
+  scrapeSinceLastRun?: boolean;
 }
 
 export interface PipelineRunModelSnapshot {
@@ -581,3 +601,53 @@ export type JobActionBatchStreamEvent =
       batch: JobActionBatchSnapshot;
       requestId: string;
     };
+
+/** How a source treats the run's requested scrape window. */
+export type RunWindowSupport =
+  /** The run's window reaches it and bounds what it fetches. */
+  | "run_window"
+  /**
+   * It honours a max job age, but its own (Sources page) rather than the run's
+   * — the `maxAgeDays` global mapping is unticked, so the run never reaches it.
+   */
+  | "own_max_age"
+  /** It has no max-age concept at all and returns its whole feed. */
+  | "ignores";
+
+/** One selectable source in the run menu. */
+export interface RunOptionSource {
+  /** Discovery task id: extractor manifest id, or `<provider>:<instance>`. */
+  key: string;
+  kind: "extractor" | "provider_instance";
+  label: string;
+  /**
+   * The platform ids to send as `sources` when this task is selected, filtered
+   * to those compatible with the profile's location setup. Empty for a provider
+   * instance (those go in `providerInstanceIds` instead) and for a task nothing
+   * of which can run.
+   */
+  platforms: string[];
+  /** Platforms this profile's location setup rules out, with the reason. */
+  incompatible: Array<{ platform: string; reasons: string[] }>;
+  /** When this source last scraped successfully for the profile. */
+  lastScrapedAt: string | null;
+  /** Widest window this source will accept, in days; null = uncapped. */
+  capDays: number | null;
+  windowSupport: RunWindowSupport;
+  /** Fixed windows the source snaps a request onto, if any. */
+  maxAgeBuckets: number[] | null;
+  /** One sentence on what this source does with a max job age. */
+  note: string | null;
+}
+
+/** Everything the run menu needs to offer a scoped run for one Profile. */
+export interface RunOptionsResponse {
+  /** The Profile these options describe — the default one when none was asked for. */
+  profileId: string | null;
+  profileName: string | null;
+  sources: RunOptionSource[];
+  /** The Profile's configured max job age; null = no ceiling configured. */
+  capDays: number | null;
+  /** Which window mode the menu should open on. */
+  defaultSinceLastRun: boolean;
+}

@@ -329,6 +329,274 @@ describe.sequential("Pipeline API routes", () => {
     return body.data.id as string;
   }
 
+  describe("GET /run-options", () => {
+    const optionsFor = async (profileId?: string) => {
+      const res = await fetch(
+        `${baseUrl}/api/pipeline/run-options${
+          profileId ? `?profileId=${profileId}` : ""
+        }`,
+      );
+      const body = await res.json();
+      expect(body.ok).toBe(true);
+      return body.data;
+    };
+
+    it("offers only sources the Profile pins", async () => {
+      const profileId = await createProfile(baseUrl, {
+        searchTerms: ["backend engineer"],
+        searchCountry: "united kingdom",
+        workplaceTypes: ["remote"],
+        enabledSourceIds: ["test-linkedin"],
+        scrapeMaxAgeDays: 14,
+      });
+
+      const data = await optionsFor(profileId);
+
+      expect(data.profileId).toBe(profileId);
+      expect(data.capDays).toBe(14);
+      expect(data.sources.map((source: { key: string }) => source.key)).toEqual(
+        ["test-linkedin"],
+      );
+    });
+
+    it("offers nothing for a Profile that pins nothing", async () => {
+      // An empty pin set means NO extractors — there is no "empty = all"
+      // fallback, so the menu must not invent one. Only reachable through an
+      // EDIT: `createProfile` deliberately backfills an empty list with every
+      // enabled source.
+      const profileId = await createProfile(baseUrl, {
+        searchTerms: ["x"],
+        searchCountry: "united kingdom",
+        enabledSourceIds: ["test-linkedin"],
+      });
+      const cleared = await fetch(`${baseUrl}/api/profiles/${profileId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          config: { enabledSourceIds: [], providerInstanceIds: [] },
+        }),
+      });
+      expect((await cleared.json()).ok).toBe(true);
+
+      expect((await optionsFor(profileId)).sources).toEqual([]);
+    });
+
+    it("falls back to the default Profile, like a run with no profileId", async () => {
+      const profileId = await createProfile(baseUrl, {
+        searchTerms: ["x"],
+        searchCountry: "united kingdom",
+        enabledSourceIds: ["test-linkedin"],
+        scrapeSinceLastRun: true,
+      });
+      // The default is a stored pointer, not "the newest profile" — the menu
+      // has to resolve it exactly as `POST /run` does or it offers a set the
+      // run would not use.
+      await fetch(`${baseUrl}/api/profiles/${profileId}/set-default`, {
+        method: "POST",
+      });
+
+      const data = await optionsFor();
+      expect(data.profileId).toBe(profileId);
+      expect(data.defaultSinceLastRun).toBe(true);
+    });
+
+    it("404s for a profileId that does not exist", async () => {
+      const res = await fetch(
+        `${baseUrl}/api/pipeline/run-options?profileId=nope`,
+      );
+      expect(res.status).toBe(404);
+    });
+
+    /**
+     * An explicit `sources` list is gated on location compatibility, so a task
+     * whose platforms include an incompatible one would 400 the run the moment
+     * the user deselected anything else. The menu therefore only ever sends the
+     * compatible subset — and shows the rest with a reason.
+     */
+    it("splits a task's platforms into compatible and incompatible", async () => {
+      const profileId = await createProfile(baseUrl, {
+        searchTerms: ["x"],
+        // No cities, so Glassdoor (which requires them) cannot run.
+        searchCountry: "united kingdom",
+        searchCities: "",
+        workplaceTypes: ["onsite"],
+        locationSearchScope: "selected_only",
+        enabledSourceIds: ["test-glassdoor", "test-linkedin"],
+      });
+
+      const data = await optionsFor(profileId);
+      const glassdoor = data.sources.find(
+        (source: { key: string }) => source.key === "test-glassdoor",
+      );
+
+      expect(glassdoor.platforms).toEqual([]);
+      expect(glassdoor.incompatible).toEqual([
+        expect.objectContaining({ platform: "glassdoor" }),
+      ]);
+      expect(glassdoor.incompatible[0].reasons.length).toBeGreaterThan(0);
+    });
+
+    it("reports the last successful scrape per source", async () => {
+      const profileId = await createProfile(baseUrl, {
+        searchTerms: ["x"],
+        searchCountry: "united kingdom",
+        enabledSourceIds: ["test-linkedin"],
+      });
+      const watermarks = await import(
+        "@server/repositories/source-scrape-watermarks"
+      );
+      await watermarks.recordScrapeWatermarks(
+        profileId,
+        [
+          {
+            sourceKey: "test-linkedin",
+            windowDays: 30,
+            policyWindowDays: null,
+          },
+        ],
+        "2026-08-20T00:00:00.000Z",
+      );
+
+      const data = await optionsFor(profileId);
+      expect(data.sources[0].lastScrapedAt).toBe("2026-08-20T00:00:00.000Z");
+    });
+  });
+
+  describe("run scrape window", () => {
+    const windowProfile = (overrides: Record<string, unknown> = {}) => ({
+      searchTerms: ["backend engineer"],
+      searchCountry: "united kingdom",
+      workplaceTypes: ["remote"],
+      runBudget: 300,
+      enabledSourceIds: ["test-linkedin"],
+      ...overrides,
+    });
+
+    it("passes an explicit window through and forces the narrowing off", async () => {
+      const { runPipeline } = await import("@server/pipeline/index");
+      const profileId = await createProfile(
+        baseUrl,
+        windowProfile({ scrapeMaxAgeDays: 30, scrapeSinceLastRun: true }),
+      );
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId, scrapeWindowDays: 1 }),
+      });
+      expect((await res.json()).ok).toBe(true);
+
+      expect(runPipeline).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scrapeWindowDays: 1,
+          scrapeMaxAgeDays: 30,
+          // An explicit window replaces the narrowing rather than stacking on
+          // top of it, even though the Profile has the flag on.
+          scrapeSinceLastRun: false,
+        }),
+      );
+    });
+
+    it("honours an explicit scrapeSinceLastRun:false over the Profile's flag", async () => {
+      const { runPipeline } = await import("@server/pipeline/index");
+      const profileId = await createProfile(
+        baseUrl,
+        windowProfile({ scrapeSinceLastRun: true }),
+      );
+
+      await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId, scrapeSinceLastRun: false }),
+      });
+
+      expect(runPipeline).toHaveBeenCalledWith(
+        expect.objectContaining({ scrapeSinceLastRun: false }),
+      );
+    });
+
+    it("refuses a window wider than the Profile's max job age", async () => {
+      const { runPipeline } = await import("@server/pipeline/index");
+      const profileId = await createProfile(
+        baseUrl,
+        windowProfile({ scrapeMaxAgeDays: 7 }),
+      );
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId, scrapeWindowDays: 30 }),
+      });
+      const body = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(body.error.details.violations).toEqual([
+        expect.objectContaining({ kind: "over_cap", limitDays: 7 }),
+      ]);
+      // Refused before anything starts — the whole run, not just the source.
+      expect(runPipeline).not.toHaveBeenCalled();
+    });
+
+    it("refuses the chain if ANY profile's cap is exceeded", async () => {
+      const { runProfileSequence } = await import("@server/pipeline/index");
+      const ok = await createProfile(
+        baseUrl,
+        windowProfile({ scrapeMaxAgeDays: 30 }),
+        "Roomy",
+      );
+      const tight = await createProfile(
+        baseUrl,
+        windowProfile({ scrapeMaxAgeDays: 2 }),
+        "Tight",
+      );
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileIds: [ok, tight], scrapeWindowDays: 7 }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(runProfileSequence).not.toHaveBeenCalled();
+    });
+
+    it("rejects an explicit window combined with since-last-run", async () => {
+      const profileId = await createProfile(baseUrl, windowProfile());
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profileId,
+          scrapeWindowDays: 1,
+          scrapeSinceLastRun: true,
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      expect((await res.json()).error.message).toMatch(
+        /cannot be combined with scrapeSinceLastRun/,
+      );
+    });
+
+    it("allows a window up to the cap", async () => {
+      const { runPipeline } = await import("@server/pipeline/index");
+      const profileId = await createProfile(
+        baseUrl,
+        windowProfile({ scrapeMaxAgeDays: 7 }),
+      );
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId, scrapeWindowDays: 7 }),
+      });
+
+      expect((await res.json()).ok).toBe(true);
+      expect(runPipeline).toHaveBeenCalled();
+    });
+  });
+
   it("resolves scrape config from an explicit profileId", async () => {
     const { runPipeline } = await import("@server/pipeline/index");
     const profileId = await createProfile(baseUrl, {

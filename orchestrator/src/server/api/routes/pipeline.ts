@@ -29,10 +29,15 @@ import {
   tryBeginProfileSequence,
 } from "@server/pipeline/index";
 import { getRunJobs } from "@server/pipeline/run-job-capture";
+import { getProvider } from "@server/providers";
 import * as pipelineRepo from "@server/repositories/pipeline";
 import { getProfile } from "@server/repositories/profiles";
 import { getEnabledProviderInstances } from "@server/repositories/provider-instances";
-import { getEnabledExtractorIds } from "@server/repositories/source-configs";
+import {
+  getAllSourceConfigs,
+  getEnabledExtractorIds,
+} from "@server/repositories/source-configs";
+import { getScrapeWatermarks } from "@server/repositories/source-scrape-watermarks";
 import { resetRateLimitBudget } from "@server/services/llm/rate-limit-budget";
 import { getDefaultProfile } from "@server/services/profiles";
 import { getEffectiveSettings } from "@server/services/settings";
@@ -49,18 +54,30 @@ import {
   LOCATION_SEARCH_SCOPE_VALUES,
 } from "@shared/location-preferences.js";
 import { deriveMaxJobsPerTerm } from "@shared/run-budget.js";
+import { SCRAPE_WINDOW_MAX_DAYS } from "@shared/scrape-window.js";
 import { parseSearchCitiesSetting } from "@shared/search-cities.js";
 import { MAX_POOL_CONCURRENCY } from "@shared/settings-registry";
 import {
   type PipelineConfig,
   type PipelineStatusResponse,
   type Profile,
+  type ProfileConfig,
+  type ProviderInstanceRow,
   RUN_JOB_BUCKETS,
   type RunJobsResponse,
+  type RunOptionSource,
+  type RunOptionsResponse,
+  type SourceConfigRow,
   SUITABILITY_CATEGORIES,
 } from "@shared/types";
 import { type Request, type Response, Router } from "express";
 import { z } from "zod";
+import {
+  describeRunWindowViolations,
+  extractorHonoursRunWindow,
+  findRunWindowViolations,
+  instanceMaxAgeBuckets,
+} from "./run-window";
 
 export const pipelineRouter = Router();
 const WORKPLACE_TYPE_VALUES = ["remote", "hybrid", "onsite"] as const;
@@ -246,6 +263,19 @@ const runPipelineSchema = z.object({
     .min(1)
     .max(MAX_POOL_CONCURRENCY)
     .optional(),
+  // An explicit scrape window for this run, in days. Refused rather than
+  // clamped when it exceeds a selected source's configured max job age — see
+  // `findRunWindowViolations`.
+  scrapeWindowDays: z
+    .number()
+    .int()
+    .min(1)
+    .max(SCRAPE_WINDOW_MAX_DAYS)
+    .optional(),
+  // Per-run override of the Profile's "only scrape since the last run" flag.
+  // Sending `false` is how the run menu's explicit-window mode switches the
+  // narrowing off for one run without touching the Profile.
+  scrapeSinceLastRun: z.boolean().optional(),
   // Resolve the run's scrape config from this Profile. Body fields still win
   // per-field (one-off overrides); absent → the default Profile.
   profileId: z.string().min(1).optional(),
@@ -263,6 +293,11 @@ interface ResolveRunConfigArgs {
   profile: Profile | null;
   enabledExtractorIds: Set<string>;
   enabledInstanceIds: Set<string>;
+  // Whole rows, not just ids: the run-window gate reads each instance's own
+  // max age and template, and each extractor's `maxAgeDays` mapping state.
+  // Loaded once by the caller, above the per-profile loop.
+  enabledInstances: readonly ProviderInstanceRow[];
+  sourceConfigs: readonly SourceConfigRow[];
   loadRegistry: () => Promise<ExtractorRegistry | null>;
 }
 
@@ -271,42 +306,23 @@ type ResolveRunConfigResult =
   | { ok: false; error: AppError };
 
 /**
- * Turn one Profile (plus the request body's per-field overrides) into a
- * pipeline config, or into the error that should fail the request.
+ * The location intent a run would use for one Profile.
  *
- * Everything here is per-profile. The three profile-independent loads — the
- * enabled-extractor ids, the enabled provider instances, and the registry
- * loader — are passed in so a multi-profile request does them once rather than
- * once per profile.
+ * Extracted so anything that must predict what a run will do — the run-options
+ * endpoint that drives the run menu — derives it from the same expression the
+ * run itself does, rather than a copy that drifts.
+ *
+ * A remote-type profile has no search geography: the editor hides Country and
+ * Cities, so the stored values (kept for when the flag is unticked) must not
+ * leak into the run and seed a location-scoped source. Body overrides still
+ * win for explicit API callers.
  */
-async function resolveProfileRunConfig(
-  args: ResolveRunConfigArgs,
-): Promise<ResolveRunConfigResult> {
-  const {
-    body,
-    profile,
-    enabledExtractorIds,
-    enabledInstanceIds,
-    loadRegistry,
-  } = args;
-  const profileConfig = profile?.config ?? null;
-
-  const resolvedSearchTerms = body.searchTerms ?? profileConfig?.searchTerms;
+function buildRunLocationIntent(
+  profileConfig: ProfileConfig | null,
+  body: Partial<RunBody> = {},
+) {
   const isRemoteProfile = profileConfig?.remoteProfile === true;
-  // A remote-type profile never runs Apify provider instances (PI's call,
-  // 2026-08-21: LinkedIn's forced AI search degraded the actors' remote
-  // filters to keyword soup, so every instance would bill for rows that are
-  // not remote at all). An explicit body list still wins — the
-  // escape hatch exists only for direct API callers.
-  const resolvedProviderInstanceIds =
-    body.providerInstanceIds ??
-    (isRemoteProfile ? [] : profileConfig?.providerInstanceIds);
-
-  // A remote-type profile has no search geography: the editor hides Country
-  // and Cities, so the stored values (kept for when the flag is unticked) must
-  // not leak into the run and seed a location-scoped source. Body overrides
-  // still win for explicit API callers.
-  const locationIntent = createLocationIntent({
+  return createLocationIntent({
     selectedCountry:
       body.country ?? (isRemoteProfile ? "" : profileConfig?.searchCountry),
     cityLocations:
@@ -328,6 +344,43 @@ async function resolveProfileRunConfig(
     remoteProfile: profileConfig?.remoteProfile,
     remoteLocationBlocklist: profileConfig?.remoteLocationBlocklist,
   });
+}
+
+/**
+ * Turn one Profile (plus the request body's per-field overrides) into a
+ * pipeline config, or into the error that should fail the request.
+ *
+ * Everything here is per-profile. The three profile-independent loads — the
+ * enabled-extractor ids, the enabled provider instances, and the registry
+ * loader — are passed in so a multi-profile request does them once rather than
+ * once per profile.
+ */
+async function resolveProfileRunConfig(
+  args: ResolveRunConfigArgs,
+): Promise<ResolveRunConfigResult> {
+  const {
+    body,
+    profile,
+    enabledExtractorIds,
+    enabledInstanceIds,
+    enabledInstances,
+    sourceConfigs,
+    loadRegistry,
+  } = args;
+  const profileConfig = profile?.config ?? null;
+
+  const resolvedSearchTerms = body.searchTerms ?? profileConfig?.searchTerms;
+  const isRemoteProfile = profileConfig?.remoteProfile === true;
+  // A remote-type profile never runs Apify provider instances (PI's call,
+  // 2026-08-21: LinkedIn's forced AI search degraded the actors' remote
+  // filters to keyword soup, so every instance would bill for rows that are
+  // not remote at all). An explicit body list still wins — the
+  // escape hatch exists only for direct API callers.
+  const resolvedProviderInstanceIds =
+    body.providerInstanceIds ??
+    (isRemoteProfile ? [] : profileConfig?.providerInstanceIds);
+
+  const locationIntent = buildRunLocationIntent(profileConfig, body);
 
   // Sources: a body list wins verbatim (including `[]` = "no built-in
   // extractors"). Otherwise expand the Search Profile's pinned extractor ids
@@ -446,6 +499,44 @@ async function resolveProfileRunConfig(
     });
   }
 
+  // The window gate runs before anything starts, for every profile of a chain.
+  // A violation fails the WHOLE request rather than skipping the source: a run
+  // that quietly scraped its configured window on some sources and the
+  // requested one on others is not a result anyone asked for. Deselecting the
+  // offending source is the user's escape hatch.
+  if (body.scrapeWindowDays !== undefined) {
+    // Only load the registry when there is something to gate — the empty-pin
+    // short-circuit above deliberately avoids it so an unavailable registry
+    // cannot turn a "no sources selected" 400 into a 503.
+    const registry =
+      resolvedSources && resolvedSources.length > 0
+        ? await loadRegistry()
+        : null;
+    if (resolvedSources && resolvedSources.length > 0 && !registry) {
+      return { ok: false, error: registryUnavailable() };
+    }
+    const gatedInstances = enabledInstances.filter((instance) =>
+      effectiveInstanceIds.includes(instance.id),
+    );
+    const violations = findRunWindowViolations({
+      windowDays: body.scrapeWindowDays,
+      profileMaxAgeDays: profileConfig?.scrapeMaxAgeDays,
+      sources: resolvedSources,
+      registry,
+      sourceConfigs,
+      instances: gatedInstances,
+    });
+    if (violations.length > 0) {
+      return {
+        ok: false,
+        error: badRequest(
+          describeRunWindowViolations(body.scrapeWindowDays, violations),
+          { windowDays: body.scrapeWindowDays, violations },
+        ),
+      };
+    }
+  }
+
   return {
     ok: true,
     config: {
@@ -457,10 +548,17 @@ async function resolveProfileRunConfig(
       maxJobsPerTerm: resolvedMaxJobsPerTerm,
       searchTerms: resolvedSearchTerms,
       scrapeMaxAgeDays: profileConfig?.scrapeMaxAgeDays,
+      scrapeWindowDays: body.scrapeWindowDays,
       // The scrape watermarks the "since last run" window reads and advances
       // are per-profile, so the flag is inert on a profile-less run.
       profileId: profile?.id,
-      scrapeSinceLastRun: profileConfig?.scrapeSinceLastRun,
+      // An explicit window forces the narrowing OFF for this run rather than
+      // narrowing on top of it. `??` (never `||`) so the run menu's explicit
+      // `false` is honoured instead of falling through to the Profile's flag.
+      scrapeSinceLastRun:
+        body.scrapeWindowDays !== undefined
+          ? false
+          : (body.scrapeSinceLastRun ?? profileConfig?.scrapeSinceLastRun),
       blockedCompanyKeywords: profileConfig?.blockedCompanyKeywords,
       locationIntent,
       enableAutoTailoring: body.enableAutoTailoring,
@@ -474,6 +572,137 @@ const registryUnavailable = () =>
   serviceUnavailable(
     "Extractor registry is unavailable. Try again after fixing startup errors.",
   );
+
+/**
+ * Everything the run menu needs to offer a scoped run for one Profile.
+ *
+ * Computed server-side because the client cannot see any of it: which sources
+ * the Sources page has enabled, which the Profile pins, each one's max job age
+ * and bucket set, and when it last scraped. It also resolves the DEFAULT
+ * profile the same way `POST /run` does, so the menu never offers a set the
+ * run would not use.
+ */
+pipelineRouter.get("/run-options", async (req: Request, res: Response) => {
+  const requestedProfileId =
+    typeof req.query.profileId === "string" && req.query.profileId.length > 0
+      ? req.query.profileId
+      : undefined;
+
+  const profile = requestedProfileId
+    ? await getProfile(requestedProfileId)
+    : await getDefaultProfile();
+  if (requestedProfileId && !profile) {
+    return fail(res, notFound(`Profile not found: ${requestedProfileId}`));
+  }
+  const profileConfig = profile?.config ?? null;
+
+  const registry = await getExtractorRegistry().catch(() => null);
+  if (!registry) return fail(res, registryUnavailable());
+
+  const enabledExtractorIds = new Set(await getEnabledExtractorIds());
+  const sourceConfigs = await getAllSourceConfigs();
+  const configByExtractor = new Map(
+    sourceConfigs.map((row) => [row.extractorId, row]),
+  );
+  const enabledInstances = await getEnabledProviderInstances();
+  const watermarks = profile
+    ? await getScrapeWatermarks(profile.id)
+    : new Map<string, string>();
+
+  const capDays = profileConfig?.scrapeMaxAgeDays ?? null;
+  const locationIntent = buildRunLocationIntent(profileConfig);
+
+  // EFFECTIVE = enabled on the Sources page AND pinned by the Profile. That is
+  // exactly what a plain Run would use, which is what makes the menu purely
+  // subtractive: unticking narrows a run, it can never widen one.
+  const pinnedExtractorIds = profileConfig
+    ? new Set(profileConfig.enabledSourceIds)
+    : enabledExtractorIds;
+
+  const sources: RunOptionSource[] = [];
+
+  for (const [manifestId, manifest] of registry.manifests) {
+    if (!enabledExtractorIds.has(manifestId)) continue;
+    if (!pinnedExtractorIds.has(manifestId)) continue;
+
+    const plans = planLocationSources({
+      intent: locationIntent,
+      sources: manifest.providesSources,
+    });
+    const honoursRunWindow = extractorHonoursRunWindow(
+      manifest,
+      configByExtractor.get(manifestId),
+    );
+    const hasOwnMaxAge =
+      manifest.configSchema?.fields.some(
+        (field) => field.key === "max_age_days",
+      ) === true;
+
+    sources.push({
+      key: manifestId,
+      kind: "extractor",
+      label: manifest.displayName,
+      // Only the compatible platforms: an explicit `sources` list is gated on
+      // location compatibility, so sending an incompatible one would 400 the
+      // run — where an omitted list has those same sources skipped silently.
+      platforms: [...plans.compatibleSources],
+      incompatible: plans.plans
+        .filter((plan) => !plan.isCompatible)
+        .map((plan) => ({ platform: plan.source, reasons: plan.reasons })),
+      lastScrapedAt: watermarks.get(manifestId) ?? null,
+      capDays: honoursRunWindow ? capDays : null,
+      windowSupport: honoursRunWindow
+        ? "run_window"
+        : hasOwnMaxAge
+          ? "own_max_age"
+          : "ignores",
+      maxAgeBuckets: null,
+      note: manifest.description ?? null,
+    });
+  }
+
+  // A remote-type Profile never runs Apify instances, so offering them would
+  // show buttons that do nothing.
+  const pinnedInstanceIds =
+    profileConfig?.remoteProfile === true
+      ? new Set<string>()
+      : new Set(
+          profileConfig?.providerInstanceIds ??
+            enabledInstances.map((instance) => instance.id),
+        );
+
+  for (const instance of enabledInstances) {
+    if (!pinnedInstanceIds.has(instance.id)) continue;
+    const key = `${instance.providerId}:${instance.id}`;
+    const buckets = instanceMaxAgeBuckets(instance);
+    const template = instance.templateId
+      ? getProvider(instance.providerId)?.templates.find(
+          (candidate) => candidate.id === instance.templateId,
+        )
+      : undefined;
+
+    sources.push({
+      key,
+      kind: "provider_instance",
+      label: instance.label,
+      platforms: [],
+      incompatible: [],
+      lastScrapedAt: watermarks.get(key) ?? null,
+      capDays: instance.maxAgeDays ?? capDays,
+      windowSupport: "run_window",
+      maxAgeBuckets: buckets ? [...buckets] : null,
+      note: template?.maxAgeNote ?? null,
+    });
+  }
+
+  return ok(res, {
+    profileId: profile?.id ?? null,
+    profileName: profile?.name ?? null,
+    sources,
+    capDays,
+    defaultSinceLastRun: profileConfig?.scrapeSinceLastRun === true,
+  } satisfies RunOptionsResponse);
+});
 
 pipelineRouter.post("/run", async (req: Request, res: Response) => {
   // Set once the sequence slot is claimed and still owned by THIS handler.
@@ -491,6 +720,20 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
       return fail(
         res,
         conflict("A multi-profile run is in progress. Cancel it first."),
+      );
+    }
+
+    // Two ways to say what window to scrape; sending both is a contradiction,
+    // not a precedence question. Refused rather than silently resolved.
+    if (
+      body.scrapeWindowDays !== undefined &&
+      body.scrapeSinceLastRun === true
+    ) {
+      return fail(
+        res,
+        badRequest(
+          "scrapeWindowDays cannot be combined with scrapeSinceLastRun: true — an explicit window and the since-last-run narrowing are alternatives.",
+        ),
       );
     }
 
@@ -577,9 +820,11 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
     // EFFECTIVE selection rather than the raw one. Profile-independent, so a
     // multi-profile request loads them once, not once per profile.
     const enabledExtractorIds = new Set(await getEnabledExtractorIds());
-    const enabledInstanceIds = new Set(
-      (await getEnabledProviderInstances()).map((row) => row.id),
-    );
+    // Kept as whole rows: the run-window gate needs each instance's own max age
+    // and its template, and each extractor's `maxAgeDays` mapping state.
+    const enabledInstances = await getEnabledProviderInstances();
+    const enabledInstanceIds = new Set(enabledInstances.map((row) => row.id));
+    const sourceConfigs = await getAllSourceConfigs();
 
     // Body-provided sources are validated here (unknown → 400, disabled → 400)
     // because they depend on the body alone, not on any profile — running them
@@ -687,6 +932,8 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
           profile,
           enabledExtractorIds,
           enabledInstanceIds,
+          enabledInstances,
+          sourceConfigs,
           loadRegistry,
         });
         if (!resolved.ok) {
@@ -737,6 +984,8 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
       profile,
       enabledExtractorIds,
       enabledInstanceIds,
+      enabledInstances,
+      sourceConfigs,
       loadRegistry,
     });
     if (!resolved.ok) {

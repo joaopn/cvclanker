@@ -74,6 +74,12 @@ function buildEffectiveConfigSnapshot(args: {
       args.config.blockedCompanyKeywords?.length ?? 0,
     sourceLimits: {
       maxJobsPerTerm: args.config.maxJobsPerTerm ?? null,
+      // What this run asked for, not what the profile is configured with: the
+      // window is per-run now, so the profile's value no longer describes a
+      // past run's coverage.
+      maxAgeDays:
+        args.config.scrapeWindowDays ?? args.config.scrapeMaxAgeDays ?? null,
+      scrapeSinceLastRun: args.config.scrapeSinceLastRun === true,
     },
     autoSkipCategory: args.settings.autoSkipCategory.value,
     models: {
