@@ -437,7 +437,10 @@ export function normalizeLocationMatchStrictness(
     value as LocationMatchStrictness,
   )
     ? (value as LocationMatchStrictness)
-    : "exact_only";
+    : // Keep this in step with defaultProfileConfig(): an intent built without
+      // a strictness must resolve the same way a profile that never stored one
+      // does, or the run and the editor disagree about the same profile.
+      "flexible";
 }
 
 export function normalizeLocationWorkplaceType(

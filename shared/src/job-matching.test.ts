@@ -15,6 +15,45 @@ const intentFor = (overrides: Parameters<typeof createLocationIntent>[0]) =>
   });
 
 describe("matchJobLocationIntent", () => {
+  it("ranks a country-matched remote job above the remote-worldwide arm under flexible", () => {
+    // The one behaviour change of this flag beyond the keep/drop decision. A
+    // job that matches the country, misses every city, and is flagged remote
+    // returns from the REMOTE arm under exact_only (priority 0) and from the
+    // country arm under flexible (priority 1). selectJobsStep uses priority as
+    // the within-category tie-break, so the same job can now displace another
+    // from the auto-tailor slice.
+    const job = {
+      location: "Manchester, England, United Kingdom",
+      isRemote: true,
+    };
+    const base = {
+      selectedCountry: "united kingdom",
+      cityLocations: ["London"],
+      workplaceTypes: ["remote" as const],
+      searchScope: "remote_worldwide_prioritize_selected" as const,
+    };
+    expect(
+      matchJobLocationIntent(
+        job,
+        intentFor({ ...base, matchStrictness: "exact_only" }),
+      ),
+    ).toEqual({
+      matched: true,
+      reasonCode: "remote_worldwide",
+      priority: 0,
+    });
+    expect(
+      matchJobLocationIntent(
+        job,
+        intentFor({ ...base, matchStrictness: "flexible" }),
+      ),
+    ).toEqual({
+      matched: true,
+      reasonCode: "selected_location",
+      priority: 1,
+    });
+  });
+
   it("matches a country named by ISO alpha-2 in the location tail", () => {
     const austria = intentFor({ selectedCountry: "austria" });
     expect(

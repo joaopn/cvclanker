@@ -6,12 +6,37 @@ import {
   describeLocationIntent,
   getLegacyLocationSelection,
   getPrimaryLocationLabel,
+  normalizeLocationMatchStrictness,
   normalizeLocationSourceCapabilities,
   planLocationSource,
   planLocationSources,
 } from "./location-domain";
+import { defaultProfileConfig } from "./types/profile";
 
 describe("location-domain", () => {
+  it("defaults match strictness to flexible", () => {
+    // Cities are a SEARCH location, not a filter — boards resolve one to a
+    // radius, so exact_only pays for every neighbouring town the board returns
+    // and then discards it. Must stay in step with defaultProfileConfig(): an
+    // intent built without a strictness has to resolve the same way a profile
+    // that never stored one does.
+    expect(normalizeLocationMatchStrictness(undefined)).toBe("flexible");
+    expect(normalizeLocationMatchStrictness(null)).toBe("flexible");
+    expect(normalizeLocationMatchStrictness("")).toBe("flexible");
+    expect(normalizeLocationMatchStrictness("nonsense")).toBe("flexible");
+    // An explicit value still wins, in both directions.
+    expect(normalizeLocationMatchStrictness("exact_only")).toBe("exact_only");
+    expect(normalizeLocationMatchStrictness("flexible")).toBe("flexible");
+    expect(createLocationIntentFromLegacyInputs({}).matchStrictness).toBe(
+      "flexible",
+    );
+    // The lockstep itself: a new profile and an unset intent must agree, or a
+    // run and the profile editor disagree about the same profile.
+    expect(defaultProfileConfig().locationMatchStrictness).toBe(
+      normalizeLocationMatchStrictness(undefined),
+    );
+  });
+
   it("normalizes intent values and deduplicates cities and workplace types", () => {
     expect(
       createLocationIntent({

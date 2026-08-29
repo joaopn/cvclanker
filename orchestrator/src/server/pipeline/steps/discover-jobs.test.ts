@@ -464,6 +464,9 @@ describe("discoverJobsStep", () => {
         locationIntent: createLocationIntentFromLegacyInputs({
           selectedCountry: "united kingdom",
           searchCities: "Leeds",
+          // Explicit: this test is ABOUT the city filter, and the default is
+          // flexible, which keeps every in-country row regardless of city.
+          matchStrictness: "exact_only",
         }),
       },
     });
@@ -579,6 +582,9 @@ describe("discoverJobsStep", () => {
         locationIntent: createLocationIntentFromLegacyInputs({
           selectedCountry: "united kingdom",
           searchCities: "London",
+          // no_city_match is only reachable under exact_only, and this test
+          // exists to pin that reason string.
+          matchStrictness: "exact_only",
         }),
       },
     });

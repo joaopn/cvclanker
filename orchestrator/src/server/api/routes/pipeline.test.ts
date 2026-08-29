@@ -308,7 +308,9 @@ describe.sequential("Pipeline API routes", () => {
           workplaceTypes: ["remote", "hybrid", "onsite"],
           geoScope: "selected_only",
           searchScope: "selected_only",
-          matchStrictness: "exact_only",
+          // The seed default: cities steer where the boards are searched, they
+          // do not filter what comes back.
+          matchStrictness: "flexible",
         }),
       }),
     );

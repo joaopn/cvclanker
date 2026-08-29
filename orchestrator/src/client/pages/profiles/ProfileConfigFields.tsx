@@ -352,6 +352,8 @@ export const ProfileConfigFields: React.FC<ProfileConfigFieldsProps> = ({
                 <MatchStrictnessField
                   value={form.matchStrictness}
                   onChange={(value) => onChange({ matchStrictness: value })}
+                  hasCountry={form.country.trim().length > 0}
+                  hasCities={form.cityValues.length > 0}
                 />
               </>
             )}

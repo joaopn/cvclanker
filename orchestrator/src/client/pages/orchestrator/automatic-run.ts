@@ -37,12 +37,12 @@ export const MATCH_STRICTNESS_OPTIONS: Array<{
   label: string;
 }> = [
   {
-    value: "exact_only",
-    label: "Exact matches only",
-  },
-  {
     value: "flexible",
     label: "Include likely matches",
+  },
+  {
+    value: "exact_only",
+    label: "Exact matches only",
   },
 ];
 

@@ -114,7 +114,18 @@ export function defaultProfileConfig(): ProfileConfig {
     searchCities: "",
     workplaceTypes: ["remote", "hybrid", "onsite"],
     locationSearchScope: "selected_only",
-    locationMatchStrictness: "exact_only",
+    // Cities steer WHERE the boards search; they are not a filter on what
+    // comes back. A board resolves a city to a radius, so a city search also
+    // returns its neighbours and postings listed for the whole country, and
+    // exact_only drops all of those.
+    //
+    // This is NOT a cost saving, and must not be described as one: the
+    // location filter runs after every extractor has returned, so the scrape
+    // is billed identically either way. The trade is the other direction —
+    // each row flexible keeps is a row that gets imported and scored, at one
+    // LLM call apiece. The per-profile numbers behind the choice, including
+    // the profiles where exact_only is the better answer, are in plan/.
+    locationMatchStrictness: "flexible",
     remoteProfile: false,
     remoteLocationBlocklist: [],
     scrapeMaxAgeDays: null,

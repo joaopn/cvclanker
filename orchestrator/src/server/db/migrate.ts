@@ -1198,9 +1198,11 @@ try {
 // user-created profile or re-run per boot (the cv_documents per-boot-wipe
 // lesson). Lives here, after the SQL `migrations[]` array, so the
 // source_configs / provider_instances backfills above have already populated
-// the rows this reads. Values are inlined (no @shared import at boot),
-// matching `defaultProfileConfig()` field-for-field; a bad/missing setting
-// falls back to the same default the shared parser would use on read.
+// the rows this reads. Values are inlined (no @shared import at boot), and a
+// bad/missing setting falls back to the same default the shared parser would
+// use on read. NOT field-for-field with `defaultProfileConfig()` despite the
+// overlap: `remoteProfile`, `remoteLocationBlocklist` and `scrapeSinceLastRun`
+// are absent here and come from the parser's own per-field fallback instead.
 try {
   const profileCount = (
     sqlite.prepare("SELECT COUNT(*) AS n FROM profiles").get() as { n: number }
@@ -1254,7 +1256,7 @@ try {
       locationSearchScope:
         readSetting("locationSearchScope") ?? "selected_only",
       locationMatchStrictness:
-        readSetting("locationMatchStrictness") ?? "exact_only",
+        readSetting("locationMatchStrictness") ?? "flexible",
       scrapeMaxAgeDays: parseIntOrNull(readSetting("scrapeMaxAgeDays")),
       blockedCompanyKeywords: parseStringArray(
         readSetting("blockedCompanyKeywords"),
