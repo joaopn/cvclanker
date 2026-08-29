@@ -1,17 +1,26 @@
 /**
  * Compact, mobile-friendly pipeline-progress indicator for the Swipe page.
- * Subscribes to the same `/api/pipeline/progress` SSE as the desktop
- * PipelineRunBanner, but renders a single slim row + thin progress bar
- * instead of the wide per-source table.
+ * Reads the same progress feed as the desktop PipelineRunBanner, but renders a
+ * single slim row + thin progress bar instead of the wide per-source table.
+ *
+ * Bound to the MANUAL partition: this strip sits on Swipe, where the Run button
+ * is, and a scheduled run gets its own surface on the Runs tab rather than
+ * interrupting triage here.
  */
 
+import { subscribeToPipelineProgress } from "@client/lib/progress-stream";
 import type { PipelineProgressEvent } from "@shared/types";
 import { Loader2 } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
-import { subscribeToEventSource } from "@/client/lib/sse";
 import { Progress } from "@/components/ui/progress";
 import { computePercentage, stepLabels } from "./PipelineRunBanner";
+
+const TERMINAL_STEPS: ReadonlySet<PipelineProgressEvent["step"]> = new Set([
+  "completed",
+  "cancelled",
+  "failed",
+]);
 
 interface PipelineProgressStripProps {
   isRunning: boolean;
@@ -27,11 +36,21 @@ export const PipelineProgressStrip: React.FC<PipelineProgressStripProps> = ({
       setProgress(null);
       return;
     }
-    const unsubscribe = subscribeToEventSource<PipelineProgressEvent>(
-      "/api/pipeline/progress",
-      { onMessage: (payload) => setProgress(payload) },
-    );
-    return () => unsubscribe();
+    return subscribeToPipelineProgress({
+      trigger: "manual",
+      onEvent: (payload) => {
+        // An UNTAGGED terminal describes a run that is over, so it cannot be
+        // the run this strip was mounted for. It is what the shared stream
+        // replays on subscribe — the previous run's last broadcast, since
+        // `resetProgress` notifies nobody — and rendering it would greet every
+        // press of Run with the last run's "Complete" at 100%. A TAGGED one is
+        // a single profile of a chain finishing, which the chain outlives.
+        if (TERMINAL_STEPS.has(payload.step) && payload.profileRun == null) {
+          return;
+        }
+        setProgress(payload);
+      },
+    });
   }, [isRunning]);
 
   if (!isRunning) return null;

@@ -95,6 +95,24 @@ const chainEvent = (step: string, index: number, extra = {}) => ({
 });
 
 describe("useOrchestratorData multi-profile runs", () => {
+  it("watches the manual partition only", async () => {
+    renderHook(() => useOrchestratorData(null), { wrapper: makeWrapper() });
+
+    const { subscribeToPipelineProgress } = await import(
+      "@client/lib/progress-stream"
+    );
+    const watcher = vi
+      .mocked(subscribeToPipelineProgress)
+      .mock.calls.at(-1)?.[0];
+
+    // `pipelineTerminalEvent` raises the "Pipeline complete" toast, which a
+    // background scheduled run has no business firing mid-triage. Splitting
+    // that from `isPipelineRunning` (which locks the Run button, so it will
+    // have to see both) is a later slice; until then this hook sees one
+    // partition, which keeps every derivation exactly what it was.
+    expect(watcher?.trigger).toBe("manual");
+  });
+
   it("keeps the run alive across a profile's own terminal and idle", async () => {
     const { result } = renderHook(() => useOrchestratorData(null), {
       wrapper: makeWrapper(),

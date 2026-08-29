@@ -482,7 +482,15 @@ export const useOrchestratorData = (
     // Through the shared stream: the run banner watches the same endpoint on
     // this page, and two independent subscriptions meant two sockets and two
     // server-side responses for one feed.
+    //
+    // Bound to the MANUAL partition, which keeps every derivation below exactly
+    // what it has always been. A scheduled run must not reach this hook yet:
+    // `isPipelineRunning` locks the Run button (so it will eventually have to
+    // see both) but `pipelineTerminalEvent` fires the "Pipeline complete" toast,
+    // which a background run has no business raising mid-triage. Splitting the
+    // two is its own slice, once scheduled runs exist to exercise it.
     const unsubscribe = subscribeToPipelineProgress({
+      trigger: "manual",
       onConnectionChange: setIsPipelineSseConnected,
       onEvent: (payload: PipelineProgressEvent) => {
         const step = payload.step as unknown;

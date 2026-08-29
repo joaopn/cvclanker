@@ -769,6 +769,7 @@ export const OrchestratorPage: React.FC = () => {
 
           <PipelineRunBanner
             isRunning={isPipelineRunning}
+            trigger="manual"
             onRerunSource={handleRerunSource}
             onRerunSources={handleRerunSources}
           />

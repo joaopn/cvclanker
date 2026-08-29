@@ -1,6 +1,7 @@
 // @vitest-environment node
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { PipelineProgress } from "./progress";
 import {
   clearProfileRunPageTarget,
   dismissRunBanner,
@@ -148,8 +149,12 @@ describe("pipeline progress source-stats tracking", () => {
 
   it("notifies subscribers when source-state mutations occur", () => {
     const received: number[] = [];
+    // Manual only: `subscribeToProgress` replays one event per partition that
+    // has run, so an unfiltered collector would also be measuring whatever a
+    // scheduled run left in the other slot.
     const unsubscribe = subscribeToProgress((snapshot) => {
-      received.push(snapshot.sourceStats.length);
+      if (snapshot.trigger === "manual")
+        received.push(snapshot.sourceStats.length);
     });
 
     progressHelpers.startCrawling(1);
@@ -414,6 +419,20 @@ describe("run banner dismissal", () => {
     resetProgress();
   });
 
+  /**
+   * Collect what one tab sees, MANUAL table only.
+   *
+   * `subscribeToProgress` replays one event per partition that has run, and
+   * `hasRun` is monotonic for the life of the module — so a bare collector here
+   * would assert a sequence whose length depends on whether some other describe
+   * in this file has run a scheduled pipeline yet, i.e. on declaration order.
+   */
+  function watchManual(collect: (progress: PipelineProgress) => void) {
+    return subscribeToProgress((progress) => {
+      if (progress.trigger === "manual") collect(progress);
+    });
+  }
+
   it("starts undismissed", () => {
     expect(getProgress().dismissed).toBe(false);
   });
@@ -424,7 +443,7 @@ describe("run banner dismissal", () => {
 
     // What a newly-opened tab receives on connect.
     const replayed: boolean[] = [];
-    const unsubscribe = subscribeToProgress((progress) => {
+    const unsubscribe = watchManual((progress) => {
       replayed.push(progress.dismissed);
     });
     unsubscribe();
@@ -435,7 +454,7 @@ describe("run banner dismissal", () => {
   it("notifies the tabs already watching", () => {
     updateProgress({ step: "failed", message: "Pipeline failed" });
     const seen: boolean[] = [];
-    const unsubscribe = subscribeToProgress((progress) => {
+    const unsubscribe = watchManual((progress) => {
       seen.push(progress.dismissed);
     });
 
@@ -450,7 +469,7 @@ describe("run banner dismissal", () => {
   it("does not notify twice for the same dismissal", () => {
     dismissRunBanner();
     const seen: boolean[] = [];
-    const unsubscribe = subscribeToProgress((progress) => {
+    const unsubscribe = watchManual((progress) => {
       seen.push(progress.dismissed);
     });
 
@@ -771,19 +790,84 @@ describe("manual and scheduled runs keep separate tables", () => {
 
     clearProfileRunPageTarget();
   });
+});
 
-  it("replays only the manual table to a new subscriber", () => {
-    runOnce("schedule", "workingnomads", 11);
+/**
+ * `hasRun` is monotonic for the life of the process — it means "a run has
+ * emitted into this partition since boot", so nothing exported can clear it and
+ * a shared module would carry every earlier test's runs into these. Each case
+ * therefore takes a FRESH module instance.
+ */
+describe("replaying the retained tables to a new subscriber", () => {
+  async function freshProgress() {
+    vi.resetModules();
+    return await import("./progress");
+  }
+
+  function runOnce(
+    progress: Awaited<ReturnType<typeof freshProgress>>,
+    trigger: "manual" | "schedule",
+    source: string,
+  ) {
+    progress.setActiveRunTrigger(trigger);
+    progress.resetProgress();
+    progress.progressHelpers.startCrawling(1);
+    progress.progressHelpers.startSource(source, 0, 1, { platforms: [source] });
+    progress.progressHelpers.complete(1, 0);
+  }
+
+  function replayedTriggers(
+    progress: Awaited<ReturnType<typeof freshProgress>>,
+  ): string[] {
+    const seen: string[] = [];
+    progress.subscribeToProgress((event) => seen.push(event.trigger))();
+    return seen;
+  }
+
+  it("replays every table that has a run to describe", async () => {
+    const progress = await freshProgress();
+    runOnce(progress, "manual", "hiringcafe");
+    runOnce(progress, "schedule", "workingnomads");
+
+    // Each partition keeps its own retained table and a subscriber may be
+    // rendering either, so both are replayed. Safe only because every client
+    // consumer now names the partition it watches: the fan-out in
+    // `updateProgress` has no such filter, and a consumer that was
+    // last-event-wins over one feed would be blanked by the other's replay.
+    expect(replayedTriggers(progress)).toEqual(["manual", "schedule"]);
+  });
+
+  it("replays no table for a partition nothing has run in", async () => {
+    const progress = await freshProgress();
+    runOnce(progress, "manual", "hiringcafe");
+
+    // A pristine slot describes no run, and handing a subscriber an event about
+    // a run that does not exist is what the `hasRun` gate exists to prevent.
+    expect(replayedTriggers(progress)).toEqual(["manual"]);
+  });
+
+  it("still replays the manual table on a fresh boot, so a client learns there is no run", async () => {
+    const progress = await freshProgress();
 
     const seen: string[] = [];
-    const unsubscribe = subscribeToProgress((progress) => {
-      seen.push(progress.trigger);
-    });
-    unsubscribe();
+    progress.subscribeToProgress((event) => seen.push(event.step))();
 
-    // Every client consumer is still last-event-wins over one feed, so a
-    // pristine schedule slot replayed after a live manual event would blank the
-    // banner. Replaying both is the client slice's job.
-    expect(seen).toEqual(["manual"]);
+    // The baseline every consumer has always hydrated from. Replaying nothing
+    // would leave a client unable to tell "no run" from "not connected yet".
+    expect(seen).toEqual(["idle"]);
+  });
+
+  it("does not let a reset arm a partition's replay", async () => {
+    const progress = await freshProgress();
+    runOnce(progress, "manual", "hiringcafe");
+
+    // `resetProgress` is the CLEAR call, and it fires once per PROFILE of a
+    // chain — so marking the partition there would make it a one-way latch that
+    // arms on a slot which has only ever been emptied.
+    progress.setActiveRunTrigger("schedule");
+    progress.resetProgress();
+    progress.setActiveRunTrigger("manual");
+
+    expect(replayedTriggers(progress)).toEqual(["manual"]);
   });
 });

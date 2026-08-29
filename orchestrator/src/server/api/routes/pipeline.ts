@@ -66,6 +66,7 @@ import {
   type ProfileConfig,
   type ProviderInstanceRow,
   RUN_JOB_BUCKETS,
+  RUN_TRIGGERS,
   type RunJobsResponse,
   type RunOptionSource,
   type RunOptionsResponse,
@@ -115,6 +116,11 @@ const dismissProgressSchema = z.object({
    * moved past is ignored rather than applied to whatever is current.
    */
   startedAt: z.string().min(1).optional(),
+  /**
+   * Which partition's table to hide. Absent means the manual one — the table
+   * every client had before scheduled runs existed.
+   */
+  trigger: z.enum(RUN_TRIGGERS).optional(),
 });
 
 /**
@@ -129,12 +135,13 @@ pipelineRouter.post("/progress/dismiss", (req: Request, res: Response) => {
   if (!parsed.success) {
     return fail(res, badRequest("Invalid dismiss payload"));
   }
-  // No `trigger` on the wire yet. The server function takes one, but exposing
-  // it here would let a request emit a pristine event for a partition nothing
-  // has run — and the fan-out has no partition filter until the client slice
-  // adds one, so every viewer's banner would blank.
-  dismissRunBanner(parsed.data.startedAt, "manual");
-  ok(res, { dismissed: getPipelineProgress("manual").dismissed });
+  // The two tables are dismissed separately: closing a finished manual run's
+  // banner must not also hide a scheduled run that is still going, and vice
+  // versa. Safe on the wire now that every client consumer filters on the
+  // partition it renders — the fan-out below still reaches every listener.
+  const trigger = parsed.data.trigger ?? "manual";
+  dismissRunBanner(parsed.data.startedAt, trigger);
+  ok(res, { dismissed: getPipelineProgress(trigger).dismissed });
 });
 
 /**
@@ -189,6 +196,13 @@ const runJobsQuerySchema = z.object({
   // Which profile's page the count was clicked on. Absent for an ordinary
   // single-profile run, whose captures live in the unscoped store.
   profileId: z.string().min(1).optional(),
+  // Which partition's captures to read. Absent means the manual one, matching
+  // the store's own default: a read arrives long after the capture, so
+  // resolving it against whatever is running now is the bug this names away.
+  trigger: z.enum(RUN_TRIGGERS).optional(),
+  // The cast is needed here and not for `RUN_TRIGGERS` above: this list is
+  // typed `readonly RunJobBucket[]`, which zod cannot read as an enum tuple,
+  // where `RUN_TRIGGERS` is `as const` and already one.
   bucket: z.enum(
     RUN_JOB_BUCKETS as [
       (typeof RUN_JOB_BUCKETS)[number],
@@ -203,13 +217,13 @@ const runJobsQuerySchema = z.object({
  */
 pipelineRouter.get("/run-jobs", (req: Request, res: Response) => {
   try {
-    const { source, bucket, profileId } = runJobsQuerySchema.parse(req.query);
+    const { source, bucket, profileId, trigger } = runJobsQuerySchema.parse(
+      req.query,
+    );
     const response: RunJobsResponse = {
       source,
       bucket,
-      // Manual partition until the client slice can name one; the scheduled
-      // store has no reader yet.
-      jobs: getRunJobs(source, bucket, profileId ?? "", "manual"),
+      jobs: getRunJobs(source, bucket, profileId ?? "", trigger ?? "manual"),
     };
     ok(res, response);
   } catch (error) {

@@ -542,6 +542,7 @@ export const OverviewPipelineRunsSection: React.FC = () => {
               finished. The banner decides for itself when it has nothing. */}
           <PipelineRunBanner
             isRunning={pipelineStatusQuery.data?.isRunning ?? false}
+            trigger="manual"
           />
 
           {isLoading && !latestRun && recentRuns.length === 0 ? (

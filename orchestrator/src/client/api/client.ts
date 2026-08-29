@@ -44,6 +44,7 @@ import type {
   RunJobBucket,
   RunJobsResponse,
   RunOptionsResponse,
+  RunTrigger,
   SearchTermsSuggestionResponse,
   StartBenchRunInput,
   StoredUserProfile,
@@ -1106,18 +1107,25 @@ export async function getRunJobs(
   source: string,
   bucket: RunJobBucket,
   profileId?: string,
+  // Which run partition's captures to read. Sent always rather than only when
+  // non-default: the store is keyed by it, and an omitted partition resolves
+  // server-side to the manual one, which is a silently wrong answer rather than
+  // an empty one.
+  trigger: RunTrigger = "manual",
 ): Promise<RunJobsResponse> {
-  const params = new URLSearchParams({ source, bucket });
+  const params = new URLSearchParams({ source, bucket, trigger });
   if (profileId) params.set("profileId", profileId);
   return fetchApi<RunJobsResponse>(`/pipeline/run-jobs?${params.toString()}`);
 }
 
 export async function dismissRunBanner(
   startedAt?: string,
+  /** Which run partition's table to hide; the two are dismissed separately. */
+  trigger: RunTrigger = "manual",
 ): Promise<{ dismissed: boolean }> {
   return fetchApi<{ dismissed: boolean }>("/pipeline/progress/dismiss", {
     method: "POST",
-    body: JSON.stringify(startedAt ? { startedAt } : {}),
+    body: JSON.stringify(startedAt ? { startedAt, trigger } : { trigger }),
   });
 }
 

@@ -1,5 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import type { PipelineProgressEvent } from "@shared/types";
+import type { PipelineProgressEvent, RunTrigger } from "@shared/types";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type Handlers = {
@@ -9,21 +11,36 @@ type Handlers = {
 };
 
 const lastHandlers: { current: Handlers | null } = { current: null };
+const subscribedTriggers: RunTrigger[] = [];
+const retained = new Map<RunTrigger, PipelineProgressEvent>();
 
 // The banner reads the SHARED progress stream, so that is the boundary to
 // stub — mocking the raw SSE helper would leave the module's own fan-out and
 // replay in the way.
+//
+// The stub keeps ONE property of the real module that the banner's behaviour
+// turns on: each partition's last event is retained and replayed SYNCHRONOUSLY
+// inside the subscribe call. That is what makes a partition swap land in a
+// single React commit, so a test that dropped it would see an intermediate
+// empty render the real app never shows.
 vi.mock("@client/lib/progress-stream", () => ({
   subscribeToPipelineProgress: vi.fn(
     (watcher: {
+      trigger: RunTrigger;
       onEvent: (event: PipelineProgressEvent) => void;
       onConnectionChange?: (connected: boolean) => void;
     }): (() => void) => {
+      subscribedTriggers.push(watcher.trigger);
       lastHandlers.current = {
-        onMessage: watcher.onEvent,
+        onMessage: (event: PipelineProgressEvent) => {
+          retained.set(event.trigger ?? watcher.trigger, event);
+          watcher.onEvent(event);
+        },
         onOpen: () => watcher.onConnectionChange?.(true),
         onError: () => watcher.onConnectionChange?.(false),
       };
+      const replay = retained.get(watcher.trigger);
+      if (replay) watcher.onEvent(replay);
       watcher.onConnectionChange?.(true);
       return () => {
         lastHandlers.current = null;
@@ -35,11 +52,26 @@ vi.mock("@client/lib/progress-stream", () => ({
 // Unmocked, the dismiss button fired a REAL fetch at a relative URL: it
 // rejected, the catch ran outside `act()`, and both dismiss tests passed while
 // proving neither that the POST is sent nor that a failure restores the banner.
-const dismissRunBanner = vi.fn(async (_startedAt?: string) => ({
-  dismissed: true,
-}));
+const dismissRunBanner = vi.fn(
+  async (_startedAt?: string, _trigger?: RunTrigger) => ({ dismissed: true }),
+);
+const getRunJobs = vi.fn(
+  async (
+    source: string,
+    bucket: string,
+    _profileId?: string,
+    _trigger?: RunTrigger,
+  ) => ({ source, bucket, jobs: [] }),
+);
 vi.mock("@client/api", () => ({
-  dismissRunBanner: (startedAt?: string) => dismissRunBanner(startedAt),
+  dismissRunBanner: (startedAt?: string, trigger?: RunTrigger) =>
+    dismissRunBanner(startedAt, trigger),
+  getRunJobs: (
+    source: string,
+    bucket: string,
+    profileId?: string,
+    trigger?: RunTrigger,
+  ) => getRunJobs(source, bucket, profileId, trigger),
 }));
 
 import { computePercentage, PipelineRunBanner } from "./PipelineRunBanner";
@@ -142,6 +174,10 @@ const chainEvent: PipelineProgressEvent = {
 describe("PipelineRunBanner", () => {
   beforeEach(() => {
     lastHandlers.current = null;
+    subscribedTriggers.length = 0;
+    retained.clear();
+    dismissRunBanner.mockClear();
+    getRunJobs.mockClear();
   });
 
   afterEach(() => {
@@ -149,7 +185,9 @@ describe("PipelineRunBanner", () => {
   });
 
   it("renders nothing when isRunning is false and no event yet", () => {
-    const { container } = render(<PipelineRunBanner isRunning={false} />);
+    const { container } = render(
+      <PipelineRunBanner trigger="manual" isRunning={false} />,
+    );
     expect(container.firstChild).toBeNull();
   });
 
@@ -195,7 +233,7 @@ describe("PipelineRunBanner", () => {
   });
 
   it("renders a per-platform table when running", () => {
-    render(<PipelineRunBanner isRunning />);
+    render(<PipelineRunBanner trigger="manual" isRunning />);
     act(() => {
       lastHandlers.current?.onMessage(baseEvent);
     });
@@ -208,7 +246,7 @@ describe("PipelineRunBanner", () => {
   it("surfaces a source's unreadable-item count, including when it mapped none", () => {
     // The zero case is the severe one: a source that returned items and could
     // read NONE of them renders a bare 0, which is the silence B35 is about.
-    render(<PipelineRunBanner isRunning />);
+    render(<PipelineRunBanner trigger="manual" isRunning />);
     act(() => {
       lastHandlers.current?.onMessage({
         ...baseEvent,
@@ -236,7 +274,9 @@ describe("PipelineRunBanner", () => {
   });
 
   it("stays visible after the run reaches a terminal step", () => {
-    const { rerender } = render(<PipelineRunBanner isRunning />);
+    const { rerender } = render(
+      <PipelineRunBanner trigger="manual" isRunning />,
+    );
     act(() => {
       lastHandlers.current?.onMessage(baseEvent);
     });
@@ -260,13 +300,13 @@ describe("PipelineRunBanner", () => {
     });
 
     // Banner is still mounted with the per-platform table now showing final counts.
-    rerender(<PipelineRunBanner isRunning={false} />);
+    rerender(<PipelineRunBanner trigger="manual" isRunning={false} />);
     expect(screen.getByText("LinkedIn")).toBeInTheDocument();
     expect(screen.getByText("Complete")).toBeInTheDocument();
   });
 
   it("hides after the user dismisses it", () => {
-    render(<PipelineRunBanner isRunning />);
+    render(<PipelineRunBanner trigger="manual" isRunning />);
     act(() => {
       lastHandlers.current?.onMessage(baseEvent);
     });
@@ -282,7 +322,7 @@ describe("PipelineRunBanner", () => {
    * the server still holds that run's funnel and replays it on connect.
    */
   it("shows a run that already ended, on a page opened afterwards", () => {
-    render(<PipelineRunBanner isRunning={false} />);
+    render(<PipelineRunBanner trigger="manual" isRunning={false} />);
 
     act(() => {
       lastHandlers.current?.onMessage({
@@ -297,7 +337,7 @@ describe("PipelineRunBanner", () => {
   });
 
   it("shows why a run failed even when its sources reported", () => {
-    render(<PipelineRunBanner isRunning={false} />);
+    render(<PipelineRunBanner trigger="manual" isRunning={false} />);
 
     act(() => {
       lastHandlers.current?.onMessage({
@@ -314,7 +354,7 @@ describe("PipelineRunBanner", () => {
   });
 
   it("sends the dismissal, naming the run it applies to", () => {
-    render(<PipelineRunBanner isRunning />);
+    render(<PipelineRunBanner trigger="manual" isRunning />);
     act(() => {
       lastHandlers.current?.onMessage({
         ...baseEvent,
@@ -324,13 +364,133 @@ describe("PipelineRunBanner", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /dismiss/i }));
 
-    // Named, so a stale tab cannot hide a run that started after its click.
-    expect(dismissRunBanner).toHaveBeenCalledWith("2026-05-22T10:00:00.000Z");
+    // Named, so a stale tab cannot hide a run that started after its click —
+    // and partitioned, so it cannot hide the OTHER table's run either.
+    expect(dismissRunBanner).toHaveBeenCalledWith(
+      "2026-05-22T10:00:00.000Z",
+      "manual",
+    );
+  });
+
+  it("dismisses the partition it renders, not the one the app started with", () => {
+    render(<PipelineRunBanner trigger="schedule" isRunning />);
+    act(() => {
+      lastHandlers.current?.onMessage({
+        ...baseEvent,
+        trigger: "schedule",
+        startedAt: "2026-08-29T10:00:00.000Z",
+      });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /dismiss/i }));
+
+    expect(dismissRunBanner).toHaveBeenCalledWith(
+      "2026-08-29T10:00:00.000Z",
+      "schedule",
+    );
+  });
+
+  it("drops the run it was showing when its partition binding changes", () => {
+    const { rerender } = render(
+      <PipelineRunBanner trigger="manual" isRunning={false} />,
+    );
+    act(() => {
+      lastHandlers.current?.onMessage({ ...baseEvent, step: "completed" });
+    });
+    expect(screen.getByText("LinkedIn")).toBeInTheDocument();
+
+    rerender(<PipelineRunBanner trigger="schedule" isRunning={false} />);
+
+    // The stream replays only a partition that HAS a retained run, so keeping
+    // the old one would leave another table's funnel on screen — and the
+    // Dismiss button would then name a run the new partition never had.
+    expect(screen.queryByText("LinkedIn")).not.toBeInTheDocument();
+    expect(subscribedTriggers).toEqual(["manual", "schedule"]);
+  });
+
+  it("drops a hand-picked page when the partition changes under a similar chain", () => {
+    // Both partitions' chains open on the SAME Search Profile — the steady
+    // state once a profile is both scheduled and run by hand.
+    const finishedChain = {
+      ...chainEvent,
+      step: "completed" as const,
+      profileRun: null,
+    };
+
+    // Give the scheduled partition a run to replay, so the swap back to it
+    // lands in ONE commit rather than passing through an empty render.
+    const { rerender } = render(
+      <PipelineRunBanner trigger="schedule" isRunning={false} />,
+    );
+    act(() => {
+      lastHandlers.current?.onMessage({
+        ...finishedChain,
+        trigger: "schedule",
+      });
+    });
+
+    rerender(<PipelineRunBanner trigger="manual" isRunning={false} />);
+    act(() => {
+      lastHandlers.current?.onMessage(finishedChain);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Previous profile" }));
+    expect(screen.getByText("Hiring Cafe")).toBeInTheDocument();
+
+    rerender(<PipelineRunBanner trigger="schedule" isRunning={false} />);
+
+    // The render-phase reset keys on the chain's FIRST profile, which has not
+    // changed — so nothing else clears a pin taken on the other table, and the
+    // scheduled run would open on the page the user picked for the manual one.
+    expect(screen.getByText("Working Nomads")).toBeInTheDocument();
+    expect(screen.queryByText("Hiring Cafe")).not.toBeInTheDocument();
+  });
+
+  it("watches only the partition it was told to render", () => {
+    render(<PipelineRunBanner trigger="schedule" isRunning />);
+    // The stream fans out per partition, so this IS the filter: a banner that
+    // subscribed without naming one would receive the other table's events.
+    expect(subscribedTriggers).toEqual(["schedule"]);
+  });
+
+  it("reads a funnel count's jobs from its own partition", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+
+    render(<PipelineRunBanner trigger="schedule" isRunning={false} />, {
+      wrapper,
+    });
+    act(() => {
+      lastHandlers.current?.onMessage({
+        ...baseEvent,
+        trigger: "schedule",
+        step: "completed",
+        sourceStats: [
+          sourceRow("hiringcafe", "Hiring Cafe", { jobsScraped: 4 }),
+        ],
+      });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "4" }));
+
+    // Captures are stored per partition, so a read that did not name one would
+    // answer a scheduled run's count with the manual table's jobs.
+    await vi.waitFor(() => {
+      expect(getRunJobs).toHaveBeenCalledWith(
+        "hiringcafe",
+        "scraped",
+        undefined,
+        "schedule",
+      );
+    });
   });
 
   it("puts the banner back when the dismissal fails", async () => {
     dismissRunBanner.mockRejectedValueOnce(new Error("offline"));
-    render(<PipelineRunBanner isRunning />);
+    render(<PipelineRunBanner trigger="manual" isRunning />);
     act(() => {
       lastHandlers.current?.onMessage(baseEvent);
     });
@@ -347,7 +507,7 @@ describe("PipelineRunBanner", () => {
   });
 
   it("keeps showing a chain sitting idle between profiles", () => {
-    render(<PipelineRunBanner isRunning={false} />);
+    render(<PipelineRunBanner trigger="manual" isRunning={false} />);
 
     act(() => {
       lastHandlers.current?.onMessage({
@@ -364,12 +524,12 @@ describe("PipelineRunBanner", () => {
   });
 
   it("subscribes even when nothing is running", () => {
-    render(<PipelineRunBanner isRunning={false} />);
+    render(<PipelineRunBanner trigger="manual" isRunning={false} />);
     expect(lastHandlers.current).not.toBeNull();
   });
 
   it("stays out of the way when the server has no run to describe", () => {
-    render(<PipelineRunBanner isRunning={false} />);
+    render(<PipelineRunBanner trigger="manual" isRunning={false} />);
 
     act(() => {
       lastHandlers.current?.onMessage({
@@ -384,7 +544,7 @@ describe("PipelineRunBanner", () => {
   });
 
   it("hides a run the SERVER says was dismissed, without being clicked", () => {
-    render(<PipelineRunBanner isRunning />);
+    render(<PipelineRunBanner trigger="manual" isRunning />);
 
     act(() => {
       lastHandlers.current?.onMessage({ ...baseEvent, dismissed: true });
@@ -395,7 +555,7 @@ describe("PipelineRunBanner", () => {
   });
 
   it("re-arms on a new run (new startedAt) after being dismissed", () => {
-    render(<PipelineRunBanner isRunning />);
+    render(<PipelineRunBanner trigger="manual" isRunning />);
     act(() => {
       lastHandlers.current?.onMessage(baseEvent);
     });
@@ -413,7 +573,7 @@ describe("PipelineRunBanner", () => {
   });
 
   it("follows the running profile and pages back to an earlier one", () => {
-    render(<PipelineRunBanner isRunning />);
+    render(<PipelineRunBanner trigger="manual" isRunning />);
     act(() => {
       lastHandlers.current?.onMessage(chainEvent);
     });
@@ -434,7 +594,7 @@ describe("PipelineRunBanner", () => {
   });
 
   it("stays on the pinned page when the chain moves on, until Follow live", () => {
-    render(<PipelineRunBanner isRunning />);
+    render(<PipelineRunBanner trigger="manual" isRunning />);
     act(() => {
       lastHandlers.current?.onMessage(chainEvent);
     });
@@ -454,7 +614,9 @@ describe("PipelineRunBanner", () => {
   });
 
   it("stops showing the stream indicator once the run is over", () => {
-    const { rerender } = render(<PipelineRunBanner isRunning />);
+    const { rerender } = render(
+      <PipelineRunBanner trigger="manual" isRunning />,
+    );
     act(() => {
       lastHandlers.current?.onMessage(baseEvent);
     });
@@ -463,7 +625,7 @@ describe("PipelineRunBanner", () => {
     act(() => {
       lastHandlers.current?.onMessage({ ...baseEvent, step: "completed" });
     });
-    rerender(<PipelineRunBanner isRunning={false} />);
+    rerender(<PipelineRunBanner trigger="manual" isRunning={false} />);
 
     // The banner outlives the run, but the stream it reports on does not: the
     // subscription is torn down with the run, so a "Connecting…" left up here
@@ -476,7 +638,11 @@ describe("PipelineRunBanner", () => {
   it("re-runs a failed source against the profile whose page it sits on", () => {
     const onRerunSource = vi.fn();
     const { rerender } = render(
-      <PipelineRunBanner isRunning onRerunSource={onRerunSource} />,
+      <PipelineRunBanner
+        trigger="manual"
+        isRunning
+        onRerunSource={onRerunSource}
+      />,
     );
     act(() => {
       lastHandlers.current?.onMessage({
@@ -486,7 +652,11 @@ describe("PipelineRunBanner", () => {
       });
     });
     rerender(
-      <PipelineRunBanner isRunning={false} onRerunSource={onRerunSource} />,
+      <PipelineRunBanner
+        trigger="manual"
+        isRunning={false}
+        onRerunSource={onRerunSource}
+      />,
     );
 
     // The chain ended on page 2; the failure to retry is back on page 1.
@@ -500,7 +670,13 @@ describe("PipelineRunBanner", () => {
 
   it("offers no re-run while the chain is still running", () => {
     const onRerunSource = vi.fn();
-    render(<PipelineRunBanner isRunning onRerunSource={onRerunSource} />);
+    render(
+      <PipelineRunBanner
+        trigger="manual"
+        isRunning
+        onRerunSource={onRerunSource}
+      />,
+    );
     act(() => {
       lastHandlers.current?.onMessage(chainEvent);
     });
@@ -514,13 +690,21 @@ describe("PipelineRunBanner", () => {
   it("keeps the re-run button on a single-profile run", () => {
     const onRerunSource = vi.fn();
     const { rerender } = render(
-      <PipelineRunBanner isRunning onRerunSource={onRerunSource} />,
+      <PipelineRunBanner
+        trigger="manual"
+        isRunning
+        onRerunSource={onRerunSource}
+      />,
     );
     act(() => {
       lastHandlers.current?.onMessage({ ...baseEvent, step: "completed" });
     });
     rerender(
-      <PipelineRunBanner isRunning={false} onRerunSource={onRerunSource} />,
+      <PipelineRunBanner
+        trigger="manual"
+        isRunning={false}
+        onRerunSource={onRerunSource}
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /re-run LinkedIn/i }));
@@ -530,7 +714,11 @@ describe("PipelineRunBanner", () => {
   it("retries every failed source on the page with one click", () => {
     const onRerunSources = vi.fn();
     const { rerender } = render(
-      <PipelineRunBanner isRunning onRerunSources={onRerunSources} />,
+      <PipelineRunBanner
+        trigger="manual"
+        isRunning
+        onRerunSources={onRerunSources}
+      />,
     );
     act(() => {
       lastHandlers.current?.onMessage({
@@ -559,7 +747,11 @@ describe("PipelineRunBanner", () => {
       });
     });
     rerender(
-      <PipelineRunBanner isRunning={false} onRerunSources={onRerunSources} />,
+      <PipelineRunBanner
+        trigger="manual"
+        isRunning={false}
+        onRerunSources={onRerunSources}
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /previous profile/i }));
@@ -576,7 +768,13 @@ describe("PipelineRunBanner", () => {
 
   it("offers no Retry all while the chain is still running", () => {
     const onRerunSources = vi.fn();
-    render(<PipelineRunBanner isRunning onRerunSources={onRerunSources} />);
+    render(
+      <PipelineRunBanner
+        trigger="manual"
+        isRunning
+        onRerunSources={onRerunSources}
+      />,
+    );
     act(() => {
       lastHandlers.current?.onMessage(chainEvent);
     });
@@ -592,7 +790,11 @@ describe("PipelineRunBanner", () => {
   it("retries a single-profile run's failures against the default profile", () => {
     const onRerunSources = vi.fn();
     const { rerender } = render(
-      <PipelineRunBanner isRunning onRerunSources={onRerunSources} />,
+      <PipelineRunBanner
+        trigger="manual"
+        isRunning
+        onRerunSources={onRerunSources}
+      />,
     );
     act(() => {
       lastHandlers.current?.onMessage({
@@ -608,7 +810,11 @@ describe("PipelineRunBanner", () => {
       });
     });
     rerender(
-      <PipelineRunBanner isRunning={false} onRerunSources={onRerunSources} />,
+      <PipelineRunBanner
+        trigger="manual"
+        isRunning={false}
+        onRerunSources={onRerunSources}
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /retry all/i }));

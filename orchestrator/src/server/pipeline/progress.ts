@@ -4,14 +4,15 @@ import {
   isExtractorSourceId,
   sourceLabel as resolveExtractorLabel,
 } from "@shared/extractors";
-import type {
-  PipelineProfileRun,
-  PipelineProfileRunStats,
-  PipelineProgressEvent,
-  PipelineProgressStep,
-  PipelineSourceStats,
-  PipelineSourceStatus,
-  RunTrigger,
+import {
+  type PipelineProfileRun,
+  type PipelineProfileRunStats,
+  type PipelineProgressEvent,
+  type PipelineProgressStep,
+  type PipelineSourceStats,
+  type PipelineSourceStatus,
+  RUN_TRIGGERS,
+  type RunTrigger,
 } from "@shared/types";
 import {
   resetAllRunJobCaptures,
@@ -119,6 +120,19 @@ interface RunProgressSlot {
    */
   sourceStats: Map<string, SourceStatsInternal>;
   sourceRowFallbackCounter: number;
+  /**
+   * Whether a run has ever emitted into this partition since boot. Gates the
+   * REPLAY: a partition nothing has run has no table to describe, and replaying
+   * its pristine idle would hand a new subscriber an event about a run that
+   * does not exist.
+   *
+   * Set in `updateProgress` alone — deliberately not in `resetProgress`, which
+   * is the "clear this slot" call and would become a one-way latch, nor in
+   * `dismissRunBanner`, which is not a run. Every real run emits through
+   * `progressHelpers` before it can do anything else, so the flag is true
+   * within moments of a run starting.
+   */
+  hasRun: boolean;
 }
 
 /*
@@ -158,6 +172,7 @@ function createProgressSlot(trigger: RunTrigger): RunProgressSlot {
     profileRunStats: new Map<number, PipelineProfileRunStats>(),
     sourceStats: new Map<string, SourceStatsInternal>(),
     sourceRowFallbackCounter: 0,
+    hasRun: false,
   };
 }
 
@@ -450,6 +465,7 @@ export function updateProgress(update: Partial<PipelineProgress>): void {
       sourceStats,
     });
   }
+  slot().hasRun = true;
   slot().progress = {
     ...slot().progress,
     ...update,
@@ -520,15 +536,23 @@ export function getProgress(trigger: RunTrigger = "manual"): PipelineProgress {
 export function subscribeToProgress(listener: ProgressListener): () => void {
   listeners.add(listener);
 
-  // Replays the MANUAL slot only, for now — deliberately, not by omission.
-  // Every client consumer is still last-event-wins over one feed, so replaying
-  // an untouched `schedule` slot would deliver a pristine "idle" AFTER a live
-  // manual event and blank the banner. Replaying both is the client-side
-  // slice's job, once each consumer filters on `trigger` and an untouched slot
-  // is skipped. Note this covers the REPLAY only: `updateProgress` and
-  // `dismissRunBanner` fan out to every listener with no partition filter, so
-  // until the client filters, nothing may emit for a partition it cannot read.
-  listener(slots.manual.progress);
+  // Every partition with a run to describe is replayed, because each keeps its
+  // own retained table and a subscriber may be rendering either. Safe now that
+  // every client consumer names the partition it watches and receives no other
+  // — before that, a pristine "idle" arriving after a live manual event blanked
+  // the banner, since the fan-out in `updateProgress` and `dismissRunBanner`
+  // has no partition filter and every consumer was last-event-wins over one
+  // feed.
+  //
+  // The manual slot is replayed unconditionally: it is the baseline every
+  // consumer has always hydrated from, and on a fresh boot its idle is how a
+  // client learns there is no run rather than learning nothing at all. Any
+  // OTHER partition is replayed only once something has actually run in it.
+  for (const trigger of RUN_TRIGGERS) {
+    if (trigger === "manual" || slots[trigger].hasRun) {
+      listener(slots[trigger].progress);
+    }
+  }
 
   // Return unsubscribe function
   return () => {

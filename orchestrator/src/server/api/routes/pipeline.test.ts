@@ -1946,4 +1946,113 @@ describe.sequential("Pipeline API routes", () => {
       controller.abort();
     }
   });
+
+  describe("run partitions on the wire", () => {
+    // `run-job-capture` is NOT part of the mocked pipeline barrel, so these
+    // drive the real store. It is a module singleton whose reset only sweeps
+    // the ACTIVE trigger's scopes, so both partitions are cleared by hand.
+    async function captureModule() {
+      return await import("@server/pipeline/run-job-capture");
+    }
+
+    async function clearCaptures() {
+      const capture = await captureModule();
+      for (const trigger of ["manual", "schedule"] as const) {
+        capture.setRunCaptureTrigger(trigger);
+        capture.resetAllRunJobCaptures();
+      }
+      capture.setRunCaptureTrigger("manual");
+    }
+
+    beforeEach(clearCaptures);
+    afterEach(clearCaptures);
+
+    it("dismisses the partition the request names", async () => {
+      const { dismissRunBanner } = await import("@server/pipeline/index");
+
+      const res = await fetch(`${baseUrl}/api/pipeline/progress/dismiss`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          startedAt: "2026-08-29T10:00:00.000Z",
+          trigger: "schedule",
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(dismissRunBanner).toHaveBeenCalledWith(
+        "2026-08-29T10:00:00.000Z",
+        "schedule",
+      );
+    });
+
+    it("dismisses the manual table when the request names no partition", async () => {
+      const { dismissRunBanner } = await import("@server/pipeline/index");
+
+      const res = await fetch(`${baseUrl}/api/pipeline/progress/dismiss`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+      expect(res.status).toBe(200);
+      // The table every client had before scheduled runs existed.
+      expect(dismissRunBanner).toHaveBeenCalledWith(undefined, "manual");
+    });
+
+    it("rejects a dismissal for a partition that does not exist", async () => {
+      const res = await fetch(`${baseUrl}/api/pipeline/progress/dismiss`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trigger: "nonsense" }),
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("reads run jobs from the partition the query names", async () => {
+      const capture = await captureModule();
+      capture.setRunCaptureTrigger("schedule");
+      capture.captureRunJobs("workingnomads", "scraped", [
+        { title: "Scheduled find", employer: "Acme", jobUrl: "https://a/1" },
+      ]);
+      capture.setRunCaptureTrigger("manual");
+      capture.captureRunJobs("workingnomads", "scraped", [
+        { title: "Manual find", employer: "Acme", jobUrl: "https://a/2" },
+      ]);
+
+      const scheduled = await fetch(
+        `${baseUrl}/api/pipeline/run-jobs?source=workingnomads&bucket=scraped&trigger=schedule`,
+      ).then((res) => res.json());
+
+      expect(
+        scheduled.data.jobs.map((job: { title: string }) => job.title),
+      ).toEqual(["Scheduled find"]);
+    });
+
+    it("reads the manual store when the query names no partition", async () => {
+      const capture = await captureModule();
+      capture.setRunCaptureTrigger("schedule");
+      capture.captureRunJobs("workingnomads", "scraped", [
+        { title: "Scheduled find", employer: "Acme", jobUrl: "https://a/1" },
+      ]);
+      capture.setRunCaptureTrigger("manual");
+
+      // A read arrives long after the capture, so an absent partition resolves
+      // to the manual store rather than to whatever ran last.
+      const body = await fetch(
+        `${baseUrl}/api/pipeline/run-jobs?source=workingnomads&bucket=scraped`,
+      ).then((res) => res.json());
+
+      expect(body.data.jobs).toEqual([]);
+    });
+
+    it("rejects a run-jobs read for a partition that does not exist", async () => {
+      const res = await fetch(
+        `${baseUrl}/api/pipeline/run-jobs?source=workingnomads&bucket=scraped&trigger=nonsense`,
+      );
+
+      expect(res.status).toBe(400);
+    });
+  });
 });

@@ -7,6 +7,7 @@ import type {
   PipelineProgressEvent,
   PipelineSourceStats,
   RunJobBucket,
+  RunTrigger,
 } from "@shared/types";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -54,6 +55,10 @@ const BUCKET_LABELS: Record<RunJobBucket, string> = {
 
 interface PipelineRunBannerProps {
   isRunning: boolean;
+  // Which run partition this banner renders. Required rather than defaulted:
+  // a manual run and a scheduled one each keep their own retained table, and a
+  // mount site that has not said which one it is would silently show the other.
+  trigger: RunTrigger;
   // Re-run a single source (built-in extractor or provider instance) using the
   // current saved run settings. Omit to hide the per-row re-run button.
   // `profileId` names the Search Profile whose page the row belongs to, so the
@@ -88,6 +93,12 @@ const stepBadgeClasses: Record<PipelineProgressEvent["step"], string> = {
   cancelled: "bg-muted text-muted-foreground border-border",
   failed: "bg-destructive/10 text-destructive border-destructive/20",
 };
+
+type Dismissing = { pending: boolean; run: string | null };
+
+// A shared constant, so re-asserting "nothing is being dismissed" is an
+// `Object.is` hit React can bail out of rather than a fresh object every mount.
+const NOT_DISMISSING: Dismissing = { pending: false, run: null };
 
 const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
@@ -210,6 +221,7 @@ const StatusCell: React.FC<{ status: PipelineSourceStats["status"] }> = ({
 
 export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
   isRunning,
+  trigger,
   onRerunSource,
   onRerunSources,
 }) => {
@@ -222,10 +234,7 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
   // The local flag only covers the round trip, and is TIED TO THE RUN it was
   // clicked on — an untied flag would keep hiding the NEXT run's banner too,
   // since nothing would ever clear it.
-  const [dismissing, setDismissing] = useState<{
-    pending: boolean;
-    run: string | null;
-  }>({ pending: false, run: null });
+  const [dismissing, setDismissing] = useState<Dismissing>(NOT_DISMISSING);
   const [jobsView, setJobsView] = useState<{
     source: string;
     bucket: RunJobBucket;
@@ -251,11 +260,36 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
   // subscription would double both the browser's connections and the server's
   // open responses.
   useEffect(() => {
+    // Everything below describes ONE partition's run, so all of it is dropped
+    // before binding another. The stream replays only a partition that HAS a
+    // retained event, so without this a switch to a quiet one would leave the
+    // previous table's run on screen — and the Dismiss button reads
+    // `progress.startedAt`, so it would POST the old run's timestamp against
+    // the new partition, which the server refuses (no such run) while the
+    // client hides the banner anyway.
+    //
+    // Each of the other three has its own reason to be here, none of which the
+    // null progress covers:
+    //  - `dismissing` because `run` is null between a run's reset and its first
+    //    crawl event, and a pending dismissal clicked in THAT window matches a
+    //    null `startedAt` — hiding the incoming partition's banner on a
+    //    dismissal it never received.
+    //  - `pinnedProfileIndex` because the render-phase reset below keys on the
+    //    chain's FIRST profile, and the replay lands in the same commit as the
+    //    null — so two chains that open on the same Search Profile (a profile
+    //    both scheduled and run by hand: the steady state) never trip it.
+    //  - `jobsView` because an open dialog keeps the old table's source while
+    //    its query re-keys onto the new partition.
+    setProgress(null);
+    setDismissing(NOT_DISMISSING);
+    setPinnedProfileIndex(null);
+    setJobsView(null);
     return subscribeToPipelineProgress({
+      trigger,
       onEvent: setProgress,
       onConnectionChange: setIsConnected,
     });
-  }, []);
+  }, [trigger]);
 
   const percentage = useMemo(
     () => (progress ? computePercentage(progress) : 0),
@@ -494,11 +528,13 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
                   onClick={() => {
                     const run = progress?.startedAt ?? null;
                     setDismissing({ pending: true, run });
-                    void api.dismissRunBanner(run ?? undefined).catch(() => {
-                      // Put it back rather than hiding a banner the server
-                      // still shows every other viewer.
-                      setDismissing({ pending: false, run: null });
-                    });
+                    void api
+                      .dismissRunBanner(run ?? undefined, trigger)
+                      .catch(() => {
+                        // Put it back rather than hiding a banner the server
+                        // still shows every other viewer.
+                        setDismissing(NOT_DISMISSING);
+                      });
                   }}
                 >
                   <X className="h-4 w-4" />
@@ -601,7 +637,11 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
       </div>
 
       {jobsView && (
-        <RunJobsDialog view={jobsView} onClose={() => setJobsView(null)} />
+        <RunJobsDialog
+          view={jobsView}
+          trigger={trigger}
+          onClose={() => setJobsView(null)}
+        />
       )}
     </div>
   );
@@ -758,16 +798,22 @@ const RunJobsDialog: React.FC<{
     profileId?: string;
     profileName?: string;
   };
+  trigger: RunTrigger;
   onClose: () => void;
-}> = ({ view, onClose }) => {
+}> = ({ view, trigger, onClose }) => {
   const query = useQuery({
+    // The partition is part of the key, not just of the request: the captures
+    // behind these counts are stored per partition, so a shared key would serve
+    // one table's cached rows to the other's dialog.
     queryKey: [
       "pipeline-run-jobs",
+      trigger,
       view.source,
       view.bucket,
       view.profileId ?? null,
     ],
-    queryFn: () => api.getRunJobs(view.source, view.bucket, view.profileId),
+    queryFn: () =>
+      api.getRunJobs(view.source, view.bucket, view.profileId, trigger),
   });
 
   const jobs: CapturedRunJob[] = query.data?.jobs ?? [];
