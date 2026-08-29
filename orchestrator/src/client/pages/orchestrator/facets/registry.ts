@@ -1,3 +1,4 @@
+import { foldDiacritics } from "@shared/location-support";
 import type { Job, JobListItem } from "@shared/types";
 
 // A job as seen by a facet predicate. List rows in the common case; the full
@@ -27,17 +28,19 @@ export interface ActiveFacet {
   value: string;
 }
 
-// Case-insensitive substring match; `|` splits the value into OR'd terms
-// ("phd|doctorate"). A loaded-but-empty field (null) never matches, so an
-// active facet excludes rows that lack the value. A wholly-absent field
-// (undefined — a Tier-2 field on a list row before the view:"full" upgrade
-// lands) is treated as inert so the list doesn't flash empty mid-upgrade.
+// Case-insensitive, diacritic-insensitive substring match; `|` splits the value
+// into OR'd terms ("phd|doctorate"). Folded on both sides through the same
+// helper the location matcher uses, so typing "Malaga" finds "Málaga" here too
+// — otherwise the pipeline would keep a row the user then could not filter to.
+// A loaded-but-empty field (null) never matches, so an active facet excludes
+// rows that lack the value. A wholly-absent field (undefined — a Tier-2 field
+// on a list row before the view:"full" upgrade lands) is treated as inert so
+// the list doesn't flash empty mid-upgrade.
 function textContains(
   accessor: (job: FacetJob) => string | null | undefined,
 ): FacetDef["buildPredicate"] {
   return (value: string) => {
-    const terms = value
-      .toLowerCase()
+    const terms = foldDiacritics(value.toLowerCase())
       .split("|")
       .map((term) => term.trim())
       .filter(Boolean);
@@ -46,7 +49,7 @@ function textContains(
       const raw = accessor(job);
       if (raw === undefined) return true; // not loaded yet ⇒ inert
       if (raw === null) return false; // loaded, empty ⇒ no match
-      const haystack = raw.toLowerCase();
+      const haystack = foldDiacritics(raw.toLowerCase());
       return terms.some((term) => haystack.includes(term));
     };
   };

@@ -62,4 +62,25 @@ describe("JobCommandBar score helpers", () => {
 
     expect(grouped.ready).toEqual([]);
   });
+
+  it("scores a location across diacritic spellings", () => {
+    // Same query, same screen: the Manage location facet and the pipeline both
+    // fold now, so the command bar has to as well or "malaga" answers
+    // differently depending on which box the user typed it into.
+    const job = createJob({
+      title: "Research Scientist",
+      employer: "Acme",
+      location: "Málaga, Andalusia, Spain",
+    });
+    expect(computeJobMatchScore(job, "malaga")).toBeGreaterThan(0);
+    expect(computeJobMatchScore(job, "málaga")).toBeGreaterThan(0);
+    expect(computeJobMatchScore(job, "barcelona")).toBe(0);
+    // Title and employer ride the same scorer.
+    expect(
+      computeJobMatchScore(
+        createJob({ title: "Ingénieur Logiciel", employer: "Acme" }),
+        "ingenieur",
+      ),
+    ).toBeGreaterThan(0);
+  });
 });

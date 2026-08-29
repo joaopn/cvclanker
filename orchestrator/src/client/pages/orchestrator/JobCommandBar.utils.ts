@@ -1,3 +1,4 @@
+import { foldDiacritics } from "@shared/location-support";
 import type { JobListItem, JobStatus } from "@shared/types.js";
 import type { FilterTab } from "./constants";
 
@@ -63,9 +64,14 @@ const parseTime = (value: string | null) => {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 };
 
+// Diacritic-folded on both sides through the same helper the location matcher
+// uses. This scorer reads job.location as well as title and employer, so
+// without it typing "malaga" here would miss the Málaga rows that the pipeline
+// now keeps and the Manage location facet now finds — the same query, the same
+// screen, two different answers.
 const computeFieldMatchScore = (fieldRaw: string, needleRaw: string) => {
-  const field = fieldRaw.trim().toLowerCase();
-  const needle = needleRaw.trim().toLowerCase();
+  const field = foldDiacritics(fieldRaw.trim().toLowerCase());
+  const needle = foldDiacritics(needleRaw.trim().toLowerCase());
   if (!field || !needle) return 0;
   if (field === needle) return 1000;
 
@@ -95,7 +101,12 @@ const computeFieldMatchScore = (fieldRaw: string, needleRaw: string) => {
 
 export const getCommandGroup = (status: JobStatus): CommandGroupId => {
   if (status === "ready") return "ready";
-  if (status === "discovered" || status === "processing" || status === "selected") return "discovered";
+  if (
+    status === "discovered" ||
+    status === "processing" ||
+    status === "selected"
+  )
+    return "discovered";
   if (status === "applied" || status === "in_progress") return "applied";
   return "other";
 };

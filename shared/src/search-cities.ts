@@ -1,5 +1,6 @@
 import { countryKeyToIso2, listKnownCountryKeys } from "./country-codes.js";
 import {
+  foldDiacritics,
   normalizeCountryKey,
   SUPPORTED_COUNTRY_INPUTS,
 } from "./location-support.js";
@@ -174,7 +175,16 @@ export function locationCountryUnspecified(
 export function normalizeLocationToken(
   value: string | null | undefined,
 ): string {
-  const normalized = value?.trim().toLowerCase().replace(/\s+/g, " ") ?? "";
+  // Folded here rather than in the tokenizer, so every consumer of this
+  // function — the city and country matchers, the country-name index, the
+  // non-geographic test — agrees on one spelling. LOCATION_ALIASES keys are
+  // ASCII, so folding the input cannot make one unreachable. NOT
+  // shouldApplyStrictCityFilter: it compares this against normalizeCountryKey,
+  // which applies a DIFFERENT alias table, so "Türkiye" vs "türkiye" still
+  // reads as city-unequal-to-country there. Pre-existing, unchanged here.
+  const normalized = foldDiacritics(
+    value?.trim().toLowerCase().replace(/\s+/g, " ") ?? "",
+  );
   if (!normalized) return "";
   return LOCATION_ALIASES[normalized] ?? normalized;
 }
@@ -314,11 +324,16 @@ function getVariantRunIndex(): {
   return variantRunIndex;
 }
 
-/** Lowercased alphanumeric tokens with NO alias rewriting. */
+/** Lowercased, diacritic-folded alphanumeric tokens with NO alias rewriting. */
 function rawLocationTokens(value: string | null | undefined): string[] {
-  const normalized = (value ?? "")
-    .trim()
-    .toLowerCase()
+  // Folds independently because this deliberately bypasses
+  // normalizeLocationToken. It is BOTH a regression guard and a widening. The
+  // variant index below is keyed on these tokens, so folding only the tokenizer
+  // would leave the index holding the mangled run "t rkiye" while the text side
+  // emits "turkiye" — and an "Istanbul, Türkiye" row that a Turkey blocklist
+  // matches TODAY would stop matching. It also newly puts the run "turkiye"
+  // into that index, so the ASCII spelling starts matching as well.
+  const normalized = foldDiacritics((value ?? "").trim().toLowerCase())
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
   return normalized ? normalized.split(" ") : [];
@@ -332,8 +347,13 @@ function rawLocationTokens(value: string | null | undefined): string[] {
  */
 function pronounUsIndices(value: string | null | undefined): Set<number> {
   const protectedIndices = new Set<number>();
-  const rawWords = (value ?? "")
-    .trim()
+  // Folded before the split, and case-preserving so the "US" test below still
+  // sees the original casing. Load-bearing: the length guard underneath
+  // compares this split against tokenizeLocation, which folds via
+  // normalizeLocationToken. An unfolded split counts "Málaga" as two words
+  // against the tokenizer's one, so every accented title would bail out of the
+  // guard and silently lose its pronoun protection.
+  const rawWords = foldDiacritics((value ?? "").trim())
     .replace(/[^A-Za-z0-9]+/g, " ")
     .trim()
     .split(" ")

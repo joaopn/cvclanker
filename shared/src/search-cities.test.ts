@@ -155,4 +155,79 @@ describe("search-cities", () => {
     expect(locationCountryUnspecified(["Anywhere"])).toBe(false);
     expect(locationCountryUnspecified([""])).toBe(false);
   });
+
+  it("matches a city across diacritic spellings, in both directions", () => {
+    // The prod case: the user types the ASCII spelling (which is also what is
+    // sent to LinkedIn, where it resolves correctly) and the board answers with
+    // its own accented canonical spelling.
+    expect(matchesRequestedCity("Málaga, Andalusia, Spain", "Malaga")).toBe(
+      true,
+    );
+    expect(
+      matchesRequestedCity("Greater Málaga Metropolitan Area", "Malaga"),
+    ).toBe(true);
+    expect(matchesRequestedCity("Malaga, Andalusia, Spain", "Málaga")).toBe(
+      true,
+    );
+    expect(matchesRequestedCity("Zürich, Switzerland", "Zurich")).toBe(true);
+    expect(
+      matchesRequestedCity("Kraków, Lesser Poland, Poland", "Krakow"),
+    ).toBe(true);
+    expect(matchesRequestedCity("Wrocław, Poland", "Wroclaw")).toBe(true);
+    // Same spelling on both sides kept working — this is the case that always
+    // passed, because both sides were mangled identically.
+    expect(matchesRequestedCity("Málaga, Andalusia, Spain", "Málaga")).toBe(
+      true,
+    );
+  });
+
+  it("folding does not widen which CITY counts as a match", () => {
+    // A different city is still a different city.
+    expect(
+      matchesRequestedCity("Sant Cugat del Vallès, Catalonia, Spain", "Malaga"),
+    ).toBe(false);
+    expect(matchesRequestedCity("Valencia, Spain", "Malaga")).toBe(false);
+    // A folded prefix is not a token match: "Malag" is not "Malaga".
+    expect(matchesRequestedCity("Málaga, Andalusia, Spain", "Malag")).toBe(
+      false,
+    );
+    // Exonyms are a translation, not a normalization, and stay unmatched.
+    expect(matchesRequestedCity("München, Bavaria, Germany", "Munich")).toBe(
+      false,
+    );
+  });
+
+  it("folding DOES widen the country-name index, by design", () => {
+    // Honest record of a real consequence, not an accident. The index is built
+    // by tokenizing every country name, so folding re-spells six of them and
+    // `reunion` / `curacao` become single-token runs that ordinary English
+    // place text can hit. namesAnyCountry matches any contiguous sub-run and
+    // locationCountryUnspecified NEGATES it, so "Reunion Tower Area" stops
+    // qualifying for the country-less fallback and is rejected on a US profile
+    // where it used to be kept.
+    //
+    // Accepted rather than fixed: the hazard class is PRE-EXISTING and much
+    // larger than these two words — `georgia`, `jersey`, `malta`, `chad`,
+    // `guinea`, `peru` and friends are already single-token runs, so
+    // "Jersey City" and "Georgia, Atlanta" reject on the base commit too.
+    // Narrowing that is its own change with its own measurement; this test
+    // exists so the widening is a recorded decision.
+    expect(locationCountryUnspecified(["Reunion Tower Area"])).toBe(false);
+    expect(locationCountryUnspecified(["Curacao Plaza"])).toBe(false);
+    // Pre-existing members of the same class, unchanged by this commit.
+    expect(locationCountryUnspecified(["Jersey City"])).toBe(false);
+    // And the fold REMOVES one bogus run: base carried "land islands" from the
+    // mangled "Åland Islands", so this used to read as naming a country.
+    expect(locationCountryUnspecified(["Land Islands Business Park"])).toBe(
+      true,
+    );
+  });
+
+  it("matches a country across diacritic spellings", () => {
+    expect(matchesRequestedCountry("Istanbul, Türkiye", "turkey")).toBe(true);
+    expect(matchesRequestedCountry("Istanbul, Turkiye", "turkey")).toBe(true);
+    // A location naming a country in either spelling is not country-less, so
+    // the "country not contradicted" fallback correctly stops applying.
+    expect(locationCountryUnspecified(["Istanbul, Turkiye"])).toBe(false);
+  });
 });

@@ -106,4 +106,18 @@ describe("facet registry — Tier-2 (full payload)", () => {
     ).toBe(false);
     expect(predicate(asJob({}))).toBe(true); // both fields absent ⇒ inert
   });
+
+  it("matches a text facet across diacritic spellings", () => {
+    // Typing the ASCII spelling has to find the board's accented one, or the
+    // pipeline keeps a Málaga row the user then cannot filter to.
+    const ascii = predicateFor("location", "malaga");
+    expect(ascii(asJob({ location: "Málaga, Andalusia, Spain" }))).toBe(true);
+    expect(ascii(asJob({ location: "Malaga, Andalusia, Spain" }))).toBe(true);
+    expect(ascii(asJob({ location: "Barcelona, Spain" }))).toBe(false);
+    // And the reverse: an accented query finds the ASCII row.
+    const accented = predicateFor("location", "Málaga");
+    expect(accented(asJob({ location: "Malaga, Andalusia, Spain" }))).toBe(
+      true,
+    );
+  });
 });

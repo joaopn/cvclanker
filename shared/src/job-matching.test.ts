@@ -313,6 +313,55 @@ describe("matchJobLocationIntent — remote-type profile", () => {
     ).toBe(false);
   });
 
+  it("keeps the pronoun-us protection alive on an accented title", () => {
+    // Guards the fold inside pronounUsIndices. That function bails when its
+    // own word split disagrees with tokenizeLocation, and the tokenizer folds
+    // — so an UNFOLDED split counts "Zürich" as two words against the
+    // tokenizer's one, the guard bails, protection switches off, and the
+    // pronoun "us" canonicalises to the country. Every other pronoun case in
+    // this file is pure ASCII, where the two sides agree either way.
+    expect(
+      matchJobLocationIntent(
+        {
+          title: "Senior Engineer — Zürich, help us scale",
+          location: "Remote",
+        },
+        remoteIntent(["United States"]),
+      ).matched,
+    ).toBe(true);
+    expect(
+      matchJobLocationIntent(
+        { title: "Senior Engineer — Málaga, help us grow", location: "Remote" },
+        remoteIntent(["US"]),
+      ).matched,
+    ).toBe(true);
+    // The country itself is still blocked from an accented title.
+    expect(
+      matchJobLocationIntent(
+        { title: "Senior Engineer — Zürich, US only", location: "Remote" },
+        remoteIntent(["United States"]),
+      ).matched,
+    ).toBe(false);
+  });
+
+  it("blocks a country variant in either spelling", () => {
+    // Guards the fold inside rawLocationTokens, which keys the variant index.
+    // "Istanbul, Türkiye" matches a "turkey" blocklist entry TODAY; folding
+    // only the tokenizer would break that, because the index would still hold
+    // the mangled run while the text side emits the folded one.
+    for (const location of ["Istanbul, Türkiye", "Istanbul, Turkiye"]) {
+      expect(
+        matchJobLocationIntent({ location }, remoteIntent(["turkey"])).matched,
+      ).toBe(false);
+    }
+    expect(
+      matchJobLocationIntent(
+        { location: "Istanbul, Türkiye" },
+        remoteIntent(["spain"]),
+      ).matched,
+    ).toBe(true);
+  });
+
   it("drops a posting the source explicitly flags as not remote", () => {
     // jobspy's LinkedIn/Indeed legs leak on-site rows past their remote
     // filters but report per-row remoteness (board attribute or keyword
