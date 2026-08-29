@@ -226,10 +226,28 @@ export type PipelineProgressStep =
   | "cancelled"
   | "failed";
 
+/**
+ * What started a run.
+ *
+ * Manual and scheduled runs keep SEPARATE progress state server-side: each has
+ * its own retained funnel, dismissed independently, showing only its own latest
+ * run. The pipeline is still a singleton, so the two are separated in space and
+ * never in time — only one run of either kind is ever in flight.
+ */
+export const RUN_TRIGGERS = ["manual", "schedule"] as const;
+
+export type RunTrigger = (typeof RUN_TRIGGERS)[number];
+
 export interface PipelineProgressEvent {
   step: PipelineProgressStep;
   message: string;
   detail?: string;
+  /**
+   * Which partition this event belongs to. Required rather than optional so
+   * every construction site has to say, and so a consumer that must not mix the
+   * two has something to filter on.
+   */
+  trigger: RunTrigger;
   crawlingSource: string | null;
   crawlingSourcesCompleted: number;
   crawlingSourcesTotal: number;

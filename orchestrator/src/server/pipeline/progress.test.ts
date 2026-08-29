@@ -9,6 +9,7 @@ import {
   resetProfileRunStats,
   resetProgress,
   setActiveProfileRun,
+  setActiveRunTrigger,
   subscribeToProgress,
   targetProfileRunPage,
   updateProgress,
@@ -540,5 +541,249 @@ describe("run banner dismissal", () => {
 
     // A dismissed run going on emitting must not un-hide itself.
     expect(getProgress().dismissed).toBe(true);
+  });
+});
+
+describe("manual and scheduled runs keep separate tables", () => {
+  /** One whole run of a given kind, start to terminal. */
+  function runOnce(
+    trigger: "manual" | "schedule",
+    source: string,
+    scraped: number,
+    startedAt?: string,
+  ) {
+    setActiveRunTrigger(trigger);
+    resetProgress();
+    progressHelpers.startCrawling(1);
+    // Stamped explicitly: two runs built synchronously in a test share a
+    // millisecond, where real runs are minutes or hours apart.
+    if (startedAt) updateProgress({ startedAt });
+    progressHelpers.startSource(source, 0, 1, { platforms: [source] });
+    progressHelpers.recordSourceJobsCounts(source, { scraped });
+    progressHelpers.complete(scraped, 0);
+  }
+
+  function reset() {
+    for (const trigger of ["manual", "schedule"] as const) {
+      setActiveRunTrigger(trigger);
+      setActiveProfileRun(null);
+      resetProfileRunStats();
+      resetProgress();
+    }
+    setActiveRunTrigger("manual");
+  }
+
+  beforeEach(reset);
+  afterEach(reset);
+
+  it("stamps every event with the partition holding it", () => {
+    runOnce("manual", "hiringcafe", 3);
+    expect(getProgress("manual").trigger).toBe("manual");
+
+    runOnce("schedule", "workingnomads", 5);
+    expect(getProgress("schedule").trigger).toBe("schedule");
+  });
+
+  it("will not let an update claim a partition other than its own", () => {
+    setActiveRunTrigger("manual");
+    resetProgress();
+    // The stamp is applied AFTER the caller's fields are spread in, so an event
+    // can never claim a table it is not stored in.
+    updateProgress({ trigger: "schedule", message: "spoofed" });
+
+    expect(getProgress("manual").trigger).toBe("manual");
+    expect(getProgress("manual").message).toBe("spoofed");
+    expect(getProgress("schedule").message).not.toBe("spoofed");
+  });
+
+  it("refuses a re-run aim taken for the other partition", () => {
+    const profileRun = (id: string) => ({
+      id,
+      name: `Profile ${id}`,
+      index: 1,
+      total: 1,
+    });
+
+    setActiveRunTrigger("schedule");
+    resetProfileRunStats();
+    setActiveProfileRun(profileRun("scheduled-profile"));
+    runOnce("schedule", "workingnomads", 11);
+    setActiveProfileRun(null);
+
+    // Aim at the SCHEDULE table's page, then run as manual: the aim belongs to
+    // a partition this run is not filling, so it must not be consumed.
+    expect(targetProfileRunPage("scheduled-profile", "schedule")).toBe(true);
+
+    setActiveRunTrigger("manual");
+    resetProgress();
+    progressHelpers.startCrawling(1);
+    progressHelpers.startSource("hiringcafe", 0, 1, {
+      platforms: ["hiringcafe"],
+    });
+    progressHelpers.complete(1, 0);
+
+    expect(getProgress("manual").profileRuns ?? []).toEqual([]);
+
+    clearProfileRunPageTarget();
+  });
+
+  it("leaves the retained manual table untouched when a scheduled run happens", () => {
+    runOnce("manual", "hiringcafe", 3);
+    const before = getProgress("manual");
+
+    runOnce("schedule", "workingnomads", 11);
+
+    expect(getProgress("manual")).toEqual(before);
+    // ...and the schedule slot really did record its own, different run.
+    expect(
+      getProgress("schedule").sourceStats.map((row) => [
+        row.id,
+        row.jobsScraped,
+      ]),
+    ).toEqual([["workingnomads", 11]]);
+  });
+
+  it("rebuilds a per-source re-run's funnel from ITS OWN table, not the run that happened in between", () => {
+    // The regression this partition exists to prevent: a per-source re-run
+    // preserves the existing funnel rows rather than starting from zero, which
+    // is a carry-over ACROSS runs. Sharing one live map would hand the manual
+    // re-run whatever the scheduled run left behind.
+    runOnce("manual", "hiringcafe", 3);
+    runOnce("schedule", "workingnomads", 11);
+
+    setActiveRunTrigger("manual");
+    resetProgress({ preserveSourceStats: true });
+
+    expect(getProgress("manual").sourceStats.map((row) => row.id)).toEqual([
+      "hiringcafe",
+    ]);
+  });
+
+  it("dismisses one table without hiding the other", () => {
+    runOnce("manual", "hiringcafe", 3, "2026-08-29T09:00:00.000Z");
+    runOnce("schedule", "workingnomads", 11, "2026-08-29T10:00:00.000Z");
+
+    dismissRunBanner("2026-08-29T09:00:00.000Z", "manual");
+
+    expect(getProgress("manual").dismissed).toBe(true);
+    expect(getProgress("schedule").dismissed).toBe(false);
+
+    dismissRunBanner("2026-08-29T10:00:00.000Z", "schedule");
+    expect(getProgress("schedule").dismissed).toBe(true);
+  });
+
+  it("applies a dismissal to the table it names, not to the run that went last", () => {
+    runOnce("manual", "hiringcafe", 3, "2026-08-29T09:00:00.000Z");
+    runOnce("schedule", "workingnomads", 11, "2026-08-29T10:00:00.000Z");
+    runOnce("manual", "hiringcafe", 4, "2026-08-29T11:00:00.000Z");
+
+    // The scheduled run is neither the active partition nor the latest run, and
+    // the timestamp matches nothing in the manual table.
+    dismissRunBanner("2026-08-29T10:00:00.000Z", "schedule");
+
+    expect(getProgress("schedule").dismissed).toBe(true);
+    expect(getProgress("manual").dismissed).toBe(false);
+  });
+
+  it("carries no crawl detail across from the other table", () => {
+    runOnce("manual", "hiringcafe", 3);
+    progressHelpers.crawlingUpdate({
+      source: "hiringcafe",
+      phase: "job",
+      currentUrl: "https://example.com/manual-run",
+    });
+
+    setActiveRunTrigger("schedule");
+    resetProgress();
+    progressHelpers.startCrawling(1);
+    progressHelpers.startSource("workingnomads", 0, 1, {
+      platforms: ["workingnomads"],
+    });
+    // No phase or URL of its own: both are optional on the extractor event, so
+    // whatever this update omits must come from the SCHEDULE table, not from
+    // the manual one still on screen.
+    progressHelpers.crawlingUpdate({
+      source: "workingnomads",
+      listPagesProcessed: 1,
+    });
+
+    expect(getProgress("schedule").crawlingCurrentUrl).toBeUndefined();
+    expect(getProgress("schedule").crawlingPhase).toBeUndefined();
+  });
+
+  it("keeps each partition's retained profile pages apart", () => {
+    const profileRun = (id: string) => ({
+      id,
+      name: `Profile ${id}`,
+      index: 1,
+      total: 1,
+    });
+
+    setActiveRunTrigger("manual");
+    resetProfileRunStats();
+    setActiveProfileRun(profileRun("manual-profile"));
+    runOnce("manual", "hiringcafe", 3);
+    // Mirrors `runProfileSequence`'s finally: the active profile is module-wide
+    // (it describes the run in flight, not a retained table) and the chain
+    // clears it on the way out.
+    setActiveProfileRun(null);
+
+    setActiveRunTrigger("schedule");
+    resetProfileRunStats();
+    setActiveProfileRun(profileRun("scheduled-profile"));
+    runOnce("schedule", "workingnomads", 11);
+    setActiveProfileRun(null);
+
+    // Re-emit on manual: `profileRuns` is frozen into each slot at emit time,
+    // so asserting the snapshot taken before the scheduled run would pass even
+    // if both partitions shared one pages map.
+    setActiveRunTrigger("manual");
+    updateProgress({});
+
+    expect(
+      getProgress("manual").profileRuns?.map((page) => page.profile.id),
+    ).toEqual(["manual-profile"]);
+    expect(
+      getProgress("schedule").profileRuns?.map((page) => page.profile.id),
+    ).toEqual(["scheduled-profile"]);
+  });
+
+  it("aims a re-run at a page of the partition it names, not the active one", () => {
+    const profileRun = (id: string) => ({
+      id,
+      name: `Profile ${id}`,
+      index: 1,
+      total: 1,
+    });
+
+    setActiveRunTrigger("manual");
+    resetProfileRunStats();
+    setActiveProfileRun(profileRun("manual-profile"));
+    runOnce("manual", "hiringcafe", 3);
+    setActiveProfileRun(null);
+
+    // A scheduled run goes last, so the ambient trigger is "schedule" when the
+    // route (which fires while nothing is running) aims the re-run.
+    runOnce("schedule", "workingnomads", 11);
+
+    expect(targetProfileRunPage("manual-profile", "manual")).toBe(true);
+    expect(targetProfileRunPage("manual-profile", "schedule")).toBe(false);
+
+    clearProfileRunPageTarget();
+  });
+
+  it("replays only the manual table to a new subscriber", () => {
+    runOnce("schedule", "workingnomads", 11);
+
+    const seen: string[] = [];
+    const unsubscribe = subscribeToProgress((progress) => {
+      seen.push(progress.trigger);
+    });
+    unsubscribe();
+
+    // Every client consumer is still last-event-wins over one feed, so a
+    // pristine schedule slot replayed after a live manual event would blank the
+    // banner. Replaying both is the client slice's job.
+    expect(seen).toEqual(["manual"]);
   });
 });

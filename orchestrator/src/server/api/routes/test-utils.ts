@@ -7,7 +7,11 @@ import {
   type ExtractorSourceId,
   PIPELINE_EXTRACTOR_SOURCE_IDS,
 } from "@shared/extractors";
-import type { ExtractorManifest, PipelineProgressEvent } from "@shared/types";
+import type {
+  ExtractorManifest,
+  PipelineProgressEvent,
+  RunTrigger,
+} from "@shared/types";
 import { vi } from "vitest";
 
 vi.mock("@server/pipeline/index", () => {
@@ -16,6 +20,7 @@ vi.mock("@server/pipeline/index", () => {
   const progress: PipelineProgressEvent = {
     step: "idle",
     message: "Ready",
+    trigger: "manual",
     dismissed: false,
     sourceStats: [],
     crawlingSource: null,
@@ -66,7 +71,11 @@ vi.mock("@server/pipeline/index", () => {
     targetProfileRunPage: vi.fn(() => false),
     clearProfileRunPageTarget: vi.fn(),
     dismissRunBanner: vi.fn(),
-    getProgress: vi.fn(() => progress),
+    setActiveRunTrigger: vi.fn(),
+    getProgress: vi.fn((trigger: RunTrigger = "manual") => ({
+      ...progress,
+      trigger,
+    })),
     subscribeToProgress: vi.fn((listener: (data: unknown) => void) => {
       listener(progress);
       return () => {};

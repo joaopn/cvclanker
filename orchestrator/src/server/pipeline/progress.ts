@@ -11,11 +11,13 @@ import type {
   PipelineProgressStep,
   PipelineSourceStats,
   PipelineSourceStatus,
+  RunTrigger,
 } from "@shared/types";
 import {
   resetAllRunJobCaptures,
   resetRunJobCaptureForSource,
   setRunCaptureScope,
+  setRunCaptureTrigger,
 } from "./run-job-capture";
 
 /**
@@ -31,28 +33,6 @@ export type PipelineProgress = PipelineProgressEvent;
 // Event emitter for progress updates
 type ProgressListener = (progress: PipelineProgress) => void;
 const listeners: Set<ProgressListener> = new Set();
-
-let currentProgress: PipelineProgress = {
-  step: "idle",
-  message: "Ready",
-  dismissed: false,
-  crawlingSource: null,
-  crawlingSourcesCompleted: 0,
-  crawlingSourcesTotal: 0,
-  crawlingTermsProcessed: 0,
-  crawlingTermsTotal: 0,
-  crawlingListPagesProcessed: 0,
-  crawlingListPagesTotal: 0,
-  crawlingJobCardsFound: 0,
-  crawlingJobPagesEnqueued: 0,
-  crawlingJobPagesSkipped: 0,
-  crawlingJobPagesProcessed: 0,
-  jobsDiscovered: 0,
-  jobsScored: 0,
-  jobsProcessed: 0,
-  totalToProcess: 0,
-  sourceStats: [],
-};
 
 const emptyCrawlingStats = {
   crawlingTermsProcessed: 0,
@@ -109,27 +89,129 @@ type SourceStatsInternal = {
   order: number;
 };
 
-const sourceStatsByPlatform = new Map<string, SourceStatsInternal>();
-let sourceRowFallbackCounter = 0;
+/**
+ * One partition's run state: everything the banner for ONE kind of run needs.
+ *
+ * Manual and scheduled runs keep a slot each, so a scheduled run starting does
+ * not blank a manual run's table that nobody has closed yet, and neither table
+ * can ever show the other's run. An inactive slot is a frozen snapshot: rows
+ * are copied OUT of `sourceStats` by `buildSourceStats`, and `updateProgress`
+ * replaces page entries rather than mutating them, so nothing a later run does
+ * can reach into it.
+ */
+interface RunProgressSlot {
+  progress: PipelineProgress;
+  /**
+   * One retained page of funnel rows per profile a chain has reached, keyed by
+   * 1-based profile index. `sourceStats` is wiped by every profile's own
+   * `runPipeline`, so without this the banner would finish a chain knowing
+   * only the last profile's counts and failed sources.
+   */
+  profileRunStats: Map<number, PipelineProfileRunStats>;
+  /**
+   * The live funnel rows of the run in flight.
+   *
+   * Per-slot, not shared, even though only one run is ever in flight: a
+   * per-source re-run rebuilds its funnel FROM this map rather than from zero
+   * (`preserveSourceStats`), which is a carry-over ACROSS runs. Shared, a
+   * scheduled run that happened in between would hand its rows to a manual
+   * re-run.
+   */
+  sourceStats: Map<string, SourceStatsInternal>;
+  sourceRowFallbackCounter: number;
+}
+
+/*
+ * Three pieces of state deliberately stay MODULE-WIDE rather than joining the
+ * slot: `activeProfileRun`, `crawlingStatsBySource` and `rerunPageProfile`.
+ *
+ * The first two describe the run currently in flight, and the pipeline
+ * singleton means there is only ever one; `crawlingStatsBySource` is
+ * additionally cleared at every reset, so nothing reads it across runs.
+ *
+ * `rerunPageProfile` is the odd one: it is set while NOTHING is running and it
+ * points into a RETAINED table. It stays module-wide because it describes the
+ * next run rather than any table, and it carries `rerunPageTrigger` so a
+ * mismatch is refused rather than assumed away.
+ *
+ * `sourceStats` had to move into the slot because a per-source re-run reads it
+ * ACROSS runs, which is a different thing from concurrency.
+ */
+
+function createProgressSlot(trigger: RunTrigger): RunProgressSlot {
+  return {
+    progress: {
+      step: "idle",
+      message: "Ready",
+      trigger,
+      dismissed: false,
+      crawlingSource: null,
+      crawlingSourcesCompleted: 0,
+      crawlingSourcesTotal: 0,
+      ...emptyCrawlingStats,
+      jobsDiscovered: 0,
+      jobsScored: 0,
+      jobsProcessed: 0,
+      totalToProcess: 0,
+      sourceStats: [],
+    },
+    profileRunStats: new Map<number, PipelineProfileRunStats>(),
+    sourceStats: new Map<string, SourceStatsInternal>(),
+    sourceRowFallbackCounter: 0,
+  };
+}
+
+const slots: Record<RunTrigger, RunProgressSlot> = {
+  manual: createProgressSlot("manual"),
+  schedule: createProgressSlot("schedule"),
+};
+
+/**
+ * Which partition the run in flight belongs to.
+ *
+ * Established EXPLICITLY at run start (`runPipeline` / `runProfileSequence`),
+ * never inferred. Read ambiently it would be a latch rather than a seam: the
+ * moments that need it most — `targetProfileRunPage`, which the route calls
+ * while NO run is in flight — would otherwise see whichever kind of run
+ * happened to go last.
+ */
+let activeTrigger: RunTrigger = "manual";
+
+function slot(): RunProgressSlot {
+  return slots[activeTrigger];
+}
+
+/**
+ * Put the module in one partition's mode, for the run that is about to start.
+ * Call it synchronously before the run's first await, alongside the other
+ * run-start state the orchestrator sets.
+ */
+export function setActiveRunTrigger(trigger: RunTrigger): void {
+  activeTrigger = trigger;
+  // The captures behind the funnel's clickable counts are partitioned the same
+  // way; keeping the two in step here means no capture call site has to know.
+  setRunCaptureTrigger(trigger);
+}
 
 function resolveSourceLabel(id: string): string {
   if (isExtractorSourceId(id)) return resolveExtractorLabel(id);
   return id;
 }
 
-function resolveSourceOrder(id: string): number {
+function resolveSourceOrder(id: string, target: RunProgressSlot): number {
   if (isExtractorSourceId(id)) {
     return EXTRACTOR_SOURCE_METADATA[id].order;
   }
-  sourceRowFallbackCounter += 1;
-  return 9000 + sourceRowFallbackCounter;
+  target.sourceRowFallbackCounter += 1;
+  return 9000 + target.sourceRowFallbackCounter;
 }
 
 function getOrCreateSourceRow(
   platform: string,
   labelOverride?: string,
 ): SourceStatsInternal {
-  const existing = sourceStatsByPlatform.get(platform);
+  const target = slot();
+  const existing = target.sourceStats.get(platform);
   if (existing) {
     if (labelOverride && existing.label !== labelOverride) {
       existing.label = labelOverride;
@@ -147,14 +229,14 @@ function getOrCreateSourceRow(
     jobsUnmappable: 0,
     jobsFiltered: 0,
     jobsRejected: 0,
-    order: resolveSourceOrder(platform),
+    order: resolveSourceOrder(platform, target),
   };
-  sourceStatsByPlatform.set(platform, row);
+  target.sourceStats.set(platform, row);
   return row;
 }
 
 function buildSourceStats(): PipelineSourceStats[] {
-  return [...sourceStatsByPlatform.values()]
+  return [...slot().sourceStats.values()]
     .sort((left, right) => left.order - right.order)
     .map((row) => ({
       id: row.id,
@@ -243,34 +325,46 @@ let activeProfileRun: PipelineProfileRun | null = null;
  */
 let rerunPageProfile: PipelineProfileRun | null = null;
 
+/**
+ * Which partition the aim above belongs to.
+ *
+ * `rerunPageProfile` names a page inside ONE slot, but every consumer of it
+ * writes into `slots[activeTrigger]` — so without this the aim could be
+ * consumed by the other partition and stamp a page into a table it does not
+ * belong to. The route passes the same trigger to `targetProfileRunPage` and to
+ * the run, but that is discipline; this makes it a mismatch the code refuses
+ * rather than an agreement it assumes.
+ */
+let rerunPageTrigger: RunTrigger | null = null;
+
 /** The page rows are stamped onto: a chain's current profile, or a re-run's target. */
 function statsPageProfile(): PipelineProfileRun | null {
-  return activeProfileRun ?? rerunPageProfile;
+  if (activeProfileRun) return activeProfileRun;
+  // An aim taken for another partition is not this run's to consume.
+  if (rerunPageTrigger !== activeTrigger) return null;
+  return rerunPageProfile;
 }
 
-/**
- * One retained page of funnel rows per profile a chain has reached, keyed by
- * 1-based profile index. `sourceStatsByPlatform` is wiped by every profile's
- * own `runPipeline`, so without this the banner would finish a chain knowing
- * only the last profile's counts and failed sources.
- */
-const profileRunStats = new Map<number, PipelineProfileRunStats>();
-
 function buildProfileRunStats(): PipelineProfileRunStats[] {
-  return [...profileRunStats.values()].sort(
+  return [...slot().profileRunStats.values()].sort(
     (left, right) => left.profile.index - right.profile.index,
   );
 }
 
-/** Drop every retained page. Called when a new chain starts. */
+/**
+ * Drop the ACTIVE partition's retained pages. Called when a new chain starts;
+ * the other partition's table is still on screen and keeps its own.
+ */
 export function resetProfileRunStats(): void {
-  profileRunStats.clear();
+  const target = slot();
+  target.profileRunStats.clear();
   rerunPageProfile = null;
+  rerunPageTrigger = null;
   resetAllRunJobCaptures();
   // A new chain's banner has not been dismissed by anyone. `resetProgress`
   // cannot decide this: it runs once per PROFILE, so clearing there would
   // un-dismiss the banner at every leg of a chain the user already hid.
-  currentProgress = { ...currentProgress, dismissed: false };
+  target.progress = { ...target.progress, dismissed: false };
 }
 
 /**
@@ -283,22 +377,32 @@ export function resetProfileRunStats(): void {
  * run, or a chain this process has since forgotten — leaving the caller on the
  * flat-funnel path. Call it BEFORE `runPipeline`: the reset at the head of that
  * run is what reads the seeded rows back out.
+ *
+ * `trigger` names the partition holding the page, and the run started next MUST
+ * use the same one — this fires while nothing is running, so the active trigger
+ * is whichever kind of run went last. A mismatch is refused rather than
+ * silently stamping the page into the wrong table (see `statsPageProfile`).
  */
-export function targetProfileRunPage(profileId: string): boolean {
-  const page = [...profileRunStats.values()].find(
+export function targetProfileRunPage(
+  profileId: string,
+  trigger: RunTrigger = "manual",
+): boolean {
+  const target = slots[trigger];
+  const page = [...target.profileRunStats.values()].find(
     (candidate) => candidate.profile.id === profileId,
   );
   if (!page) return false;
   rerunPageProfile = page.profile;
+  rerunPageTrigger = trigger;
   setRunCaptureScope(page.profile.id);
-  sourceStatsByPlatform.clear();
-  sourceRowFallbackCounter = 0;
+  target.sourceStats.clear();
+  target.sourceRowFallbackCounter = 0;
   // Rebuilt in page order, so the fallback orders handed to provider-instance
   // rows reproduce the order the page already had.
   for (const row of page.sourceStats) {
-    sourceStatsByPlatform.set(row.id, {
+    target.sourceStats.set(row.id, {
       ...row,
-      order: resolveSourceOrder(row.id),
+      order: resolveSourceOrder(row.id, target),
     });
   }
   return true;
@@ -308,6 +412,7 @@ export function targetProfileRunPage(profileId: string): boolean {
 export function clearProfileRunPageTarget(): void {
   if (rerunPageProfile === null) return;
   rerunPageProfile = null;
+  rerunPageTrigger = null;
   setRunCaptureScope("");
 }
 
@@ -317,6 +422,7 @@ export function setActiveProfileRun(value: PipelineProfileRun | null): void {
   // aimed at — and clearing on `null` too keeps a crashed re-run from leaving
   // the target set for the next ordinary run.
   rerunPageProfile = null;
+  rerunPageTrigger = null;
   // Captured jobs follow the page they belong to, so a click on page 1's count
   // reads page 1's jobs rather than whichever profile ran last.
   setRunCaptureScope(value?.id ?? "");
@@ -325,7 +431,10 @@ export function setActiveProfileRun(value: PipelineProfileRun | null): void {
     // is still in the live map: the outgoing profile's rows are not cleared
     // until this profile's `runPipeline` calls `resetProgress`, and a profile
     // the singleton guard rejects never gets that far.
-    profileRunStats.set(value.index, { profile: value, sourceStats: [] });
+    slot().profileRunStats.set(value.index, {
+      profile: value,
+      sourceStats: [],
+    });
   }
 }
 
@@ -336,23 +445,28 @@ export function updateProgress(update: Partial<PipelineProgress>): void {
   const sourceStats = buildSourceStats();
   const page = statsPageProfile();
   if (page) {
-    profileRunStats.set(page.index, {
+    slot().profileRunStats.set(page.index, {
       profile: page,
       sourceStats,
     });
   }
-  currentProgress = {
-    ...currentProgress,
+  slot().progress = {
+    ...slot().progress,
     ...update,
     sourceStats,
+    // Stamped from the slot this write lands in, so an event can never claim a
+    // partition other than the one holding it. A consumer bound to one table
+    // filters on exactly this.
+    trigger: activeTrigger,
     profileRun: activeProfileRun,
     profileRuns: buildProfileRunStats(),
   };
 
   // Notify all listeners
+  const emitted = slot().progress;
   for (const listener of listeners) {
     try {
-      listener(currentProgress);
+      listener(emitted);
     } catch (error) {
       logger.error("Error in progress listener", error);
     }
@@ -367,19 +481,24 @@ export function updateProgress(update: Partial<PipelineProgress>): void {
  * reopening the page must not resurrect a banner already dealt with. Cleared by
  * `resetProgress`, so the next run always gets a fresh one.
  */
-export function dismissRunBanner(startedAt?: string): void {
+export function dismissRunBanner(
+  startedAt?: string,
+  trigger: RunTrigger = "manual",
+): void {
+  const target = slots[trigger];
   // Named, because a stale tab is not a stale click: a window left open on
   // yesterday's failed run is still showing a Dismiss button, and if someone
   // starts a new run before it is pressed, an unqualified dismissal would hide
   // the LIVE run from every viewer with nothing to clear it until the run after.
-  if (startedAt !== undefined && startedAt !== currentProgress.startedAt) {
+  if (startedAt !== undefined && startedAt !== target.progress.startedAt) {
     return;
   }
-  if (currentProgress.dismissed) return;
-  currentProgress = { ...currentProgress, dismissed: true };
+  if (target.progress.dismissed) return;
+  target.progress = { ...target.progress, dismissed: true };
+  const emitted = target.progress;
   for (const listener of listeners) {
     try {
-      listener(currentProgress);
+      listener(emitted);
     } catch (error) {
       logger.error("Error in progress listener", error);
     }
@@ -387,10 +506,12 @@ export function dismissRunBanner(startedAt?: string): void {
 }
 
 /**
- * Get the current progress state.
+ * Get one partition's retained progress state. Defaults to the manual table:
+ * a caller that has not thought about partitions wants the one the app has
+ * always had.
  */
-export function getProgress(): PipelineProgress {
-  return { ...currentProgress };
+export function getProgress(trigger: RunTrigger = "manual"): PipelineProgress {
+  return { ...slots[trigger].progress };
 }
 
 /**
@@ -399,8 +520,15 @@ export function getProgress(): PipelineProgress {
 export function subscribeToProgress(listener: ProgressListener): () => void {
   listeners.add(listener);
 
-  // Send current state immediately
-  listener(currentProgress);
+  // Replays the MANUAL slot only, for now — deliberately, not by omission.
+  // Every client consumer is still last-event-wins over one feed, so replaying
+  // an untouched `schedule` slot would deliver a pristine "idle" AFTER a live
+  // manual event and blank the banner. Replaying both is the client-side
+  // slice's job, once each consumer filters on `trigger` and an untouched slot
+  // is skipped. Note this covers the REPLAY only: `updateProgress` and
+  // `dismissRunBanner` fan out to every listener with no partition filter, so
+  // until the client filters, nothing may emit for a partition it cannot read.
+  listener(slots.manual.progress);
 
   // Return unsubscribe function
   return () => {
@@ -421,8 +549,8 @@ export function resetProgress(options?: {
   // so the banner reconciles in place; the re-run sources self-reset on start.
   crawlingStatsBySource.clear();
   if (!options?.preserveSourceStats) {
-    sourceStatsByPlatform.clear();
-    sourceRowFallbackCounter = 0;
+    slot().sourceStats.clear();
+    slot().sourceRowFallbackCounter = 0;
   }
   // A run outside a chain owns the whole banner, so it drops any pages an
   // earlier chain left behind. This must NOT fire for a run that belongs to a
@@ -430,11 +558,11 @@ export function resetProgress(options?: {
   // accumulate) or a re-run aimed at one. Captured jobs go with the pages,
   // except on a per-source re-run, whose whole point is that the sources it
   // does not touch keep their rows AND their captures.
-  if (statsPageProfile() === null && profileRunStats.size > 0) {
-    profileRunStats.clear();
+  if (statsPageProfile() === null && slot().profileRunStats.size > 0) {
+    slot().profileRunStats.clear();
     if (!options?.preserveSourceStats) resetAllRunJobCaptures();
   }
-  currentProgress = {
+  slot().progress = {
     step: "idle",
     message: "Ready",
     // A fresh run gets a fresh banner: whoever dismissed the last one was
@@ -442,7 +570,7 @@ export function resetProgress(options?: {
     // and a chain is ONE banner to the user — so inside a chain the dismissal
     // is left alone and `resetProfileRunStats` clears it at chain start, the
     // same split the retained pages already use.
-    dismissed: statsPageProfile() !== null ? currentProgress.dismissed : false,
+    dismissed: statsPageProfile() !== null ? slot().progress.dismissed : false,
     crawlingSource: null,
     crawlingSourcesCompleted: 0,
     crawlingSourcesTotal: 0,
@@ -453,9 +581,10 @@ export function resetProgress(options?: {
     totalToProcess: 0,
     sourceStats: options?.preserveSourceStats ? buildSourceStats() : [],
     // Stamped here too, not only in updateProgress: `subscribeToProgress`
-    // replays `currentProgress` to every NEW subscriber, and this idle state is
-    // what a mid-sequence re-subscribe would otherwise see — an untagged "idle"
-    // that reads as "no run in progress" between two profiles.
+    // replays the manual slot's progress to every NEW subscriber, and this idle
+    // state is what a mid-sequence re-subscribe would otherwise see — an
+    // untagged "idle" that reads as "no run in progress" between two profiles.
+    trigger: activeTrigger,
     profileRun: activeProfileRun,
     profileRuns: buildProfileRunStats(),
   };
@@ -475,8 +604,8 @@ export const progressHelpers = {
       // crawl telemetry is always cleared (see resetProgress).
       crawlingStatsBySource.clear();
       if (!options?.preserveSourceStats) {
-        sourceStatsByPlatform.clear();
-        sourceRowFallbackCounter = 0;
+        slot().sourceStats.clear();
+        slot().sourceRowFallbackCounter = 0;
       }
       updateProgress({
         step: "crawling",
@@ -567,7 +696,7 @@ export const progressHelpers = {
   },
 
   markSourceCompleted: (platform: string) => {
-    const row = sourceStatsByPlatform.get(platform);
+    const row = slot().sourceStats.get(platform);
     if (!row) return;
     if (row.status !== "running" && row.status !== "pending") return;
     markRowTerminal(row, "completed");
@@ -585,7 +714,7 @@ export const progressHelpers = {
     platform: string,
     counts: { scraped?: number; unmappable?: number },
   ) => {
-    const row = sourceStatsByPlatform.get(platform);
+    const row = slot().sourceStats.get(platform);
     if (!row) return;
     if (counts.scraped !== undefined) row.jobsScraped = counts.scraped;
     if (counts.unmappable !== undefined) row.jobsUnmappable = counts.unmappable;
@@ -636,7 +765,10 @@ export const progressHelpers = {
     phase?: "list" | "job";
     currentUrl?: string;
   }) => {
-    const current = getProgress();
+    // The slot this write lands in, NOT `getProgress()` — that defaults to the
+    // manual partition, so a scheduled run would carry over the retained manual
+    // table's phase and current URL wherever this update omits them.
+    const current = slot().progress;
     if (update.source) {
       const existing =
         crawlingStatsBySource.get(update.source) ?? emptySourceCrawlingStats();
@@ -658,7 +790,7 @@ export const progressHelpers = {
       // For 1:1 extractors (hiringcafe, workingnomads, …) source-key equals
       // the platform id, so the table updates live. For jobspy (source-key
       // "jobspy") no row matches and this is a no-op.
-      const platformRow = sourceStatsByPlatform.get(update.source);
+      const platformRow = slot().sourceStats.get(update.source);
       if (
         platformRow &&
         (platformRow.status === "pending" || platformRow.status === "running")
@@ -871,7 +1003,7 @@ function sweepInFlightRows(
   status: "completed" | "failed",
   error?: string,
 ): void {
-  for (const row of sourceStatsByPlatform.values()) {
+  for (const row of slot().sourceStats.values()) {
     if (row.status === "pending" || row.status === "running") {
       markRowTerminal(row, status, error);
     }

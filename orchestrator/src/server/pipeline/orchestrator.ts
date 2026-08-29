@@ -12,7 +12,11 @@ import { logger } from "@infra/logger";
 import { runWithRequestContext } from "@infra/request-context";
 import { createLocationIntentFromLegacyInputs } from "@shared/location-domain.js";
 import type { ScrapedSourceMark } from "@shared/scrape-window.js";
-import type { PipelineConfig, PipelineRunSavedDetails } from "@shared/types";
+import type {
+  PipelineConfig,
+  PipelineRunSavedDetails,
+  RunTrigger,
+} from "@shared/types";
 import { getDataDir } from "../config/dataDir";
 import * as jobsRepo from "../repositories/jobs";
 import * as pipelineRepo from "../repositories/pipeline";
@@ -21,7 +25,11 @@ import { recordScrapeWatermarks } from "../repositories/source-scrape-watermarks
 import { llmAdjustContent } from "../services/cv";
 import { getActiveCvDocument } from "../services/cv-active";
 import { generatePdf } from "../services/pdf";
-import { progressHelpers, resetProgress } from "./progress";
+import {
+  progressHelpers,
+  resetProgress,
+  setActiveRunTrigger,
+} from "./progress";
 import {
   buildPipelineRunSavedDetails,
   createPipelineRunResultSummary,
@@ -124,6 +132,7 @@ function ensureNotCancelled(): void {
  */
 export async function runPipeline(
   config: Partial<PipelineConfig> = {},
+  options: { trigger?: RunTrigger } = {},
 ): Promise<{
   success: boolean;
   jobsDiscovered: number;
@@ -142,6 +151,11 @@ export async function runPipeline(
   isPipelineRunning = true;
   activePipelineRunId = "pending";
   cancelRequestedAt = null;
+  // Which partition this run's progress belongs to, established here — before
+  // the first await, alongside the other run-start state, and BEFORE the resets
+  // below, which act on whichever slot is active. Passed in rather than
+  // inferred: read ambiently it would report whichever kind of run went last.
+  setActiveRunTrigger(options.trigger ?? "manual");
   // A per-source re-run reconciles into the existing banner funnel: preserve
   // every other source's progress rows and captured jobs; only the re-run
   // sources reset (handled per-source as each one starts crawling).

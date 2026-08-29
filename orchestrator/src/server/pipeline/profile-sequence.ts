@@ -1,11 +1,12 @@
 import { logger } from "@infra/logger";
-import type { PipelineConfig } from "@shared/types";
+import type { PipelineConfig, RunTrigger } from "@shared/types";
 import { isRateLimitStopped } from "../services/llm/rate-limit-budget";
 import { requestPipelineCancel, runPipeline } from "./orchestrator";
 import {
   progressHelpers,
   resetProfileRunStats,
   setActiveProfileRun,
+  setActiveRunTrigger,
 } from "./progress";
 import {
   endProfileSequence,
@@ -34,13 +35,20 @@ export interface ProfileSequenceEntry {
  */
 export async function runProfileSequence(
   entries: ProfileSequenceEntry[],
+  options: { trigger?: RunTrigger } = {},
 ): Promise<void> {
+  const trigger = options.trigger ?? "manual";
   const total = entries.length;
   let completed = 0;
   let failed = 0;
   let stopped = 0;
   let cancelled = false;
   let rateLimited = false;
+
+  // Which partition the whole chain belongs to, before anything touches
+  // progress state: `resetProfileRunStats` below already writes to a slot, and
+  // the first `runPipeline` is several statements away.
+  setActiveRunTrigger(trigger);
 
   // Start the banner's pages empty. `resetProgress` can't do it: by the time
   // the first profile's run reaches it the chain has already claimed the
@@ -69,7 +77,7 @@ export async function runProfileSequence(
       // `runPipeline` sets its running flag and clears its cancel flag
       // synchronously before its first await, so re-asserting immediately after
       // the call — with no await in between — closes the commit window.
-      const running = runPipeline(entry.config);
+      const running = runPipeline(entry.config, { trigger });
       if (isProfileSequenceCancelRequested()) {
         requestPipelineCancel();
       }

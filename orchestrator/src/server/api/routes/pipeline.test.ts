@@ -273,6 +273,7 @@ describe.sequential("Pipeline API routes", () => {
           matchStrictness: "flexible",
         }),
       }),
+      { trigger: "manual" },
     );
 
     const glassdoorRunRes = await fetch(`${baseUrl}/api/pipeline/run`, {
@@ -313,6 +314,7 @@ describe.sequential("Pipeline API routes", () => {
           matchStrictness: "flexible",
         }),
       }),
+      { trigger: "manual" },
     );
   });
 
@@ -629,6 +631,7 @@ describe.sequential("Pipeline API routes", () => {
           // top of it, even though the Profile has the flag on.
           scrapeSinceLastRun: false,
         }),
+        { trigger: "manual" },
       );
     });
 
@@ -647,6 +650,7 @@ describe.sequential("Pipeline API routes", () => {
 
       expect(runPipeline).toHaveBeenCalledWith(
         expect.objectContaining({ scrapeSinceLastRun: false }),
+        { trigger: "manual" },
       );
     });
 
@@ -903,6 +907,7 @@ describe.sequential("Pipeline API routes", () => {
           matchStrictness: "flexible",
         }),
       }),
+      { trigger: "manual" },
     );
   });
 
@@ -953,6 +958,7 @@ describe.sequential("Pipeline API routes", () => {
           workplaceTypes: ["remote", "hybrid"],
         }),
       }),
+      { trigger: "manual" },
     );
   });
 
@@ -1012,6 +1018,7 @@ describe.sequential("Pipeline API routes", () => {
           workplaceTypes: ["onsite"],
         }),
       }),
+      { trigger: "manual" },
     );
   });
 
@@ -1110,6 +1117,7 @@ describe.sequential("Pipeline API routes", () => {
         providerInstanceIds: [],
         partial: true,
       }),
+      { trigger: "manual" },
     );
   });
 
@@ -1141,6 +1149,7 @@ describe.sequential("Pipeline API routes", () => {
         partial: true,
         discoveryConcurrency: 1,
       }),
+      { trigger: "manual" },
     );
   });
 
@@ -1179,6 +1188,7 @@ describe.sequential("Pipeline API routes", () => {
         providerInstanceIds: [],
         partial: true,
       }),
+      { trigger: "manual" },
     );
   });
 
@@ -1210,6 +1220,7 @@ describe.sequential("Pipeline API routes", () => {
         sources: ["linkedin"],
         providerInstanceIds: [],
       }),
+      { trigger: "manual" },
     );
   });
 
@@ -1288,6 +1299,7 @@ describe.sequential("Pipeline API routes", () => {
         sources: [],
         providerInstanceIds: ["inst-1"],
       }),
+      { trigger: "manual" },
     );
   });
 
@@ -1337,6 +1349,7 @@ describe.sequential("Pipeline API routes", () => {
           remoteLocationBlocklist: ["US only"],
         }),
       }),
+      { trigger: "manual" },
     );
   });
 
@@ -1405,9 +1418,12 @@ describe.sequential("Pipeline API routes", () => {
     expect(body.ok).toBe(true);
     // The page the row was clicked on owns both the funnel it reconciles into
     // and the Search Profile the run config is resolved from.
-    expect(targetProfileRunPage).toHaveBeenCalledWith(profileId);
+    // The trigger is explicit: this route fires while NO run is in flight, so
+    // an inherited "whichever ran last" would search the wrong partition's pages.
+    expect(targetProfileRunPage).toHaveBeenCalledWith(profileId, "manual");
     expect(runPipeline).toHaveBeenCalledWith(
       expect.objectContaining({ profileId, partial: true }),
+      { trigger: "manual" },
     );
   });
 
@@ -1489,22 +1505,25 @@ describe.sequential("Pipeline API routes", () => {
       expect(body.data.profileCount).toBe(2);
       // The chain owns the runs; the route never calls runPipeline itself.
       expect(runPipeline).not.toHaveBeenCalled();
-      expect(runProfileSequence).toHaveBeenCalledWith([
-        expect.objectContaining({
-          profile: { id: first, name: "First" },
-          config: expect.objectContaining({
-            searchTerms: ["backend engineer"],
-            sources: ["linkedin"],
+      expect(runProfileSequence).toHaveBeenCalledWith(
+        [
+          expect.objectContaining({
+            profile: { id: first, name: "First" },
+            config: expect.objectContaining({
+              searchTerms: ["backend engineer"],
+              sources: ["linkedin"],
+            }),
           }),
-        }),
-        expect.objectContaining({
-          profile: { id: second, name: "Second" },
-          config: expect.objectContaining({
-            searchTerms: ["data engineer"],
-            topN: 9,
+          expect.objectContaining({
+            profile: { id: second, name: "Second" },
+            config: expect.objectContaining({
+              searchTerms: ["data engineer"],
+              topN: 9,
+            }),
           }),
-        }),
-      ]);
+        ],
+        { trigger: "manual" },
+      );
     });
 
     it("starts nothing when a later profile in the list is unknown", async () => {
@@ -1615,12 +1634,15 @@ describe.sequential("Pipeline API routes", () => {
       // The first profile never pinned Hiring Cafe, so the list leaves it
       // nothing — and it is DROPPED from the chain rather than handed a source
       // it did not select or run as an empty leg.
-      expect(runProfileSequence).toHaveBeenCalledWith([
-        expect.objectContaining({
-          profile: expect.objectContaining({ name: "Second" }),
-          config: expect.objectContaining({ sources: ["hiringcafe"] }),
-        }),
-      ]);
+      expect(runProfileSequence).toHaveBeenCalledWith(
+        [
+          expect.objectContaining({
+            profile: expect.objectContaining({ name: "Second" }),
+            config: expect.objectContaining({ sources: ["hiringcafe"] }),
+          }),
+        ],
+        { trigger: "manual" },
+      );
     });
 
     it("refuses only when the filter leaves EVERY profile empty", async () => {
@@ -1703,14 +1725,19 @@ describe.sequential("Pipeline API routes", () => {
       });
 
       expect((await res.json()).ok).toBe(true);
-      expect(runProfileSequence).toHaveBeenCalledWith([
-        expect.objectContaining({
-          config: expect.objectContaining({ providerInstanceIds: [] }),
-        }),
-        expect.objectContaining({
-          config: expect.objectContaining({ providerInstanceIds: ["inst-b"] }),
-        }),
-      ]);
+      expect(runProfileSequence).toHaveBeenCalledWith(
+        [
+          expect.objectContaining({
+            config: expect.objectContaining({ providerInstanceIds: [] }),
+          }),
+          expect.objectContaining({
+            config: expect.objectContaining({
+              providerInstanceIds: ["inst-b"],
+            }),
+          }),
+        ],
+        { trigger: "manual" },
+      );
     });
 
     /**

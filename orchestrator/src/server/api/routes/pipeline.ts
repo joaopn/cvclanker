@@ -129,8 +129,12 @@ pipelineRouter.post("/progress/dismiss", (req: Request, res: Response) => {
   if (!parsed.success) {
     return fail(res, badRequest("Invalid dismiss payload"));
   }
-  dismissRunBanner(parsed.data.startedAt);
-  ok(res, { dismissed: getPipelineProgress().dismissed });
+  // No `trigger` on the wire yet. The server function takes one, but exposing
+  // it here would let a request emit a pristine event for a partition nothing
+  // has run — and the fan-out has no partition filter until the client slice
+  // adds one, so every viewer's banner would blank.
+  dismissRunBanner(parsed.data.startedAt, "manual");
+  ok(res, { dismissed: getPipelineProgress("manual").dismissed });
 });
 
 /**
@@ -203,7 +207,9 @@ pipelineRouter.get("/run-jobs", (req: Request, res: Response) => {
     const response: RunJobsResponse = {
       source,
       bucket,
-      jobs: getRunJobs(source, bucket, profileId ?? ""),
+      // Manual partition until the client slice can name one; the scheduled
+      // store has no reader yet.
+      jobs: getRunJobs(source, bucket, profileId ?? "", "manual"),
     };
     ok(res, response);
   } catch (error) {
@@ -900,6 +906,11 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
   // Handing the entries to `runProfileSequence` transfers ownership (its
   // `finally` releases), so the flag is cleared before the hand-off.
   let holdsSequenceClaim = false;
+  // The partition every run started here belongs to. Named once because BOTH
+  // start paths below (the chain and the single run) and the page a re-run aims
+  // at must agree — a scheduler slice has to move them together, and a default
+  // hides one of them.
+  const runTrigger = "manual" as const;
   try {
     const body = runPipelineSchema.parse(req.body);
 
@@ -1154,7 +1165,7 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
       }
 
       runWithRequestContext({}, () => {
-        runProfileSequence(entries).catch((error) => {
+        runProfileSequence(entries, { trigger: runTrigger }).catch((error) => {
           logger.error("Background multi-profile run failed", error);
         });
       });
@@ -1222,12 +1233,12 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
       body.partial === true &&
       body.profileId !== undefined &&
       !getPipelineStatus().isRunning
-        ? targetProfileRunPage(body.profileId)
+        ? targetProfileRunPage(body.profileId, runTrigger)
         : false;
 
     // Start pipeline in background
     runWithRequestContext({}, () => {
-      runPipeline(resolved.config)
+      runPipeline(resolved.config, { trigger: runTrigger })
         .catch((error) => {
           logger.error("Background pipeline run failed", error);
         })

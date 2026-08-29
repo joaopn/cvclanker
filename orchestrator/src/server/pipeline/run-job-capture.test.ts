@@ -1,5 +1,5 @@
 import type { CreateJobInput } from "@shared/types";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   captureRunJobs,
   getRunJobs,
@@ -7,6 +7,7 @@ import {
   resetRunJobCapture,
   resetRunJobCaptureForSource,
   setRunCaptureScope,
+  setRunCaptureTrigger,
   toCapturedRunJob,
 } from "./run-job-capture";
 
@@ -20,10 +21,20 @@ function makeInput(overrides: Partial<CreateJobInput> = {}): CreateJobInput {
   };
 }
 
-describe("run-job-capture", () => {
-  beforeEach(() => {
+/**
+ * `resetAllRunJobCaptures` clears the ACTIVE partition only, so a reset that
+ * did not visit both would let a scheduled-run test leak into the next file.
+ */
+function resetEveryPartition() {
+  for (const trigger of ["manual", "schedule"] as const) {
+    setRunCaptureTrigger(trigger);
     resetAllRunJobCaptures();
-  });
+  }
+  setRunCaptureTrigger("manual");
+}
+
+describe("run-job-capture", () => {
+  beforeEach(resetEveryPartition);
 
   it("captures jobs per source and bucket and reads them back", () => {
     captureRunJobs("linkedin", "scraped", [
@@ -132,5 +143,87 @@ describe("run-job-capture", () => {
       jobLevel: "senior",
       datePosted: "2026-05-01",
     });
+  });
+});
+
+describe("run-job-capture partitions manual and scheduled runs", () => {
+  beforeEach(resetEveryPartition);
+  afterEach(resetEveryPartition);
+
+  it("keeps the same source's captures apart per partition", () => {
+    captureRunJobs("linkedin", "scraped", [
+      toCapturedRunJob(makeInput({ jobUrl: "manual-1" })),
+    ]);
+    setRunCaptureTrigger("schedule");
+    captureRunJobs("linkedin", "scraped", [
+      toCapturedRunJob(makeInput({ jobUrl: "scheduled-1" })),
+      toCapturedRunJob(makeInput({ jobUrl: "scheduled-2" })),
+    ]);
+
+    expect(
+      getRunJobs("linkedin", "scraped", "", "manual").map((job) => job.jobUrl),
+    ).toEqual(["manual-1"]);
+    expect(getRunJobs("linkedin", "scraped", "", "schedule")).toHaveLength(2);
+    // The default is the unscoped MANUAL store, never whatever is running: a
+    // click arrives long after the capture.
+    expect(getRunJobs("linkedin", "scraped")).toHaveLength(1);
+  });
+
+  it("does not let a new run in one partition clear the other's captures", () => {
+    captureRunJobs("linkedin", "scraped", [toCapturedRunJob(makeInput())]);
+    // A page of a chain, too — the sweep matches on a prefix, so a page-scoped
+    // key of the other partition must survive it just as the unscoped one does.
+    setRunCaptureScope("profile-a");
+    captureRunJobs("linkedin", "scraped", [toCapturedRunJob(makeInput())]);
+    setRunCaptureScope("");
+
+    // A scheduled run starting resets ITS captures — the manual table is still
+    // on screen, and its counts have to keep opening the jobs behind them.
+    setRunCaptureTrigger("schedule");
+    resetAllRunJobCaptures();
+
+    expect(getRunJobs("linkedin", "scraped", "", "manual")).toHaveLength(1);
+    expect(
+      getRunJobs("linkedin", "scraped", "profile-a", "manual"),
+    ).toHaveLength(1);
+  });
+
+  it("writes to its own partition after a chain in the other one ended", () => {
+    // A chain ends by pointing the scope back at the unscoped store; the next
+    // run of the other kind must not inherit that partition.
+    setRunCaptureTrigger("schedule");
+    setRunCaptureScope("profile-a");
+    captureRunJobs("linkedin", "scraped", [toCapturedRunJob(makeInput())]);
+    setRunCaptureScope("");
+
+    setRunCaptureTrigger("manual");
+    captureRunJobs("linkedin", "scraped", [
+      toCapturedRunJob(makeInput({ jobUrl: "manual-1" })),
+    ]);
+
+    expect(
+      getRunJobs("linkedin", "scraped", "", "manual").map((job) => job.jobUrl),
+    ).toEqual(["manual-1"]);
+    expect(
+      getRunJobs("linkedin", "scraped", "profile-a", "schedule"),
+    ).toHaveLength(1);
+  });
+
+  it("keeps a page aimed at by a re-run when the run establishes its trigger", () => {
+    // The scenario this exists for: a scheduled run went last, so the capture
+    // trigger is "schedule" when the route aims a manual re-run at a page.
+    // `targetProfileRunPage` sets the profile BEFORE the run sets the trigger,
+    // so establishing the trigger must not throw that aim away.
+    setRunCaptureTrigger("schedule");
+    setRunCaptureScope("profile-a");
+    setRunCaptureTrigger("manual");
+    captureRunJobs("linkedin", "scraped", [toCapturedRunJob(makeInput())]);
+
+    expect(
+      getRunJobs("linkedin", "scraped", "profile-a", "manual"),
+    ).toHaveLength(1);
+    expect(getRunJobs("linkedin", "scraped", "profile-a", "schedule")).toEqual(
+      [],
+    );
   });
 });

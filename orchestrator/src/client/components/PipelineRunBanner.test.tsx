@@ -47,6 +47,7 @@ import { PipelineRunBanner } from "./PipelineRunBanner";
 const baseEvent: PipelineProgressEvent = {
   step: "crawling",
   message: "Fetching jobs from sources...",
+  trigger: "manual",
   dismissed: false,
   crawlingSource: "jobspy",
   crawlingSourcesCompleted: 0,
