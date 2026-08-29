@@ -535,9 +535,14 @@ export const OverviewPipelineRunsSection: React.FC = () => {
         </CardHeader>
 
         <CardContent className="space-y-6">
-          {pipelineStatusQuery.data?.isRunning ? (
-            <PipelineRunBanner isRunning />
-          ) : null}
+          {/* Mounted unconditionally, like the jobs page: gating it on
+              `isRunning` reproduced the bug this banner was fixed for — a run
+              that ended while nobody was looking left no trace — and unmounted
+              the funnel out from under anyone reading it the moment the run
+              finished. The banner decides for itself when it has nothing. */}
+          <PipelineRunBanner
+            isRunning={pipelineStatusQuery.data?.isRunning ?? false}
+          />
 
           {isLoading && !latestRun && recentRuns.length === 0 ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">

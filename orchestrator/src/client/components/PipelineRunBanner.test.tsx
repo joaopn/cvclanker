@@ -10,16 +10,36 @@ type Handlers = {
 
 const lastHandlers: { current: Handlers | null } = { current: null };
 
-vi.mock("@/client/lib/sse", () => ({
-  subscribeToEventSource: vi.fn(
-    (_url: string, handlers: Handlers): (() => void) => {
-      lastHandlers.current = handlers;
-      handlers.onOpen?.();
+// The banner reads the SHARED progress stream, so that is the boundary to
+// stub — mocking the raw SSE helper would leave the module's own fan-out and
+// replay in the way.
+vi.mock("@client/lib/progress-stream", () => ({
+  subscribeToPipelineProgress: vi.fn(
+    (watcher: {
+      onEvent: (event: PipelineProgressEvent) => void;
+      onConnectionChange?: (connected: boolean) => void;
+    }): (() => void) => {
+      lastHandlers.current = {
+        onMessage: watcher.onEvent,
+        onOpen: () => watcher.onConnectionChange?.(true),
+        onError: () => watcher.onConnectionChange?.(false),
+      };
+      watcher.onConnectionChange?.(true);
       return () => {
         lastHandlers.current = null;
       };
     },
   ),
+}));
+
+// Unmocked, the dismiss button fired a REAL fetch at a relative URL: it
+// rejected, the catch ran outside `act()`, and both dismiss tests passed while
+// proving neither that the POST is sent nor that a failure restores the banner.
+const dismissRunBanner = vi.fn(async (_startedAt?: string) => ({
+  dismissed: true,
+}));
+vi.mock("@client/api", () => ({
+  dismissRunBanner: (startedAt?: string) => dismissRunBanner(startedAt),
 }));
 
 import { PipelineRunBanner } from "./PipelineRunBanner";
@@ -249,6 +269,56 @@ describe("PipelineRunBanner", () => {
     // reason used to be hidden precisely because the funnel had rows.
     expect(screen.getByText("LinkedIn")).toBeInTheDocument();
     expect(screen.getByText(/rate limit/i)).toBeInTheDocument();
+  });
+
+  it("sends the dismissal, naming the run it applies to", () => {
+    render(<PipelineRunBanner isRunning />);
+    act(() => {
+      lastHandlers.current?.onMessage({
+        ...baseEvent,
+        startedAt: "2026-05-22T10:00:00.000Z",
+      });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /dismiss/i }));
+
+    // Named, so a stale tab cannot hide a run that started after its click.
+    expect(dismissRunBanner).toHaveBeenCalledWith("2026-05-22T10:00:00.000Z");
+  });
+
+  it("puts the banner back when the dismissal fails", async () => {
+    dismissRunBanner.mockRejectedValueOnce(new Error("offline"));
+    render(<PipelineRunBanner isRunning />);
+    act(() => {
+      lastHandlers.current?.onMessage(baseEvent);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /dismiss/i }));
+    expect(screen.queryByText("LinkedIn")).not.toBeInTheDocument();
+
+    // Hiding it locally while the server still shows it to everyone else would
+    // be the worst of both worlds.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByText("LinkedIn")).toBeInTheDocument();
+  });
+
+  it("keeps showing a chain sitting idle between profiles", () => {
+    render(<PipelineRunBanner isRunning={false} />);
+
+    act(() => {
+      lastHandlers.current?.onMessage({
+        ...baseEvent,
+        step: "idle",
+        message: "Ready",
+        profileRun: { id: "p2", name: "Second", index: 2, total: 3 },
+      });
+    });
+
+    // A chain resets to idle between legs; blanking the banner there would
+    // take its retained pages with it mid-run.
+    expect(screen.getByText("LinkedIn")).toBeInTheDocument();
   });
 
   it("subscribes even when nothing is running", () => {

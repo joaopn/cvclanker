@@ -267,6 +267,10 @@ export function resetProfileRunStats(): void {
   profileRunStats.clear();
   rerunPageProfile = null;
   resetAllRunJobCaptures();
+  // A new chain's banner has not been dismissed by anyone. `resetProgress`
+  // cannot decide this: it runs once per PROFILE, so clearing there would
+  // un-dismiss the banner at every leg of a chain the user already hid.
+  currentProgress = { ...currentProgress, dismissed: false };
 }
 
 /**
@@ -363,7 +367,14 @@ export function updateProgress(update: Partial<PipelineProgress>): void {
  * reopening the page must not resurrect a banner already dealt with. Cleared by
  * `resetProgress`, so the next run always gets a fresh one.
  */
-export function dismissRunBanner(): void {
+export function dismissRunBanner(startedAt?: string): void {
+  // Named, because a stale tab is not a stale click: a window left open on
+  // yesterday's failed run is still showing a Dismiss button, and if someone
+  // starts a new run before it is pressed, an unqualified dismissal would hide
+  // the LIVE run from every viewer with nothing to clear it until the run after.
+  if (startedAt !== undefined && startedAt !== currentProgress.startedAt) {
+    return;
+  }
   if (currentProgress.dismissed) return;
   currentProgress = { ...currentProgress, dismissed: true };
   for (const listener of listeners) {
@@ -427,8 +438,11 @@ export function resetProgress(options?: {
     step: "idle",
     message: "Ready",
     // A fresh run gets a fresh banner: whoever dismissed the last one was
-    // dismissing THAT run, not muting the next.
-    dismissed: false,
+    // dismissing THAT run, not muting the next. But this runs once per PROFILE,
+    // and a chain is ONE banner to the user — so inside a chain the dismissal
+    // is left alone and `resetProfileRunStats` clears it at chain start, the
+    // same split the retained pages already use.
+    dismissed: statsPageProfile() !== null ? currentProgress.dismissed : false,
     crawlingSource: null,
     crawlingSourcesCompleted: 0,
     crawlingSourcesTotal: 0,

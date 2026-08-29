@@ -1110,9 +1110,12 @@ export async function getRunJobs(
   return fetchApi<RunJobsResponse>(`/pipeline/run-jobs?${params.toString()}`);
 }
 
-export async function dismissRunBanner(): Promise<{ dismissed: boolean }> {
+export async function dismissRunBanner(
+  startedAt?: string,
+): Promise<{ dismissed: boolean }> {
   return fetchApi<{ dismissed: boolean }>("/pipeline/progress/dismiss", {
     method: "POST",
+    body: JSON.stringify(startedAt ? { startedAt } : {}),
   });
 }
 

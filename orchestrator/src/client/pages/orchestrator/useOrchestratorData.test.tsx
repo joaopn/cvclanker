@@ -18,6 +18,13 @@ vi.mock("@client/lib/sse", () => ({
   subscribeToEventSource: vi.fn(() => () => {}),
 }));
 
+// The shared progress stream is a module-level singleton that REPLAYS its last
+// event to each new subscriber, so leaving it real would leak one test's
+// pipeline event into the next hook instance and fire an extra refresh.
+vi.mock("@client/lib/progress-stream", () => ({
+  subscribeToPipelineProgress: vi.fn(() => () => {}),
+}));
+
 import { useOrchestratorData } from "./useOrchestratorData";
 
 const emptyByStatus: Record<JobStatus, number> = {
@@ -67,15 +74,14 @@ const makeWrapper = () => {
  * registered and feed it events.
  */
 async function progressEmitter() {
-  const { subscribeToEventSource } = await import("@client/lib/sse");
-  const call = vi
-    .mocked(subscribeToEventSource)
-    .mock.calls.find(([url]) => url === "/api/pipeline/progress");
-  const onMessage = call?.[1]?.onMessage;
-  if (!onMessage) throw new Error("progress stream was never subscribed");
+  const { subscribeToPipelineProgress } = await import(
+    "@client/lib/progress-stream"
+  );
+  const watcher = vi.mocked(subscribeToPipelineProgress).mock.calls.at(-1)?.[0];
+  if (!watcher) throw new Error("progress stream was never subscribed");
   return (event: Record<string, unknown>) => {
     act(() => {
-      onMessage(event as never);
+      watcher.onEvent(event as never);
     });
   };
 }

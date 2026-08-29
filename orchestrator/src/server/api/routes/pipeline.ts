@@ -18,6 +18,7 @@ import {
   clearProfileRunPageTarget,
   dismissRunBanner,
   endProfileSequence,
+  getProgress as getPipelineProgress,
   getPipelineStatus,
   isProfileSequenceActive,
   type ProfileSequenceEntry,
@@ -108,9 +109,14 @@ pipelineRouter.get("/status", async (_req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /api/pipeline/progress - Server-Sent Events endpoint for live progress
- */
+const dismissProgressSchema = z.object({
+  /**
+   * The run being dismissed. A dismissal that names a run the server has since
+   * moved past is ignored rather than applied to whatever is current.
+   */
+  startedAt: z.string().min(1).optional(),
+});
+
 /**
  * Hide the current run's banner for every viewer.
  *
@@ -118,11 +124,18 @@ pipelineRouter.get("/status", async (_req: Request, res: Response) => {
  * the window used to be indistinguishable from dismissing it, and reopening
  * resurrected a banner already dealt with.
  */
-pipelineRouter.post("/progress/dismiss", (_req: Request, res: Response) => {
-  dismissRunBanner();
-  ok(res, { dismissed: true });
+pipelineRouter.post("/progress/dismiss", (req: Request, res: Response) => {
+  const parsed = dismissProgressSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return fail(res, badRequest("Invalid dismiss payload"));
+  }
+  dismissRunBanner(parsed.data.startedAt);
+  ok(res, { dismissed: getPipelineProgress().dismissed });
 });
 
+/**
+ * GET /api/pipeline/progress - Server-Sent Events endpoint for live progress
+ */
 pipelineRouter.get("/progress", (req: Request, res: Response) => {
   setupSse(res, {
     cacheControl: "no-cache, no-transform",

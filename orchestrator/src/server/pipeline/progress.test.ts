@@ -471,6 +471,69 @@ describe("run banner dismissal", () => {
     expect(getProgress().dismissed).toBe(false);
   });
 
+  /**
+   * `resetProgress` runs once per PROFILE, but a chain is ONE banner to the
+   * user. Clearing dismissal there would pop the banner back at every leg of a
+   * chain they had already hidden.
+   */
+  it("survives the per-profile resets inside a chain", () => {
+    setActiveProfileRun({ id: "p1", name: "First", index: 1, total: 2 });
+    updateProgress({ step: "scoring", message: "Scoring" });
+    dismissRunBanner();
+
+    // The next leg of the same chain.
+    setActiveProfileRun({ id: "p2", name: "Second", index: 2, total: 2 });
+    resetProgress();
+
+    expect(getProgress().dismissed).toBe(true);
+  });
+
+  it("clears when a NEW chain starts", () => {
+    setActiveProfileRun({ id: "p1", name: "First", index: 1, total: 2 });
+    updateProgress({ step: "scoring", message: "Scoring" });
+    dismissRunBanner();
+
+    resetProfileRunStats();
+
+    expect(getProgress().dismissed).toBe(false);
+  });
+
+  /**
+   * A tab left open on yesterday's failed run still shows a Dismiss button. If
+   * a new run starts before it is pressed, an unqualified dismissal would hide
+   * the LIVE run from every viewer, with nothing to clear it until the run
+   * after that.
+   */
+  it("ignores a dismissal naming a run the server has moved past", () => {
+    updateProgress({
+      step: "failed",
+      message: "Pipeline failed",
+      startedAt: "2026-05-22T10:00:00.000Z",
+    });
+    resetProgress();
+    updateProgress({
+      step: "crawling",
+      message: "Fetching",
+      startedAt: "2026-05-22T12:00:00.000Z",
+    });
+
+    dismissRunBanner("2026-05-22T10:00:00.000Z");
+
+    expect(getProgress().dismissed).toBe(false);
+  });
+
+  it("applies a dismissal naming the run it is looking at", () => {
+    updateProgress({
+      step: "failed",
+      message: "Pipeline failed",
+      startedAt: "2026-05-22T12:00:00.000Z",
+    });
+
+    dismissRunBanner("2026-05-22T12:00:00.000Z");
+
+    expect(getProgress().dismissed).toBe(true);
+  });
+
   it("survives an update to the run it describes", () => {
     dismissRunBanner();
     updateProgress({ step: "scoring", message: "Scoring jobs" });

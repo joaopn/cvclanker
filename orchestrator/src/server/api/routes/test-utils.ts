@@ -7,13 +7,17 @@ import {
   type ExtractorSourceId,
   PIPELINE_EXTRACTOR_SOURCE_IDS,
 } from "@shared/extractors";
-import type { ExtractorManifest } from "@shared/types";
+import type { ExtractorManifest, PipelineProgressEvent } from "@shared/types";
 import { vi } from "vitest";
 
 vi.mock("@server/pipeline/index", () => {
-  const progress = {
+  // Typed so a new required field on the real payload fails here rather than
+  // silently leaving the fixture a shape the app never produces.
+  const progress: PipelineProgressEvent = {
     step: "idle",
     message: "Ready",
+    dismissed: false,
+    sourceStats: [],
     crawlingSource: null,
     crawlingSourcesCompleted: 0,
     crawlingSourcesTotal: 0,
@@ -61,6 +65,8 @@ vi.mock("@server/pipeline/index", () => {
     // pre-existing test stays on the flat-funnel path.
     targetProfileRunPage: vi.fn(() => false),
     clearProfileRunPageTarget: vi.fn(),
+    dismissRunBanner: vi.fn(),
+    getProgress: vi.fn(() => progress),
     subscribeToProgress: vi.fn((listener: (data: unknown) => void) => {
       listener(progress);
       return () => {};

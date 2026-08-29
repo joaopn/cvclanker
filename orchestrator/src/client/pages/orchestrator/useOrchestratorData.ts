@@ -1,6 +1,6 @@
 import * as api from "@client/api";
 import { useDetachedJobActionBatches } from "@client/hooks/useDetachedJobActionBatches";
-import { subscribeToEventSource } from "@client/lib/sse";
+import { subscribeToPipelineProgress } from "@client/lib/progress-stream";
 import { toast } from "@client/lib/toast";
 import type {
   Job,
@@ -473,81 +473,75 @@ export const useOrchestratorData = (
   useEffect(() => {
     if (typeof EventSource === "undefined") return;
 
-    const unsubscribe = subscribeToEventSource<unknown>(
-      "/api/pipeline/progress",
-      {
-        onOpen: () => {
-          setIsPipelineSseConnected(true);
-        },
-        onMessage: (payload) => {
-          if (!payload || typeof payload !== "object") return;
-          const step = (payload as { step?: unknown }).step;
-          if (typeof step !== "string") return;
-          if (
-            !ACTIVE_PIPELINE_STEPS.has(step as PipelineProgressStep) &&
-            !TERMINAL_PIPELINE_STEPS.has(step as PipelineProgressStep) &&
-            step !== "idle"
-          ) {
-            return;
+    // Through the shared stream: the run banner watches the same endpoint on
+    // this page, and two independent subscriptions meant two sockets and two
+    // server-side responses for one feed.
+    const unsubscribe = subscribeToPipelineProgress({
+      onConnectionChange: setIsPipelineSseConnected,
+      onEvent: (payload: PipelineProgressEvent) => {
+        const step = payload.step as unknown;
+        if (typeof step !== "string") return;
+        if (
+          !ACTIVE_PIPELINE_STEPS.has(step as PipelineProgressStep) &&
+          !TERMINAL_PIPELINE_STEPS.has(step as PipelineProgressStep) &&
+          step !== "idle"
+        ) {
+          return;
+        }
+
+        const typedStep = step as PipelineProgressStep;
+        const isActiveStep = ACTIVE_PIPELINE_STEPS.has(typedStep);
+
+        // A multi-profile chain declares its own end: every event it emits
+        // mid-chain is tagged with the profile it belongs to, and the one
+        // untagged terminal at the end is the chain's. So a tagged event
+        // never ends the run here — not the per-profile terminal, and not
+        // the "idle" a profile sits in between reset and first crawl (which
+        // is also what a re-subscribing client replays).
+        const chainEvent =
+          (payload as PipelineProgressEvent).profileRun != null;
+        if (chainEvent && !isActiveStep) {
+          observePipelineState({ isRunning: true, terminal: null });
+          // Surface the finished profile's imports now rather than waiting
+          // for the next profile's throttled refresh.
+          if (TERMINAL_PIPELINE_STEPS.has(typedStep)) void loadJobs();
+          return;
+        }
+
+        if (isActiveStep) {
+          observePipelineState({ isRunning: true, terminal: null });
+        } else if (typedStep === "idle") {
+          observePipelineState({ isRunning: false, terminal: null });
+        }
+
+        if (isActiveStep) {
+          const now = Date.now();
+          if (now - lastSseRefreshAtRef.current >= 2500) {
+            lastSseRefreshAtRef.current = now;
+            void checkForJobChanges();
           }
+          return;
+        }
 
-          const typedStep = step as PipelineProgressStep;
-          const isActiveStep = ACTIVE_PIPELINE_STEPS.has(typedStep);
-
-          // A multi-profile chain declares its own end: every event it emits
-          // mid-chain is tagged with the profile it belongs to, and the one
-          // untagged terminal at the end is the chain's. So a tagged event
-          // never ends the run here — not the per-profile terminal, and not
-          // the "idle" a profile sits in between reset and first crawl (which
-          // is also what a re-subscribing client replays).
-          const chainEvent =
-            (payload as PipelineProgressEvent).profileRun != null;
-          if (chainEvent && !isActiveStep) {
-            observePipelineState({ isRunning: true, terminal: null });
-            // Surface the finished profile's imports now rather than waiting
-            // for the next profile's throttled refresh.
-            if (TERMINAL_PIPELINE_STEPS.has(typedStep)) void loadJobs();
-            return;
-          }
-
-          if (isActiveStep) {
-            observePipelineState({ isRunning: true, terminal: null });
-          } else if (typedStep === "idle") {
-            observePipelineState({ isRunning: false, terminal: null });
-          }
-
-          if (isActiveStep) {
-            const now = Date.now();
-            if (now - lastSseRefreshAtRef.current >= 2500) {
-              lastSseRefreshAtRef.current = now;
-              void checkForJobChanges();
-            }
-            return;
-          }
-
-          if (TERMINAL_PIPELINE_STEPS.has(typedStep)) {
-            const eventPayload = payload as PipelineProgressEvent;
-            const terminal = typedStep as PipelineTerminalStatus;
-            observePipelineState({
-              isRunning: false,
-              terminal: {
+        if (TERMINAL_PIPELINE_STEPS.has(typedStep)) {
+          const eventPayload = payload as PipelineProgressEvent;
+          const terminal = typedStep as PipelineTerminalStatus;
+          observePipelineState({
+            isRunning: false,
+            terminal: {
+              status: terminal,
+              errorMessage: eventPayload.error ?? null,
+              signature: buildTerminalSignature({
                 status: terminal,
-                errorMessage: eventPayload.error ?? null,
-                signature: buildTerminalSignature({
-                  status: terminal,
-                  startedAt: eventPayload.startedAt,
-                  completedAt: eventPayload.completedAt,
-                }),
-              },
-            });
-            void loadJobs();
-          }
-        },
-        onError: () => {
-          setIsPipelineSseConnected(false);
-        },
+                startedAt: eventPayload.startedAt,
+                completedAt: eventPayload.completedAt,
+              }),
+            },
+          });
+          void loadJobs();
+        }
       },
-    );
+    });
 
     return () => {
       unsubscribe();

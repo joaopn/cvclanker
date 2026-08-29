@@ -1,4 +1,5 @@
 import * as api from "@client/api";
+import { subscribeToPipelineProgress } from "@client/lib/progress-stream";
 import type {
   CapturedRunJob,
   JobSource,
@@ -22,7 +23,6 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { subscribeToEventSource } from "@/client/lib/sse";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -205,7 +205,10 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
   // The local flag only covers the round trip, and is TIED TO THE RUN it was
   // clicked on — an untied flag would keep hiding the NEXT run's banner too,
   // since nothing would ever clear it.
-  const [dismissingRun, setDismissingRun] = useState<string | null>(null);
+  const [dismissing, setDismissing] = useState<{
+    pending: boolean;
+    run: string | null;
+  }>({ pending: false, run: null });
   const [jobsView, setJobsView] = useState<{
     source: string;
     bucket: RunJobBucket;
@@ -220,26 +223,21 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
   );
   const lastChainKeyRef = useRef<string | null>(null);
 
-  // Subscribed ALWAYS, not only while a run is in flight. The server holds the
-  // last run's funnel and replays it to every new subscriber, so this is what
-  // makes the banner survive closing the window: a run that ended while nobody
-  // was looking is still there when someone opens the page. Gating this on
+  // Watching ALWAYS, not only while a run is in flight: the server holds the
+  // last run's funnel and replays it, so a run that ended while nobody was
+  // looking is still there when someone opens the page. Gating this on
   // `isRunning` meant a finished run — including one that DIED — left no trace
-  // on this page at all, which read as the run having vanished.
+  // on this page, which read as the run having vanished.
+  //
+  // Through the shared stream, not a socket of its own: the orchestrator data
+  // hook already watches this endpoint on the same page, and a second permanent
+  // subscription would double both the browser's connections and the server's
+  // open responses.
   useEffect(() => {
-    const unsubscribe = subscribeToEventSource<PipelineProgressEvent>(
-      "/api/pipeline/progress",
-      {
-        onOpen: () => setIsConnected(true),
-        onMessage: (payload) => setProgress(payload),
-        onError: () => setIsConnected(false),
-      },
-    );
-
-    return () => {
-      unsubscribe();
-      setIsConnected(false);
-    };
+    return subscribeToPipelineProgress({
+      onEvent: setProgress,
+      onConnectionChange: setIsConnected,
+    });
   }, []);
 
   const percentage = useMemo(
@@ -261,12 +259,27 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
     if (pinnedProfileIndex !== null) setPinnedProfileIndex(null);
   }
 
+  // Tied to the run it was clicked on: an untied flag would go on hiding the
+  // NEXT run's banner too, since nothing would ever clear it. Tracked as its
+  // own boolean rather than "run !== null", because `startedAt` is absent
+  // between a run's reset and its first crawl event — where overloading null
+  // made the X do nothing until the server round-tripped.
   const dismissPending =
-    dismissingRun !== null && (progress?.startedAt ?? null) === dismissingRun;
+    dismissing.pending && (progress?.startedAt ?? null) === dismissing.run;
   if (dismissPending || progress?.dismissed) return null;
   // "idle" is a server with no run to describe — a fresh boot, or a restart
   // since the last one. Anything else is a run worth showing, running or not.
-  if (!isRunning && (!progress || progress.step === "idle")) return null;
+  //
+  // A chain sits at idle between profiles, and a per-source re-run's reset
+  // emits an UNTAGGED idle that drives `isRunning` false: both would blank the
+  // banner mid-run along with its retained pages, so a tagged event or any
+  // retained page counts as a run in its own right.
+  const hasRunToShow =
+    progress != null &&
+    (progress.step !== "idle" ||
+      progress.profileRun != null ||
+      (progress.profileRuns?.length ?? 0) > 0);
+  if (!isRunning && !hasRunToShow) return null;
 
   const rawStep = progress?.step ?? "idle";
   const profileRun = progress?.profileRun ?? null;
@@ -422,10 +435,10 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
                     </Badge>
                   )
                 )}
-                {/* The stream indicator describes a subscription that only
-                    exists while a run is on. The banner outlives the run, and
-                    leaving this up parked a permanent "Connecting…" beside the
-                    final state — the stream had not dropped, it was closed. */}
+                {/* Gated on `isRunning`, though the subscription is now
+                    permanent: "Connecting…" beside a finished run's final
+                    state describes nothing the user can act on, and an idle
+                    reconnect would read as a fault rather than a quiet feed. */}
                 {isRunning && (
                   <span className="truncate text-xs text-muted-foreground">
                     {isConnected ? "Live" : "Connecting…"}
@@ -462,11 +475,12 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
                   aria-label="Dismiss pipeline banner"
                   className="h-7 w-7"
                   onClick={() => {
-                    setDismissingRun(progress?.startedAt ?? null);
-                    void api.dismissRunBanner().catch(() => {
+                    const run = progress?.startedAt ?? null;
+                    setDismissing({ pending: true, run });
+                    void api.dismissRunBanner(run ?? undefined).catch(() => {
                       // Put it back rather than hiding a banner the server
                       // still shows every other viewer.
-                      setDismissingRun(null);
+                      setDismissing({ pending: false, run: null });
                     });
                   }}
                 >
@@ -488,6 +502,21 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
                   </p>
                 )}
               </div>
+
+              {/* ABOVE the paged table, and shown whatever the funnel holds.
+                  This is the RUN's failure, not the displayed profile's: on a
+                  chain it would otherwise sit under whichever page the user
+                  happened to be on — attributing "stopped after 1 of 3, rate
+                  limited" to a profile that finished cleanly, and repeating
+                  itself as they paged. Gating it on an EMPTY funnel also hid
+                  the reason for every failure that struck after scraping,
+                  which is exactly what a rate limit during scoring looks
+                  like: a run-level death with healthy source rows. */}
+              {step === "failed" && progress.error && (
+                <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+                  {progress.error}
+                </div>
+              )}
 
               {sourceStats.length > 0 && (
                 <>
@@ -548,17 +577,6 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
                 <p className="text-sm text-muted-foreground">
                   No sources have reported for this profile yet.
                 </p>
-              )}
-
-              {/* Shown whatever the funnel holds. Gating this on an EMPTY
-                  funnel hid the reason for every failure that struck after
-                  scraping — a rate limit during scoring is a run-level death
-                  with a perfectly healthy set of source rows, and the one
-                  thing the user needs off this banner is why it stopped. */}
-              {step === "failed" && progress.error && (
-                <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
-                  {progress.error}
-                </div>
               )}
             </CardContent>
           )}
