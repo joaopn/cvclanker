@@ -35,6 +35,7 @@ const listeners: Set<ProgressListener> = new Set();
 let currentProgress: PipelineProgress = {
   step: "idle",
   message: "Ready",
+  dismissed: false,
   crawlingSource: null,
   crawlingSourcesCompleted: 0,
   crawlingSourcesTotal: 0,
@@ -355,6 +356,26 @@ export function updateProgress(update: Partial<PipelineProgress>): void {
 }
 
 /**
+ * Hide the current run's banner for everyone.
+ *
+ * Dismissal lives here rather than in a component's state because the banner
+ * describes the RUN: dismissing it in one tab should hide it in every tab, and
+ * reopening the page must not resurrect a banner already dealt with. Cleared by
+ * `resetProgress`, so the next run always gets a fresh one.
+ */
+export function dismissRunBanner(): void {
+  if (currentProgress.dismissed) return;
+  currentProgress = { ...currentProgress, dismissed: true };
+  for (const listener of listeners) {
+    try {
+      listener(currentProgress);
+    } catch (error) {
+      logger.error("Error in progress listener", error);
+    }
+  }
+}
+
+/**
  * Get the current progress state.
  */
 export function getProgress(): PipelineProgress {
@@ -405,6 +426,9 @@ export function resetProgress(options?: {
   currentProgress = {
     step: "idle",
     message: "Ready",
+    // A fresh run gets a fresh banner: whoever dismissed the last one was
+    // dismissing THAT run, not muting the next.
+    dismissed: false,
     crawlingSource: null,
     crawlingSourcesCompleted: 0,
     crawlingSourcesTotal: 0,

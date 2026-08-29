@@ -27,6 +27,7 @@ import { PipelineRunBanner } from "./PipelineRunBanner";
 const baseEvent: PipelineProgressEvent = {
   step: "crawling",
   message: "Fetching jobs from sources...",
+  dismissed: false,
   crawlingSource: "jobspy",
   crawlingSourcesCompleted: 0,
   crawlingSourcesTotal: 1,
@@ -209,6 +210,75 @@ describe("PipelineRunBanner", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: /dismiss/i }));
+    expect(screen.queryByText("LinkedIn")).not.toBeInTheDocument();
+  });
+
+  /**
+   * The bug that made a prod run look like it had vanished: the banner
+   * subscribed only while a run was in flight, so reopening the page after one
+   * had ended — including one that DIED — showed nothing at all, even though
+   * the server still holds that run's funnel and replays it on connect.
+   */
+  it("shows a run that already ended, on a page opened afterwards", () => {
+    render(<PipelineRunBanner isRunning={false} />);
+
+    act(() => {
+      lastHandlers.current?.onMessage({
+        ...baseEvent,
+        step: "failed",
+        message: "Pipeline failed",
+        error: "LLM rate limit reached",
+      });
+    });
+
+    expect(screen.getByText(/rate limit/i)).toBeInTheDocument();
+  });
+
+  it("shows why a run failed even when its sources reported", () => {
+    render(<PipelineRunBanner isRunning={false} />);
+
+    act(() => {
+      lastHandlers.current?.onMessage({
+        ...baseEvent,
+        step: "failed",
+        error: "LLM rate limit reached",
+      });
+    });
+
+    // A rate limit during scoring kills the run with a healthy funnel, and the
+    // reason used to be hidden precisely because the funnel had rows.
+    expect(screen.getByText("LinkedIn")).toBeInTheDocument();
+    expect(screen.getByText(/rate limit/i)).toBeInTheDocument();
+  });
+
+  it("subscribes even when nothing is running", () => {
+    render(<PipelineRunBanner isRunning={false} />);
+    expect(lastHandlers.current).not.toBeNull();
+  });
+
+  it("stays out of the way when the server has no run to describe", () => {
+    render(<PipelineRunBanner isRunning={false} />);
+
+    act(() => {
+      lastHandlers.current?.onMessage({
+        ...baseEvent,
+        step: "idle",
+        message: "Ready",
+      });
+    });
+
+    // A fresh boot, or a restart since the last run — nothing to show.
+    expect(screen.queryByText("LinkedIn")).not.toBeInTheDocument();
+  });
+
+  it("hides a run the SERVER says was dismissed, without being clicked", () => {
+    render(<PipelineRunBanner isRunning />);
+
+    act(() => {
+      lastHandlers.current?.onMessage({ ...baseEvent, dismissed: true });
+    });
+
+    // Dismissed in another tab: the banner belongs to the run, not the browser.
     expect(screen.queryByText("LinkedIn")).not.toBeInTheDocument();
   });
 

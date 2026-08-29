@@ -198,7 +198,14 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
 }) => {
   const [progress, setProgress] = useState<PipelineProgressEvent | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
+  // Dismissal is server-side (`progress.dismissed`): the banner describes the
+  // RUN, so hiding it in one tab hides it everywhere and reopening the page
+  // does not resurrect one already dealt with.
+  //
+  // The local flag only covers the round trip, and is TIED TO THE RUN it was
+  // clicked on — an untied flag would keep hiding the NEXT run's banner too,
+  // since nothing would ever clear it.
+  const [dismissingRun, setDismissingRun] = useState<string | null>(null);
   const [jobsView, setJobsView] = useState<{
     source: string;
     bucket: RunJobBucket;
@@ -211,26 +218,20 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
   const [pinnedProfileIndex, setPinnedProfileIndex] = useState<number | null>(
     null,
   );
-  const lastStartedAtRef = useRef<string | undefined>(undefined);
   const lastChainKeyRef = useRef<string | null>(null);
 
+  // Subscribed ALWAYS, not only while a run is in flight. The server holds the
+  // last run's funnel and replays it to every new subscriber, so this is what
+  // makes the banner survive closing the window: a run that ended while nobody
+  // was looking is still there when someone opens the page. Gating this on
+  // `isRunning` meant a finished run — including one that DIED — left no trace
+  // on this page at all, which read as the run having vanished.
   useEffect(() => {
-    if (!isRunning) return;
-
     const unsubscribe = subscribeToEventSource<PipelineProgressEvent>(
       "/api/pipeline/progress",
       {
         onOpen: () => setIsConnected(true),
-        onMessage: (payload) => {
-          if (
-            payload.startedAt &&
-            payload.startedAt !== lastStartedAtRef.current
-          ) {
-            lastStartedAtRef.current = payload.startedAt;
-            setDismissed(false);
-          }
-          setProgress(payload);
-        },
+        onMessage: (payload) => setProgress(payload),
         onError: () => setIsConnected(false),
       },
     );
@@ -239,7 +240,7 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
       unsubscribe();
       setIsConnected(false);
     };
-  }, [isRunning]);
+  }, []);
 
   const percentage = useMemo(
     () => (progress ? computePercentage(progress) : 0),
@@ -260,8 +261,12 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
     if (pinnedProfileIndex !== null) setPinnedProfileIndex(null);
   }
 
-  if (dismissed) return null;
-  if (!isRunning && !progress) return null;
+  const dismissPending =
+    dismissingRun !== null && (progress?.startedAt ?? null) === dismissingRun;
+  if (dismissPending || progress?.dismissed) return null;
+  // "idle" is a server with no run to describe — a fresh boot, or a restart
+  // since the last one. Anything else is a run worth showing, running or not.
+  if (!isRunning && (!progress || progress.step === "idle")) return null;
 
   const rawStep = progress?.step ?? "idle";
   const profileRun = progress?.profileRun ?? null;
@@ -456,7 +461,14 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
                   size="icon"
                   aria-label="Dismiss pipeline banner"
                   className="h-7 w-7"
-                  onClick={() => setDismissed(true)}
+                  onClick={() => {
+                    setDismissingRun(progress?.startedAt ?? null);
+                    void api.dismissRunBanner().catch(() => {
+                      // Put it back rather than hiding a banner the server
+                      // still shows every other viewer.
+                      setDismissingRun(null);
+                    });
+                  }}
                 >
                   <X className="h-4 w-4" />
                 </Button>
@@ -538,13 +550,16 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
                 </p>
               )}
 
-              {step === "failed" &&
-                progress.error &&
-                sourceStats.length === 0 && (
-                  <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
-                    {progress.error}
-                  </div>
-                )}
+              {/* Shown whatever the funnel holds. Gating this on an EMPTY
+                  funnel hid the reason for every failure that struck after
+                  scraping — a rate limit during scoring is a run-level death
+                  with a perfectly healthy set of source rows, and the one
+                  thing the user needs off this banner is why it stopped. */}
+              {step === "failed" && progress.error && (
+                <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+                  {progress.error}
+                </div>
+              )}
             </CardContent>
           )}
         </Card>

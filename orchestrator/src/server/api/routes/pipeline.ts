@@ -16,6 +16,7 @@ import {
 } from "@server/extractors/registry";
 import {
   clearProfileRunPageTarget,
+  dismissRunBanner,
   endProfileSequence,
   getPipelineStatus,
   isProfileSequenceActive,
@@ -110,6 +111,18 @@ pipelineRouter.get("/status", async (_req: Request, res: Response) => {
 /**
  * GET /api/pipeline/progress - Server-Sent Events endpoint for live progress
  */
+/**
+ * Hide the current run's banner for every viewer.
+ *
+ * Server-side because the banner belongs to the RUN, not to a browser: closing
+ * the window used to be indistinguishable from dismissing it, and reopening
+ * resurrected a banner already dealt with.
+ */
+pipelineRouter.post("/progress/dismiss", (_req: Request, res: Response) => {
+  dismissRunBanner();
+  ok(res, { dismissed: true });
+});
+
 pipelineRouter.get("/progress", (req: Request, res: Response) => {
   setupSse(res, {
     cacheControl: "no-cache, no-transform",

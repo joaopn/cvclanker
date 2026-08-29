@@ -1110,6 +1110,12 @@ export async function getRunJobs(
   return fetchApi<RunJobsResponse>(`/pipeline/run-jobs?${params.toString()}`);
 }
 
+export async function dismissRunBanner(): Promise<{ dismissed: boolean }> {
+  return fetchApi<{ dismissed: boolean }>("/pipeline/progress/dismiss", {
+    method: "POST",
+  });
+}
+
 export async function cancelPipeline(): Promise<{
   message: string;
   pipelineRunId: string | null;

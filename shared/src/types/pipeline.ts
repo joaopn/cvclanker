@@ -255,6 +255,15 @@ export interface PipelineProgressEvent {
   error?: string;
   startedAt?: string;
   completedAt?: string;
+  /**
+   * Whether someone has dismissed this run's banner.
+   *
+   * Server-side, so it is a property of the RUN rather than of one browser:
+   * dismiss it in one tab and every tab hides it, and reopening the page does
+   * not resurrect a banner already dealt with. Cleared when the next run
+   * starts, since that banner has not been dismissed by anyone.
+   */
+  dismissed: boolean;
   sourceStats: PipelineSourceStats[];
   /**
    * Set on every event emitted while a multi-profile sequence is running, and

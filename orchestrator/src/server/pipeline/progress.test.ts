@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   clearProfileRunPageTarget,
+  dismissRunBanner,
   getProgress,
   progressHelpers,
   resetProfileRunStats,
@@ -10,6 +11,7 @@ import {
   setActiveProfileRun,
   subscribeToProgress,
   targetProfileRunPage,
+  updateProgress,
 } from "./progress";
 
 describe("pipeline progress source-stats tracking", () => {
@@ -397,5 +399,83 @@ describe("per-source re-run aimed at one page", () => {
     // The next ordinary run owns the whole banner again.
     resetProgress();
     expect(getProgress().profileRuns).toEqual([]);
+  });
+});
+
+/**
+ * The banner describes the RUN, not the browser looking at it. Closing a window
+ * used to be indistinguishable from dismissing the banner, and reopening the
+ * page resurrected one already dealt with — or, worse, showed nothing at all
+ * for a run that had ended while nobody was watching.
+ */
+describe("run banner dismissal", () => {
+  beforeEach(() => {
+    resetProgress();
+  });
+
+  it("starts undismissed", () => {
+    expect(getProgress().dismissed).toBe(false);
+  });
+
+  it("is visible to every subscriber, including ones that connect later", () => {
+    updateProgress({ step: "failed", message: "Pipeline failed" });
+    dismissRunBanner();
+
+    // What a newly-opened tab receives on connect.
+    const replayed: boolean[] = [];
+    const unsubscribe = subscribeToProgress((progress) => {
+      replayed.push(progress.dismissed);
+    });
+    unsubscribe();
+
+    expect(replayed).toEqual([true]);
+  });
+
+  it("notifies the tabs already watching", () => {
+    updateProgress({ step: "failed", message: "Pipeline failed" });
+    const seen: boolean[] = [];
+    const unsubscribe = subscribeToProgress((progress) => {
+      seen.push(progress.dismissed);
+    });
+
+    dismissRunBanner();
+    unsubscribe();
+
+    // The replay on subscribe, then the dismissal — so a second tab hides the
+    // banner without being clicked.
+    expect(seen).toEqual([false, true]);
+  });
+
+  it("does not notify twice for the same dismissal", () => {
+    dismissRunBanner();
+    const seen: boolean[] = [];
+    const unsubscribe = subscribeToProgress((progress) => {
+      seen.push(progress.dismissed);
+    });
+
+    dismissRunBanner();
+    unsubscribe();
+
+    expect(seen).toEqual([true]);
+  });
+
+  it("clears when the next run starts", () => {
+    updateProgress({ step: "failed", message: "Pipeline failed" });
+    dismissRunBanner();
+    expect(getProgress().dismissed).toBe(true);
+
+    resetProgress();
+
+    // Whoever dismissed the last banner was dismissing THAT run, not muting
+    // every run after it.
+    expect(getProgress().dismissed).toBe(false);
+  });
+
+  it("survives an update to the run it describes", () => {
+    dismissRunBanner();
+    updateProgress({ step: "scoring", message: "Scoring jobs" });
+
+    // A dismissed run going on emitting must not un-hide itself.
+    expect(getProgress().dismissed).toBe(true);
   });
 });
