@@ -21,9 +21,10 @@ import { OnboardingPage } from "./pages/OnboardingPage";
 import { OrchestratorPage } from "./pages/OrchestratorPage";
 import { ProfileEditorPage } from "./pages/ProfileEditorPage";
 import { ProfilesPage } from "./pages/ProfilesPage";
+import { RunsPage } from "./pages/RunsPage";
 import { SettingsPage } from "./pages/SettingsPage";
-import { SourcesPage } from "./pages/SourcesPage";
 import { SignInPage } from "./pages/SignInPage";
+import { SourcesPage } from "./pages/SourcesPage";
 import { SwipePage } from "./pages/SwipePage";
 
 /** Backwards-compatibility redirects: old URL paths -> new URL paths */
@@ -101,15 +102,13 @@ export const App: React.FC = () => {
                 <Route path="/sign-in" element={<SignInPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/cv" element={<CvPage />} />
-                <Route
-                  path="/cover-letter"
-                  element={<CoverLetterPage />}
-                />
+                <Route path="/cover-letter" element={<CoverLetterPage />} />
                 <Route path="/sources" element={<SourcesPage />} />
                 <Route path="/profiles" element={<ProfilesPage />} />
                 <Route path="/profiles/new" element={<ProfileEditorPage />} />
                 <Route path="/profiles/:id" element={<ProfileEditorPage />} />
                 <Route path="/swipe" element={<SwipePage />} />
+                <Route path="/runs" element={<RunsPage />} />
                 <Route path="/jobs/:tab" element={<OrchestratorPage />} />
                 <Route
                   path="/jobs/:tab/:jobId"

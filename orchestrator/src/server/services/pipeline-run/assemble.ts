@@ -536,7 +536,17 @@ const err = (error: AppError): AssembledRun => ({ ok: false, error });
  */
 export async function assembleRun(
   body: RunBody,
-  options: { logRoute?: string } = {},
+  options: {
+    logRoute?: string;
+    /**
+     * Drop sources and provider instances that are no longer enabled instead of
+     * refusing the request over them, reporting them in `skippedDisabledSources`.
+     * Decoupled from `partial` on purpose: `partial` ALSO makes the run
+     * reconcile into an existing banner funnel, which a scheduled run must not
+     * do.
+     */
+    skipDisabledSources?: boolean;
+  } = {},
 ): Promise<AssembledRun> {
   const logRoute = options.logRoute ?? "/api/pipeline/run";
 
@@ -585,7 +595,13 @@ export async function assembleRun(
   // disabled since the run they came from. Those are skipped and reported
   // rather than failing the request — unless the skip empties every list
   // the request gave explicitly (see the gate below).
-  const skipDisabled = body.partial === true;
+  // A per-source re-run names rows off the banner, which can include a source
+  // disabled since that run — those are skipped and reported rather than
+  // refused. The scheduler opts in for the same reason from the other end: its
+  // stored source list is months old by the time it fires, and one source
+  // disabled on the Sources page since must not fail the whole nightly run.
+  const skipDisabled =
+    body.partial === true || options.skipDisabledSources === true;
   const skippedDisabledSources: string[] = [];
   let requestedSources = body.sources;
   let requestedInstanceIds = body.providerInstanceIds;

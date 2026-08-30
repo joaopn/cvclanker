@@ -5,6 +5,7 @@
 import "./config/env";
 import { logger } from "@infra/logger";
 import { sanitizeUnknown } from "@infra/sanitize";
+import { startScheduler } from "@server/services/scheduler";
 import { createApp } from "./app";
 import { initializeExtractorRegistry } from "./extractors/registry";
 import { deleteExpiredOrRevokedAuthSessions } from "./repositories/auth-sessions";
@@ -88,6 +89,17 @@ async function startServer() {
       }, AUTH_SESSION_CLEANUP_INTERVAL_MS);
     } catch (error) {
       logger.warn("Failed to initialize auth session cleanup", {
+        error: sanitizeUnknown(error),
+      });
+    }
+
+    try {
+      // Armed after `listen`, alongside the session cleanup. Its first pass is
+      // immediate, so a boot after downtime catches up a schedule that came due
+      // while the process was gone — once, never a backfill.
+      startScheduler();
+    } catch (error) {
+      logger.warn("Failed to start the run scheduler", {
         error: sanitizeUnknown(error),
       });
     }

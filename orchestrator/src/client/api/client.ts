@@ -44,6 +44,7 @@ import type {
   RunJobBucket,
   RunJobsResponse,
   RunOptionsResponse,
+  RunSchedule,
   RunTrigger,
   SearchTermsSuggestionResponse,
   StartBenchRunInput,
@@ -1100,6 +1101,73 @@ export async function runPipeline(config?: {
   }>("/pipeline/run", {
     method: "POST",
     body: JSON.stringify(config || {}),
+  });
+}
+
+export interface SchedulesResponse {
+  schedules: RunSchedule[];
+  /** Non-null means automatic runs are stopped until a user resumes them. */
+  pausedReason: string | null;
+  /** The zone every schedule's times and weekday mask are read in. */
+  timeZone: string;
+}
+
+export async function getSchedules(): Promise<SchedulesResponse> {
+  return fetchApi<SchedulesResponse>("/schedules");
+}
+
+export type ScheduleInput = Omit<
+  RunSchedule,
+  | "id"
+  | "createdAt"
+  | "updatedAt"
+  | "nextFireAt"
+  | "lastFiredAt"
+  | "lastStatus"
+  | "lastDetail"
+  | "lastRunId"
+  | "lastDuplicatesClosed"
+>;
+
+export async function createSchedule(
+  input: ScheduleInput,
+): Promise<RunSchedule> {
+  return fetchApi<RunSchedule>("/schedules", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateSchedule(
+  id: string,
+  input: ScheduleInput,
+): Promise<RunSchedule> {
+  return fetchApi<RunSchedule>(`/schedules/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteSchedule(
+  id: string,
+): Promise<{ deleted: boolean }> {
+  return fetchApi<{ deleted: boolean }>(`/schedules/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function runScheduleNow(
+  id: string,
+): Promise<{ started: boolean; skippedProfiles: string[] }> {
+  return fetchApi<{ started: boolean; skippedProfiles: string[] }>(
+    `/schedules/${id}/run-now`,
+    { method: "POST" },
+  );
+}
+
+export async function resumeScheduling(): Promise<{ pausedReason: null }> {
+  return fetchApi<{ pausedReason: null }>("/schedules/resume", {
+    method: "POST",
   });
 }
 

@@ -173,6 +173,8 @@ export const createAppSettings = (
     override: null,
   },
   defaultProfileId: null,
+  schedulerTimeZone: null,
+  schedulingPausedReason: null,
   userProfileName: null,
   onboardingBasicAuthDecision: null,
   cvSourceFormat: null,

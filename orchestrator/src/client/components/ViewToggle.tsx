@@ -1,7 +1,7 @@
 /**
- * Segmented control that toggles between the two job surfaces:
- * the mobile "Swipe" deck and the full "Manage" orchestrator.
- * Rendered in the PageHeader title slot on both pages.
+ * Segmented control across the three top-level surfaces: the mobile "Swipe"
+ * deck, the full "Manage" orchestrator, and "Runs" (schedules and the
+ * scheduled-run table). Rendered in the PageHeader title slot on each.
  */
 
 import type React from "react";
@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 const SEGMENTS: Array<{ label: string; to: string; match: string }> = [
   { label: "Swipe", to: "/swipe", match: "/swipe" },
   { label: "Manage", to: "/jobs/ready", match: "/jobs" },
+  { label: "Runs", to: "/runs", match: "/runs" },
 ];
 
 export const ViewToggle: React.FC = () => {

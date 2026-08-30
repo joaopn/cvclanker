@@ -863,6 +863,23 @@ export const settingsRegistry = {
     kind: "string" as const,
     schema: z.enum(["enabled", "skipped"]),
   },
+  // IANA zone every schedule's wall-clock times and weekday mask are read in.
+  // Server-managed in the sense that the Settings form does not render it —
+  // the Runs tab owns it, beside the time fields it explains. Unset means UTC;
+  // deliberately NOT an envKey, because it is a user preference about their own
+  // working day rather than an operator's deployment knob.
+  schedulerTimeZone: {
+    kind: "string" as const,
+    schema: z.string().trim().min(1).max(100),
+  },
+  // Why automatic scheduling is currently stopped, or unset when it is running.
+  // A failed scheduled run writes it and no further runs fire until a user
+  // clears it, so one broken night cannot burn a week of scrapes unnoticed.
+  // Server-managed: written by the tick, cleared by "Resume scheduling".
+  schedulingPausedReason: {
+    kind: "string" as const,
+    schema: z.string().trim().min(1).max(2000),
+  },
   // Server-managed, IMMUTABLE per User Profile: the CV substrate format,
   // written once by the onboarding wizard and then frozen by the write-once
   // guard in services/settings-update/registry.ts (the generic settings

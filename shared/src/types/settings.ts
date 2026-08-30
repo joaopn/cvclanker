@@ -114,6 +114,8 @@ export interface AppSettings {
 
   // Simple strings:
   defaultProfileId: string | null;
+  schedulerTimeZone: string | null;
+  schedulingPausedReason: string | null;
   userProfileName: string | null;
   onboardingBasicAuthDecision: "enabled" | "skipped" | null;
   cvSourceFormat: CvSourceFormat | null;
