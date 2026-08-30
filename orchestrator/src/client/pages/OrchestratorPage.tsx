@@ -282,6 +282,7 @@ export const OrchestratorPage: React.FC = () => {
     stats,
     isLoading,
     isPipelineRunning,
+    scheduledRunActive,
     setIsPipelineRunning,
     pipelineTerminalEvent,
     setIsRefreshPaused,
@@ -741,6 +742,7 @@ export const OrchestratorPage: React.FC = () => {
             navOpen={navOpen}
             onNavOpenChange={setNavOpen}
             isPipelineRunning={isPipelineRunning}
+            scheduledRunActive={scheduledRunActive}
             isCancelling={isCancelling}
             pipelineSources={enabledSources}
             profileSelect={

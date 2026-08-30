@@ -207,6 +207,17 @@ export async function deleteRunSchedule(id: string): Promise<void> {
   await db.delete(schema.runSchedules).where(eq(schema.runSchedules.id, id));
 }
 
+/** How many duplicate copies the last run's automatic sweep closed. */
+export async function recordRunScheduleDuplicates(
+  id: string,
+  duplicatesClosed: number,
+): Promise<void> {
+  await db
+    .update(schema.runSchedules)
+    .set({ lastDuplicatesClosed: duplicatesClosed })
+    .where(eq(schema.runSchedules.id, id));
+}
+
 /**
  * Update just the outcome of the fire already recorded.
  *

@@ -157,6 +157,8 @@ export interface PipelineRunSavedDetails {
 
 export interface PipelineStatusResponse {
   isRunning: boolean;
+  /** Which partition the in-flight run belongs to; null when nothing runs. */
+  runningTrigger: RunTrigger | null;
   lastRun: PipelineRun | null;
   nextScheduledRun: string | null;
 }

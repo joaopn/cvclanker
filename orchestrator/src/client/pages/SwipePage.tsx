@@ -8,8 +8,9 @@ import { PageHeader } from "@client/components/layout";
 import { PipelineProgressStrip } from "@client/components/PipelineProgressStrip";
 import { ViewToggle } from "@client/components/ViewToggle";
 import type { JobStatus } from "@shared/types";
-import { Loader2, Play, Square } from "lucide-react";
+import { Clock, Loader2, Play, Square } from "lucide-react";
 import type React from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ProfileSelect } from "./orchestrator/ProfileSelect";
 import { useOrchestratorData } from "./orchestrator/useOrchestratorData";
@@ -23,8 +24,12 @@ import { SwipeDeck } from "./swipe/SwipeDeck";
 const SWIPE_SCOPE: JobStatus[] = ["discovered"];
 
 export const SwipePage: React.FC = () => {
-  const { isPipelineRunning, setIsPipelineRunning, pipelineTerminalEvent } =
-    useOrchestratorData(null, false, SWIPE_SCOPE);
+  const {
+    isPipelineRunning,
+    scheduledRunActive,
+    setIsPipelineRunning,
+    pipelineTerminalEvent,
+  } = useOrchestratorData(null, false, SWIPE_SCOPE);
 
   const { isCancelling, runPipelineNow, handleCancelPipeline } =
     usePipelineControls({
@@ -64,14 +69,28 @@ export const SwipePage: React.FC = () => {
   ) : (
     <div className="flex items-center gap-2">
       {profileSelect}
-      <Button
-        size="sm"
-        onClick={() => runPipelineNow(selectedProfileIds)}
-        className="gap-2"
-      >
-        <Play className="h-4 w-4" />
-        <span className="hidden sm:inline">Run pipeline</span>
-      </Button>
+      {scheduledRunActive ? (
+        // The pipeline is a singleton, so a scheduled run makes a manual one
+        // impossible; the route would answer 200 "Pipeline started" and start
+        // nothing. That run belongs to the Runs tab, so this links there
+        // rather than offering a Cancel this page does not own.
+        <Link
+          to="/runs"
+          className="inline-flex items-center gap-2 rounded-md border border-status-warn/30 bg-status-warn/10 px-3 py-1.5 text-sm text-status-warn-text"
+        >
+          <Clock className="h-4 w-4" />
+          <span className="hidden sm:inline">Scheduled run</span>
+        </Link>
+      ) : (
+        <Button
+          size="sm"
+          onClick={() => runPipelineNow(selectedProfileIds)}
+          className="gap-2"
+        >
+          <Play className="h-4 w-4" />
+          <span className="hidden sm:inline">Run pipeline</span>
+        </Button>
+      )}
     </div>
   );
 

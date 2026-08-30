@@ -27,6 +27,7 @@ import { getActiveCvDocument } from "../services/cv-active";
 import { generatePdf } from "../services/pdf";
 import { getEffectiveSettings } from "../services/settings";
 import {
+  activeRunTrigger,
   progressHelpers,
   resetProgress,
   setActiveRunTrigger,
@@ -682,8 +683,24 @@ async function runProcessJob(
  * the live SQLite file) and the claude-code CLI update. All consumers must
  * agree, or the next profile's run writes into a swapped database.
  */
-export function getPipelineStatus(): { isRunning: boolean } {
-  return { isRunning: isPipelineRunning || isProfileSequenceActive() };
+export function getPipelineStatus(): {
+  isRunning: boolean;
+  /**
+   * Which partition the run in flight belongs to, or null when nothing runs.
+   *
+   * `isRunning` deliberately stays unpartitioned — it guards the User-Profile
+   * DB swap and the CLI updater, which care that ANY run is going. The trigger
+   * is what lets a CLIENT say whose run it is: the 30s fallback poll feeds the
+   * same state as the progress stream, and without this it cannot tell a
+   * scheduled run from a manual one.
+   */
+  runningTrigger: RunTrigger | null;
+} {
+  const running = isPipelineRunning || isProfileSequenceActive();
+  return {
+    isRunning: running,
+    runningTrigger: running ? activeRunTrigger() : null,
+  };
 }
 
 export function requestPipelineCancel(): {

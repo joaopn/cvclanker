@@ -384,6 +384,29 @@ export const ScheduleEditorDialog: React.FC<Props> = ({
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <Checkbox
+                id="auto-resolve-duplicates"
+                checked={draft.autoResolveDuplicates}
+                onCheckedChange={(checked) =>
+                  set("autoResolveDuplicates", checked === true)
+                }
+              />
+              <Label
+                htmlFor="auto-resolve-duplicates"
+                className="text-sm font-normal"
+              >
+                Close duplicate copies automatically after each run
+              </Label>
+            </div>
+            {draft.autoResolveDuplicates && (
+              <p className="pl-6 text-xs text-muted-foreground">
+                Only groups whose copies agree on the job title. Anything
+                needing a judgement call still waits for you in Review
+                duplicates, and there is no undo — closed copies are reopened by
+                hand from the Closed tab.
+              </p>
+            )}
+            <div className="flex items-center gap-2">
+              <Checkbox
                 id="auto-tailor"
                 checked={draft.enableAutoTailoring === true}
                 onCheckedChange={(checked) =>

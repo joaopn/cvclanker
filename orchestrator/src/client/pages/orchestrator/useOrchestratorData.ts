@@ -121,6 +121,17 @@ export const useOrchestratorData = (
   const [stats, setStats] = useState<Record<JobStatus, number>>(initialStats);
   const [isLoading, setIsLoading] = useState(true);
   const [isPipelineRunning, setIsPipelineRunning] = useState(false);
+  /**
+   * A run in the OTHER partition.
+   *
+   * Kept apart from `isPipelineRunning` rather than folded into it: that flag
+   * feeds the surfaces bound to the manual table (the run banner, the Swipe
+   * strip), which must not start rendering manual-partition state because a
+   * scheduled run is going. What it IS for is the Run button — the pipeline is
+   * a process-wide singleton, so a scheduled run makes a manual one impossible
+   * and offering the button would only produce a rejection nothing surfaces.
+   */
+  const [scheduledRunActive, setScheduledRunActive] = useState(false);
   const [isPipelineSseConnected, setIsPipelineSseConnected] = useState(false);
   const [pipelineTerminalEvent, setPipelineTerminalEvent] =
     useState<PipelineTerminalEvent | null>(null);
@@ -329,9 +340,15 @@ export const useOrchestratorData = (
       const terminalStatus = status.lastRun?.status;
 
       if (status.isRunning) {
-        observePipelineState({ isRunning: true, terminal: null });
+        // The poll is the fallback when the stream is down, so it has to make
+        // the same manual/scheduled distinction the stream does — otherwise a
+        // scheduled run would drive the manual surfaces.
+        const scheduled = status.runningTrigger === "schedule";
+        setScheduledRunActive(scheduled);
+        observePipelineState({ isRunning: !scheduled, terminal: null });
         return;
       }
+      setScheduledRunActive(false);
 
       if (
         !terminalStatus ||
@@ -563,6 +580,35 @@ export const useOrchestratorData = (
   }, [checkForJobChanges, loadJobs, observePipelineState]);
 
   useEffect(() => {
+    if (typeof EventSource === "undefined") return;
+
+    // The SCHEDULE partition, watched only for whether something is running.
+    // Deliberately not routed through `observePipelineState`: that function
+    // owns the terminal toast and the dedupe refs, and a background scheduled
+    // run has no business raising "Pipeline complete" over someone's triage.
+    // The job refetch still fires, quietly, because new rows should appear.
+    return subscribeToPipelineProgress({
+      trigger: "schedule",
+      onEvent: (payload: PipelineProgressEvent) => {
+        const step = payload.step as unknown;
+        if (typeof step !== "string") return;
+        const typedStep = step as PipelineProgressStep;
+        // A tagged event belongs to one profile of a chain, so the chain is
+        // still going whatever that profile's own step says.
+        const chainEvent = payload.profileRun != null;
+        if (chainEvent || ACTIVE_PIPELINE_STEPS.has(typedStep)) {
+          setScheduledRunActive(true);
+          return;
+        }
+        if (TERMINAL_PIPELINE_STEPS.has(typedStep) || typedStep === "idle") {
+          setScheduledRunActive(false);
+          if (TERMINAL_PIPELINE_STEPS.has(typedStep)) void loadJobs();
+        }
+      },
+    });
+  }, [loadJobs]);
+
+  useEffect(() => {
     if (isPipelineSseConnected) return;
 
     const interval = setInterval(() => {
@@ -603,6 +649,7 @@ export const useOrchestratorData = (
     isLoading,
     isPipelineRunning,
     setIsPipelineRunning,
+    scheduledRunActive,
     pipelineTerminalEvent,
     isRefreshPaused,
     setIsRefreshPaused,

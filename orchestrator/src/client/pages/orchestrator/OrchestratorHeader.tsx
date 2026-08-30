@@ -4,12 +4,14 @@ import { ViewToggle } from "@client/components/ViewToggle";
 import type { JobSource } from "@shared/types.js";
 import {
   Activity,
+  Clock,
   Link as LinkIcon,
   Loader2,
   RotateCcw,
   Square,
 } from "lucide-react";
 import type React from "react";
+import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -17,6 +19,9 @@ interface OrchestratorHeaderProps {
   navOpen: boolean;
   onNavOpenChange: (open: boolean) => void;
   isPipelineRunning: boolean;
+  /** A run in the SCHEDULE partition. Locks the Run control without swapping
+   *  in Cancel — that run belongs to the Runs tab, not to this one. */
+  scheduledRunActive?: boolean;
   isCancelling: boolean;
   pipelineSources: JobSource[];
   onOpenBatchUrlImport: () => void;
@@ -36,6 +41,7 @@ export const OrchestratorHeader: React.FC<OrchestratorHeaderProps> = ({
   navOpen,
   onNavOpenChange,
   isPipelineRunning,
+  scheduledRunActive = false,
   isCancelling,
   pipelineSources,
   onOpenBatchUrlImport,
@@ -84,6 +90,20 @@ export const OrchestratorHeader: React.FC<OrchestratorHeaderProps> = ({
     </Button>
   );
 
+  // The pipeline is a process-wide singleton, so a scheduled run makes a manual
+  // one impossible. Offering Run anyway would produce a rejection the route
+  // reports as a 200 "Pipeline started" — a button that silently does nothing.
+  // Not a Cancel swap: that run is the Runs tab's to stop, not this page's.
+  const scheduledRunNotice = (
+    <Link
+      to="/runs"
+      className="inline-flex items-center gap-2 rounded-md border border-status-warn/30 bg-status-warn/10 px-3 py-1.5 text-sm text-status-warn-text"
+    >
+      <Clock className="h-4 w-4" />
+      <span className="hidden sm:inline">Scheduled run in progress</span>
+    </Link>
+  );
+
   const actions = isPipelineRunning ? (
     <div className="flex items-center gap-2">
       {profileSelect}
@@ -124,7 +144,7 @@ export const OrchestratorHeader: React.FC<OrchestratorHeaderProps> = ({
         <LinkIcon className="h-4 w-4" />
         <span className="hidden sm:inline">Fetch URLs</span>
       </Button>
-      {runControl}
+      {scheduledRunActive ? scheduledRunNotice : runControl}
     </div>
   );
 
@@ -143,6 +163,8 @@ export const OrchestratorHeader: React.FC<OrchestratorHeaderProps> = ({
       statusIndicator={
         isPipelineRunning ? (
           <StatusIndicator label="Pipeline running" variant="amber" />
+        ) : scheduledRunActive ? (
+          <StatusIndicator label="Scheduled run" variant="amber" />
         ) : undefined
       }
       actions={actions}

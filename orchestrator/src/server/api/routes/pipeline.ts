@@ -70,10 +70,11 @@ export const pipelineRouter = Router();
  */
 pipelineRouter.get("/status", async (_req: Request, res: Response) => {
   try {
-    const { isRunning } = getPipelineStatus();
+    const { isRunning, runningTrigger } = getPipelineStatus();
     const lastRun = await pipelineRepo.getLatestPipelineRun();
     const data: PipelineStatusResponse = {
       isRunning,
+      runningTrigger,
       lastRun,
       nextScheduledRun: null,
     };

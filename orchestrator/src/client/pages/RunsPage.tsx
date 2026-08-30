@@ -336,6 +336,15 @@ export const RunsPage: React.FC = () => {
                   </p>
                   <p>{schedule.profileIds.length}</p>
                 </div>
+                {schedule.lastDuplicatesClosed !== null &&
+                  schedule.lastDuplicatesClosed > 0 && (
+                    <div>
+                      <p className="text-xs uppercase text-muted-foreground">
+                        Duplicates closed
+                      </p>
+                      <p>{schedule.lastDuplicatesClosed}</p>
+                    </div>
+                  )}
                 {schedule.lastDetail && (
                   <p className="text-muted-foreground sm:col-span-3">
                     {schedule.lastDetail}

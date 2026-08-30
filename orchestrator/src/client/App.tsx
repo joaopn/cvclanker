@@ -21,6 +21,7 @@ import { OnboardingPage } from "./pages/OnboardingPage";
 import { OrchestratorPage } from "./pages/OrchestratorPage";
 import { ProfileEditorPage } from "./pages/ProfileEditorPage";
 import { ProfilesPage } from "./pages/ProfilesPage";
+import { SchedulingPausedBanner } from "./components/SchedulingPausedBanner";
 import { RunsPage } from "./pages/RunsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SignInPage } from "./pages/SignInPage";
@@ -77,6 +78,9 @@ export const App: React.FC = () => {
   return (
     <>
       <OnboardingGate />
+      {/* Above the routed page, so a paused scheduler is visible from
+          everywhere rather than only from the tab nobody opens. */}
+      <SchedulingPausedBanner />
       <div>
         <SwitchTransition mode="out-in">
           <CSSTransition

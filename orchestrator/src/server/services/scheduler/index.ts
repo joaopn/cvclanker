@@ -9,6 +9,7 @@ import {
 } from "@server/pipeline/index";
 import {
   getAllRunSchedules,
+  recordRunScheduleDuplicates,
   recordRunScheduleFire,
   recordRunScheduleOutcome,
 } from "@server/repositories/run-schedules";
@@ -22,6 +23,7 @@ import {
 import { getEffectiveSettings } from "@server/services/settings";
 import type { RunSchedule } from "@shared/types";
 import { type Cadence, nextFireAt } from "./next-fire";
+import { resolveDuplicatesForSchedule } from "./resolve-duplicates";
 
 /**
  * The scheduler: fires run schedules when they come due.
@@ -249,6 +251,25 @@ async function observeChainOutcome(
       );
       return;
     }
+    // Only after a clean run: sweeping duplicates off a chain that died
+    // half-way would close copies against a partial picture of what exists.
+    let duplicatesClosed: number | null = null;
+    if (!failed && schedule.autoResolveDuplicates) {
+      try {
+        duplicatesClosed = await resolveDuplicatesForSchedule();
+        if (duplicatesClosed > 0) {
+          await recordRunScheduleDuplicates(schedule.id, duplicatesClosed);
+        }
+      } catch (error) {
+        // The run itself succeeded; a failed sweep must not turn it into a
+        // failure, nor pause every other schedule.
+        logger.warn("Could not auto-resolve duplicates", {
+          scheduleId: schedule.id,
+          error,
+        });
+      }
+    }
+
     if (failed) {
       await pauseScheduling(
         `"${schedule.name}" failed: ${progress.error ?? "the run did not complete"}`,

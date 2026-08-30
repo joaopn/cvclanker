@@ -201,6 +201,17 @@ function slot(): RunProgressSlot {
  * Call it synchronously before the run's first await, alongside the other
  * run-start state the orchestrator sets.
  */
+/**
+ * Which partition a run started now belongs to.
+ *
+ * Only meaningful WHILE a run is in flight: between runs it is whichever kind
+ * went last, which is exactly why `targetProfileRunPage` takes its trigger
+ * explicitly rather than reading this.
+ */
+export function activeRunTrigger(): RunTrigger {
+  return activeTrigger;
+}
+
 export function setActiveRunTrigger(trigger: RunTrigger): void {
   activeTrigger = trigger;
   // The captures behind the funnel's clickable counts are partitioned the same

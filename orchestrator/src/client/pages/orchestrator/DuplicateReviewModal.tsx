@@ -1,6 +1,7 @@
 import * as api from "@client/api";
 import { toast } from "@client/lib/toast";
 import { restoreJobStates, snapshotJob } from "@client/lib/undo";
+import { chooseKeeper, losersOf } from "@shared/duplicate-resolution";
 import {
   type DuplicateJobGroup,
   type JobListItem,
@@ -68,54 +69,10 @@ function formatAge(job: JobListItem): string | null {
   return null;
 }
 
-function fitRank(job: JobListItem): number {
+function _fitRank(job: JobListItem): number {
   return job.suitabilityCategory
     ? SUITABILITY_CATEGORY_RANK[job.suitabilityCategory]
     : -1;
-}
-
-// Preselected-keeper priority by pipeline position: Live (applied/in_progress)
-// > Ready > Selected (selected/processing) > Inbox (discovered). Statuses not
-// listed (backlog/stale/skipped/closed) rank lowest. Higher wins.
-const STATUS_KEEPER_RANK: Partial<Record<JobStatus, number>> = {
-  applied: 4,
-  in_progress: 4,
-  ready: 3,
-  selected: 2,
-  processing: 2,
-  discovered: 1,
-};
-
-function statusKeeperRank(job: JobListItem): number {
-  return STATUS_KEEPER_RANK[job.status] ?? 0;
-}
-
-// Default keeper: furthest along the pipeline first (Live > Ready > Selected >
-// Inbox), then best fit, then newest posting, then newest discovered.
-function chooseKeeper(jobs: JobListItem[]): string {
-  const sorted = [...jobs].sort((a, b) => {
-    const status = statusKeeperRank(b) - statusKeeperRank(a);
-    if (status !== 0) return status;
-    const fit = fitRank(b) - fitRank(a);
-    if (fit !== 0) return fit;
-    const posted =
-      (parseDate(b.datePosted) ?? 0) - (parseDate(a.datePosted) ?? 0);
-    if (posted !== 0) return posted;
-    return (parseDate(b.discoveredAt) ?? 0) - (parseDate(a.discoveredAt) ?? 0);
-  });
-  return sorted[0]?.id ?? "";
-}
-
-/** The copies a group would close — everything but its chosen keeper. */
-function losersOf(
-  group: DuplicateJobGroup,
-  keeperByKey: Record<string, string>,
-): JobListItem[] {
-  // Fall back to the auto-pick: groups the user never stepped through are
-  // seeded on open, but a missing key must never make the whole group (keeper
-  // included) look like a loser.
-  const keeperId = keeperByKey[group.key] || chooseKeeper(group.jobs);
-  return group.jobs.filter((job) => job.id !== keeperId);
 }
 
 interface CloseAllPlan {

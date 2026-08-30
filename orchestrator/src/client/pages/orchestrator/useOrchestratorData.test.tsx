@@ -73,12 +73,18 @@ const makeWrapper = () => {
  * Drive the pipeline-progress SSE stream by hand: grab the `onMessage` the hook
  * registered and feed it events.
  */
-async function progressEmitter() {
+async function progressEmitter(trigger: "manual" | "schedule" = "manual") {
   const { subscribeToPipelineProgress } = await import(
     "@client/lib/progress-stream"
   );
-  const watcher = vi.mocked(subscribeToPipelineProgress).mock.calls.at(-1)?.[0];
-  if (!watcher) throw new Error("progress stream was never subscribed");
+  // The hook subscribes to BOTH partitions — manual for the run state and the
+  // terminal toast, schedule only for "something else is running" — so a
+  // last-call lookup would drive whichever happened to register second.
+  const watcher = vi
+    .mocked(subscribeToPipelineProgress)
+    .mock.calls.map((call) => call[0])
+    .find((candidate) => candidate.trigger === trigger);
+  if (!watcher) throw new Error(`no ${trigger} progress subscription`);
   return (event: Record<string, unknown>) => {
     act(() => {
       watcher.onEvent(event as never);
@@ -95,22 +101,52 @@ const chainEvent = (step: string, index: number, extra = {}) => ({
 });
 
 describe("useOrchestratorData multi-profile runs", () => {
-  it("watches the manual partition only", async () => {
+  it("watches both partitions, for different things", async () => {
     renderHook(() => useOrchestratorData(null), { wrapper: makeWrapper() });
 
     const { subscribeToPipelineProgress } = await import(
       "@client/lib/progress-stream"
     );
-    const watcher = vi
+    const triggers = vi
       .mocked(subscribeToPipelineProgress)
-      .mock.calls.at(-1)?.[0];
+      .mock.calls.map((call) => call[0].trigger);
 
-    // `pipelineTerminalEvent` raises the "Pipeline complete" toast, which a
-    // background scheduled run has no business firing mid-triage. Splitting
-    // that from `isPipelineRunning` (which locks the Run button, so it will
-    // have to see both) is a later slice; until then this hook sees one
-    // partition, which keeps every derivation exactly what it was.
-    expect(watcher?.trigger).toBe("manual");
+    // Manual drives the run state and the terminal toast; schedule is watched
+    // ONLY for whether something is running, because the Run button has to be
+    // locked (the pipeline is a process-wide singleton) while "Pipeline
+    // complete" must not fire over someone's triage for a background run.
+    expect([...triggers].sort()).toEqual(["manual", "schedule"]);
+  });
+
+  it("reports a scheduled run without touching the manual run state", async () => {
+    const { result } = renderHook(() => useOrchestratorData(null), {
+      wrapper: makeWrapper(),
+    });
+    const emitScheduled = await progressEmitter("schedule");
+
+    emitScheduled({ step: "crawling" });
+
+    await waitFor(() => expect(result.current.scheduledRunActive).toBe(true));
+    // The manual surfaces (the run banner, the Swipe strip) are bound to the
+    // manual table and must not start rendering because another partition is
+    // busy.
+    expect(result.current.isPipelineRunning).toBe(false);
+    expect(result.current.pipelineTerminalEvent).toBeNull();
+  });
+
+  it("clears the scheduled flag when that run ends, and raises no toast", async () => {
+    const { result } = renderHook(() => useOrchestratorData(null), {
+      wrapper: makeWrapper(),
+    });
+    const emitScheduled = await progressEmitter("schedule");
+
+    emitScheduled({ step: "crawling" });
+    await waitFor(() => expect(result.current.scheduledRunActive).toBe(true));
+    emitScheduled({ step: "completed" });
+
+    await waitFor(() => expect(result.current.scheduledRunActive).toBe(false));
+    // A background run finishing is not an event to interrupt anyone with.
+    expect(result.current.pipelineTerminalEvent).toBeNull();
   });
 
   it("keeps the run alive across a profile's own terminal and idle", async () => {

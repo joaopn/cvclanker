@@ -186,7 +186,7 @@ describe.sequential("User profiles API routes", () => {
     const storedPath = join(storeDir(tempDir), `${id}.db`);
     makeProfileDb(storedPath, "Waiting");
     const { getPipelineStatus } = await import("@server/pipeline/index");
-    vi.mocked(getPipelineStatus).mockReturnValue({ isRunning: true });
+    vi.mocked(getPipelineStatus).mockReturnValue({ isRunning: true, runningTrigger: "manual" });
 
     const res = await fetch(`${baseUrl}/api/user-profiles/${id}/activate`, {
       method: "POST",

@@ -218,7 +218,10 @@ export async function startServer(options?: {
   const { createApp } = await import("../../app");
   const { closeDb, db, schema } = await import("@server/db/index");
   const { getPipelineStatus } = await import("@server/pipeline/index");
-  vi.mocked(getPipelineStatus).mockReturnValue({ isRunning: false });
+  vi.mocked(getPipelineStatus).mockReturnValue({
+    isRunning: false,
+    runningTrigger: null,
+  });
 
   // The stub registry invents manifest ids (`test-<platform>`), but migrate
   // seeds `source_configs` from the REAL extractor list — so none of the stub's
