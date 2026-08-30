@@ -184,6 +184,11 @@ export const SchedulePage: React.FC = () => {
   return (
     <div className="flex min-h-screen flex-col">
       <PageHeader
+        brand={
+          <span className="whitespace-nowrap text-lg font-semibold tracking-tight">
+            CV Clanker
+          </span>
+        }
         title="CV Clanker"
         subtitle="Schedule"
         titleSlot={<ViewToggle />}
