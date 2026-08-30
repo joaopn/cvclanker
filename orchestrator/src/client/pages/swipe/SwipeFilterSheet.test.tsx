@@ -1,6 +1,11 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { UNATTRIBUTED_PROFILE_LABEL } from "../orchestrator/constants";
+import {
+  JOB_SORTER_LABELS,
+  JOB_SORTERS,
+  type JobSorter,
+  UNATTRIBUTED_PROFILE_LABEL,
+} from "../orchestrator/constants";
 import { SwipeFilterSections } from "./SwipeFilterSheet";
 import { EMPTY_SWIPE_FILTERS } from "./swipeFilters";
 
@@ -16,6 +21,8 @@ describe("SwipeFilterSections", () => {
       <SwipeFilterSections
         filters={EMPTY_SWIPE_FILTERS}
         onFiltersChange={vi.fn()}
+        sorter="none"
+        onSorterChange={vi.fn()}
         profiles={profiles}
         titles={titles}
       />,
@@ -53,6 +60,8 @@ describe("SwipeFilterSections", () => {
       <SwipeFilterSections
         filters={EMPTY_SWIPE_FILTERS}
         onFiltersChange={onFiltersChange}
+        sorter="none"
+        onSorterChange={vi.fn()}
         profiles={profiles}
         titles={titles}
       />,
@@ -76,6 +85,8 @@ describe("SwipeFilterSections", () => {
       <SwipeFilterSections
         filters={{ fit: ["great_fit"], profile: ["p1"], title: [] }}
         onFiltersChange={onFiltersChange}
+        sorter="none"
+        onSorterChange={vi.fn()}
         profiles={profiles}
         titles={titles}
       />,
@@ -98,6 +109,8 @@ describe("SwipeFilterSections", () => {
       <SwipeFilterSections
         filters={{ fit: ["unscored"], profile: [], title: [] }}
         onFiltersChange={onFiltersChange}
+        sorter="none"
+        onSorterChange={vi.fn()}
         profiles={profiles}
         titles={titles}
       />,
@@ -116,6 +129,8 @@ describe("SwipeFilterSections", () => {
       <SwipeFilterSections
         filters={EMPTY_SWIPE_FILTERS}
         onFiltersChange={vi.fn()}
+        sorter="none"
+        onSorterChange={vi.fn()}
         profiles={[]}
         titles={[]}
       />,
@@ -127,5 +142,50 @@ describe("SwipeFilterSections", () => {
     expect(
       screen.queryByRole("button", { name: UNATTRIBUTED_PROFILE_LABEL }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("SwipeFilterSections sorting", () => {
+  const renderSort = (sorter: JobSorter, onSorterChange = vi.fn()) => {
+    render(
+      <SwipeFilterSections
+        filters={EMPTY_SWIPE_FILTERS}
+        onFiltersChange={vi.fn()}
+        sorter={sorter}
+        onSorterChange={onSorterChange}
+        profiles={profiles}
+        titles={titles}
+      />,
+    );
+    return onSorterChange;
+  };
+
+  it("offers the Manage list sorter's options, under its labels", () => {
+    renderSort("none");
+    // Named on the element that carries the role, and named as a sort — the
+    // section helper's default would call it "Sort filters".
+    const row = screen.getByRole("radiogroup", { name: "Sort order" });
+    expect(
+      within(row)
+        .getAllByRole("radio")
+        .map((chip) => chip.textContent),
+    ).toEqual(JOB_SORTERS.map((value) => JOB_SORTER_LABELS[value]));
+  });
+
+  it("checks exactly the active option — picking a sort unpicks the rest", () => {
+    renderSort("applicants");
+    const checked = screen
+      .getAllByRole("radio")
+      .filter((chip) => chip.getAttribute("aria-checked") === "true")
+      .map((chip) => chip.textContent);
+    expect(checked).toEqual([JOB_SORTER_LABELS.applicants]);
+  });
+
+  it("reports the option that was picked", () => {
+    const onSorterChange = renderSort("applicants");
+    fireEvent.click(
+      screen.getByRole("radio", { name: JOB_SORTER_LABELS.none }),
+    );
+    expect(onSorterChange).toHaveBeenCalledWith("none");
   });
 });

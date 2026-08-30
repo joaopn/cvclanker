@@ -1,7 +1,7 @@
 /**
  * Composes the Swipe deck: the top draggable card (with a peek of the next
- * one behind), the action bar, the bottom filter sheet, and the loading /
- * empty / error states.
+ * one behind), the action bar, the bottom filter + sort sheet, and the
+ * loading / empty / error states.
  */
 
 import type { Profile } from "@shared/types.js";
@@ -9,6 +9,11 @@ import { Loader2, Play, RotateCcw } from "lucide-react";
 import type React from "react";
 import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  DEFAULT_JOB_SORTER,
+  JOB_SORTER_LABELS,
+  type JobSorter,
+} from "../orchestrator/constants";
 import { collectProfileSearchTitles } from "../orchestrator/utils";
 import { FitCountChips } from "./FitCountChips";
 import { SwipeActionBar } from "./SwipeActionBar";
@@ -21,6 +26,7 @@ import {
   hasActiveSwipeFilters,
   type SwipeFilterState,
 } from "./swipeFilters";
+import { applySwipeSort } from "./swipeSort";
 import { useSwipeDeck } from "./useSwipeDeck";
 
 interface SwipeDeckProps {
@@ -44,6 +50,10 @@ export const SwipeDeck: React.FC<SwipeDeckProps> = ({
   const cardRef = useRef<SwipeCardHandle>(null);
 
   const [filters, setFilters] = useState<SwipeFilterState>(EMPTY_SWIPE_FILTERS);
+  // Ephemeral like the filters — the deck's controls live in component state,
+  // not the URL (the facet layer's convention, which the sheet already
+  // follows).
+  const [sorter, setSorter] = useState<JobSorter>(DEFAULT_JOB_SORTER);
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const titles = useMemo(
@@ -62,8 +72,12 @@ export const SwipeDeck: React.FC<SwipeDeckProps> = ({
     effectiveSwipeFilters(filters, knownProfileIds, titles),
   );
   const deck = useMemo(
-    () => applySwipeFilters(cards, filters, knownProfileIds, titles),
-    [cards, filters, knownProfileIds, titles],
+    () =>
+      applySwipeSort(
+        applySwipeFilters(cards, filters, knownProfileIds, titles),
+        sorter,
+      ),
+    [cards, filters, knownProfileIds, titles, sorter],
   );
 
   // The sheet rides OUTSIDE the branch switch so an open drawer survives the
@@ -74,6 +88,8 @@ export const SwipeDeck: React.FC<SwipeDeckProps> = ({
       onOpenChange={setSheetOpen}
       filters={filters}
       onFiltersChange={setFilters}
+      sorter={sorter}
+      onSorterChange={setSorter}
       profiles={profiles}
       titles={titles}
     />
@@ -94,6 +110,9 @@ export const SwipeDeck: React.FC<SwipeDeckProps> = ({
         undo={undo}
         cardRef={cardRef}
         filtersActive={filtersActive}
+        sorterLabel={
+          sorter === DEFAULT_JOB_SORTER ? null : JOB_SORTER_LABELS[sorter]
+        }
         onOpenFilters={() => setSheetOpen(true)}
         onClearFilters={() => setFilters(EMPTY_SWIPE_FILTERS)}
       />
@@ -115,6 +134,7 @@ interface SwipeDeckBodyProps {
   undo: () => Promise<void>;
   cardRef: React.RefObject<SwipeCardHandle>;
   filtersActive: boolean;
+  sorterLabel: string | null;
   onOpenFilters: () => void;
   onClearFilters: () => void;
 }
@@ -132,6 +152,7 @@ const SwipeDeckBody: React.FC<SwipeDeckBodyProps> = ({
   undo,
   cardRef,
   filtersActive,
+  sorterLabel,
   onOpenFilters,
   onClearFilters,
 }) => {
@@ -235,6 +256,7 @@ const SwipeDeckBody: React.FC<SwipeDeckBodyProps> = ({
         disabled={false}
         canUndo={canUndo}
         filtersActive={filtersActive}
+        sorterLabel={sorterLabel}
         onSkip={() => cardRef.current?.flyOut("skip")}
         onBacklog={() => cardRef.current?.flyOut("move_to_backlog")}
         onTailor={() => cardRef.current?.flyOut("move_to_ready")}

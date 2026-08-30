@@ -1,7 +1,7 @@
 /**
  * Bottom action bar for the Swipe deck — tap-target equivalents of the
  * swipe gestures, plus the gesture-less Backlog action and the trigger for
- * the bottom filter sheet.
+ * the bottom filter + sort sheet.
  */
 
 import { Archive, Check, RotateCcw, SlidersHorizontal, X } from "lucide-react";
@@ -14,6 +14,14 @@ interface SwipeActionBarProps {
   canUndo: boolean;
   /** Whether any deck filter is active — marks the trigger with a dot. */
   filtersActive: boolean;
+  /**
+   * The active sort's label, or null while the sorter is idle. It lights the
+   * trigger (and names itself on hover) but earns no dot: the dot means cards
+   * are missing, and a reorder hides nothing. Lighting it at all is the rule
+   * the Manage sorter's icon follows — a control that is doing something must
+   * not look idle from outside the menu it lives in.
+   */
+  sorterLabel: string | null;
   onSkip: () => void;
   onBacklog: () => void;
   onTailor: () => void;
@@ -25,6 +33,7 @@ export const SwipeActionBar: React.FC<SwipeActionBarProps> = ({
   disabled,
   canUndo,
   filtersActive,
+  sorterLabel,
   onSkip,
   onBacklog,
   onTailor,
@@ -82,10 +91,13 @@ export const SwipeActionBar: React.FC<SwipeActionBarProps> = ({
         size="icon"
         variant="ghost"
         onClick={onOpenFilters}
-        aria-label="Filters"
+        aria-label="Filters and sorting"
+        title={sorterLabel ? `Sorted by ${sorterLabel}` : undefined}
         className={cn(
           "absolute right-4 top-1/2 h-10 w-10 -translate-y-1/2 rounded-full",
-          filtersActive ? "text-primary" : "text-muted-foreground",
+          filtersActive || sorterLabel
+            ? "text-primary"
+            : "text-muted-foreground",
         )}
       >
         <SlidersHorizontal className="h-4 w-4" />

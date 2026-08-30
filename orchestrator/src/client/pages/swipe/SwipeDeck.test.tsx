@@ -19,12 +19,14 @@ vi.mock("./SwipeCard", () => ({
 vi.mock("./SwipeFilterSheet", () => ({
   SwipeFilterSheet: ({
     onFiltersChange,
+    onSorterChange,
   }: {
     onFiltersChange: (filters: {
       fit: string[];
       profile: string[];
       title: string[];
     }) => void;
+    onSorterChange: (sorter: string) => void;
   }) => (
     <div data-testid="filter-sheet">
       <button
@@ -34,6 +36,9 @@ vi.mock("./SwipeFilterSheet", () => ({
         }
       >
         pick-great-fit
+      </button>
+      <button type="button" onClick={() => onSorterChange("applicants")}>
+        sort-by-applicants
       </button>
     </div>
   ),
@@ -146,5 +151,44 @@ describe("SwipeDeck", () => {
     fireEvent.click(screen.getByText("pick-great-fit"));
     expect(screen.getByText("Great fit")).toBeInTheDocument();
     expect(screen.queryByText("Bad fit")).not.toBeInTheDocument();
+  });
+
+  it("reorders the deck when the sheet picks a sorter", () => {
+    // The deck renders `deck[0]`, and the hook is mocked, so the card on top
+    // is whatever the sort put first: the order handed in, then the row with
+    // the fewest applicants.
+    const checked = (id: string, postingId: string, applicants: string) =>
+      createJob({
+        id,
+        title: id,
+        jobUrl: `https://www.linkedin.com/jobs/view/${postingId}`,
+        liveClosed: false,
+        liveApplicants: applicants,
+        liveStatusCheckedAt: "2026-08-24T10:00:00.000Z",
+      });
+    deckResult.cards = [
+      checked("Contested", "4000000011", "40 applicants"),
+      checked("Quiet", "4000000022", "2 applicants"),
+    ];
+    renderDeck();
+    expect(screen.getByTestId("swipe-card")).toHaveTextContent("Contested");
+
+    fireEvent.click(screen.getByText("sort-by-applicants"));
+    expect(screen.getByTestId("swipe-card")).toHaveTextContent("Quiet");
+  });
+
+  it("lights the sheet trigger — and names the sort — while a sorter is set", () => {
+    deckResult.cards = [createJob({ id: "a", title: "Python Dev" })];
+    renderDeck();
+    const trigger = () =>
+      screen.getByRole("button", { name: "Filters and sorting" });
+    expect(trigger()).not.toHaveAttribute("title");
+    expect(trigger()).toHaveClass("text-muted-foreground");
+
+    fireEvent.click(screen.getByText("sort-by-applicants"));
+    // A sort hides nothing, so it earns no dot — but a control that is doing
+    // something must not look idle from outside the sheet it lives in.
+    expect(trigger()).toHaveAttribute("title", "Sorted by Fewer applicants");
+    expect(trigger()).toHaveClass("text-primary");
   });
 });
