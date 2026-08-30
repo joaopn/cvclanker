@@ -1,12 +1,16 @@
 import { badRequest, conflict, notFound } from "@infra/errors";
 import { asyncRoute, ok } from "@infra/http";
-import { getPipelineStatus } from "@server/pipeline/index";
+import {
+  endProfileSequence,
+  getPipelineStatus,
+  tryBeginProfileSequence,
+} from "@server/pipeline/index";
 import {
   createRunSchedule,
   deleteRunSchedule,
   getAllRunSchedules,
   getRunSchedule,
-  recordRunScheduleFire,
+  recordRunScheduleOutcome,
   updateRunSchedule,
 } from "@server/repositories/run-schedules";
 import {
@@ -157,19 +161,40 @@ schedulesRouter.post(
     if (getPipelineStatus().isRunning) {
       throw conflict("A pipeline run is already in progress. Cancel it first.");
     }
-
-    const outcome = await fireSchedule(schedule);
-    await recordRunScheduleFire(schedule.id, {
-      firedAt: new Date(),
-      status: outcome.status,
-      detail: outcome.detail,
-      // Untouched on purpose — see above.
-      nextFireAt: schedule.nextFireAt ? new Date(schedule.nextFireAt) : null,
-    });
-    if (outcome.status !== "success") {
-      throw badRequest(outcome.detail ?? "The schedule could not be run");
+    // Claimed HERE, synchronously before the first await, exactly as
+    // `POST /pipeline/run` does. `runProfileSequence` releases the claim in its
+    // own `finally`, so starting a chain without one leaves
+    // `isProfileSequenceActive()` false for the whole run — which is what stops
+    // the User-Profile DB being swapped underneath it — and then releases a
+    // claim someone else may have taken. Two presses would otherwise both pass
+    // the `isRunning` read above and both start.
+    if (!tryBeginProfileSequence()) {
+      throw conflict("A multi-profile run is already in progress");
     }
-    ok(res, { started: true, skippedProfiles: outcome.skippedProfiles ?? [] });
+
+    let handedOff = false;
+    try {
+      const outcome = await fireSchedule(schedule);
+      handedOff = outcome.status === "success";
+      await recordRunScheduleOutcome(schedule.id, {
+        // "running" until the chain finishes; the scheduler's own observer
+        // replaces it with what actually happened.
+        status: handedOff ? "running" : "failed",
+        detail: outcome.detail,
+      });
+      if (!handedOff) {
+        throw badRequest(outcome.detail ?? "The schedule could not be run");
+      }
+      ok(res, {
+        started: true,
+        skippedProfiles: outcome.skippedProfiles ?? [],
+      });
+    } finally {
+      // Ownership passes to the sequence, which releases it itself. Every other
+      // exit — including the throw above — must give it back, or every later
+      // run 409s and the app believes a run is in progress for ever.
+      if (!handedOff) endProfileSequence();
+    }
   }),
 );
 

@@ -8,6 +8,7 @@
 
 import * as api from "@client/api";
 import { PageHeader } from "@client/components/layout";
+import { PipelineRunBanner } from "@client/components/PipelineRunBanner";
 import { ViewToggle } from "@client/components/ViewToggle";
 import { toast } from "@client/lib/toast";
 import type { RunSchedule } from "@shared/types";
@@ -59,27 +60,39 @@ export const RunsPage: React.FC = () => {
   const [editing, setEditing] = useState<{
     id: string | null;
     draft: ScheduleDraft;
+    /** The stored row, so a save preserves fields the editor cannot express. */
+    existing?: RunSchedule;
   } | null>(null);
 
   const schedulesQuery = useQuery({
     queryKey: schedulesKey,
     queryFn: () => api.getSchedules(),
-    refetchInterval: 30_000,
+    refetchInterval: 15_000,
   });
   const profilesQuery = useQuery({
     queryKey: ["profiles"],
     queryFn: () => api.getProfiles(),
   });
+  // Keyed on the schedule's OWN profiles, not the default one: `run-options`
+  // filters each source to that profile's location-compatible platforms and its
+  // pinned Apify instances, so asking without ids offers the wrong set — an
+  // actor this schedule's profiles pin would simply not appear.
+  const editingProfileIds = editing?.draft.profileIds ?? [];
   const runOptionsQuery = useQuery({
-    queryKey: ["run-options"],
-    queryFn: () => api.getRunOptions(),
+    queryKey: ["run-options", [...editingProfileIds].sort().join(",")],
+    queryFn: () => api.getRunOptions(editingProfileIds),
+    enabled: editing !== null,
   });
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: schedulesKey });
 
   const saveMutation = useMutation({
-    mutationFn: async (input: { id: string | null; draft: ScheduleDraft }) => {
+    mutationFn: async (input: {
+      id: string | null;
+      draft: ScheduleDraft;
+      existing?: RunSchedule;
+    }) => {
       const payload = {
         ...input.draft,
         intervalHours:
@@ -94,8 +107,11 @@ export const RunsPage: React.FC = () => {
           input.draft.sourceMode === "custom"
             ? input.draft.providerInstanceIds
             : null,
-        scrapeWindowDays: null,
-        scrapeSinceLastRun: null,
+        // Carried through rather than nulled: PUT is a full replace, and the
+        // editor has no window control yet — nulling them here would destroy a
+        // value set through the API the first time someone edits the schedule.
+        scrapeWindowDays: input.existing?.scrapeWindowDays ?? null,
+        scrapeSinceLastRun: input.existing?.scrapeSinceLastRun ?? null,
       };
       return input.id
         ? api.updateSchedule(input.id, payload)
@@ -153,6 +169,14 @@ export const RunsPage: React.FC = () => {
     },
   });
 
+  // A schedule the server says is mid-chain. Read from the schedules payload
+  // rather than a second stream: `GET /pipeline/status` reports running-ness
+  // without a partition, so it cannot say whether the run in flight is this
+  // table's or Manage's.
+  const scheduledRunActive = (schedulesQuery.data?.schedules ?? []).some(
+    (schedule) => schedule.lastStatus === "running",
+  );
+
   const data = schedulesQuery.data;
   const timeZone = data?.timeZone ?? "UTC";
   const schedules = data?.schedules ?? [];
@@ -174,6 +198,13 @@ export const RunsPage: React.FC = () => {
           </Button>
         }
       />
+
+      {/* The scheduled partition's own funnel. Bound to `schedule`, so it can
+          never show a manual run and Manage can never show this one — which is
+          the whole reason progress is partitioned by trigger. Mounted
+          unconditionally: the server retains the last run and replays it, so a
+          run that finished while nobody was looking is still here. */}
+      <PipelineRunBanner isRunning={scheduledRunActive} trigger="schedule" />
 
       <main className="w-full space-y-4 px-4 py-6">
         {data?.pausedReason && (
@@ -265,6 +296,7 @@ export const RunsPage: React.FC = () => {
                       setEditing({
                         id: schedule.id,
                         draft: draftFrom(schedule),
+                        existing: schedule,
                       })
                     }
                   >

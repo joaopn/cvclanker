@@ -9,24 +9,32 @@ const runProfileSequence = vi.fn().mockResolvedValue(undefined);
 const tryBeginProfileSequence = vi.fn(() => true);
 const endProfileSequence = vi.fn();
 const getPipelineStatus = vi.fn(() => ({ isRunning: false }));
+const getProgress = vi.fn(() => ({
+  step: "completed" as string,
+  message: "Pipeline complete",
+  detail: undefined as string | undefined,
+  error: undefined as string | undefined,
+}));
 
 vi.mock("@server/pipeline/index", () => ({
-  runProfileSequence: (...args: unknown[]) => runProfileSequence(...args),
+  runProfileSequence: (entries: unknown, options: unknown) =>
+    runProfileSequence(entries, options),
   tryBeginProfileSequence: () => tryBeginProfileSequence(),
   endProfileSequence: () => endProfileSequence(),
   getPipelineStatus: () => getPipelineStatus(),
+  getProgress: () => getProgress(),
 }));
 
 const assembleRun = vi.fn();
 vi.mock("@server/services/pipeline-run/assemble", () => ({
-  assembleRun: (...args: unknown[]) => assembleRun(...args),
+  assembleRun: (body: unknown, options: unknown) => assembleRun(body, options),
 }));
 
 const isRateLimitStopped = vi.fn(() => false);
 const resetRateLimitBudget = vi.fn();
 vi.mock("@server/services/llm/rate-limit-budget", () => ({
   isRateLimitStopped: () => isRateLimitStopped(),
-  resetRateLimitBudget: (...args: unknown[]) => resetRateLimitBudget(...args),
+  resetRateLimitBudget: (retries: unknown) => resetRateLimitBudget(retries),
 }));
 
 describe.sequential("scheduler pass", () => {
@@ -37,8 +45,17 @@ describe.sequential("scheduler pass", () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
+    // `clearAllMocks` resets calls, NOT implementations, so a test that swaps
+    // one leaks into every test after it.
+    runProfileSequence.mockResolvedValue(undefined);
     tryBeginProfileSequence.mockReturnValue(true);
     getPipelineStatus.mockReturnValue({ isRunning: false });
+    getProgress.mockReturnValue({
+      step: "completed",
+      message: "Pipeline complete",
+      detail: undefined,
+      error: undefined,
+    });
     isRateLimitStopped.mockReturnValue(false);
     assembleRun.mockResolvedValue({
       ok: true,
@@ -143,6 +160,96 @@ describe.sequential("scheduler pass", () => {
     expect(after?.nextFireAt).toBe("2026-08-30T06:00:00.000Z");
     expect(after?.lastStatus).toBeNull();
     expect(runProfileSequence).not.toHaveBeenCalled();
+  });
+
+  it("keeps the claim when the chain takes it over", async () => {
+    await repo.createRunSchedule(dueSchedule());
+
+    await scheduler.runSchedulerPass(now);
+
+    // `runProfileSequence` releases the claim in its own `finally`. Releasing
+    // it here too would hand the next caller a claim the chain still owns,
+    // which is what keeps the User-Profile DB from being swapped mid-run.
+    expect(endProfileSequence).not.toHaveBeenCalled();
+  });
+
+  it("records the chain as running, not as a result it has not produced", async () => {
+    const created = await repo.createRunSchedule(dueSchedule());
+    // A chain that never finishes, so the row is observed mid-run.
+    runProfileSequence.mockReturnValue(new Promise(() => {}));
+
+    await scheduler.runSchedulerPass(now);
+
+    // Starting the chain says nothing about how it went: every per-profile
+    // failure is COUNTED inside the sequence, not thrown, so a "success" here
+    // would be a card claiming a result that may never arrive.
+    expect((await repo.getRunSchedule(created.id))?.lastStatus).toBe("running");
+  });
+
+  it("replaces running with the chain's real outcome once it finishes", async () => {
+    const created = await repo.createRunSchedule(dueSchedule());
+    await scheduler.runSchedulerPass(now);
+    await vi.waitFor(async () => {
+      expect((await repo.getRunSchedule(created.id))?.lastStatus).toBe(
+        "success",
+      );
+    });
+  });
+
+  it("pauses scheduling when the chain itself fails, not just its assembly", async () => {
+    const created = await repo.createRunSchedule(dueSchedule());
+    getProgress.mockReturnValue({
+      step: "failed",
+      message: "Pipeline failed",
+      detail: undefined,
+      error: "every profile failed",
+    });
+
+    await scheduler.runSchedulerPass(now);
+
+    // Both inside the wait: the outcome and the pause are two awaits in the
+    // detached observer, so asserting the second right after the first sees it
+    // before it lands.
+    await vi.waitFor(async () => {
+      expect((await repo.getRunSchedule(created.id))?.lastStatus).toBe(
+        "failed",
+      );
+      expect(await scheduler.isSchedulingPaused()).toMatch(
+        /every profile failed/,
+      );
+    });
+  });
+
+  it("pauses on a rate limit, which the chain reports as completed", async () => {
+    const created = await repo.createRunSchedule(dueSchedule());
+    isRateLimitStopped.mockReturnValue(true);
+
+    await scheduler.runSchedulerPass(now);
+
+    // `summarize()` calls a partially-successful rate-limited chain
+    // "completed", so the latch is the only honest signal — and an unnoticed
+    // one means every later fire scrapes (billing per result) and classifies
+    // nothing.
+    await vi.waitFor(async () => {
+      expect((await repo.getRunSchedule(created.id))?.lastStatus).toBe(
+        "failed",
+      );
+      expect(await scheduler.isSchedulingPaused()).toMatch(/rate limit/i);
+    });
+  });
+
+  it("does not send a window and the since-last-run flag together", async () => {
+    await repo.createRunSchedule(
+      dueSchedule({ scrapeWindowDays: 14, scrapeSinceLastRun: true }),
+    );
+
+    await scheduler.runSchedulerPass(now);
+
+    // The run route refuses the combination as a contradiction, so sending
+    // both would fail every fire of a schedule that stores both.
+    const body = assembleRun.mock.calls[0][0];
+    expect(body.scrapeWindowDays).toBe(14);
+    expect("scrapeSinceLastRun" in body).toBe(false);
   });
 
   it("gives the sequence claim back when it defers on a lost race", async () => {
@@ -276,12 +383,5 @@ describe.sequential("scheduler pass", () => {
     // The pipeline is a singleton, so a second would bounce off its guard and
     // be recorded as a failure it never really had.
     expect(runProfileSequence).toHaveBeenCalledTimes(1);
-  });
-
-  it("pauses when a chain stopped on a rate limit, which summarize calls complete", async () => {
-    isRateLimitStopped.mockReturnValue(true);
-    await scheduler.pauseIfRateLimited("Nightly");
-
-    expect(await scheduler.isSchedulingPaused()).toMatch(/rate limit/i);
   });
 });

@@ -123,8 +123,12 @@ export const ScheduleEditorDialog: React.FC<Props> = ({
   const instanceIdOf = (key: string) => key.slice(key.indexOf(":") + 1);
   const platformsSelected = (platforms: readonly string[]) =>
     platforms.length > 0 && platforms.every((id) => draft.sources.includes(id));
+  // "Whatever each profile selects" is the mode most likely to spend: a
+  // profile's own pins routinely include Apify actors, and warning only on the
+  // explicit picker would stay quiet exactly where the cost is unexamined.
   const usesPaid =
-    draft.sourceMode === "custom" && draft.providerInstanceIds.length > 0;
+    draft.sourceMode === "profile" ||
+    (draft.sourceMode === "custom" && draft.providerInstanceIds.length > 0);
 
   const toggleDay = (day: number) => {
     const current = draft.daysOfWeek ?? WEEKDAYS.map((d) => d.value);
@@ -380,21 +384,6 @@ export const ScheduleEditorDialog: React.FC<Props> = ({
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <Checkbox
-                id="auto-resolve-duplicates"
-                checked={draft.autoResolveDuplicates}
-                onCheckedChange={(checked) =>
-                  set("autoResolveDuplicates", checked === true)
-                }
-              />
-              <Label
-                htmlFor="auto-resolve-duplicates"
-                className="text-sm font-normal"
-              >
-                Close duplicate copies automatically after each run
-              </Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
                 id="auto-tailor"
                 checked={draft.enableAutoTailoring === true}
                 onCheckedChange={(checked) =>
@@ -409,8 +398,9 @@ export const ScheduleEditorDialog: React.FC<Props> = ({
 
           {usesPaid && (
             <p className="rounded-md border border-status-warn/30 bg-status-warn/10 p-3 text-sm text-status-warn-text">
-              This schedule runs paid Apify actors on every fire. They bill per
-              result.
+              {draft.sourceMode === "profile"
+                ? "If any of these profiles pins an Apify actor, this schedule runs it on every fire. Apify actors bill per result."
+                : "This schedule runs paid Apify actors on every fire. They bill per result."}
             </p>
           )}
         </div>

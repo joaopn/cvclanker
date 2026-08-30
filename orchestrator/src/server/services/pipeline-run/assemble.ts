@@ -690,13 +690,13 @@ export async function assembleRun(
         return err(notFound(`Profile not found: ${profileId}`));
       }
       // The chain passes the body's RAW lists where the single path below
-      // passes the skip-filtered ones. Kept different on purpose, and NOT
-      // because the two are always equal: the skip is `body.partial === true`,
-      // and refusing `partial` alongside `profileIds` is the CALLER's
-      // obligation (the run route does it before calling), not something this
-      // module enforces. A caller that sent both would reach here with the two
-      // lists genuinely different, so unifying them would change what such a
-      // caller runs.
+      // passes the skip-filtered ones, and the two are NOT always equal: the
+      // scheduler sets `skipDisabledSources` and always uses `profileIds`, so
+      // a chain reaching here with a since-disabled source in its list is the
+      // normal path, not a hypothetical. It stays correct because `filter` mode
+      // starts from the profile's OWN pins and re-intersects with the enabled
+      // set below — the raw list only ever narrows. Unifying the two would
+      // change what such a caller runs.
       const resolved = await resolveProfileRunConfig({
         body,
         profile,

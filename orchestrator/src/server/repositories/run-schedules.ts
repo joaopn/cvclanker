@@ -208,6 +208,27 @@ export async function deleteRunSchedule(id: string): Promise<void> {
 }
 
 /**
+ * Update just the outcome of the fire already recorded.
+ *
+ * Separate from `recordRunScheduleFire` because the chain finishes long after
+ * it started: the target was advanced at start time and must not be rewritten
+ * from a stale value here.
+ */
+export async function recordRunScheduleOutcome(
+  id: string,
+  outcome: { status: RunScheduleStatus; detail?: string | null },
+): Promise<void> {
+  await db
+    .update(schema.runSchedules)
+    .set({
+      lastStatus: outcome.status,
+      lastDetail: outcome.detail ?? null,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(schema.runSchedules.id, id));
+}
+
+/**
  * Record how a fire went and when the next one is due.
  *
  * `nextFireAt` is written as ISO-8601 UTC because the column is both ordered

@@ -19,7 +19,13 @@ export const RUN_SCHEDULE_SOURCE_MODES = [
 ] as const;
 export type RunScheduleSourceMode = (typeof RUN_SCHEDULE_SOURCE_MODES)[number];
 
-export const RUN_SCHEDULE_STATUSES = ["success", "failed", "skipped"] as const;
+export const RUN_SCHEDULE_STATUSES = [
+  /** Started, and the chain has not finished yet. */
+  "running",
+  "success",
+  "failed",
+  "skipped",
+] as const;
 export type RunScheduleStatus = (typeof RUN_SCHEDULE_STATUSES)[number];
 
 export interface RunSchedule {

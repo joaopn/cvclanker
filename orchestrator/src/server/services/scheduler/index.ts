@@ -3,14 +3,14 @@ import { getExtractorRegistry } from "@server/extractors/registry";
 import {
   endProfileSequence,
   getPipelineStatus,
+  getProgress,
   runProfileSequence,
   tryBeginProfileSequence,
 } from "@server/pipeline/index";
 import {
   getAllRunSchedules,
-  getRunSchedule,
   recordRunScheduleFire,
-  updateRunSchedule,
+  recordRunScheduleOutcome,
 } from "@server/repositories/run-schedules";
 import { setSetting } from "@server/repositories/settings";
 import { getEnabledExtractorIds } from "@server/repositories/source-configs";
@@ -127,6 +127,7 @@ function buildRunBody(
 }
 
 export interface FireOutcome {
+  /** "success" means the chain STARTED; its real result arrives later. */
   status: "success" | "failed" | "skipped";
   detail: string | null;
   /** True when the failure should stop all further automatic runs (D5). */
@@ -136,11 +137,19 @@ export interface FireOutcome {
 }
 
 /**
- * Assemble and start one schedule's run, and report how it went.
+ * Assemble and start one schedule's run, and report whether it STARTED.
  *
- * Split from the tick so "Run now" can use exactly the same path — the whole
- * point of the assembly extraction is that there is one derivation of what a
- * run does, not one per entry point.
+ * Split from the tick so "Run now" uses exactly the same path — the whole point
+ * of the assembly extraction is one derivation of what a run does, not one per
+ * entry point.
+ *
+ * THE CALLER MUST ALREADY HOLD THE SEQUENCE CLAIM, taken synchronously before
+ * its first await, because that is `runProfileSequence`'s own contract: it
+ * releases the claim in its `finally`, so starting a chain without one both
+ * leaves `isProfileSequenceActive()` false for the whole run — which is what
+ * guards the User-Profile DB swap — and releases a claim someone else may have
+ * taken meanwhile. `status: "success"` means STARTED; the chain's real outcome
+ * arrives later through `observeChainOutcome`.
  */
 export async function fireSchedule(
   schedule: RunSchedule,
@@ -173,22 +182,86 @@ export async function fireSchedule(
     };
   }
 
-  runProfileSequence(assembled.entries, { trigger: "schedule" }).catch(
-    (error) => {
-      logger.error("Scheduled run failed", { scheduleId: schedule.id, error });
-    },
+  const startNote = describeFire(
+    assembled.skippedProfiles,
+    assembled.skippedDisabledSources,
   );
+  void runProfileSequence(assembled.entries, { trigger: "schedule" })
+    .catch((error) => {
+      logger.error("Scheduled run failed", { scheduleId: schedule.id, error });
+      return undefined;
+    })
+    // Chained onto the CAUGHT promise so it can never reject on its own.
+    .then(() => observeChainOutcome(schedule, startNote));
 
   return {
     status: "success",
-    detail: describeFire(
-      assembled.skippedProfiles,
-      assembled.skippedDisabledSources,
-    ),
+    detail: startNote,
     pauses: false,
     skippedProfiles: assembled.skippedProfiles,
     skippedDisabledSources: assembled.skippedDisabledSources,
   };
+}
+
+/**
+ * Record what the chain actually did, once it has finished.
+ *
+ * `runProfileSequence` resolves to `void` and swallows every per-profile
+ * failure (they are counted, not thrown), so starting it successfully says
+ * nothing about the result — without this the card would read "success" for a
+ * chain in which every profile failed. The terminal progress event is the same
+ * thing the run banner shows, so this reads its verdict rather than inventing
+ * a second one.
+ *
+ * `summarize()` reports a partially-successful rate-limited chain as
+ * `completed`, so the latch is checked separately: it is the only honest signal
+ * that the run stopped because the account ran out. That matters for money —
+ * a latched limit left unnoticed means every later fire scrapes (billing per
+ * result) and classifies nothing.
+ */
+async function observeChainOutcome(
+  schedule: RunSchedule,
+  startNote: string | null,
+): Promise<void> {
+  try {
+    const progress = getProgress("schedule");
+    const rateLimited = isRateLimitStopped();
+    const failed = progress.step === "failed" || rateLimited;
+    await recordRunScheduleOutcome(schedule.id, {
+      status: failed
+        ? "failed"
+        : progress.step === "cancelled"
+          ? "skipped"
+          : "success",
+      detail:
+        [
+          rateLimited
+            ? "Stopped on an LLM rate limit."
+            : (progress.error ?? progress.detail ?? progress.message ?? null),
+          startNote,
+        ]
+          .filter(Boolean)
+          .join(". ") || null,
+    });
+    if (rateLimited) {
+      await pauseScheduling(
+        `"${schedule.name}" stopped on an LLM rate limit. Scheduling is paused until you resume it.`,
+      );
+      return;
+    }
+    if (failed) {
+      await pauseScheduling(
+        `"${schedule.name}" failed: ${progress.error ?? "the run did not complete"}`,
+      );
+    }
+  } catch (error) {
+    // This runs detached from any request; a throw here would be an unhandled
+    // rejection that tells nobody anything.
+    logger.error("Could not record a scheduled run's outcome", {
+      scheduleId: schedule.id,
+      error,
+    });
+  }
 }
 
 function describeFire(
@@ -262,24 +335,36 @@ export async function runSchedulerPass(now: Date = new Date()): Promise<{
     // limit may have passed" — a timer is not a user, and a latched limit is
     // itself one of the things that pauses scheduling, so clearing it every
     // pass would defeat that check.
-    const outcome = await fireSchedule(due);
-    handedOff = outcome.status === "success";
-
+    // Written BEFORE the chain starts, and the chain's own observer is then the
+    // only later writer. The other order is a race: a chain that finishes fast
+    // resolves its observer before this write lands, and "running" would
+    // overwrite the real outcome.
+    //
+    // The target is advanced even when the fire fails: it says when this
+    // schedule NEXT wants to run, and leaving it in the past would re-fire the
+    // same failure every pass. What stops a broken schedule repeating is the
+    // pause, not a stuck target.
     const next = await computeNextFire(due, now);
     await recordRunScheduleFire(due.id, {
       firedAt: now,
-      status: outcome.status,
-      detail: outcome.detail,
-      // Advanced even on failure: the target is when this schedule NEXT wants
-      // to run, and leaving it in the past would re-fire the same failure
-      // every pass. What stops a broken schedule repeating is the pause.
+      status: "running",
+      detail: null,
       nextFireAt: next,
     });
 
-    if (outcome.status === "failed" && outcome.pauses) {
-      await pauseScheduling(
-        `"${due.name}" failed: ${outcome.detail ?? "unknown error"}`,
-      );
+    const outcome = await fireSchedule(due);
+    handedOff = outcome.status === "success";
+
+    if (!handedOff) {
+      await recordRunScheduleOutcome(due.id, {
+        status: outcome.status,
+        detail: outcome.detail,
+      });
+      if (outcome.pauses) {
+        await pauseScheduling(
+          `"${due.name}" failed: ${outcome.detail ?? "unknown error"}`,
+        );
+      }
     }
     return { acted: "fired", scheduleId: due.id };
   } finally {
@@ -288,20 +373,6 @@ export async function runSchedulerPass(now: Date = new Date()): Promise<{
     // the app believes a run is in progress for ever.
     if (!handedOff) endProfileSequence();
   }
-}
-
-/**
- * Check after a chain finishes whether a rate limit latched.
- *
- * `summarize()` reports a partially-successful rate-limited chain as
- * `completed`, so the latch is the only honest signal that the run stopped
- * because the account ran out rather than because it finished.
- */
-export async function pauseIfRateLimited(scheduleName: string): Promise<void> {
-  if (!isRateLimitStopped()) return;
-  await pauseScheduling(
-    `"${scheduleName}" stopped on an LLM rate limit. Scheduling is paused until you resume it.`,
-  );
 }
 
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -331,17 +402,4 @@ export function stopScheduler(): void {
   if (!timer) return;
   clearInterval(timer);
   timer = null;
-}
-
-/**
- * Recompute a schedule's target, for a caller that just created or enabled it.
- *
- * A schedule with no target never becomes due; one carrying a target from
- * before a long pause would fire the instant it is switched back on.
- */
-export async function rearmSchedule(id: string): Promise<void> {
-  const schedule = await getRunSchedule(id);
-  if (!schedule || !schedule.enabled) return;
-  const next = await computeNextFire(schedule, new Date());
-  await updateRunSchedule(id, { nextFireAt: next?.toISOString() ?? null });
 }
