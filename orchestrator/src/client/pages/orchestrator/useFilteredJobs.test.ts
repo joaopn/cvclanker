@@ -284,3 +284,72 @@ describe("useFilteredJobs sorter", () => {
     expect(runSorter("applicants")).toEqual(["few", "old", "high"]);
   });
 });
+
+/**
+ * The permanent applied mark. `appliedAt` is stamped once by the server on the
+ * first move to Applied/Interviewing and never cleared, so it stays true for a
+ * closed row — which is the point: it separates a real rejection from a job
+ * that was never applied to.
+ */
+describe("useFilteredJobs applied filter", () => {
+  const closedJobs: JobListItem[] = [
+    createJob({
+      id: "was-applied",
+      status: "closed",
+      outcome: "rejected",
+      appliedAt: "2026-05-01T09:00:00.000Z",
+    }),
+    createJob({
+      id: "never-applied",
+      status: "skipped",
+      appliedAt: null,
+    }),
+    createJob({
+      id: "closed-never-applied",
+      status: "closed",
+      outcome: "duplicated",
+      appliedAt: null,
+    }),
+  ];
+
+  const runApplied = (appliedFilter: "all" | "applied" | "not_applied") =>
+    renderHook(() =>
+      useFilteredJobs(
+        closedJobs,
+        "closed",
+        DEFAULT_DATE_FILTER,
+        "all",
+        { mode: "at_least", min: null, max: null },
+        DEFAULT_SORT,
+        null,
+        "all",
+        [],
+        false,
+        [],
+        [],
+        [],
+        [],
+        "none",
+        appliedFilter,
+      ),
+    ).result.current;
+
+  it("is inert by default", () => {
+    expect(ids(runApplied("all"))).toEqual([
+      "closed-never-applied",
+      "never-applied",
+      "was-applied",
+    ]);
+  });
+
+  it("keeps only rows carrying the applied mark", () => {
+    expect(ids(runApplied("applied"))).toEqual(["was-applied"]);
+  });
+
+  it("keeps only rows that were never applied to", () => {
+    expect(ids(runApplied("not_applied"))).toEqual([
+      "closed-never-applied",
+      "never-applied",
+    ]);
+  });
+});

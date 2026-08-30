@@ -47,13 +47,14 @@ import {
   safeFilenamePart,
 } from "@/lib/utils";
 import { CompanyNameButton } from "./CompanyNameButton";
-import { type FilterTab, outcomeLabel } from "./constants";
+import { type FilterTab, outcomeLabel, showsAppliedBadge } from "./constants";
 import { InterviewQaSection } from "./InterviewQaSection";
 import { JobDocumentsPanel } from "./JobDocumentsPanel";
 import { JobNotesSection } from "./JobNotesSection";
 import { JobStageSwitcher } from "./JobStageSwitcher";
 import { MarkClosedPopover } from "./MarkClosedPopover";
 import { useUndo } from "./useUndoController";
+import { appliedBadgeTitle } from "./utils";
 
 interface JobDetailPanelProps {
   activeTab: FilterTab;
@@ -467,6 +468,14 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
           {selectedJob.status === "skipped" ? (
             <span className="inline-flex items-center rounded-full border border-[color:color-mix(in_oklab,var(--badge-base)_60%,var(--badge-warn))] bg-[color-mix(in_oklab,var(--badge-base)_85%,var(--badge-warn))] px-2.5 py-0.5 text-xs font-semibold text-amber-300">
               Skipped
+            </span>
+          ) : null}
+          {showsAppliedBadge(selectedJob) ? (
+            <span
+              className="inline-flex items-center rounded-full border border-[color:color-mix(in_oklab,var(--badge-base)_60%,var(--badge-teal))] bg-[color-mix(in_oklab,var(--badge-base)_85%,var(--badge-teal))] px-2.5 py-0.5 text-xs font-semibold text-teal-300"
+              title={appliedBadgeTitle(selectedJob.appliedAt)}
+            >
+              Applied
             </span>
           ) : null}
         </div>

@@ -278,6 +278,18 @@ export const compareJobs = (a: JobListItem, b: JobListItem, sort: JobSort) => {
   return a.id.localeCompare(b.id);
 };
 
+/**
+ * Tooltip for the permanent applied badge. Deliberately date-only: for a row
+ * stamped by the boot backfill the value is derived from `ready_at`/`closed_at`
+ * rather than observed, so rendering a raw ISO instant to the millisecond would
+ * present an estimate as a measurement.
+ */
+export const appliedBadgeTitle = (appliedAt: string | null): string => {
+  const value = dateValue(appliedAt);
+  if (value == null) return "Applied";
+  return `Applied ${new Date(value).toLocaleDateString()}`;
+};
+
 export const getJobPostedValue = (job: JobListItem): number | null =>
   dateValue(job.datePosted) ?? dateValue(job.discoveredAt);
 

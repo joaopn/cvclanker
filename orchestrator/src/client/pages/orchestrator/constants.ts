@@ -342,6 +342,58 @@ export const defaultSortDirection: Record<JobSort["key"], SortDirection> = {
   applicants: "asc",
 };
 
+/**
+ * The permanent "was this applied to?" narrowing, backed by `job.appliedAt`
+ * (server-managed, stamped once on the first move to Applied/Interviewing and
+ * never cleared). It lives in the Filters panel rather than on the filter bar
+ * because the Closed tab — the tab it exists for, where applied and
+ * never-applied rows sit side by side — renders no filter bar at all.
+ */
+export type AppliedFilter = "all" | "applied" | "not_applied";
+
+export const ALLOWED_APPLIED_FILTERS: AppliedFilter[] = [
+  "all",
+  "applied",
+  "not_applied",
+];
+
+export const DEFAULT_APPLIED_FILTER: AppliedFilter = "all";
+
+/**
+ * Labels are deliberately "Yes"/"No" under an "Ever applied" heading rather
+ * than "Applied"/"Never applied": the Dates card immediately below renders a
+ * dimension button also labelled "Applied" (meaning the applied DATE range),
+ * and two identically-labelled buttons a few pixels apart in one open panel is
+ * the same collision the `appliedEver` URL param exists to avoid.
+ */
+export const appliedFilterLabels: Record<AppliedFilter, string> = {
+  all: "Any",
+  applied: "Yes",
+  not_applied: "No",
+};
+
+/**
+ * The permanent applied mark, as rendered. ONE home for the rule, because two
+ * surfaces show it (the list row and the detail header) and a drifted copy
+ * would show the badge in one place and not the other.
+ *
+ * Suppressed on Applied / Interviewing: there the tab, the status dot and the
+ * stage switcher already say it, so the badge would only restate the row's own
+ * status. What it earns its place on is everything else — a closed row (is this
+ * a real rejection, or a job I never applied to?), a skipped one, and a
+ * reopened one back on a shelf.
+ */
+export function showsAppliedBadge(job: {
+  appliedAt?: string | null;
+  status: JobStatus;
+}): boolean {
+  return (
+    job.appliedAt != null &&
+    job.status !== "applied" &&
+    job.status !== "in_progress"
+  );
+}
+
 export type ClosedSubFilter =
   | "all"
   | "skipped"

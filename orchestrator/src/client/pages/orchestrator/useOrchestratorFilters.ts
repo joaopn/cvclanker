@@ -2,6 +2,7 @@ import type { JobSource } from "@shared/types.js";
 import { useCallback, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import type {
+  AppliedFilter,
   ClosedSubFilter,
   DateFilterDimension,
   DateFilterPreset,
@@ -14,7 +15,9 @@ import type {
   SponsorFilter,
 } from "./constants";
 import {
+  ALLOWED_APPLIED_FILTERS,
   ALLOWED_CLOSED_SUB_FILTERS,
+  DEFAULT_APPLIED_FILTER,
   DEFAULT_JOB_SORTER,
   DEFAULT_SORT,
   dateFilterDimensionOrder,
@@ -361,6 +364,36 @@ export const useOrchestratorFilters = () => {
     [setSearchParams],
   );
 
+  /**
+   * "Was this applied to?" — reads `job.appliedAt`, which the server stamps
+   * once and never clears. Unlike the fit / profile / title families this one
+   * has no co-gating: the Filters panel that owns it renders on every tab, so
+   * it can never sit active while its control is off screen.
+   */
+  const appliedFilter = useMemo((): AppliedFilter => {
+    // `appliedEver`, not `applied`: `appliedStart` / `appliedEnd` /
+    // `appliedRange` already exist on this URL and mean the applied DATE range.
+    // A bare `applied` beside them reads as a fourth member of that family.
+    const raw = searchParams.get("appliedEver") ?? DEFAULT_APPLIED_FILTER;
+    return ALLOWED_APPLIED_FILTERS.includes(raw as AppliedFilter)
+      ? (raw as AppliedFilter)
+      : DEFAULT_APPLIED_FILTER;
+  }, [searchParams]);
+
+  const setAppliedFilter = useCallback(
+    (value: AppliedFilter) => {
+      setSearchParams(
+        (prev) => {
+          if (value === DEFAULT_APPLIED_FILTER) prev.delete("appliedEver");
+          else prev.set("appliedEver", value);
+          return prev;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
   const setDateFilter = useCallback(
     (value: JobDateFilter) => {
       setSearchParams(
@@ -402,6 +435,7 @@ export const useOrchestratorFilters = () => {
         prev.delete("appliedRange");
         prev.delete("maxAge");
         prev.delete("closedFilter");
+        prev.delete("appliedEver");
         prev.delete("staleThreshold");
         prev.delete("fit");
         prev.delete("untailored");
@@ -429,6 +463,8 @@ export const useOrchestratorFilters = () => {
     setMaxAgeDays,
     closedSubFilter,
     setClosedSubFilter,
+    appliedFilter,
+    setAppliedFilter,
     staleThresholdDays,
     setStaleThresholdDays,
     fitFilter,

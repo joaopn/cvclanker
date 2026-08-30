@@ -124,6 +124,8 @@ export const OrchestratorPage: React.FC = () => {
     setMaxAgeDays,
     closedSubFilter,
     setClosedSubFilter,
+    appliedFilter,
+    setAppliedFilter,
     staleThresholdDays,
     setStaleThresholdDays,
     fitFilter,
@@ -443,6 +445,7 @@ export const OrchestratorPage: React.FC = () => {
     titleFilterForTab,
     knownProfileIds,
     sorterForTab,
+    appliedFilter,
   );
   const setActiveTab = useCallback(
     (newTab: FilterTab) => {
@@ -607,6 +610,7 @@ export const OrchestratorPage: React.FC = () => {
         "appliedEnd",
         "maxAge",
         "closedFilter",
+        "appliedEver",
       ]) {
         nextParams.delete(key);
       }
@@ -798,6 +802,8 @@ export const OrchestratorPage: React.FC = () => {
                 onSalaryFilterChange={setSalaryFilter}
                 dateFilter={dateFilter}
                 onDateFilterChange={setDateFilter}
+                appliedFilter={appliedFilter}
+                onAppliedFilterChange={setAppliedFilter}
                 maxAgeDays={maxAgeDays}
                 onMaxAgeDaysChange={setMaxAgeDays}
                 sourcesWithJobs={sourcesWithJobs}

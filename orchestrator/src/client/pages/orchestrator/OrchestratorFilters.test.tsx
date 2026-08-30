@@ -1,8 +1,19 @@
 import type { JobSource } from "@shared/types.js";
-import { fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import type { FilterTab, JobSort, SponsorFilter } from "./constants";
+import type {
+  AppliedFilter,
+  FilterTab,
+  JobSort,
+  SponsorFilter,
+} from "./constants";
 import { OrchestratorFilters } from "./OrchestratorFilters";
 
 const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
@@ -55,6 +66,8 @@ const renderFilters = (
       preset: null,
     },
     onDateFilterChange: vi.fn(),
+    appliedFilter: "all" as AppliedFilter,
+    onAppliedFilterChange: vi.fn(),
     maxAgeDays: null,
     onMaxAgeDaysChange: vi.fn(),
     sourcesWithJobs: ["hiringcafe", "linkedin", "manual"] as JobSource[],
@@ -201,5 +214,52 @@ describe("OrchestratorFilters", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Reset" }));
     expect(props.onResetFilters).toHaveBeenCalled();
+  });
+});
+
+/**
+ * The permanent applied mark's filter. Both of these went untested in the first
+ * cut, and both mutations survived the whole suite: deleting the card left the
+ * filter URL-only and unreachable from the UI, and dropping its term from
+ * `activeFilterCount` left it narrowing the list while the Filters badge said
+ * nothing.
+ */
+describe("OrchestratorFilters ever-applied filter", () => {
+  const openPanel = () =>
+    fireEvent.click(screen.getByRole("button", { name: /^filters/i }));
+
+  it("offers the three states and reports a pick", () => {
+    const { props } = renderFilters();
+    openPanel();
+
+    // Scoped to the fieldset: the Dates card below renders its own button
+    // labelled "Applied" (the applied DATE dimension), so an unscoped query by
+    // that name is exactly the collision these labels avoid.
+    const group = screen.getByRole("group", { name: "Ever applied" });
+    expect(
+      within(group)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Any", "Yes", "No"]);
+
+    fireEvent.click(within(group).getByRole("button", { name: "No" }));
+    expect(props.onAppliedFilterChange).toHaveBeenCalledWith("not_applied");
+
+    fireEvent.click(within(group).getByRole("button", { name: "Yes" }));
+    expect(props.onAppliedFilterChange).toHaveBeenCalledWith("applied");
+  });
+
+  it("counts toward the Filters badge, and Any does not", () => {
+    renderFilters({ appliedFilter: "applied" });
+    expect(
+      screen.getByRole("button", { name: /^filters/i }).textContent,
+    ).toContain("1");
+
+    cleanup();
+
+    renderFilters({ appliedFilter: "all" });
+    expect(
+      screen.getByRole("button", { name: /^filters/i }).textContent,
+    ).not.toContain("1");
   });
 });

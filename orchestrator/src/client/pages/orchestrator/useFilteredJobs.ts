@@ -1,6 +1,7 @@
 import type { JobListItem, JobSource } from "@shared/types";
 import { useMemo } from "react";
 import type {
+  AppliedFilter,
   ClosedSubFilter,
   DateFilterDimension,
   FilterTab,
@@ -54,6 +55,13 @@ export const useFilteredJobs = (
   // popover) governs; anything else pins the whole JobSort. The caller passes
   // `none` on tabs that don't render the bar, so it can't act unseen.
   sorter: JobSorter = "none",
+  // "Was this applied to?", from the Filters panel. Backed by `appliedAt`,
+  // which the server stamps once (first move to Applied/Interviewing) and
+  // never clears — so it stays true for a closed row, which is the whole
+  // point: it separates a rejection from a job that was never applied to.
+  // Panel-owned rather than bar-owned, so unlike the badge families it needs
+  // no per-tab co-gating — the panel renders everywhere.
+  appliedFilter: AppliedFilter = "all",
 ) =>
   useMemo(() => {
     let filtered = [...jobs];
@@ -122,6 +130,13 @@ export const useFilteredJobs = (
         if (job.suitabilityCategory == null) return set.has("unscored");
         return set.has(job.suitabilityCategory);
       });
+    }
+
+    if (appliedFilter !== "all") {
+      const wantApplied = appliedFilter === "applied";
+      filtered = filtered.filter(
+        (job) => (job.appliedAt != null) === wantApplied,
+      );
     }
 
     // Search Profile badges. A row with no attribution (manual import, or
@@ -233,6 +248,7 @@ export const useFilteredJobs = (
     titleFilter,
     knownProfileIds,
     sorter,
+    appliedFilter,
   ]);
 
 const matchesDateDimension = (

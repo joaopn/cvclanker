@@ -5,10 +5,11 @@ import {
   defaultStatusToken,
   LIVE_CLOSED_CHIP_CLASS,
   outcomeLabel,
+  showsAppliedBadge,
   statusTokens,
 } from "./constants";
 import { JobCategoryBadge } from "./JobCategoryBadge";
-import { dateValue, formatCheckedAge } from "./utils";
+import { appliedBadgeTitle, dateValue, formatCheckedAge } from "./utils";
 
 interface JobRowContentProps {
   job: JobListItem;
@@ -49,6 +50,7 @@ export const JobRowContent = ({
   const category = job.suitabilityCategory ?? null;
   const closureReason = job.outcome ? outcomeLabel[job.outcome] : null;
   const isSkipped = job.status === "skipped";
+  const wasApplied = showsAppliedBadge(job);
   const sourceLabel = job.sourceLabel ?? job.source;
   const statusToken = statusTokens[job.status] ?? defaultStatusToken;
   const age = formatAge(job, Date.now());
@@ -151,10 +153,14 @@ export const JobRowContent = ({
         )}
       </div>
 
-      {(category || closureReason || isSkipped || sourceLabel) && (
-        <div className="shrink-0 text-right">
-          {(category || closureReason || isSkipped) && (
-            <div className="flex items-center justify-end gap-1">
+      {(category ||
+        closureReason ||
+        isSkipped ||
+        wasApplied ||
+        sourceLabel) && (
+        <div className="max-w-[11rem] shrink-0 text-right">
+          {(category || closureReason || isSkipped || wasApplied) && (
+            <div className="flex flex-wrap items-center justify-end gap-1">
               {category && <JobCategoryBadge category={category} />}
               {closureReason && (
                 <span className="rounded-full border border-[color:color-mix(in_oklab,var(--badge-base)_60%,var(--badge-bad))] bg-[color-mix(in_oklab,var(--badge-base)_85%,var(--badge-bad))] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-300">
@@ -164,6 +170,14 @@ export const JobRowContent = ({
               {isSkipped && (
                 <span className="rounded-full border border-[color:color-mix(in_oklab,var(--badge-base)_60%,var(--badge-warn))] bg-[color-mix(in_oklab,var(--badge-base)_85%,var(--badge-warn))] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
                   Skipped
+                </span>
+              )}
+              {wasApplied && (
+                <span
+                  className="rounded-full border border-[color:color-mix(in_oklab,var(--badge-base)_60%,var(--badge-teal))] bg-[color-mix(in_oklab,var(--badge-base)_85%,var(--badge-teal))] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-300"
+                  title={appliedBadgeTitle(job.appliedAt)}
+                >
+                  Applied
                 </span>
               )}
             </div>

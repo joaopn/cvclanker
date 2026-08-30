@@ -33,6 +33,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { sourceLabel } from "@/lib/utils";
 import type {
+  AppliedFilter,
   DateFilterDimension,
   DateFilterPreset,
   FilterTab,
@@ -44,6 +45,8 @@ import type {
   SponsorFilter,
 } from "./constants";
 import {
+  ALLOWED_APPLIED_FILTERS,
+  appliedFilterLabels,
   DEFAULT_JOB_SORTER,
   dateFilterDimensionLabels,
   dateFilterDimensionOrder,
@@ -66,6 +69,8 @@ interface OrchestratorFiltersProps {
   onSalaryFilterChange: (value: SalaryFilter) => void;
   dateFilter: JobDateFilter;
   onDateFilterChange: (value: JobDateFilter) => void;
+  appliedFilter: AppliedFilter;
+  onAppliedFilterChange: (value: AppliedFilter) => void;
   maxAgeDays: number | null;
   onMaxAgeDaysChange: (value: number | null) => void;
   sourcesWithJobs: JobSource[];
@@ -210,6 +215,8 @@ export const OrchestratorFilters: React.FC<OrchestratorFiltersProps> = ({
   onSalaryFilterChange,
   dateFilter,
   onDateFilterChange,
+  appliedFilter,
+  onAppliedFilterChange,
   maxAgeDays,
   onMaxAgeDaysChange,
   sourcesWithJobs,
@@ -238,7 +245,8 @@ export const OrchestratorFilters: React.FC<OrchestratorFiltersProps> = ({
         (typeof salaryFilter.min === "number" && salaryFilter.min > 0) ||
           (typeof salaryFilter.max === "number" && salaryFilter.max > 0),
       ) +
-      Number(maxAgeDays != null && maxAgeDays > 0),
+      Number(maxAgeDays != null && maxAgeDays > 0) +
+      Number(appliedFilter !== "all"),
     [
       sourceFilter,
       sponsorFilter,
@@ -246,6 +254,7 @@ export const OrchestratorFilters: React.FC<OrchestratorFiltersProps> = ({
       salaryFilter.min,
       salaryFilter.max,
       maxAgeDays,
+      appliedFilter,
     ],
   );
 
@@ -358,6 +367,46 @@ export const OrchestratorFilters: React.FC<OrchestratorFiltersProps> = ({
                           {sourceLabel[source]}
                         </Button>
                       ))}
+                    </CardContent>
+                  </Card>
+
+                  {/*
+                    Whether a job was ever applied to, as opposed to WHEN —
+                    which is the "Applied" date dimension in the card below, so
+                    the two sit adjacent deliberately. This is the only
+                    narrowing that separates a rejection from a job that was
+                    never applied to, and the Closed tab (where that matters)
+                    renders no filter bar, so the panel is its only possible
+                    home.
+                  */}
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle>Ever applied</CardTitle>
+                      <CardDescription>
+                        Jobs keep an Applied mark permanently, so a closed job
+                        still shows whether you applied to it.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <fieldset
+                        className="flex flex-wrap gap-2"
+                        aria-label="Ever applied"
+                      >
+                        {ALLOWED_APPLIED_FILTERS.map((value) => (
+                          <Button
+                            key={value}
+                            type="button"
+                            size="sm"
+                            variant={
+                              appliedFilter === value ? "default" : "outline"
+                            }
+                            aria-pressed={appliedFilter === value}
+                            onClick={() => onAppliedFilterChange(value)}
+                          >
+                            {appliedFilterLabels[value]}
+                          </Button>
+                        ))}
+                      </fieldset>
                     </CardContent>
                   </Card>
 

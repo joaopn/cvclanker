@@ -159,4 +159,54 @@ describe("useOrchestratorFilters", () => {
     expect(getLocation()).not.toContain("sorter=");
     expect(getLocation()).not.toContain("sort=");
   });
+
+  /**
+   * The permanent applied mark's filter. Note the param name: `appliedStart` /
+   * `appliedEnd` / `appliedRange` already exist and mean the applied DATE
+   * range, so this one is `appliedEver` to avoid reading as a fourth member of
+   * that family.
+   */
+  it("parses appliedEver and ignores an unknown value", () => {
+    for (const [entry, expected] of [
+      ["/jobs/closed?appliedEver=applied", "applied"],
+      ["/jobs/closed?appliedEver=not_applied", "not_applied"],
+      ["/jobs/closed?appliedEver=nonsense", "all"],
+      ["/jobs/closed", "all"],
+    ] as const) {
+      const { Wrapper } = createWrapper(entry);
+      const { result } = renderHook(() => useOrchestratorFilters(), {
+        wrapper: Wrapper,
+      });
+      expect(result.current.appliedFilter).toBe(expected);
+    }
+  });
+
+  it("writes appliedEver to the URL, drops it on all, and clears it on reset", () => {
+    const { Wrapper, getLocation } = createWrapper("/jobs/closed");
+    const { result } = renderHook(() => useOrchestratorFilters(), {
+      wrapper: Wrapper,
+    });
+
+    act(() => {
+      result.current.setAppliedFilter("applied");
+    });
+    expect(getLocation()).toContain("appliedEver=applied");
+
+    act(() => {
+      result.current.setAppliedFilter("all");
+    });
+    expect(getLocation()).not.toContain("appliedEver");
+
+    act(() => {
+      result.current.setAppliedFilter("not_applied");
+    });
+    expect(getLocation()).toContain("appliedEver=not_applied");
+
+    // Reset must clear it, or the filter keeps narrowing after the user has
+    // explicitly cleared their filters.
+    act(() => {
+      result.current.resetFilters();
+    });
+    expect(getLocation()).not.toContain("appliedEver");
+  });
 });
