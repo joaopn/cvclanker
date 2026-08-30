@@ -805,10 +805,20 @@ export async function updateJob(
       : input.status === "ready"
         ? { readyAt: sql`coalesce(${jobs.readyAt}, ${now})` }
         : {};
+  // `applied_at` is the permanent "this was applied to" mark: it is what
+  // separates a closed row the user actually applied to from one they never
+  // did. `in_progress` stamps as well as `applied` because the stage switcher
+  // moves `ready -> in_progress` directly, and a job at Interviewing has been
+  // applied to by definition — without this arm such a row closes out looking
+  // like it was never applied. The coalesce keeps the FIRST apply date, so an
+  // `applied -> in_progress` move never restamps.
+  // The explicit branch is the UNDO path (see `client/lib/undo.ts`): it is the
+  // only way to move or clear the mark, and it exists so reversing a
+  // mis-pressed "Mark applied" does not leave a permanent Applied badge.
   const appliedAtUpdate =
     input.appliedAt !== undefined
       ? { appliedAt: input.appliedAt }
-      : input.status === "applied"
+      : input.status === "applied" || input.status === "in_progress"
         ? { appliedAt: sql`coalesce(${jobs.appliedAt}, ${now})` }
         : {};
 

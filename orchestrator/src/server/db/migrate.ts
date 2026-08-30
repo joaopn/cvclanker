@@ -1414,5 +1414,142 @@ try {
   process.exit(1);
 }
 
+// `applied_at` is the permanent "this was applied to" mark — what separates a
+// closed job the user applied to (a real rejection) from one they never
+// applied to at all. It is stamped by `updateJob`, but until the same commit
+// as this block it fired only on the move to `applied`, and the stage switcher
+// offers `ready -> in_progress` DIRECTLY. Every job that took that route is
+// unstamped, and closing one produced `closed` + an outcome + a NULL
+// `applied_at`: a row that reads as never-applied when it definitively was.
+//
+// Rows with positive evidence of an application are stamped from the best
+// timestamp still on the row. The evidence outcomes are exactly
+// {rejected, withdrawn, ghosted}: `mark_closed` is guarded to
+// {applied, in_progress} and the detail panel renders its Mark Closed control
+// only for those two, so a closure carrying one of them came from an applied
+// row. `mark_duplicated` closes from {discovered, selected, processing, ready}
+// and always writes 'duplicated'. `skipped` means never applied, and a `closed`
+// row with a NULL outcome is no evidence at all.
+//
+// 'other' is DELIBERATELY EXCLUDED, and this is the subtle one. The rebuild
+// above (see the status/outcome CASE pair) folds THREE different histories into
+// it: the legacy `expired` status — an auto-expiry marker for stale postings,
+// i.e. rows NEVER applied to — becomes `closed` + 'other', and so do the
+// genuinely post-apply 'offer_accepted' / 'offer_declined'. The value cannot
+// tell them apart, so treating it as evidence would stamp every legacy expired
+// row as applied and inflate exactly the rejection statistics this mark exists
+// to make countable. What excluding it costs is narrow by comparison: a row
+// closed as 'other' that took the ready -> in_progress shortcut. Anything
+// closed as 'other' that passed through `applied` is already stamped, because
+// the coalesce fired at the time. Missing evidence must never buy a mark.
+//
+// The true apply instant is unrecoverable; it lies in [ready_at, closed_at].
+// `ready_at` is the tightest real lower bound (tailor, then apply, usually in
+// one sitting), `closed_at` anchors a row that was never tailored.
+//
+// Every source is normalised to ISO before it is written. `applied_at` is
+// currently a clean ISO-8601 UTC column (its only writer is `updateJob` with
+// toISOString()), while `closed_at` is INTEGER unix SECONDS and
+// `discovered_at`/`updated_at` carry a `(datetime('now'))` DEFAULT whose
+// space-separated form Date.parse reads in the HOST zone. Copying either in
+// verbatim would put two formats in one column and shift the Applied date
+// filter by the host offset.
+//
+// Idempotent: the WHERE matches only `applied_at IS NULL`, so a second boot
+// matches nothing — and post-fix no new row can enter the population, since
+// both `applied` and `in_progress` now stamp live. It runs here, after the SQL
+// migrations array, so the every-boot `jobs` rebuild (which carries applied_at
+// in both its INSERT and SELECT lists) has already completed.
+try {
+  const candidates = sqlite
+    .prepare(
+      `SELECT id, ready_at, closed_at, updated_at, discovered_at
+       FROM jobs
+       WHERE applied_at IS NULL
+         AND (
+           status IN ('applied', 'in_progress')
+           OR (status = 'closed' AND outcome IN ('rejected', 'withdrawn', 'ghosted'))
+         )`,
+    )
+    .all() as Array<{
+    id: string;
+    ready_at: string | null;
+    closed_at: number | null;
+    updated_at: string | null;
+    discovered_at: string | null;
+  }>;
+
+  if (candidates.length > 0) {
+    // SQLite's `datetime('now')` is UTC but emits "YYYY-MM-DD HH:MM:SS" with no
+    // zone marker, which Date.parse resolves in the host zone — hence the
+    // explicit Z. Anything unparseable returns null so the caller falls through
+    // to the next source rather than writing a bad value.
+    // A stamp must land between "the app could plausibly have existed" and now.
+    const MIN_STAMP_MS = Date.parse("2000-01-01T00:00:00.000Z");
+    const MAX_STAMP_MS = Date.now();
+    const inRange = (ms: number): boolean =>
+      Number.isFinite(ms) && ms >= MIN_STAMP_MS && ms <= MAX_STAMP_MS;
+
+    const toIso = (value: string | null): string | null => {
+      if (!value) return null;
+      const raw = value.trim();
+      if (!raw) return null;
+      const candidate = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(raw)
+        ? `${raw.replace(" ", "T")}Z`
+        : raw;
+      const ms = Date.parse(candidate);
+      return inRange(ms) ? new Date(ms).toISOString() : null;
+    };
+
+    const secondsToIso = (value: number | null): string | null => {
+      if (typeof value !== "number" || !Number.isFinite(value)) return null;
+      const ms = value * 1000;
+      // Out-of-range covers the millisecond-valued legacy row: 1.79e12 seconds
+      // is year ~56,700, which `new Date()` accepts happily.
+      return inRange(ms) ? new Date(ms).toISOString() : null;
+    };
+
+    const update = sqlite.prepare(
+      "UPDATE jobs SET applied_at = ? WHERE id = ? AND applied_at IS NULL",
+    );
+
+    let stamped = 0;
+    let unresolved = 0;
+    const run = sqlite.transaction(() => {
+      for (const row of candidates) {
+        const stamp =
+          toIso(row.ready_at) ??
+          secondsToIso(row.closed_at) ??
+          toIso(row.updated_at) ??
+          toIso(row.discovered_at);
+        if (!stamp) {
+          // Every timestamp on the row was absent or unparseable. Leaving it
+          // NULL under-reports one job; inventing a date would corrupt the
+          // date filter for everyone.
+          unresolved += 1;
+          continue;
+        }
+        update.run(stamp, row.id);
+        stamped += 1;
+      }
+    });
+    run();
+
+    if (stamped > 0) {
+      console.log(
+        `✅ backfilled applied_at on ${stamped} job(s) that reached Interviewing or were closed out without an apply stamp`,
+      );
+    }
+    if (unresolved > 0) {
+      console.log(
+        `⚠️ ${unresolved} applied job(s) had no usable timestamp to backfill applied_at from — left unmarked`,
+      );
+    }
+  }
+} catch (error) {
+  console.error("❌ applied_at backfill failed:", error);
+  process.exit(1);
+}
+
 sqlite.close();
 console.log("🎉 Database migrations complete!");

@@ -101,6 +101,8 @@ const updateJobSchema = z.object({
     .optional(),
   outcome: z.enum(APPLICATION_OUTCOMES).nullable().optional(),
   closedAt: z.number().int().nullable().optional(),
+  // Server-managed everywhere except undo, which restores the pre-action value.
+  appliedAt: z.string().trim().min(1).max(40).nullable().optional(),
   jobDescription: z.string().trim().nullable().optional(),
   suitabilityCategory: z.enum(SUITABILITY_CATEGORIES).nullable().optional(),
   suitabilityReason: z.string().optional(),
@@ -2215,11 +2217,16 @@ jobsRouter.post("/:id/apply", async (req: Request, res: Response) => {
       return fail(res, notFound("Job not found"));
     }
 
-    const appliedAt = new Date().toISOString();
-
+    // No explicit `appliedAt`: an explicit value takes `updateJob`'s
+    // pass-through branch and OVERWRITES, while the bare status change takes
+    // the `coalesce(applied_at, now)` arm that stamps once and keeps the first
+    // apply date for ever. This route is every "Mark applied" surface (the
+    // Ready panel, the detail panel, the `a` shortcut), so sending a fresh
+    // timestamp here re-dated any job applied, moved back to Tailoring by the
+    // stage switcher, and applied again — silently shifting it under the
+    // Applied date filter too.
     const updatedJob = await jobsRepo.updateJob(job.id, {
       status: "applied",
-      appliedAt,
     });
 
     if (!updatedJob) {

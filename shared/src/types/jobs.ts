@@ -461,7 +461,12 @@ export interface UpdateJobInput {
   liveApplicants?: string | null;
   liveStatusCheckedAt?: string | null;
   readyAt?: string;
-  appliedAt?: string;
+  // Server-managed: the ONLY writer is `updateJob`, which coalesce-stamps it
+  // on the first move to Applied/Interviewing. Passing an explicit value here
+  // takes the pass-through branch and OVERWRITES, so it exists for exactly one
+  // caller — undo, restoring the mark to what it was before the action it is
+  // reversing. Nullable because that prior value is often "unstamped".
+  appliedAt?: string | null;
 }
 
 export interface CreateJobNoteInput {
