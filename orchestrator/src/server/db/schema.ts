@@ -11,6 +11,8 @@ import {
   JOB_CHAT_MESSAGE_ROLES,
   JOB_CHAT_MESSAGE_STATUSES,
   JOB_CHAT_RUN_STATUSES,
+  RUN_SCHEDULE_CADENCE_KINDS,
+  RUN_SCHEDULE_SOURCE_MODES,
   SUITABILITY_CATEGORIES,
 } from "@shared/types";
 import { sql } from "drizzle-orm";
@@ -465,6 +467,47 @@ export const sourceScrapeWatermarks = sqliteTable(
     pk: primaryKey({ columns: [table.profileId, table.sourceKey] }),
   }),
 );
+
+// What the scheduler fires. JSON-ish columns (`profile_ids`, `days_of_week`,
+// `sources`, `provider_instance_ids`) are stored as TEXT and parsed in the
+// repo, the way `profiles.config_json` is — the repo's parser is tolerant,
+// because a restored snapshot or a hand-edited DB can hold any shape.
+//
+// `next_fire_at` is ISO-8601 UTC: it is ORDERED and COMPARED as text, and
+// SQLite compares text lexically, so a non-UTC write would silently break both.
+export const runSchedules = sqliteTable("run_schedules", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  cadenceKind: text("cadence_kind", {
+    enum: RUN_SCHEDULE_CADENCE_KINDS,
+  }).notNull(),
+  intervalHours: integer("interval_hours"),
+  timeOfDay: text("time_of_day"),
+  daysOfWeek: text("days_of_week"),
+  profileIds: text("profile_ids").notNull().default("[]"),
+  sourceMode: text("source_mode", { enum: RUN_SCHEDULE_SOURCE_MODES })
+    .notNull()
+    .default("profile"),
+  sources: text("sources"),
+  providerInstanceIds: text("provider_instance_ids"),
+  scrapeWindowDays: integer("scrape_window_days"),
+  scrapeSinceLastRun: integer("scrape_since_last_run", { mode: "boolean" }),
+  enableAutoTailoring: integer("enable_auto_tailoring", { mode: "boolean" }),
+  autoResolveDuplicates: integer("auto_resolve_duplicates", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(false),
+  nextFireAt: text("next_fire_at"),
+  lastFiredAt: text("last_fired_at"),
+  lastStatus: text("last_status"),
+  lastDetail: text("last_detail"),
+  lastRunId: text("last_run_id"),
+  lastDuplicatesClosed: integer("last_duplicates_closed"),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
 
 export const authSessions = sqliteTable(
   "auth_sessions",

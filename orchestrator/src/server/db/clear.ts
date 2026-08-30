@@ -26,6 +26,16 @@ export function clearDatabase(): { jobsDeleted: number; runsDeleted: number } {
     sqlite.prepare("DELETE FROM source_scrape_watermarks").run();
     const jobsResult = sqlite.prepare("DELETE FROM jobs").run();
     const runsResult = sqlite.prepare("DELETE FROM pipeline_runs").run();
+    // Schedules are config and survive, like source_configs and profiles — but
+    // their last-run residue points at `pipeline_runs` rows that just went, and
+    // nothing cascades (PRAGMA foreign_keys is never on), so it is forgotten
+    // here rather than left dangling.
+    sqlite
+      .prepare(
+        `UPDATE run_schedules SET last_fired_at = NULL, last_status = NULL,
+           last_detail = NULL, last_run_id = NULL, last_duplicates_closed = NULL`,
+      )
+      .run();
 
     console.log(
       `🗑️ Cleared database: ${jobsResult.changes} jobs, ${runsResult.changes} pipeline runs`,

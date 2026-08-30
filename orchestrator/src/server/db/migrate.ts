@@ -646,6 +646,55 @@ const migrations: string[] = [
      default_content TEXT NOT NULL,
      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
    )`,
+
+  // Run schedules: what the scheduler fires, and the record of its last fire.
+  // Additive only — no rebuild, because there is no legacy shape to read.
+  //
+  // The CHECKs are here rather than in the repo alone because SQLite cannot add
+  // one by ALTER: getting them wrong costs a guarded table rebuild later. They
+  // cover the two closed enums (D6 fixes the cadence set; there is no cron
+  // parser coming) and the interval, where a non-positive value would be a
+  // non-terminating slot search inside the tick's setInterval.
+  //
+  // `next_fire_at` is ISO-8601 and ALWAYS UTC (`...Z`): it is both ordered and
+  // compared as TEXT, and SQLite compares text lexically — the same trap that
+  // cost `jobs.date_posted` a normalizer and a backfill. Every writer goes
+  // through `toISOString()`.
+  //
+  // No REFERENCES clause: the runtime connection never enables PRAGMA
+  // foreign_keys, so a cascade would be dead code. `profile_ids` is a JSON list
+  // rather than a join table, so cleaning up after a deleted Search Profile is
+  // a policy question, not a cascade — it lands with the code that can observe
+  // it firing.
+  `CREATE TABLE IF NOT EXISTS run_schedules (
+     id TEXT PRIMARY KEY,
+     name TEXT NOT NULL,
+     enabled INTEGER NOT NULL DEFAULT 1,
+     cadence_kind TEXT NOT NULL CHECK (cadence_kind IN ('every_n_hours','daily_at')),
+     interval_hours INTEGER CHECK (interval_hours IS NULL OR interval_hours > 0),
+     time_of_day TEXT,
+     days_of_week TEXT,
+     profile_ids TEXT NOT NULL DEFAULT '[]',
+     source_mode TEXT NOT NULL DEFAULT 'profile' CHECK (source_mode IN ('profile','free_only','custom')),
+     sources TEXT,
+     provider_instance_ids TEXT,
+     scrape_window_days INTEGER,
+     scrape_since_last_run INTEGER,
+     enable_auto_tailoring INTEGER,
+     auto_resolve_duplicates INTEGER NOT NULL DEFAULT 0,
+     next_fire_at TEXT,
+     last_fired_at TEXT,
+     last_status TEXT,
+     last_detail TEXT,
+     last_run_id TEXT,
+     last_duplicates_closed INTEGER,
+     created_at TEXT NOT NULL DEFAULT (datetime('now')),
+     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+     CHECK (
+       (cadence_kind = 'every_n_hours' AND interval_hours IS NOT NULL) OR
+       (cadence_kind = 'daily_at' AND time_of_day IS NOT NULL)
+     )
+   )`,
 ];
 
 console.log("🔧 Running database migrations...");

@@ -11,6 +11,7 @@ export * from "./location";
 export * from "./pipeline";
 export * from "./profile";
 export * from "./provider-instances";
+export * from "./run-schedule";
 export * from "./scoring-bench";
 export * from "./settings";
 export * from "./source-config";
