@@ -1529,6 +1529,53 @@ describe.sequential("Pipeline API routes", () => {
     expect(runPipeline).not.toHaveBeenCalled();
   });
 
+  describe("extractor registry failures during run assembly", () => {
+    async function withFailingRegistry<T>(run: () => Promise<T>): Promise<T> {
+      const registryModule = await import("@server/extractors/registry");
+      const spy = vi.mocked(registryModule.getExtractorRegistry);
+      const original = spy.getMockImplementation();
+      spy.mockRejectedValue(new Error("registry boom"));
+      try {
+        return await run();
+      } finally {
+        spy.mockReset();
+        if (original) spy.mockImplementation(original);
+      }
+    }
+
+    const runWithSources = () =>
+      fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sources: ["linkedin"] }),
+      });
+
+    it("answers 503 rather than starting a run it cannot resolve", async () => {
+      const { runPipeline } = await import("@server/pipeline/index");
+
+      const res = await withFailingRegistry(runWithSources);
+      const body = await res.json();
+
+      expect(res.status).toBe(503);
+      expect(body.error.message).toMatch(/registry is unavailable/i);
+      expect(runPipeline).not.toHaveBeenCalled();
+    });
+
+    it("does not latch the failure past the request that saw it", async () => {
+      const registryModule = await import("@server/extractors/registry");
+
+      expect((await withFailingRegistry(runWithSources)).status).toBe(503);
+
+      // The memo and its failure flag are per CALL. Hoisting them to module
+      // scope — the natural way to "move a helper into a service" — would make
+      // one transient failure 503 every run until the process restarted, and
+      // no other test would notice.
+      const recovered = await runWithSources();
+      expect(recovered.status).toBe(200);
+      expect(vi.mocked(registryModule.getExtractorRegistry)).toHaveBeenCalled();
+    });
+  });
+
   describe("multi-profile runs", () => {
     const runnableConfig = (term: string) => ({
       searchTerms: [term],
@@ -1702,6 +1749,116 @@ describe.sequential("Pipeline API routes", () => {
         ],
         { trigger: "manual" },
       );
+    });
+
+    it("names the profiles the source filter dropped", async () => {
+      const first = await createProfile(
+        baseUrl,
+        { ...runnableConfig("backend"), enabledSourceIds: ["test-linkedin"] },
+        "First",
+      );
+      const second = await createProfile(
+        baseUrl,
+        { ...runnableConfig("data"), enabledSourceIds: ["test-hiringcafe"] },
+        "Second",
+      );
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profileIds: [first, second],
+          sources: ["hiringcafe"],
+        }),
+      });
+      const body = await res.json();
+
+      // A leg vanishing from a chain with no signal is the silence this whole
+      // surface exists to remove, so the dropped profile is NAMED in the
+      // response rather than merely missing from `profileCount`.
+      expect(body.data.profileCount).toBe(1);
+      expect(body.data.skippedProfiles).toEqual(["First"]);
+    });
+
+    it("loads the enablement sets once for the whole chain, not once per profile", async () => {
+      const first = await createProfile(
+        baseUrl,
+        runnableConfig("backend engineer"),
+        "First",
+      );
+      const second = await createProfile(
+        baseUrl,
+        runnableConfig("data engineer"),
+        "Second",
+      );
+
+      // Spied AFTER the profiles are created: those requests hit the same
+      // repositories, and counting them would measure the fixture.
+      const sourceConfigs = await import("@server/repositories/source-configs");
+      const providerInstances = await import(
+        "@server/repositories/provider-instances"
+      );
+      const extractorIdsSpy = vi.spyOn(sourceConfigs, "getEnabledExtractorIds");
+      const sourceConfigsSpy = vi.spyOn(sourceConfigs, "getAllSourceConfigs");
+      const instancesSpy = vi.spyOn(
+        providerInstances,
+        "getEnabledProviderInstances",
+      );
+
+      try {
+        const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ profileIds: [first, second] }),
+        });
+        const body = await res.json();
+
+        // Pinned, not incidental: if a later change starts dropping a leg, a
+        // per-profile implementation would satisfy "called once" too and this
+        // test would go on passing while measuring nothing.
+        expect(body.data.profileCount).toBe(2);
+        // These are profile-INDEPENDENT. Nothing else asserts it, so a refactor
+        // that moved them inside the per-profile loop would stay green while
+        // doing N times the DB work on a chain.
+        expect(extractorIdsSpy).toHaveBeenCalledTimes(1);
+        expect(sourceConfigsSpy).toHaveBeenCalledTimes(1);
+        expect(instancesSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        extractorIdsSpy.mockRestore();
+        sourceConfigsSpy.mockRestore();
+        instancesSpy.mockRestore();
+      }
+    });
+
+    it("loads the extractor registry once for the whole chain", async () => {
+      const first = await createProfile(
+        baseUrl,
+        runnableConfig("backend engineer"),
+        "First",
+      );
+      const second = await createProfile(
+        baseUrl,
+        runnableConfig("data engineer"),
+        "Second",
+      );
+
+      const registryModule = await import("@server/extractors/registry");
+      const registrySpy = vi.mocked(registryModule.getExtractorRegistry);
+      registrySpy.mockClear();
+
+      const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileIds: [first, second] }),
+      });
+      const body = await res.json();
+
+      // Same reason as above: "loaded once" only means anything while both
+      // legs really resolved.
+      expect(body.data.profileCount).toBe(2);
+      // Both profiles expand their pins through the registry; the memo is what
+      // keeps that one load rather than one per profile.
+      expect(registrySpy).toHaveBeenCalledTimes(1);
     });
 
     it("refuses only when the filter leaves EVERY profile empty", async () => {

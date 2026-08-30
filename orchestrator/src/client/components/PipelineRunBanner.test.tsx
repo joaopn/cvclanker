@@ -197,7 +197,7 @@ describe("PipelineRunBanner", () => {
     // which is what this pins. (The band next door is the genuinely silent
     // half.) A step the run spends minutes in, showing nothing, is the hang
     // this step was given a name to avoid.
-    render(<PipelineRunBanner isRunning />);
+    render(<PipelineRunBanner trigger="manual" isRunning />);
     act(() => {
       lastHandlers.current?.onMessage({
         ...baseEvent,
