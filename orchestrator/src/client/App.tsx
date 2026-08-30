@@ -22,7 +22,7 @@ import { OrchestratorPage } from "./pages/OrchestratorPage";
 import { ProfileEditorPage } from "./pages/ProfileEditorPage";
 import { ProfilesPage } from "./pages/ProfilesPage";
 import { SchedulingPausedBanner } from "./components/SchedulingPausedBanner";
-import { RunsPage } from "./pages/RunsPage";
+import { SchedulePage } from "./pages/SchedulePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SignInPage } from "./pages/SignInPage";
 import { SourcesPage } from "./pages/SourcesPage";
@@ -112,7 +112,7 @@ export const App: React.FC = () => {
                 <Route path="/profiles/new" element={<ProfileEditorPage />} />
                 <Route path="/profiles/:id" element={<ProfileEditorPage />} />
                 <Route path="/swipe" element={<SwipePage />} />
-                <Route path="/runs" element={<RunsPage />} />
+                <Route path="/schedule" element={<SchedulePage />} />
                 <Route path="/jobs/:tab" element={<OrchestratorPage />} />
                 <Route
                   path="/jobs/:tab/:jobId"

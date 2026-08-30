@@ -39,7 +39,7 @@ describe("schedulingPausedReason is not writable through the settings PATCH", ()
   it("refuses to CLEAR the latch", async () => {
     await expect(
       applySettingsUpdates({ schedulingPausedReason: null }),
-    ).rejects.toThrow(/Runs tab/);
+    ).rejects.toThrow(/Schedule tab/);
     expect(setSettingMock).not.toHaveBeenCalled();
   });
 

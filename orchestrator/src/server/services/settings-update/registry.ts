@@ -122,7 +122,7 @@ for (const [key, def] of Object.entries(settingsRegistry)) {
 // not go through this registry at all, so nothing legitimate is blocked.
 settingsUpdateRegistry.schedulingPausedReason = async () => {
   throw badRequest(
-    "Scheduling is paused and resumed through the Runs tab; this setting cannot be written directly.",
+    "Scheduling is paused and resumed through the Schedule tab; this setting cannot be written directly.",
   );
 };
 

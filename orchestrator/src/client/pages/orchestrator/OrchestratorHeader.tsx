@@ -20,7 +20,7 @@ interface OrchestratorHeaderProps {
   onNavOpenChange: (open: boolean) => void;
   isPipelineRunning: boolean;
   /** A run in the SCHEDULE partition. Locks the Run control without swapping
-   *  in Cancel — that run belongs to the Runs tab, not to this one. */
+   *  in Cancel — that run belongs to the Schedule tab, not to this one. */
   scheduledRunActive?: boolean;
   isCancelling: boolean;
   pipelineSources: JobSource[];
@@ -93,11 +93,11 @@ export const OrchestratorHeader: React.FC<OrchestratorHeaderProps> = ({
   // The pipeline is a process-wide singleton, so a scheduled run makes a manual
   // one impossible: the run route 409s every request while a sequence is
   // active. Offering the button anyway would just hand the user a conflict
-  // toast. Not a Cancel swap — that run is the Runs tab's to stop, not this
+  // toast. Not a Cancel swap — that run is the Schedule tab's to stop, not this
   // page's.
   const scheduledRunNotice = (
     <Link
-      to="/runs"
+      to="/schedule"
       className="inline-flex items-center gap-2 rounded-md border border-status-warn/30 bg-status-warn/10 px-3 py-1.5 text-sm text-status-warn-text"
     >
       <Clock className="h-4 w-4" />

@@ -865,7 +865,7 @@ export const settingsRegistry = {
   },
   // IANA zone every schedule's wall-clock times and weekday mask are read in.
   // Server-managed in the sense that the Settings form does not render it —
-  // the Runs tab owns it, beside the time fields it explains. Unset means UTC;
+  // the Schedule tab owns it, beside the time fields it explains. Unset means UTC;
   // deliberately NOT an envKey, because it is a user preference about their own
   // working day rather than an operator's deployment knob.
   schedulerTimeZone: {

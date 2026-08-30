@@ -2,7 +2,7 @@
  * Automatic runs have stopped, and nothing else would say so.
  *
  * App-level on purpose — the one thing that crosses the manual/scheduled
- * separation. A user who never opens the Runs tab would otherwise leave
+ * separation. A user who never opens the Schedule tab would otherwise leave
  * scheduling dead for weeks with no sign of it, which is exactly the silence
  * the pause exists to break.
  */
@@ -48,9 +48,9 @@ export const SchedulingPausedBanner: React.FC = () => {
   });
 
   const reason = query.data?.pausedReason ?? null;
-  // The Runs tab shows the same thing with more room, so it would be two
+  // The Schedule tab shows the same thing with more room, so it would be two
   // banners saying one thing.
-  if (!reason || onAuthPage || location.pathname.startsWith("/runs")) {
+  if (!reason || onAuthPage || location.pathname.startsWith("/schedule")) {
     return null;
   }
 
@@ -60,7 +60,7 @@ export const SchedulingPausedBanner: React.FC = () => {
       <span className="min-w-0 flex-1 text-destructive">
         Automatic runs are paused. {reason}
       </span>
-      <Link to="/runs" className="underline underline-offset-2">
+      <Link to="/schedule" className="underline underline-offset-2">
         View
       </Link>
       <Button

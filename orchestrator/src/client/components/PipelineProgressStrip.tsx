@@ -4,7 +4,7 @@
  * single slim row + thin progress bar instead of the wide per-source table.
  *
  * Bound to the MANUAL partition: this strip sits on Swipe, where the Run button
- * is, and a scheduled run gets its own surface on the Runs tab rather than
+ * is, and a scheduled run gets its own surface on the Schedule tab rather than
  * interrupting triage here.
  */
 

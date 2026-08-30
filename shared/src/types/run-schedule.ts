@@ -1,7 +1,7 @@
 /**
  * A run schedule: what the scheduler fires, and how its last fire went.
  *
- * In `shared/` because the Runs tab reads and writes these; the cadence maths
+ * In `shared/` because the Schedule tab reads and writes these; the cadence maths
  * that consumes them stays server-side.
  */
 

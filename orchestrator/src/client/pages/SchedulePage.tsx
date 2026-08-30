@@ -1,5 +1,5 @@
 /**
- * The Runs surface: automatic run schedules, and what each one last did.
+ * The Schedule surface: automatic run schedules, and what each one last did.
  *
  * Deliberately separate from Manage: a scheduled run keeps its own retained
  * table (the progress store is partitioned by trigger), so neither view can
@@ -25,7 +25,7 @@ import {
   emptyDraft,
   type ScheduleDraft,
   ScheduleEditorDialog,
-} from "./runs/ScheduleEditorDialog";
+} from "./schedule/ScheduleEditorDialog";
 
 const schedulesKey = ["schedules"] as const;
 
@@ -55,7 +55,7 @@ const statusTone: Record<string, string> = {
   skipped: "bg-muted text-muted-foreground border-border",
 };
 
-export const RunsPage: React.FC = () => {
+export const SchedulePage: React.FC = () => {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<{
     id: string | null;
@@ -185,7 +185,7 @@ export const RunsPage: React.FC = () => {
     <div className="flex min-h-screen flex-col">
       <PageHeader
         title="CV Clanker"
-        subtitle="Runs"
+        subtitle="Schedule"
         titleSlot={<ViewToggle />}
         fullWidth
         actions={

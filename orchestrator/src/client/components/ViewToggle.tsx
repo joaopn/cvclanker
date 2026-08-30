@@ -1,7 +1,7 @@
 /**
  * Segmented control across the three top-level surfaces: the mobile "Swipe"
- * deck, the full "Manage" orchestrator, and "Runs" (schedules and the
- * scheduled-run table). Rendered in the PageHeader title slot on each.
+ * deck, the full "Manage" orchestrator, and "Schedule" (the run schedules
+ * and their run table). Rendered in the PageHeader title slot on each.
  */
 
 import type React from "react";
@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 const SEGMENTS: Array<{ label: string; to: string; match: string }> = [
   { label: "Swipe", to: "/swipe", match: "/swipe" },
   { label: "Manage", to: "/jobs/ready", match: "/jobs" },
-  { label: "Runs", to: "/runs", match: "/runs" },
+  { label: "Schedule", to: "/schedule", match: "/schedule" },
 ];
 
 export const ViewToggle: React.FC = () => {
