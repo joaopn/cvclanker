@@ -50,7 +50,11 @@ beforeEach(() => {
     byStatus: emptyByStatus,
     revision: "r1",
   });
-  api.getPipelineStatus.mockResolvedValue({ isRunning: false, lastRun: null });
+  api.getPipelineStatus.mockResolvedValue({
+    isRunning: false,
+    runningTrigger: null,
+    lastRun: null,
+  });
   api.getJobsRevision.mockResolvedValue({ revision: "r1" });
 });
 

@@ -4,8 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getDuplicateGroups = vi.fn();
 const updateJob = vi.fn().mockResolvedValue({ id: "x" });
+const getJobById = vi.fn();
 vi.mock("@server/repositories/jobs", () => ({
   getDuplicateGroups: () => getDuplicateGroups(),
+  getJobById: (id: string) => getJobById(id),
   updateJob: (id: string, updates: unknown) => updateJob(id, updates),
 }));
 
@@ -51,6 +53,13 @@ describe("automatic duplicate resolution", () => {
     // each other's assertions.
     resetJobActionBatchesForTests();
     updateJob.mockResolvedValue({ id: "x" });
+    // The resolver re-reads every row before writing it; by default the row
+    // still looks the way the group snapshot found it.
+    getJobById.mockImplementation(async (id: string) => ({
+      id,
+      status: "discovered",
+      tailoringFailureReason: null,
+    }));
     getEffectiveSettings.mockResolvedValue({
       maxBulkActionJobs: { value: 1000 },
     });
@@ -140,8 +149,10 @@ describe("automatic duplicate resolution", () => {
     // batch whole rather than filling the first to the cap.
     const batches = getJobActionBatches()
       .filter((batch) => batch.action === "mark_duplicated")
-      .map((batch) => batch.requested)
-      .sort();
+      .map((batch) => batch.requested);
+    // NOT sorted: an implementation that split groups to fill the cap would
+    // produce [3, 1], and sorting makes both orders look identical — the exact
+    // shape of assertion that reads as a guard while guarding nothing.
     expect(batches).toEqual([1, 3]);
   });
 
@@ -157,6 +168,42 @@ describe("automatic duplicate resolution", () => {
 
     // One unclosable row must not abandon the rest of the sweep.
     expect(await resolveDuplicatesForSchedule()).toBe(1);
+  });
+
+  it("refuses a row that moved out of a closeable status since the snapshot", async () => {
+    getDuplicateGroups.mockResolvedValue([
+      group([job({ id: "keep", status: "ready" }), job({ id: "promoted" })]),
+    ]);
+    getJobById.mockResolvedValue({
+      id: "promoted",
+      status: "applied",
+      tailoringFailureReason: null,
+    });
+
+    // The snapshot is taken once; a row the user promoted to Live in the
+    // meantime is the record of what was actually sent, and there is no
+    // server-side undo.
+    expect(await resolveDuplicatesForSchedule()).toBe(0);
+    expect(updateJob).not.toHaveBeenCalled();
+  });
+
+  it("refuses a row whose tailor started after the snapshot", async () => {
+    getDuplicateGroups.mockResolvedValue([
+      group([
+        job({ id: "keep", status: "ready" }),
+        job({ id: "now-tailoring" }),
+      ]),
+    ]);
+    getJobById.mockResolvedValue({
+      id: "now-tailoring",
+      status: "processing",
+      tailoringFailureReason: null,
+    });
+
+    // The group-level skip only sees the snapshot, so the re-read is what
+    // covers a tailor that started while the sweep was running (B60).
+    expect(await resolveDuplicatesForSchedule()).toBe(0);
+    expect(updateJob).not.toHaveBeenCalled();
   });
 
   it("does nothing when there is nothing to sweep", async () => {

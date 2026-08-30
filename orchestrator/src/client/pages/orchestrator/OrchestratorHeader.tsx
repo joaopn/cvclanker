@@ -91,9 +91,10 @@ export const OrchestratorHeader: React.FC<OrchestratorHeaderProps> = ({
   );
 
   // The pipeline is a process-wide singleton, so a scheduled run makes a manual
-  // one impossible. Offering Run anyway would produce a rejection the route
-  // reports as a 200 "Pipeline started" — a button that silently does nothing.
-  // Not a Cancel swap: that run is the Runs tab's to stop, not this page's.
+  // one impossible: the run route 409s every request while a sequence is
+  // active. Offering the button anyway would just hand the user a conflict
+  // toast. Not a Cancel swap — that run is the Runs tab's to stop, not this
+  // page's.
   const scheduledRunNotice = (
     <Link
       to="/runs"

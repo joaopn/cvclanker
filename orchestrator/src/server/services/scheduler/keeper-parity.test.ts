@@ -30,6 +30,11 @@ describe("duplicate keeper parity", () => {
     expect(modal).not.toMatch(/function chooseKeeper\b/);
     expect(modal).not.toMatch(/function losersOf\b/);
     expect(modal).not.toContain("STATUS_KEEPER_RANK");
+    // Every component of the heuristic, not just its entry points: a helper
+    // left behind (renamed with a leading underscore to quiet the linter) is
+    // still a second copy sitting in the file this test exists to keep clean.
+    expect(modal).not.toMatch(/\bfitRank\b/);
+    expect(modal).not.toContain("SUITABILITY_CATEGORY_RANK");
   });
 
   it("has the resolver reading the shared heuristic too", () => {

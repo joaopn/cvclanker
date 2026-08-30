@@ -19,9 +19,17 @@ export const SchedulingPausedBanner: React.FC = () => {
   const location = useLocation();
   const queryClient = useQueryClient();
 
+  // Sign-in and onboarding are reachable UNAUTHENTICATED, and a 401 from
+  // `fetchApi` clears the session and redirects — so polling there would fire
+  // that pair every minute at someone sitting on the login form.
+  const onAuthPage =
+    location.pathname.startsWith("/sign-in") ||
+    location.pathname.startsWith("/onboarding");
+
   const query = useQuery({
     queryKey: ["schedules"],
     queryFn: () => api.getSchedules(),
+    enabled: !onAuthPage,
     // A pause can begin at any time from a background run, so this polls
     // rather than waiting for a navigation.
     refetchInterval: 60_000,
@@ -42,7 +50,9 @@ export const SchedulingPausedBanner: React.FC = () => {
   const reason = query.data?.pausedReason ?? null;
   // The Runs tab shows the same thing with more room, so it would be two
   // banners saying one thing.
-  if (!reason || location.pathname.startsWith("/runs")) return null;
+  if (!reason || onAuthPage || location.pathname.startsWith("/runs")) {
+    return null;
+  }
 
   return (
     <div className="flex flex-wrap items-center gap-3 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-sm">

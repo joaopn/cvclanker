@@ -2,12 +2,7 @@ import * as api from "@client/api";
 import { toast } from "@client/lib/toast";
 import { restoreJobStates, snapshotJob } from "@client/lib/undo";
 import { chooseKeeper, losersOf } from "@shared/duplicate-resolution";
-import {
-  type DuplicateJobGroup,
-  type JobListItem,
-  type JobStatus,
-  SUITABILITY_CATEGORY_RANK,
-} from "@shared/types";
+import type { DuplicateJobGroup, JobListItem, JobStatus } from "@shared/types";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -67,12 +62,6 @@ function formatAge(job: JobListItem): string | null {
     return `Found ${Math.max(0, Math.floor((now - found) / DAY_MS))}d`;
   }
   return null;
-}
-
-function _fitRank(job: JobListItem): number {
-  return job.suitabilityCategory
-    ? SUITABILITY_CATEGORY_RANK[job.suitabilityCategory]
-    : -1;
 }
 
 interface CloseAllPlan {

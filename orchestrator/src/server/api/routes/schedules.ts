@@ -3,6 +3,7 @@ import { asyncRoute, ok } from "@infra/http";
 import {
   endProfileSequence,
   getPipelineStatus,
+  setActiveRunTrigger,
   tryBeginProfileSequence,
 } from "@server/pipeline/index";
 import {
@@ -171,6 +172,9 @@ schedulesRouter.post(
     if (!tryBeginProfileSequence()) {
       throw conflict("A multi-profile run is already in progress");
     }
+    // Beside the claim: `runningTrigger` is read the moment the claim makes the
+    // pipeline "running", and it is a latch until something sets it.
+    setActiveRunTrigger("schedule");
 
     let handedOff = false;
     try {

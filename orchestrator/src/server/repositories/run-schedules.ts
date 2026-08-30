@@ -210,7 +210,7 @@ export async function deleteRunSchedule(id: string): Promise<void> {
 /** How many duplicate copies the last run's automatic sweep closed. */
 export async function recordRunScheduleDuplicates(
   id: string,
-  duplicatesClosed: number,
+  duplicatesClosed: number | null,
 ): Promise<void> {
   await db
     .update(schema.runSchedules)

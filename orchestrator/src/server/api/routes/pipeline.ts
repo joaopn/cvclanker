@@ -21,6 +21,7 @@ import {
   requestProfileSequenceCancel,
   runPipeline,
   runProfileSequence,
+  setActiveRunTrigger,
   subscribeToProgress,
   targetProfileRunPage,
   tryBeginProfileSequence,
@@ -556,6 +557,11 @@ pipelineRouter.post("/run", async (req: Request, res: Response) => {
         );
       }
       holdsSequenceClaim = true;
+      // Beside the claim, for the same reason the scheduler does it: the claim
+      // is what makes `getPipelineStatus()` report "running", and it reads the
+      // trigger from a latch that `runProfileSequence` only sets several awaits
+      // later.
+      setActiveRunTrigger(runTrigger);
     }
 
     // A user starting a run is the signal that the rate limit may have passed,

@@ -71,9 +71,10 @@ export const SwipePage: React.FC = () => {
       {profileSelect}
       {scheduledRunActive ? (
         // The pipeline is a singleton, so a scheduled run makes a manual one
-        // impossible; the route would answer 200 "Pipeline started" and start
-        // nothing. That run belongs to the Runs tab, so this links there
-        // rather than offering a Cancel this page does not own.
+        // impossible — the run route 409s while a sequence is active, so the
+        // button could only produce a conflict toast. That run belongs to the
+        // Runs tab, so this links there rather than offering a Cancel this
+        // page does not own.
         <Link
           to="/runs"
           className="inline-flex items-center gap-2 rounded-md border border-status-warn/30 bg-status-warn/10 px-3 py-1.5 text-sm text-status-warn-text"

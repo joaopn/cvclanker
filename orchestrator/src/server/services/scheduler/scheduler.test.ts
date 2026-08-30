@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const runProfileSequence = vi.fn().mockResolvedValue(undefined);
 const tryBeginProfileSequence = vi.fn(() => true);
 const endProfileSequence = vi.fn();
+const setActiveRunTrigger = vi.fn();
 const getPipelineStatus = vi.fn(() => ({ isRunning: false }));
 const getProgress = vi.fn(() => ({
   step: "completed" as string,
@@ -23,11 +24,19 @@ vi.mock("@server/pipeline/index", () => ({
   endProfileSequence: () => endProfileSequence(),
   getPipelineStatus: () => getPipelineStatus(),
   getProgress: () => getProgress(),
+  // The barrel is whole-module mocked, so every export the service imports has
+  // to be listed here or it throws on first ACCESS.
+  setActiveRunTrigger: (trigger: unknown) => setActiveRunTrigger(trigger),
 }));
 
 const assembleRun = vi.fn();
 vi.mock("@server/services/pipeline-run/assemble", () => ({
   assembleRun: (body: unknown, options: unknown) => assembleRun(body, options),
+}));
+
+const resolveDuplicatesForSchedule = vi.fn(async () => 3);
+vi.mock("./resolve-duplicates", () => ({
+  resolveDuplicatesForSchedule: () => resolveDuplicatesForSchedule(),
 }));
 
 const isRateLimitStopped = vi.fn(() => false);
@@ -57,6 +66,7 @@ describe.sequential("scheduler pass", () => {
       error: undefined,
     });
     isRateLimitStopped.mockReturnValue(false);
+    resolveDuplicatesForSchedule.mockResolvedValue(3);
     assembleRun.mockResolvedValue({
       ok: true,
       kind: "sequence",
@@ -113,6 +123,10 @@ describe.sequential("scheduler pass", () => {
     expect(runProfileSequence).toHaveBeenCalledWith(expect.any(Array), {
       trigger: "schedule",
     });
+    // And it is established beside the CLAIM, not left to the sequence several
+    // awaits later: `getPipelineStatus()` reports the partition from the moment
+    // the claim makes the pipeline "running", reading a latch until then.
+    expect(setActiveRunTrigger).toHaveBeenCalledWith("schedule");
   });
 
   it("advances the target past the fire so the same slot cannot repeat", async () => {
@@ -372,6 +386,55 @@ describe.sequential("scheduler pass", () => {
     // Null means "follow the profile/setting"; sending false would override it.
     expect("enableAutoTailoring" in body).toBe(false);
     expect("scrapeSinceLastRun" in body).toBe(false);
+  });
+
+  it("sweeps duplicates after a completed chain when the schedule asks", async () => {
+    const created = await repo.createRunSchedule(
+      dueSchedule({ autoResolveDuplicates: true }),
+    );
+
+    await scheduler.runSchedulerPass(now);
+
+    await vi.waitFor(async () => {
+      expect(
+        (await repo.getRunSchedule(created.id))?.lastDuplicatesClosed,
+      ).toBe(3);
+    });
+  });
+
+  it("does NOT sweep after a cancelled chain", async () => {
+    const created = await repo.createRunSchedule(
+      dueSchedule({ autoResolveDuplicates: true }),
+    );
+    getProgress.mockReturnValue({
+      step: "cancelled",
+      message: "Cancelled",
+      detail: undefined,
+      error: undefined,
+    });
+
+    await scheduler.runSchedulerPass(now);
+
+    // A cancelled chain is exactly a run that died half-way — profiles never
+    // started, sources never scraped — so its picture of what exists is
+    // partial, and closing rows against it is irreversible.
+    await vi.waitFor(async () => {
+      expect((await repo.getRunSchedule(created.id))?.lastStatus).toBe(
+        "skipped",
+      );
+    });
+    expect(resolveDuplicatesForSchedule).not.toHaveBeenCalled();
+  });
+
+  it("does not sweep when the schedule did not ask", async () => {
+    await repo.createRunSchedule(dueSchedule({ autoResolveDuplicates: false }));
+
+    await scheduler.runSchedulerPass(now);
+    await vi.waitFor(() => {
+      expect(getProgress).toHaveBeenCalled();
+    });
+
+    expect(resolveDuplicatesForSchedule).not.toHaveBeenCalled();
   });
 
   it("fires only ONE schedule per pass", async () => {

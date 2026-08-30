@@ -3,6 +3,7 @@ import * as jobsRepo from "@server/repositories/jobs";
 import { startJobActionBatch } from "@server/services/job-actions/batch-store";
 import { getEffectiveSettings } from "@server/services/settings";
 import { losersOf } from "@shared/duplicate-resolution";
+import type { JobStatus } from "@shared/types";
 
 /**
  * Close the extra copies of duplicate groups, after a scheduled run.
@@ -24,6 +25,18 @@ import { losersOf } from "@shared/duplicate-resolution";
  *  - Whole groups only, batched under `maxBulkActionJobs`. Half a closed group
  *    leaves copies that no longer read as duplicates to anyone.
  */
+/**
+ * The statuses `mark_duplicated` accepts. Mirrors `DUPLICATE_FROM_STATUSES` in
+ * the jobs route, which mirrors `DUPLICATE_SCOPE_STATUSES` in the repository —
+ * the three must agree, or this starts closing rows the action would refuse.
+ */
+const CLOSEABLE_STATUSES: ReadonlySet<JobStatus> = new Set<JobStatus>([
+  "discovered",
+  "selected",
+  "processing",
+  "ready",
+]);
+
 export async function resolveDuplicatesForSchedule(): Promise<number> {
   const groups = await jobsRepo.getDuplicateGroups();
   const settings = await getEffectiveSettings();
@@ -46,9 +59,11 @@ export async function resolveDuplicatesForSchedule(): Promise<number> {
   if (losersByGroup.length === 0) return 0;
 
   // Batched WHOLE GROUPS under the cap. Splitting a group across batches would
-  // leave copies behind that no longer read as duplicates to anyone; a single
-  // group larger than the cap is still taken whole, exactly as the review
-  // wizard's own close-all does.
+  // leave copies behind that no longer read as duplicates to anyone, so a
+  // single group larger than the cap is taken whole and exceeds it. That is
+  // NOT what the review wizard does — its request is refused outright by the
+  // route's size gate — and this path is the only caller that can go over,
+  // because it bypasses the routes.
   const batches: string[][] = [];
   for (const losers of losersByGroup) {
     const current = batches.at(-1);
@@ -79,6 +94,43 @@ export async function resolveDuplicatesForSchedule(): Promise<number> {
       // where one row that cannot be closed should cost only that row.
       runJob: async (jobId) => {
         try {
+          // RE-READ before writing. The group snapshot is taken once, and every
+          // write after it is against data that may have moved: a row the user
+          // promoted to Live in the meantime is the record of what was actually
+          // sent, and a tailor started after the snapshot is not in it. This is
+          // the same guard the `mark_duplicated` action applies, applied here
+          // because this path writes the row directly.
+          const current = await jobsRepo.getJobById(jobId);
+          if (!current) {
+            return {
+              jobId,
+              ok: false as const,
+              error: { code: "NOT_FOUND", message: "Job not found" },
+            };
+          }
+          if (!CLOSEABLE_STATUSES.has(current.status)) {
+            return {
+              jobId,
+              ok: false as const,
+              error: {
+                code: "CONFLICT",
+                message: `Job moved to "${current.status}" since the sweep began`,
+              },
+            };
+          }
+          if (
+            current.status === "processing" &&
+            current.tailoringFailureReason === null
+          ) {
+            return {
+              jobId,
+              ok: false as const,
+              error: {
+                code: "CONFLICT",
+                message: "A tailor started on this job since the sweep began",
+              },
+            };
+          }
           const job = await jobsRepo.updateJob(jobId, {
             status: "closed",
             outcome: "duplicated",

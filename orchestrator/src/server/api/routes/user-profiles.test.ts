@@ -2,20 +2,20 @@
 import {
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   writeFileSync,
 } from "node:fs";
 import type { Server } from "node:http";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import {
-  type MockInstance,
   afterEach,
   beforeEach,
   describe,
   expect,
   it,
+  type MockInstance,
   vi,
 } from "vitest";
 import { startServer, stopServer } from "./test-utils";
@@ -186,7 +186,10 @@ describe.sequential("User profiles API routes", () => {
     const storedPath = join(storeDir(tempDir), `${id}.db`);
     makeProfileDb(storedPath, "Waiting");
     const { getPipelineStatus } = await import("@server/pipeline/index");
-    vi.mocked(getPipelineStatus).mockReturnValue({ isRunning: true, runningTrigger: "manual" });
+    vi.mocked(getPipelineStatus).mockReturnValue({
+      isRunning: true,
+      runningTrigger: "manual",
+    });
 
     const res = await fetch(`${baseUrl}/api/user-profiles/${id}/activate`, {
       method: "POST",
@@ -345,9 +348,7 @@ describe.sequential("User profiles API routes", () => {
     expect(readProfileNameRaw(livePath)).toBe("Stored Fixture");
     expect(existsSync(join(storeDir(tempDir), `${id}.db`))).toBe(false);
     expect(
-      readProfileNameRaw(
-        join(storeDir(tempDir), `${body.data.stashedId}.db`),
-      ),
+      readProfileNameRaw(join(storeDir(tempDir), `${body.data.stashedId}.db`)),
     ).toBe("Default");
 
     await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(0));
@@ -380,9 +381,7 @@ describe.sequential("User profiles API routes", () => {
 
     expect(body.ok).toBe(true);
     expect(body.data.restartRequired).toBe(true);
-    expect(readProfileNameRaw(join(tempDir, "jobs.db"))).toBe(
-      "Job hunt 2027",
-    );
+    expect(readProfileNameRaw(join(tempDir, "jobs.db"))).toBe("Job hunt 2027");
 
     await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(0));
   });

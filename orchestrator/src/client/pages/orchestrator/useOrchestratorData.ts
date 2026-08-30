@@ -589,6 +589,15 @@ export const useOrchestratorData = (
     // The job refetch still fires, quietly, because new rows should appear.
     return subscribeToPipelineProgress({
       trigger: "schedule",
+      // Reconciled from `GET /pipeline/status` on every (re)connect. A server
+      // restart mid-scheduled-run clears the partition's retained state, so
+      // nothing is replayed for it and no further event ever arrives — the
+      // flag would otherwise stay true for the life of the page, hiding the
+      // Run button. The manual side self-heals from its unconditional replay;
+      // this side has no equivalent.
+      onConnectionChange: (connected) => {
+        if (connected) void checkPipelineStatus();
+      },
       onEvent: (payload: PipelineProgressEvent) => {
         const step = payload.step as unknown;
         if (typeof step !== "string") return;
@@ -606,7 +615,7 @@ export const useOrchestratorData = (
         }
       },
     });
-  }, [loadJobs]);
+  }, [checkPipelineStatus, loadJobs]);
 
   useEffect(() => {
     if (isPipelineSseConnected) return;

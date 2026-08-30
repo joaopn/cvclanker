@@ -5,6 +5,7 @@ import {
   getPipelineStatus,
   getProgress,
   runProfileSequence,
+  setActiveRunTrigger,
   tryBeginProfileSequence,
 } from "@server/pipeline/index";
 import {
@@ -251,15 +252,13 @@ async function observeChainOutcome(
       );
       return;
     }
-    // Only after a clean run: sweeping duplicates off a chain that died
-    // half-way would close copies against a partial picture of what exists.
+    // COMPLETED, not merely "not failed": a CANCELLED chain is exactly a run
+    // that died half-way — profiles never started, sources never scraped — so
+    // sweeping it would close copies against a partial picture of what exists.
     let duplicatesClosed: number | null = null;
-    if (!failed && schedule.autoResolveDuplicates) {
+    if (progress.step === "completed" && schedule.autoResolveDuplicates) {
       try {
         duplicatesClosed = await resolveDuplicatesForSchedule();
-        if (duplicatesClosed > 0) {
-          await recordRunScheduleDuplicates(schedule.id, duplicatesClosed);
-        }
       } catch (error) {
         // The run itself succeeded; a failed sweep must not turn it into a
         // failure, nor pause every other schedule.
@@ -269,6 +268,11 @@ async function observeChainOutcome(
         });
       }
     }
+    // Written on EVERY outcome, including null when nothing was swept: only
+    // the tick path clears the column at fire time, so a "Run now" that swept
+    // nothing would leave the previous run's count on the card, attributed to
+    // a run that closed none.
+    await recordRunScheduleDuplicates(schedule.id, duplicatesClosed);
 
     if (failed) {
       await pauseScheduling(
@@ -348,6 +352,12 @@ export async function runSchedulerPass(now: Date = new Date()): Promise<{
   if (!tryBeginProfileSequence()) {
     return { acted: "deferred", scheduleId: due.id };
   }
+  // Beside the claim, not left to `runProfileSequence` several awaits later:
+  // `getPipelineStatus()` reports `runningTrigger` from this the moment the
+  // claim makes it "running", and until it is set that is whichever kind of
+  // run went LAST — so a status poll landing in the gap tells a client a
+  // scheduled run is a manual one, or the reverse.
+  setActiveRunTrigger("schedule");
 
   let handedOff = false;
   try {
