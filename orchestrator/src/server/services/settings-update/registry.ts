@@ -1,4 +1,4 @@
-import { conflict } from "@infra/errors";
+import { badRequest, conflict } from "@infra/errors";
 import { hasCvDocuments } from "@server/repositories/cv-documents";
 import type { SettingKey } from "@server/repositories/settings";
 import * as settingsRepo from "@server/repositories/settings";
@@ -106,6 +106,26 @@ for (const [key, def] of Object.entries(settingsRegistry)) {
 // collect phase, before ANY action of the batch persists.
 //
 // Once a value is stored, EVERY differing write is rejected — including a
+
+// The scheduler's pause latch is SERVER-MANAGED and deliberately has exactly
+// ONE clear path: `POST /api/schedules/resume`. The generic PATCH registers a
+// handler for every non-virtual registry key, which made the latch both
+// settable and clearable through `PATCH /api/settings` — so a safety mechanism
+// whose whole job is "stop automatic runs until a human acknowledges this"
+// could be lifted by a bulk settings write that knows nothing about
+// scheduling. That is not a privilege escalation (both paths need the same
+// auth), but it is the failure mode this codebase has already paid for once:
+// a settings write that cleared state nobody meant it to touch.
+//
+// Refused outright rather than guarded conditionally. The tick and the resume
+// route both write it through `settingsRepo.setSetting` directly, which does
+// not go through this registry at all, so nothing legitimate is blocked.
+settingsUpdateRegistry.schedulingPausedReason = async () => {
+  throw badRequest(
+    "Scheduling is paused and resumed through the Runs tab; this setting cannot be written directly.",
+  );
+};
+
 // null clear: clearing a stored "docx" is itself an effective-format flip
 // (back to the "latex" default), and permitting clears would make the
 // write-once rule two-step launderable (clear, then first-write the other
