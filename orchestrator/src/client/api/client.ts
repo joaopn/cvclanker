@@ -1631,6 +1631,23 @@ export async function duplicateProfile(id: string): Promise<Profile> {
   });
 }
 
+export interface BlockCompanyResponse {
+  /** Profiles the company was newly added to. */
+  blocked: Array<{ id: string; name: string }>;
+  /** Profiles already skipping it, with the keyword that does so. */
+  alreadyBlocked: Array<{ id: string; name: string; keyword: string }>;
+}
+
+export async function blockCompanyOnProfiles(input: {
+  employer: string;
+  profileIds: string[];
+}): Promise<BlockCompanyResponse> {
+  return fetchApi<BlockCompanyResponse>("/profiles/block-company", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export type ProviderInstanceTestResponse =
   | {
       outcome: "ok";

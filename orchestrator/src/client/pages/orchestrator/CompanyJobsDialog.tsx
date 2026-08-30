@@ -11,9 +11,11 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { BlacklistCompanyMenu } from "./BlacklistCompanyMenu";
 import { type FilterTab, outcomeLabel } from "./constants";
 import { JobCategoryBadge } from "./JobCategoryBadge";
 import { getFilterTab } from "./JobCommandBar.utils";
@@ -159,6 +161,12 @@ export const CompanyJobsDialog = ({
             </ul>
           )}
         </div>
+
+        {employer?.trim() ? (
+          <DialogFooter className="sm:justify-start">
+            <BlacklistCompanyMenu employer={employer.trim()} />
+          </DialogFooter>
+        ) : null}
       </DialogContent>
     </Dialog>
   );
