@@ -127,6 +127,24 @@ describe("useOrchestratorData multi-profile runs", () => {
     expect(result.current.isPipelineRunning).toBe(false);
   });
 
+  /**
+   * The hook declares its OWN copy of the step union, so tsc says nothing when
+   * a new server step is missing from it — and the event filter DROPS an
+   * unknown step. A tab that mounts while the run is in this step would then
+   * never learn a run is in flight: unlocked Run button, no Cancel, for as
+   * long as the step lasts (minutes).
+   */
+  it("treats the live-status step as a running pipeline", async () => {
+    const { result } = renderHook(() => useOrchestratorData(null), {
+      wrapper: makeWrapper(),
+    });
+    const emit = await progressEmitter();
+
+    emit({ step: "live_status", startedAt: "2026-02-01T00:00:00.000Z" });
+
+    await waitFor(() => expect(result.current.isPipelineRunning).toBe(true));
+  });
+
   it("still ends a single (untagged) run on its own terminal", async () => {
     const { result } = renderHook(() => useOrchestratorData(null), {
       wrapper: makeWrapper(),

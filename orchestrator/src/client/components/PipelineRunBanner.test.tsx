@@ -42,7 +42,7 @@ vi.mock("@client/api", () => ({
   dismissRunBanner: (startedAt?: string) => dismissRunBanner(startedAt),
 }));
 
-import { PipelineRunBanner } from "./PipelineRunBanner";
+import { computePercentage, PipelineRunBanner } from "./PipelineRunBanner";
 
 const baseEvent: PipelineProgressEvent = {
   step: "crawling",
@@ -151,6 +151,47 @@ describe("PipelineRunBanner", () => {
   it("renders nothing when isRunning is false and no event yet", () => {
     const { container } = render(<PipelineRunBanner isRunning={false} />);
     expect(container.firstChild).toBeNull();
+  });
+
+  it("names the live-status step and moves its bar with it", () => {
+    // `stepLabels` is an exhaustive Record, so tsc forces an entry to exist —
+    // what it cannot check is that the banner reaches it for this step at all,
+    // which is what this pins. (The band next door is the genuinely silent
+    // half.) A step the run spends minutes in, showing nothing, is the hang
+    // this step was given a name to avoid.
+    render(<PipelineRunBanner isRunning />);
+    act(() => {
+      lastHandlers.current?.onMessage({
+        ...baseEvent,
+        step: "live_status",
+        message: "Checking LinkedIn live status (5/10)...",
+        liveStatusChecked: 5,
+        liveStatusTotal: 10,
+      });
+    });
+
+    expect(screen.getByText("Live status")).toBeInTheDocument();
+  });
+
+  it("gives the live-status step its own progress band", () => {
+    // Asserted on the exported function rather than the rendered bar: the bar
+    // is a Radix primitive whose ARIA surface is its business, while the band
+    // is ours — and computePercentage's `default: return 0` arm means a step
+    // missing from the switch parks at 0% with nothing to catch it.
+    const at = (checked: number, total: number) =>
+      computePercentage({
+        ...baseEvent,
+        step: "live_status",
+        liveStatusChecked: checked,
+        liveStatusTotal: total,
+      });
+
+    // Between scoring (ends at 50) and processing (now starts at 55).
+    expect(at(0, 10)).toBe(50);
+    expect(at(5, 10)).toBe(52.5);
+    expect(at(10, 10)).toBe(55);
+    // Before the first row is counted there is nothing to divide by.
+    expect(computePercentage({ ...baseEvent, step: "live_status" })).toBe(50);
   });
 
   it("renders a per-platform table when running", () => {

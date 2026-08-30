@@ -544,6 +544,28 @@ describe.sequential("Pipeline API routes", () => {
       expect(res.status).toBe(404);
     });
 
+    it("answers with the standing live-status default and its cap", async () => {
+      // App-level, not per-Profile: the rows a refresh covers are the whole
+      // database's, so the menu gets the same numbers whichever Profile (or
+      // none) it asks about.
+      const data = await optionsFor();
+      expect(data.defaultRefreshLiveStatus).toBe(false);
+      expect(data.liveStatusRefreshLimit).toBe(100);
+
+      await fetch(`${baseUrl}/api/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          liveStatusRefreshEnabled: true,
+          liveStatusRefreshLimit: 40,
+        }),
+      });
+
+      const updated = await optionsFor();
+      expect(updated.defaultRefreshLiveStatus).toBe(true);
+      expect(updated.liveStatusRefreshLimit).toBe(40);
+    });
+
     /**
      * An explicit `sources` list is gated on location compatibility, so a task
      * whose platforms include an incompatible one would 400 the run the moment
@@ -633,6 +655,40 @@ describe.sequential("Pipeline API routes", () => {
         }),
         { trigger: "manual" },
       );
+    });
+
+    it("carries a live-status refresh request through to the run", async () => {
+      const { runPipeline } = await import("@server/pipeline/index");
+      const profileId = await createProfile(baseUrl, windowProfile());
+
+      await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId, refreshLiveStatus: true }),
+      });
+
+      expect(runPipeline).toHaveBeenCalledWith(
+        expect.objectContaining({ refreshLiveStatus: true }),
+        { trigger: "manual" },
+      );
+    });
+
+    it("leaves the live-status decision to the setting when the body is silent", async () => {
+      const { runPipeline } = await import("@server/pipeline/index");
+      const profileId = await createProfile(baseUrl, windowProfile());
+
+      await fetch(`${baseUrl}/api/pipeline/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId }),
+      });
+
+      // Undefined, not false: `runPipeline` reads the standing setting when
+      // the request expresses no opinion, and a hardcoded false here would
+      // make the setting unreachable from every surface without the menu.
+      const config = vi.mocked(runPipeline).mock.calls.at(-1)?.[0];
+      expect(config).toBeDefined();
+      expect(config?.refreshLiveStatus).toBeUndefined();
     });
 
     it("honours an explicit scrapeSinceLastRun:false over the Profile's flag", async () => {

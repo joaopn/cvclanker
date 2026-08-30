@@ -8,7 +8,11 @@ import {
   DateNormalizationError,
   normalizeDatePosted,
 } from "@shared/date-normalize";
-import { externalIdKey, normalizeTitleKey } from "@shared/duplicate-identity";
+import {
+  extractExternalId,
+  externalIdKey,
+  normalizeTitleKey,
+} from "@shared/duplicate-identity";
 import { canonicalizeJobUrl } from "@shared/job-url";
 import { buildLocationEvidence } from "@shared/location-domain.js";
 import type {
@@ -31,7 +35,18 @@ import type {
   LocationEvidenceEntry,
 } from "@shared/types/location";
 import type { BenchSampleCategory } from "@shared/types/scoring-bench";
-import { and, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  like,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import { db, schema } from "../db/index";
 import {
   isProviderInstanceSource,
@@ -887,6 +902,99 @@ export async function getUnscoredDiscoveredJobs(
   const rows =
     typeof limit === "number" ? await query.limit(limit) : await query;
   return rows.map(mapRowToJob);
+}
+
+/**
+ * Statuses a live-status refresh covers: the ones where the verdict still
+ * changes what the user does. `ready` is in even though `sweepLiveClosedJobs`
+ * is shelf-only — a tailored row about to be applied to is exactly where "no
+ * longer accepting applications" is worth most. `applied` / `in_progress` /
+ * `closed` / `skipped` / `stale` are out: nothing consumes a verdict there,
+ * and they would spend a cap that is really a time budget.
+ */
+export const LIVE_STATUS_REFRESH_STATUSES: readonly JobStatus[] = [
+  "discovered",
+  "selected",
+  "backlog",
+  "ready",
+];
+
+export interface LiveStatusRefreshCandidate {
+  id: string;
+  title: string;
+  jobUrl: string;
+  sourceJobId: string | null;
+}
+
+/**
+ * The rows a pipeline run should re-check against LinkedIn, stalest first.
+ *
+ * Ordering is `live_status_checked_at` ascending, which in SQLite puts NULL —
+ * never checked — first, tie-broken by newest discovery. That single order
+ * serves both halves of the feature: the rows the run has just imported sort
+ * to the front (their applicant count is worth most at triage time), and
+ * everything else rotates by staleness across later runs.
+ *
+ * Rows already known closed are excluded: re-deriving a verdict that has
+ * almost certainly not changed is what a cap this tight can least afford. The
+ * usual way back in is a repost — `createJobs`' forward-shift arm clears all
+ * three `live_*` columns, so a relisted posting re-enters with a NULL
+ * timestamp and sorts first. Residual, accepted: that arm needs a strictly
+ * FORWARD `date_posted`, so a posting that reopens without one — or a verdict
+ * this parser got wrong — stays out of the rotation for good. The manual
+ * `fetch_live_status` action still reaches those rows, which is why the
+ * exclusion is a cap-spending decision rather than a one-way door.
+ *
+ * The SQL half is a deliberately OVER-inclusive prefilter and the JS half is
+ * authoritative: `extractExternalId` is the one home of the LinkedIn-id rule
+ * (anchored path test plus the `source_job_id` fallback), and approximating it
+ * in SQL would be a second implementation of a rule whose whole point is that
+ * two implementations must not disagree. That is also why the query does not
+ * push `limit` into SQL: a row the JS filter rejects never gets a timestamp, so
+ * it sorts first forever — with a SQL `LIMIT` a handful of such rows would take
+ * the head of the queue and starve every real candidate, every run, silently.
+ */
+export async function getJobsForLiveStatusRefresh(
+  limit: number,
+): Promise<LiveStatusRefreshCandidate[]> {
+  if (limit <= 0) return [];
+
+  const rows = await db
+    .select({
+      id: jobs.id,
+      title: jobs.title,
+      jobUrl: jobs.jobUrl,
+      sourceJobId: jobs.sourceJobId,
+    })
+    .from(jobs)
+    .where(
+      and(
+        inArray(jobs.status, [...LIVE_STATUS_REFRESH_STATUSES]),
+        // `liveClosed` is nullable and NULL means "never checked", so a naive
+        // `ne(liveClosed, true)` would exclude precisely the rows this step
+        // exists to check: measured in SQLite, `closed != 1` returns only the
+        // explicit 0 row and silently drops every NULL one.
+        or(isNull(jobs.liveClosed), eq(jobs.liveClosed, false)),
+        like(jobs.jobUrl, "%linkedin.com%"),
+      ),
+    )
+    .orderBy(asc(jobs.liveStatusCheckedAt), desc(jobs.discoveredAt));
+
+  const candidates: LiveStatusRefreshCandidate[] = [];
+  for (const row of rows) {
+    if (candidates.length >= limit) break;
+    if (
+      !extractExternalId({ jobUrl: row.jobUrl, sourceJobId: row.sourceJobId })
+    )
+      continue;
+    candidates.push({
+      id: row.id,
+      title: row.title,
+      jobUrl: row.jobUrl,
+      sourceJobId: row.sourceJobId ?? null,
+    });
+  }
+  return candidates;
 }
 
 /**

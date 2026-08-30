@@ -52,6 +52,8 @@ export type EnvSettingsValues = {
 export type PipelineSettingsValues = {
   autoTailoringEnabled: EffectiveDefault<boolean>;
   enableJobScoring: EffectiveDefault<boolean>;
+  liveStatusRefreshEnabled: EffectiveDefault<boolean>;
+  liveStatusRefreshLimit: EffectiveDefault<number>;
   autoSkipCategory: EffectiveDefault<SuitabilityCategory | null>;
   scoringInstructions: EffectiveDefault<string>;
   inboxStaleThresholdDays: EffectiveDefault<number>;

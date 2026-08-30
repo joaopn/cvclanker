@@ -143,10 +143,11 @@ export const jobs = sqliteTable("jobs", {
   // alongside. Backlog rows re-promote to `discovered` on the same shift.
   repostedAt: text("reposted_at"),
   repostCount: integer("repost_count").notNull().default(0),
-  // Live LinkedIn posting status, written only by the fetch_live_status
-  // action. `liveClosed` null = never checked; `liveApplicants` is the
-  // board's caption text, null when never checked or when the posting is
-  // closed (LinkedIn resets the caption on closed postings).
+  // Live LinkedIn posting status, written by the fetch_live_status action and
+  // by a run's live-status refresh step. `liveClosed` null = never checked;
+  // `liveApplicants` is the board's caption text, null when never checked or
+  // when the posting is closed (LinkedIn resets the caption on closed
+  // postings).
   liveClosed: integer("live_closed", { mode: "boolean" }),
   liveApplicants: text("live_applicants"),
   liveStatusCheckedAt: text("live_status_checked_at"),

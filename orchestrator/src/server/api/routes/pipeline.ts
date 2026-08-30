@@ -308,6 +308,9 @@ const runPipelineSchema = z.object({
   // Sending `false` is how the run menu's explicit-window mode switches the
   // narrowing off for one run without touching the Profile.
   scrapeSinceLastRun: z.boolean().optional(),
+  // Per-run override of the `liveStatusRefreshEnabled` setting. Absent falls
+  // through to the setting; a `partial` run ignores both (see runPipeline).
+  refreshLiveStatus: z.boolean().optional(),
   // Resolve the run's scrape config from this Profile. Body fields still win
   // per-field (one-off overrides); absent → the default Profile.
   profileId: z.string().min(1).optional(),
@@ -672,6 +675,10 @@ async function resolveProfileRunConfig(
       blockedCompanyKeywords: profileConfig?.blockedCompanyKeywords,
       locationIntent,
       enableAutoTailoring: body.enableAutoTailoring,
+      // Not profile-backed: the live-status queue is the whole database, not
+      // this Profile's slice of it, so there is nothing per-Profile to fall
+      // back to. Absent here means "use the standing setting".
+      refreshLiveStatus: body.refreshLiveStatus,
       partial: body.partial,
       discoveryConcurrency: body.discoveryConcurrency,
     },
@@ -888,6 +895,9 @@ pipelineRouter.get(
     const profileCaps = profiles
       .map((profile) => profile.config.scrapeMaxAgeDays)
       .filter((cap): cap is number => typeof cap === "number" && cap > 0);
+    // App-level, not per-Profile: the rows a refresh covers are the whole
+    // database's, so a chain answers with the same numbers a single run does.
+    const settings = await getEffectiveSettings();
     return ok(res, {
       profileIds: profiles.map((profile) => profile.id),
       sources: Array.from(merged.values()),
@@ -897,6 +907,8 @@ pipelineRouter.get(
       defaultSinceLastRun:
         profiles.length > 0 &&
         profiles.every((profile) => profile.config.scrapeSinceLastRun === true),
+      defaultRefreshLiveStatus: settings.liveStatusRefreshEnabled.value,
+      liveStatusRefreshLimit: settings.liveStatusRefreshLimit.value,
     } satisfies RunOptionsResponse);
   }),
 );

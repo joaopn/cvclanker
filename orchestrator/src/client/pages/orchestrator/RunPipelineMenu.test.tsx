@@ -60,6 +60,8 @@ const options = (
   sources: [source({})],
   capDays: null,
   defaultSinceLastRun: true,
+  defaultRefreshLiveStatus: false,
+  liveStatusRefreshLimit: 100,
   ...overrides,
 });
 
@@ -93,7 +95,10 @@ describe("RunPipelineMenu", () => {
     // The mode rides along even when nothing is scoped: omitting it would fall
     // through to the Profile's own flag, making this button a no-op on any
     // Profile that has not ticked it.
-    expect(onRun).toHaveBeenCalledWith({ scrapeSinceLastRun: true });
+    expect(onRun).toHaveBeenCalledWith({
+      scrapeSinceLastRun: true,
+      refreshLiveStatus: false,
+    });
   });
 
   /**
@@ -110,6 +115,7 @@ describe("RunPipelineMenu", () => {
     expect(onRun).toHaveBeenCalledWith({
       scrapeWindowDays: 14,
       scrapeSinceLastRun: false,
+      refreshLiveStatus: false,
     });
   });
 
@@ -134,6 +140,7 @@ describe("RunPipelineMenu", () => {
       sources: ["indeed", "linkedin"],
       providerInstanceIds: [],
       scrapeSinceLastRun: true,
+      refreshLiveStatus: false,
     });
   });
 
@@ -146,6 +153,7 @@ describe("RunPipelineMenu", () => {
     expect(onRun).toHaveBeenCalledWith({
       scrapeWindowDays: 1,
       scrapeSinceLastRun: false,
+      refreshLiveStatus: false,
     });
   });
 
@@ -255,7 +263,36 @@ describe("RunPipelineMenu", () => {
       sources: ["indeed", "linkedin"],
       providerInstanceIds: [],
       scrapeSinceLastRun: true,
+      refreshLiveStatus: false,
     });
+  });
+
+  it("sends the live-status flag the box was left in, both ways", async () => {
+    // Always sent: omitting it would fall through to the standing setting, so
+    // unticking a box that opened ticked would silently do nothing.
+    const ticked = await renderMenu(
+      options({ defaultRefreshLiveStatus: true }),
+    );
+    fireEvent.click(runButton());
+    expect(ticked).toHaveBeenCalledWith(
+      expect.objectContaining({ refreshLiveStatus: true }),
+    );
+
+    fireEvent.click(
+      screen.getByLabelText(/Refresh LinkedIn live status/, {
+        selector: "button",
+      }),
+    );
+    fireEvent.click(runButton());
+    expect(ticked).toHaveBeenLastCalledWith(
+      expect.objectContaining({ refreshLiveStatus: false }),
+    );
+  });
+
+  it("prices the live-status option with the number of postings", async () => {
+    await renderMenu(options({ liveStatusRefreshLimit: 40 }));
+
+    expect(screen.getByText(/up to 40 LinkedIn postings/)).toBeTruthy();
   });
 
   it("asks for every selected profile's options", async () => {
@@ -308,6 +345,7 @@ describe("RunPipelineMenu", () => {
     expect(onRun).toHaveBeenCalledWith({
       scrapeWindowDays: 14,
       scrapeSinceLastRun: false,
+      refreshLiveStatus: false,
     });
   });
 });

@@ -46,6 +46,12 @@ export interface PipelineConfig {
   // (no profile), where the feature is inert.
   profileId?: string;
   scrapeSinceLastRun?: boolean;
+  /**
+   * Per-run override of the `liveStatusRefreshEnabled` setting: re-read the
+   * live LinkedIn status of rows already in the database as part of this run.
+   * Absent falls through to the setting.
+   */
+  refreshLiveStatus?: boolean;
   blockedCompanyKeywords?: string[];
   enableCrawling?: boolean;
   enableScoring?: boolean;
@@ -77,6 +83,7 @@ export type PipelineRunExecutionStage =
   | "discovery"
   | "import"
   | "scoring"
+  | "live_status"
   | "selection"
   | "processing"
   | "completed";
@@ -221,6 +228,9 @@ export type PipelineProgressStep =
   | "crawling"
   | "importing"
   | "scoring"
+  // Re-reading the live LinkedIn status of rows already in the database. Sits
+  // between scoring and selection, and only when the run opted in.
+  | "live_status"
   | "processing"
   | "completed"
   | "cancelled"
@@ -265,6 +275,14 @@ export interface PipelineProgressEvent {
   jobsScored: number;
   jobsProcessed: number;
   totalToProcess: number;
+  /**
+   * Live-status refresh counters. Their own fields rather than borrowed ones:
+   * `jobsScored` and `totalToProcess` belong to the steps either side of this
+   * one, and writing them here would rewrite numbers the banner has already
+   * shown. Optional because only a run that opted in ever sets them.
+   */
+  liveStatusChecked?: number;
+  liveStatusTotal?: number;
   currentJob?: {
     id: string;
     title: string;
@@ -679,4 +697,12 @@ export interface RunOptionsResponse {
   capDays: number | null;
   /** Which window mode the menu should open on. */
   defaultSinceLastRun: boolean;
+  /**
+   * Whether the live-status tickbox opens ticked — the standing
+   * `liveStatusRefreshEnabled` setting, which is also what a Run pressed
+   * somewhere without this menu (the Swipe page) uses.
+   */
+  defaultRefreshLiveStatus: boolean;
+  /** How many rows one run would check, so the menu can price the option. */
+  liveStatusRefreshLimit: number;
 }

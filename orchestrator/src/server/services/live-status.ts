@@ -52,19 +52,54 @@ export function resetLiveStatusPacingForTests(): void {
   currentBackoffMs = 0;
 }
 
+/**
+ * Marker for the two failures that mean "LinkedIn is refusing THIS MACHINE"
+ * rather than "this posting could not be read": a 429 backoff the job's budget
+ * cannot outwait, and the sign-in wall. Both are per-IP and shared by every
+ * caller, so a caller working through a list of rows should stop on them
+ * instead of spending the rest of the list proving the same thing.
+ *
+ * A marker property rather than an exported class: both errors are AppError
+ * subclasses nothing outside should construct, and the rate-limit message
+ * varies with the current backoff, so matching on text would be fragile.
+ */
+const LINKEDIN_BLOCKED = "__linkedinBlocked";
+
+/** Stamp the marker on an error about to be thrown. */
+function markLinkedinBlocked<T extends AppError>(error: T): T {
+  Object.defineProperty(error, LINKEDIN_BLOCKED, { value: true });
+  return error;
+}
+
+/**
+ * True when the failure means LinkedIn is refusing this machine (rate limit or
+ * sign-in wall), as opposed to one posting failing to read. Callers iterating
+ * over rows should stop; per-posting failures they should skip past.
+ */
+export function isLinkedinBlockedError(error: unknown): boolean {
+  return (
+    error instanceof AppError &&
+    (error as unknown as Record<string, unknown>)[LINKEDIN_BLOCKED] === true
+  );
+}
+
 class LinkedinRateLimitedError extends AppError {
   constructor() {
+    const backoffOpen = currentBackoffMs > 0;
     super({
       status: 502,
       code: "UPSTREAM_ERROR",
       // Two ways to land here: a real 429 opened a backoff window this job's
       // budget can't cover, or (large selections) the 1s pacing alone pushed
       // this job past its fetch timeout. Both resolve the same way.
-      message:
-        currentBackoffMs > 0
-          ? "LinkedIn is rate limiting requests from this machine (HTTP 429). Wait a few minutes and re-run the live-status check on the remaining jobs."
-          : "The paced live-status queue could not reach this job inside its fetch timeout — re-run the check on the remaining jobs (requests are spaced out to avoid LinkedIn rate limits).",
+      message: backoffOpen
+        ? "LinkedIn is rate limiting requests from this machine (HTTP 429). Wait a few minutes and re-run the live-status check on the remaining jobs."
+        : "The paced live-status queue could not reach this job inside its fetch timeout — re-run the check on the remaining jobs (requests are spaced out to avoid LinkedIn rate limits).",
     });
+    // Only the real 429 is machine-wide. The other cause is this job's own
+    // wait behind a busy queue, which says nothing about the next job — and
+    // marking it would make one slow caller stop a whole sweep.
+    if (backoffOpen) markLinkedinBlocked(this);
   }
 }
 
@@ -260,12 +295,16 @@ export async function fetchLinkedinLiveStatus(
       settleMs,
     );
     if (browserResult.finalUrl.includes("linkedin.com/authwall")) {
-      throw new AppError({
-        status: 502,
-        code: "UPSTREAM_ERROR",
-        message:
-          "LinkedIn redirected to its sign-in wall; the live status could not be read.",
-      });
+      // Machine-wide, like a rate limit: the wall is served to this IP, not to
+      // this posting, so a caller working a list should stop here.
+      throw markLinkedinBlocked(
+        new AppError({
+          status: 502,
+          code: "UPSTREAM_ERROR",
+          message:
+            "LinkedIn redirected to its sign-in wall; the live status could not be read.",
+        }),
+      );
     }
     const status = parseLinkedinLiveStatus(browserResult.html);
     if (!status) {

@@ -75,6 +75,8 @@ export interface AppSettings {
   autoSkipCategory: Resolved<SuitabilityCategory | null>;
   autoTailoringEnabled: Resolved<boolean>;
   enableJobScoring: Resolved<boolean>;
+  liveStatusRefreshEnabled: Resolved<boolean>;
+  liveStatusRefreshLimit: Resolved<number>;
   jwtExpirySeconds: Resolved<number | null>;
   inboxStaleThresholdDays: Resolved<number>;
   maxBulkActionJobs: Resolved<number>;

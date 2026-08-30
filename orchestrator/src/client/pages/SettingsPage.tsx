@@ -92,6 +92,8 @@ const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
   autoSkipCategory: null,
   autoTailoringEnabled: null,
   enableJobScoring: null,
+  liveStatusRefreshEnabled: null,
+  liveStatusRefreshLimit: null,
   scoringInstructions: "",
   inboxStaleThresholdDays: null,
   maxBulkActionJobs: null,
@@ -270,7 +272,17 @@ const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
         id: "pipeline",
         label: "Pipeline Behavior",
         description: "Auto-tailor toggle for pipeline runs.",
-        searchTerms: ["pipeline", "tailor", "auto", "scoring", "rank", "skip"],
+        searchTerms: [
+          "pipeline",
+          "tailor",
+          "auto",
+          "scoring",
+          "rank",
+          "skip",
+          "linkedin",
+          "live status",
+          "applicants",
+        ],
       },
     ],
   },
@@ -347,6 +359,8 @@ export const SECTION_FIELD_MAP: Record<
   pipeline: [
     "autoTailoringEnabled",
     "enableJobScoring",
+    "liveStatusRefreshEnabled",
+    "liveStatusRefreshLimit",
     "scoringInstructions",
     "autoSkipCategory",
     "inboxStaleThresholdDays",
@@ -427,6 +441,8 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   autoSkipCategory: null,
   autoTailoringEnabled: null,
   enableJobScoring: null,
+  liveStatusRefreshEnabled: null,
+  liveStatusRefreshLimit: null,
   scoringInstructions: null,
   inboxStaleThresholdDays: null,
   maxBulkActionJobs: null,
@@ -528,6 +544,8 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   autoSkipCategory: data.autoSkipCategory.override,
   autoTailoringEnabled: data.autoTailoringEnabled.override,
   enableJobScoring: data.enableJobScoring.override,
+  liveStatusRefreshEnabled: data.liveStatusRefreshEnabled.override,
+  liveStatusRefreshLimit: data.liveStatusRefreshLimit.override,
   scoringInstructions:
     data.scoringInstructions.override ?? data.scoringInstructions.default,
   inboxStaleThresholdDays: data.inboxStaleThresholdDays.override,
@@ -660,6 +678,14 @@ const getDerivedSettings = (settings: AppSettings | null) => {
       enableJobScoring: {
         effective: settings?.enableJobScoring?.value ?? true,
         default: settings?.enableJobScoring?.default ?? true,
+      },
+      liveStatusRefreshEnabled: {
+        effective: settings?.liveStatusRefreshEnabled?.value ?? false,
+        default: settings?.liveStatusRefreshEnabled?.default ?? false,
+      },
+      liveStatusRefreshLimit: {
+        effective: settings?.liveStatusRefreshLimit?.value ?? 100,
+        default: settings?.liveStatusRefreshLimit?.default ?? 100,
       },
       autoSkipCategory: {
         effective: settings?.autoSkipCategory?.value ?? null,
@@ -960,6 +986,14 @@ export const SettingsPage: React.FC = () => {
         enableJobScoring: nullIfSame(
           data.enableJobScoring,
           pipeline.enableJobScoring.default,
+        ),
+        liveStatusRefreshEnabled: nullIfSame(
+          data.liveStatusRefreshEnabled,
+          pipeline.liveStatusRefreshEnabled.default,
+        ),
+        liveStatusRefreshLimit: nullIfSame(
+          data.liveStatusRefreshLimit,
+          pipeline.liveStatusRefreshLimit.default,
         ),
         scoringInstructions: nullIfSame(
           normalizeString(data.scoringInstructions),

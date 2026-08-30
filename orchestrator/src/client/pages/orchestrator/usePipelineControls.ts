@@ -16,6 +16,7 @@ export type RunPipelineOverrides = {
   providerInstanceIds?: string[];
   scrapeWindowDays?: number;
   scrapeSinceLastRun?: boolean;
+  refreshLiveStatus?: boolean;
 };
 
 export type UsePipelineControlsResult = {
@@ -75,6 +76,7 @@ export function usePipelineControls(
       discoveryConcurrency?: number;
       scrapeWindowDays?: number;
       scrapeSinceLastRun?: boolean;
+      refreshLiveStatus?: boolean;
       scopeLabel?: string;
     }) => {
       try {
@@ -89,6 +91,10 @@ export function usePipelineControls(
           discoveryConcurrency: config.discoveryConcurrency,
           scrapeWindowDays: config.scrapeWindowDays,
           scrapeSinceLastRun: config.scrapeSinceLastRun,
+          // Re-projected field by field, so anything added to the param type
+          // above and not here is accepted and silently dropped — excess
+          // properties arriving through a spread are invisible to tsc.
+          refreshLiveStatus: config.refreshLiveStatus,
         });
         const sources = config.sources ?? [];
         const scopeCount =

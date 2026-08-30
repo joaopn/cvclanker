@@ -38,6 +38,12 @@ vi.mock("./steps", () => ({
   scoreJobsStep: vi.fn(async () => ({ unprocessedJobs: [], scoredJobs: [] })),
   selectJobsStep: vi.fn(async () => []),
   processJobsStep: vi.fn(async () => ({ processedCount: 0 })),
+  refreshLiveStatusStep: vi.fn(async () => ({
+    checked: 0,
+    failed: 0,
+    closed: 0,
+    unchecked: 0,
+  })),
 }));
 
 /**

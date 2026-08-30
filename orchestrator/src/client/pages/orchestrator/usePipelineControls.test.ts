@@ -63,6 +63,33 @@ describe("usePipelineControls", () => {
     );
   });
 
+  /**
+   * Same failure as the chain-scoping test above, and it happened again:
+   * `startPipelineRun` re-projects its config field by field into the API
+   * call, and a property arriving through `...overrides` is invisible to tsc,
+   * so a new override is accepted and dropped with every layer green. Asserted
+   * on BOTH arms because they build the request separately.
+   */
+  it.each<[string, string[]]>([
+    ["single profile", ["p1"]],
+    ["chain", ["p1", "p2"]],
+  ])("carries the live-status choice into a run (%s)", async (_name, ids) => {
+    const { result } = renderControls();
+
+    await act(async () => {
+      await result.current.runPipelineNow(ids, {
+        refreshLiveStatus: true,
+      });
+    });
+
+    const body = vi.mocked(api.runPipeline).mock.calls.at(-1)?.[0];
+    // Read off the actual request rather than matched loosely: the bug this
+    // guards produces an ABSENT key, and the server reads absent as "use the
+    // standing setting" — i.e. the opposite of what the user ticked.
+    expect(body).toBeDefined();
+    expect(body?.refreshLiveStatus).toBe(true);
+  });
+
   it("reports the legs the server actually queued, not the ones asked for", async () => {
     vi.mocked(api.runPipeline).mockResolvedValue({
       message: "Pipeline started",

@@ -100,6 +100,8 @@ const PipelineSettingsHarness = ({
           values={{
             autoTailoringEnabled: { effective: false, default: false },
             enableJobScoring: { effective: true, default: true },
+            liveStatusRefreshEnabled: { effective: false, default: false },
+            liveStatusRefreshLimit: { effective: 100, default: 100 },
             autoSkipCategory: { effective: null, default: null },
             scoringInstructions: {
               effective: "Calibration: ties go to the more generous tier.",

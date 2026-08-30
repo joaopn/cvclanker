@@ -25,6 +25,7 @@ import { recordScrapeWatermarks } from "../repositories/source-scrape-watermarks
 import { llmAdjustContent } from "../services/cv";
 import { getActiveCvDocument } from "../services/cv-active";
 import { generatePdf } from "../services/pdf";
+import { getEffectiveSettings } from "../services/settings";
 import {
   progressHelpers,
   resetProgress,
@@ -42,6 +43,7 @@ import {
   importJobsStep,
   loadBriefStep,
   processJobsStep,
+  refreshLiveStatusStep,
   scoreJobsStep,
   selectJobsStep,
 } from "./steps";
@@ -91,6 +93,27 @@ async function advanceScrapeWatermarks(args: {
       error,
     });
   }
+}
+
+/**
+ * Per-run override first, then the standing setting. Resolved here rather than
+ * read inside the step so a run started from a surface with no Run menu (the
+ * Swipe page's button, a bare API call) still honours the setting, and so the
+ * decision is visible on `mergedConfig`.
+ *
+ * A PARTIAL run never refreshes, whatever either says. `partial` means "re-run
+ * these sources into the banner funnel that is already there" — the two
+ * re-run buttons send it with no other overrides, and a live-status sweep is
+ * unrelated to the source being retried. Gated here rather than by having the
+ * two client helpers send `false`, so a caller added later cannot forget.
+ */
+async function resolveLiveStatusRefresh(
+  configValue: boolean | undefined,
+  options: { partial: boolean },
+): Promise<boolean> {
+  if (options.partial) return false;
+  if (typeof configValue === "boolean") return configValue;
+  return (await getEffectiveSettings()).liveStatusRefreshEnabled.value;
 }
 
 async function resolveAutoTailoring(
@@ -168,10 +191,15 @@ export async function runPipeline(
   const enableAutoTailoring = await resolveAutoTailoring(
     config.enableAutoTailoring,
   );
+  const refreshLiveStatus = await resolveLiveStatusRefresh(
+    config.refreshLiveStatus,
+    { partial },
+  );
   const mergedConfig = {
     ...DEFAULT_CONFIG,
     ...config,
     enableAutoTailoring,
+    refreshLiveStatus,
     locationIntent,
   };
   const configSnapshot = {
@@ -270,6 +298,23 @@ export async function runPipeline(
         stage: "scoring",
         jobsScored: scoredJobs.length,
       });
+
+      // Between scoring and selection: the run's expensive, failure-prone LLM
+      // work is already done and persisted, so a LinkedIn stall costs it
+      // nothing, and the verdicts are in the database before auto-tailoring
+      // spends money on a posting. Note that selectJobsStep reads the
+      // in-memory `scoredJobs` this run captured BEFORE the refresh, so a
+      // future "do not tailor a closed posting" rule needs a re-read (or this
+      // step returning the closed ids) — the ordering alone does not give it.
+      // Best-effort by construction: the step catches everything.
+      if (mergedConfig.refreshLiveStatus) {
+        ensureNotCancelled();
+        await persistResultSummary({ stage: "live_status" });
+        const liveStatus = await refreshLiveStatusStep({
+          shouldCancel: () => cancelRequestedAt !== null,
+        });
+        pipelineLogger.info("Live-status refresh finished", liveStatus);
+      }
 
       ensureNotCancelled();
       await persistResultSummary({ stage: "selection" });

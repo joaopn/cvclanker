@@ -33,6 +33,7 @@ type PipelineProgressStep =
   | "crawling"
   | "importing"
   | "scoring"
+  | "live_status"
   | "processing"
   | "completed"
   | "cancelled"
@@ -74,6 +75,11 @@ const ACTIVE_PIPELINE_STEPS: ReadonlySet<PipelineProgressStep> = new Set([
   "crawling",
   "importing",
   "scoring",
+  // A step missing here is not merely unlabelled: the event filter below drops
+  // an unknown step entirely, so a tab that MOUNTS during it would never set
+  // `isPipelineRunning` and would offer an unlocked Run button and no Cancel
+  // for the minutes the step lasts.
+  "live_status",
   "processing",
 ]);
 

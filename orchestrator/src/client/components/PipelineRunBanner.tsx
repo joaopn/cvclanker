@@ -70,6 +70,7 @@ export const stepLabels: Record<PipelineProgressEvent["step"], string> = {
   crawling: "Crawling",
   importing: "Importing",
   scoring: "Scoring",
+  live_status: "Live status",
   processing: "Processing",
   completed: "Complete",
   cancelled: "Cancelled",
@@ -81,6 +82,7 @@ const stepBadgeClasses: Record<PipelineProgressEvent["step"], string> = {
   crawling: "bg-status-info/10 text-status-info-text border-status-info/20",
   importing: "bg-status-info/10 text-status-info-text border-status-info/20",
   scoring: "bg-status-warn/10 text-status-warn-text border-status-warn/20",
+  live_status: "bg-status-info/10 text-status-info-text border-status-info/20",
   processing: "bg-primary/10 text-primary border-primary/20",
   completed: "bg-status-good/10 text-status-good-text border-status-good/20",
   cancelled: "bg-muted text-muted-foreground border-border",
@@ -127,15 +129,30 @@ export function computePercentage(progress: PipelineProgressEvent): number {
       }
       return 25;
     }
+    // Its own band between scoring and processing. The step can run for
+    // minutes, so it reports proportionally rather than parking the bar:
+    // a frozen bar over a long step reads as the hang this step was given a
+    // name to avoid.
+    case "live_status": {
+      if (progress.liveStatusTotal && progress.liveStatusTotal > 0) {
+        return clamp(
+          50 +
+            ((progress.liveStatusChecked ?? 0) / progress.liveStatusTotal) * 5,
+          50,
+          55,
+        );
+      }
+      return 50;
+    }
     case "processing": {
       if (progress.totalToProcess > 0) {
         return clamp(
-          50 + (progress.jobsProcessed / progress.totalToProcess) * 50,
-          50,
+          55 + (progress.jobsProcessed / progress.totalToProcess) * 45,
+          55,
           100,
         );
       }
-      return 55;
+      return 58;
     }
     case "completed":
     case "cancelled":

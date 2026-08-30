@@ -226,6 +226,8 @@ export const createAppSettings = (
   autoSkipCategory: { value: null, default: null, override: null },
   autoTailoringEnabled: { value: false, default: false, override: null },
   enableJobScoring: { value: true, default: true, override: null },
+  liveStatusRefreshEnabled: { value: false, default: false, override: null },
+  liveStatusRefreshLimit: { value: 100, default: 100, override: null },
   jwtExpirySeconds: { value: null, default: null, override: null },
   inboxStaleThresholdDays: { value: 7, default: 7, override: null },
   maxBulkActionJobs: { value: 1000, default: 1000, override: null },

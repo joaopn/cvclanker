@@ -21,6 +21,7 @@ vi.mock("./settings", () => ({
 
 import {
   fetchLinkedinLiveStatus,
+  isLinkedinBlockedError,
   parseLinkedinLiveStatus,
   resetLiveStatusPacingForTests,
 } from "./live-status";
@@ -310,6 +311,9 @@ describe("fetchLinkedinLiveStatus", () => {
     });
     if (result.ok === false) {
       expect((result.error as Error).message).toMatch(/rate limiting/i);
+      // Machine-wide: a caller sweeping many rows must be able to tell this
+      // from one posting failing, and stop.
+      expect(isLinkedinBlockedError(result.error)).toBe(true);
     }
     expect(times).toHaveLength(3);
     expect(tryBrowserFetchMock).not.toHaveBeenCalled();
@@ -393,6 +397,12 @@ describe("fetchLinkedinLiveStatus", () => {
       ok: false,
       error: { status: 502, code: "UPSTREAM_ERROR" },
     });
+    // The wall is served to this IP, not to this posting — the module's own
+    // header notes that a rate-limited IP falling to the browser tier lands
+    // here, so it counts as machine-wide too.
+    if (result.ok === false) {
+      expect(isLinkedinBlockedError(result.error)).toBe(true);
+    }
   });
 
   it("throws 422 when neither tier produced a posting page", async () => {
@@ -407,6 +417,35 @@ describe("fetchLinkedinLiveStatus", () => {
       ok: false,
       error: { status: 422, code: "UNPROCESSABLE_ENTITY" },
     });
+    // One unreadable posting says nothing about the next one, so a sweep
+    // must NOT treat this as a reason to stop.
+    if (result.ok === false) {
+      expect(isLinkedinBlockedError(result.error)).toBe(false);
+    }
+  });
+
+  it("does not call a queue-pressure refusal a rate limit", async () => {
+    // No 429 anywhere: the budget is simply too small for the paced queue to
+    // reach this job. Same error class and status as a real rate limit, but
+    // it is this caller's own crowding — marking it machine-wide would let
+    // one impatient caller stop an unrelated sweep.
+    const { getEffectiveSettings } = await import("./settings");
+    vi.mocked(getEffectiveSettings).mockResolvedValueOnce({
+      manualJobFetchTimeoutMs: { value: 0 },
+      manualJobFetchBrowserSettleMs: { value: 0 },
+    } as unknown as Awaited<ReturnType<typeof getEffectiveSettings>>);
+    staticRepliesAt([], [{ html: OPEN_SPAN_VARIANT }]);
+
+    const result = await settled(fetchLinkedinLiveStatus(JOB_URL), 10_000);
+    expect(result).toMatchObject({
+      ok: false,
+      error: { status: 502, code: "UPSTREAM_ERROR" },
+    });
+    if (result.ok === false) {
+      expect((result.error as Error).message).toMatch(/paced live-status/i);
+      expect(isLinkedinBlockedError(result.error)).toBe(false);
+    }
+    expect(tryStaticFetchMock).not.toHaveBeenCalled();
   });
 
   it("maps a network throw from the static tier to 502", async () => {

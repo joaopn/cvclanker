@@ -28,6 +28,17 @@ function parseIntOrNull(raw: string | undefined): number | null {
 // to 100 on 2026-08-10.
 export const MAX_POOL_CONCURRENCY = 100;
 
+// The most rows one pipeline run may re-check against LinkedIn. Its job is the
+// same as MAX_POOL_CONCURRENCY's — blast containment, not tuning — because
+// every row is a request to LinkedIn from the user's own IP and the requests
+// are serialized. It is a LOOSE bound on purpose: a row costs a second or two
+// when LinkedIn answers and up to the manual-fetch timeout when it does not,
+// so even this ceiling is hours in the worst case. What actually bounds a bad
+// run is the step stopping as soon as LinkedIn refuses the machine; this
+// number only stops a fat-fingered value from queueing an unbounded sweep. The
+// schema, the read-path clamp and the Settings form all mirror it.
+export const MAX_LIVE_STATUS_REFRESH_LIMIT = 1000;
+
 // The ceiling on ONE LLM attempt, shared by every provider. It exists because
 // nothing below it is guaranteed to end: the HTTP providers hand their request
 // to fetch, whose only backstop is undici's idle timeout — and that resets on
@@ -486,6 +497,44 @@ export const settingsRegistry = {
     default: (): boolean => true,
     parse: parseBitBoolOrNull,
     serialize: serializeBitBool,
+  },
+  // Refresh the live LinkedIn status (still accepting applications? how many
+  // applicants?) of rows already in the database as part of a pipeline run,
+  // instead of only when someone hand-selects rows in Manage. Off by default:
+  // the step costs about a second per row and puts sustained traffic on the
+  // address the user browses LinkedIn from, so it is opted into — per run from
+  // the Run menu, or standing here.
+  liveStatusRefreshEnabled: {
+    kind: "typed" as const,
+    schema: z.boolean(),
+    default: (): boolean => false,
+    parse: parseBitBoolOrNull,
+    serialize: serializeBitBool,
+  },
+  // How many rows one run may check. A TIME budget, not a quality knob, and a
+  // WIDE one: a row costs ~1-2s when LinkedIn answers normally (the guest
+  // endpoint alternates two renders and only one of them decides an offsite
+  // job, so a second paced request is common), but a row that falls through to
+  // the browser tier costs up to manualJobFetchTimeoutMs + the settle wait —
+  // ~20s each. So 100 is a few minutes on a good day and much worse on a bad
+  // one, which is why the step stops as soon as LinkedIn refuses the machine
+  // rather than trusting this number alone to bound it. Lower than ~50 and a
+  // daily run cannot cover even what it just imported; far higher and the step
+  // dominates the run it is attached to.
+  liveStatusRefreshLimit: {
+    kind: "typed" as const,
+    schema: z.number().int().min(1).max(MAX_LIVE_STATUS_REFRESH_LIMIT),
+    default: (): number => 100,
+    // Clamped on read for the same reason the concurrency keys are: a stored
+    // 0 (hand-edited row, crafted snapshot) would silently turn the step into
+    // a no-op that still reports success.
+    parse: (raw: string | undefined): number | null => {
+      const parsed = raw ? parseInt(raw, 10) : NaN;
+      return Number.isNaN(parsed)
+        ? null
+        : Math.min(MAX_LIVE_STATUS_REFRESH_LIMIT, Math.max(1, parsed));
+    },
+    serialize: serializeNullableNumber,
   },
   inboxStaleThresholdDays: {
     kind: "typed" as const,

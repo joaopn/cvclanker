@@ -1082,6 +1082,8 @@ export async function runPipeline(config?: {
   scrapeWindowDays?: number;
   /** Per-run override of the Profile's "only scrape since the last run". */
   scrapeSinceLastRun?: boolean;
+  /** Per-run override of the standing "refresh LinkedIn live status" setting. */
+  refreshLiveStatus?: boolean;
 }): Promise<{
   message: string;
   skippedDisabledSources?: string[];

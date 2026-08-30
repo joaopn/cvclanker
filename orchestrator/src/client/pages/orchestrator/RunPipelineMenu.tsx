@@ -7,6 +7,7 @@ import { Loader2, Play } from "lucide-react";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -29,6 +30,7 @@ export interface RunPipelineMenuProps {
     providerInstanceIds?: string[];
     scrapeWindowDays?: number;
     scrapeSinceLastRun?: boolean;
+    refreshLiveStatus?: boolean;
   }) => void;
 }
 
@@ -73,6 +75,7 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [manualWindow, setManualWindow] = useState(false);
   const [windowInput, setWindowInput] = useState("1");
+  const [refreshLiveStatus, setRefreshLiveStatus] = useState(false);
   const [seededFor, setSeededFor] = useState<string | null>(null);
 
   /**
@@ -94,6 +97,7 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
     // age is the window it would otherwise have run, so it seeds the input.
     setManualWindow(!optionsQuery.data.defaultSinceLastRun);
     setWindowInput(String(optionsQuery.data.capDays ?? 1));
+    setRefreshLiveStatus(optionsQuery.data.defaultRefreshLiveStatus);
   }, [open, optionsQuery.data, runnable, profileKey, seededFor]);
 
   const windowDays = useMemo(() => {
@@ -115,6 +119,8 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
   const blocking = issues.filter((issue) => issue.blocking);
 
   const capDays = optionsQuery.data?.capDays ?? null;
+  const liveStatusRefreshLimit =
+    optionsQuery.data?.liveStatusRefreshLimit ?? null;
   const windowInvalid = manualWindow && windowDays === null;
   const canRun =
     !optionsQuery.isLoading &&
@@ -144,6 +150,10 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
       ...(windowDays !== null
         ? { scrapeWindowDays: windowDays, scrapeSinceLastRun: false }
         : { scrapeSinceLastRun: true }),
+      // Always sent, for the same reason the window mode is: omitting it falls
+      // through to the standing setting, so unticking a box that opened ticked
+      // would do nothing.
+      refreshLiveStatus,
     });
   };
 
@@ -295,6 +305,42 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
                     </button>
                   );
                 })}
+              </div>
+            </section>
+
+            <section className="flex flex-col gap-2">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Live status
+              </Label>
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="run-refresh-live-status"
+                  checked={refreshLiveStatus}
+                  onCheckedChange={(checked) =>
+                    setRefreshLiveStatus(checked === true)
+                  }
+                  className="mt-0.5"
+                />
+                <label
+                  htmlFor="run-refresh-live-status"
+                  className="cursor-pointer text-sm leading-tight"
+                >
+                  Refresh LinkedIn live status
+                  <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                    {/* The count is what the option costs, so it is named
+                        here rather than left to Settings. Deliberately no
+                        minutes estimate: a posting costs a second or two when
+                        LinkedIn answers and up to the fetch timeout when it
+                        does not, so any single number would be wrong half the
+                        time. */}
+                    After scoring, re-checks up to {liveStatusRefreshLimit ?? 0}{" "}
+                    LinkedIn postings — still accepting applications, and how
+                    many applicants — starting with the ones never checked.
+                    {isChain
+                      ? " Runs once per profile, so a chain checks that many for each."
+                      : ""}
+                  </span>
+                </label>
               </div>
             </section>
 

@@ -2,6 +2,7 @@ import { SettingsSectionFrame } from "@client/pages/settings/components/Settings
 import type { PipelineSettingsValues } from "@client/pages/settings/types";
 import {
   MAX_LATEX_COMPILE_TIMEOUT_MS,
+  MAX_LIVE_STATUS_REFRESH_LIMIT,
   MAX_LLM_REQUEST_TIMEOUT_MS,
   MAX_POOL_CONCURRENCY,
   MIN_LATEX_COMPILE_TIMEOUT_MS,
@@ -144,6 +145,8 @@ export const PipelineSettingsSection: React.FC<
   const {
     autoTailoringEnabled,
     enableJobScoring,
+    liveStatusRefreshEnabled,
+    liveStatusRefreshLimit,
     autoSkipCategory,
     scoringInstructions,
     inboxStaleThresholdDays,
@@ -441,6 +444,103 @@ export const PipelineSettingsSection: React.FC<
             Current:{" "}
             <span className="font-mono">
               {inboxStaleThresholdDays.effective}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-start space-x-3">
+          <Controller
+            name="liveStatusRefreshEnabled"
+            control={control}
+            render={({ field }) => (
+              <Checkbox
+                id="liveStatusRefreshEnabled"
+                checked={field.value ?? liveStatusRefreshEnabled.default}
+                onCheckedChange={(checked) => {
+                  field.onChange(
+                    checked === "indeterminate" ? null : checked === true,
+                  );
+                }}
+                disabled={isLoading || isSaving}
+              />
+            )}
+          />
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="liveStatusRefreshEnabled"
+              className="text-sm font-medium leading-none cursor-pointer"
+            >
+              Refresh LinkedIn live status during a pipeline run
+            </label>
+            <p className="text-xs text-muted-foreground">
+              After scoring, re-reads whether LinkedIn postings are still
+              accepting applications and how many applicants they have, starting
+              with the ones never checked. Off by default: each check is a
+              request to LinkedIn from this machine and they are sent one at a
+              time, so the step adds real time to a run — a second or two per
+              posting when LinkedIn answers, and longer when it does not. The
+              Run button's menu can turn it on or off for a single run.
+              Per-source retries never do it.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-3 text-sm sm:grid-cols-2">
+          <div>
+            <div className="text-xs text-muted-foreground">
+              Live status effective
+            </div>
+            <div className="break-words font-mono text-xs">
+              {liveStatusRefreshEnabled.effective ? "Enabled" : "Disabled"}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">
+              Live status default
+            </div>
+            <div className="break-words font-mono text-xs font-semibold">
+              {liveStatusRefreshEnabled.default ? "Enabled" : "Disabled"}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label
+            htmlFor="liveStatusRefreshLimit"
+            className="text-sm font-medium"
+          >
+            Live-status postings per run
+          </label>
+          <Controller
+            name="liveStatusRefreshLimit"
+            control={control}
+            render={({ field }) => (
+              <Input
+                id="liveStatusRefreshLimit"
+                type="number"
+                min={1}
+                max={MAX_LIVE_STATUS_REFRESH_LIMIT}
+                step={1}
+                placeholder={String(liveStatusRefreshLimit.default)}
+                disabled={isLoading || isSaving}
+                value={field.value ?? ""}
+                onChange={(e) => {
+                  const value = e.target.valueAsNumber;
+                  field.onChange(Number.isFinite(value) ? value : null);
+                }}
+              />
+            )}
+          />
+          <div className="text-xs text-muted-foreground">
+            The most postings one run may re-check. This is a time budget:
+            roughly a second per posting when LinkedIn answers normally, and up
+            to the manual-fetch timeout for one that needs the browser fallback.
+            A multi-profile run spends it once per profile.
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Current:{" "}
+            <span className="font-mono">
+              {liveStatusRefreshLimit.effective}
             </span>
           </div>
         </div>

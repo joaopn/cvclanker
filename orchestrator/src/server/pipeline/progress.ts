@@ -912,6 +912,29 @@ export const progressHelpers = {
       currentJob: undefined,
     }),
 
+  /**
+   * One row of the live-status refresh, in its OWN counters: `jobsScored` and
+   * `totalToProcess` belong to the steps either side of this one, and a step
+   * that borrowed them would rewrite numbers the banner has already shown.
+   *
+   * `liveStatusChecked` is the 1-BASED INDEX OF THE ROW BEING CHECKED, not a
+   * completed count — which is what the step's own `checked` return value
+   * means, so the two senses of the word do not agree. It is emitted BEFORE
+   * the row's work, which makes it the only numerator in this file that is:
+   * `scoringJob` and `jobComplete` both report counts after theirs. The reason
+   * is that a single row here can take twenty seconds, and a banner showing
+   * nothing until the first one finished is the silent gap this step was given
+   * a name to avoid.
+   */
+  liveStatusJob: (index: number, total: number, title: string) =>
+    updateProgress({
+      step: "live_status",
+      message: `Checking LinkedIn live status (${index}/${total})...`,
+      detail: title,
+      liveStatusChecked: index,
+      liveStatusTotal: total,
+    }),
+
   processingJob: (
     index: number,
     total: number,
