@@ -16,6 +16,7 @@ import { toast } from "@client/lib/toast";
 import { useQuery } from "@tanstack/react-query";
 import type { Job, SuitabilityCategory } from "@shared/types.js";
 import { useCallback, useEffect, useState } from "react";
+import { dateValue } from "../orchestrator/utils";
 
 /** Actions reachable from the deck — all accept a `discovered` source job. */
 export type SwipeAction = "move_to_ready" | "skip" | "move_to_backlog";
@@ -27,13 +28,8 @@ const FIT_RANK: Record<SuitabilityCategory, number> = {
   bad_fit: 3,
 };
 
-/** Best-effort ms timestamp; tolerates ISO or all-digit Unix-ms strings. */
-const dateMs = (value: string | null): number => {
-  if (!value) return 0;
-  if (/^\d+$/.test(value)) return Number(value);
-  const parsed = Date.parse(value);
-  return Number.isNaN(parsed) ? 0 : parsed;
-};
+/** The shared date read, with an unknown date sorted as the epoch. */
+const dateMs = (value: string | null): number => dateValue(value) ?? 0;
 
 /** Fit-first, then newest-posted first. */
 const byFitThenDate = (a: Job, b: Job): number => {

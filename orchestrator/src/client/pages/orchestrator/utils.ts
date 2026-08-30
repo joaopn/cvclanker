@@ -10,10 +10,14 @@ import type { DateFilterDimension, FilterTab, JobSort } from "./constants";
 import { orderedFilterSources, orderedSources } from "./constants";
 import { hasLinkedinPostingId } from "./jobActions";
 
-const dateValue = (value: string | null) => {
+/**
+ * Best-effort ms timestamp for a stored date. Some extractors persist
+ * `date_posted` as a Unix-ms numeric string (jobspy → linkedin/indeed) rather
+ * than ISO, so all-digit strings are read as ms. The one date reader the job
+ * surfaces share.
+ */
+export const dateValue = (value: string | null | undefined) => {
   if (!value) return null;
-  // Some extractors persist `date_posted` as a Unix-ms numeric string
-  // (jobspy → linkedin/indeed) rather than ISO. Treat all-digit strings as ms.
   if (/^\d+$/.test(value)) {
     const ms = Number(value);
     return Number.isFinite(ms) ? ms : null;
@@ -121,6 +125,22 @@ export const parseLiveApplicants = (caption: string | null): number | null => {
 
 const toCount = (digits: string) =>
   Number.parseInt(digits.replace(/,/g, ""), 10);
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How long ago the live-status action last read the posting, as the Manage
+ * row and the Swipe card both label it. Null when the row was never checked.
+ */
+export const formatCheckedAge = (
+  checkedAt: string | null,
+  now: number,
+): string | null => {
+  const checked = dateValue(checkedAt);
+  if (checked == null) return null;
+  const days = Math.max(0, Math.floor((now - checked) / DAY_MS));
+  return days === 0 ? "checked today" : `checked ${days}d ago`;
+};
 
 /**
  * Where a row lands under the applicants sort. Tier 0 is the only one with a

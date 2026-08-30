@@ -119,6 +119,14 @@ export const TITLE_FILTER_CHIP_CLASS = {
     "text-[#f472b6] hover:bg-[color-mix(in_oklab,var(--badge-base)_90%,var(--badge-pink))] hover:text-pink-200 border border-transparent",
 };
 
+/**
+ * The live-status verdict chip ("No longer accepting applications"), worn by
+ * the Manage row and the Swipe card alike — one string so the two surfaces
+ * cannot drift into two different-looking verdicts for one column.
+ */
+export const LIVE_CLOSED_CHIP_CLASS =
+  "rounded border border-[color:color-mix(in_oklab,var(--badge-base)_70%,var(--badge-bad))] bg-[color-mix(in_oklab,var(--badge-base)_90%,var(--badge-bad))] px-1.5 py-px text-[10px] font-medium text-rose-200";
+
 export const orderedSources: ExtractorSourceId[] = [
   ...PIPELINE_EXTRACTOR_SOURCE_IDS,
 ].sort(

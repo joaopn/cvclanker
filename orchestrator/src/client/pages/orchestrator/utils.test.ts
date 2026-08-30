@@ -11,6 +11,7 @@ import {
   applicantsSortRank,
   collectProfileSearchTitles,
   compareJobs,
+  formatCheckedAge,
   getEnabledSources,
   getJobCountsFromStats,
   parseLiveApplicants,
@@ -73,6 +74,30 @@ describe("orchestrator utils", () => {
       all: 10, // a stray legacy `selected` row counts only here
       discovered: 1, // legacy alias for inbox
     });
+  });
+});
+
+describe("formatCheckedAge", () => {
+  const now = Date.parse("2026-08-24T10:00:00.000Z");
+
+  it("reads the same day as today and older checks in whole days", () => {
+    expect(formatCheckedAge("2026-08-24T01:00:00.000Z", now)).toBe(
+      "checked today",
+    );
+    expect(formatCheckedAge("2026-08-21T10:00:00.000Z", now)).toBe(
+      "checked 3d ago",
+    );
+  });
+
+  it("coerces an all-digit Unix-ms timestamp like every other date read", () => {
+    expect(formatCheckedAge(String(now - 2 * 24 * 60 * 60 * 1000), now)).toBe(
+      "checked 2d ago",
+    );
+  });
+
+  it("returns null when the row was never checked", () => {
+    expect(formatCheckedAge(null, now)).toBeNull();
+    expect(formatCheckedAge("not a date", now)).toBeNull();
   });
 });
 

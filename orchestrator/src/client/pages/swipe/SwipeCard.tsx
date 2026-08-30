@@ -16,7 +16,7 @@ import {
   useMotionValue,
   useTransform,
 } from "framer-motion";
-import { Building2, MapPin, Wallet } from "lucide-react";
+import { Building2, MapPin, Users, Wallet } from "lucide-react";
 import { forwardRef, useImperativeHandle } from "react";
 import type React from "react";
 import {
@@ -26,6 +26,8 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Card } from "@/components/ui/card";
+import { LIVE_CLOSED_CHIP_CLASS } from "../orchestrator/constants";
+import { dateValue, formatCheckedAge } from "../orchestrator/utils";
 import type { SwipeAction } from "./useSwipeDeck";
 
 const COMMIT_OFFSET = 110; // px past which a release commits the swipe
@@ -33,24 +35,13 @@ const COMMIT_VELOCITY = 500; // px/s flick that commits regardless of offset
 const FLY_DURATION = 0.24; // seconds for the card to leave the screen
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// jobspy stores date_posted as a Unix-ms numeric string; coerce those.
-const parseDateMs = (value: string | null | undefined): number | null => {
-  if (!value) return null;
-  if (/^\d+$/.test(value)) {
-    const ms = Number(value);
-    return Number.isFinite(ms) ? ms : null;
-  }
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
 // "Posted Nd" when the source supplied a posting date, else "Found Nd".
 const formatAge = (job: Job): string | null => {
   const now = Date.now();
-  const posted = parseDateMs(job.datePosted);
+  const posted = dateValue(job.datePosted);
   if (posted != null)
     return `Posted ${Math.max(0, Math.floor((now - posted) / DAY_MS))}d`;
-  const found = parseDateMs(job.discoveredAt);
+  const found = dateValue(job.discoveredAt);
   if (found != null)
     return `Found ${Math.max(0, Math.floor((now - found) / DAY_MS))}d`;
   return null;
@@ -88,6 +79,29 @@ export const SwipeCardContent: React.FC<{ job: Job }> = ({ job }) => {
           <p className="text-center text-xs tabular-nums text-muted-foreground">
             {age}
           </p>
+        )}
+
+        {/* Applicant volume, as read from the board by the live-status action.
+            Absent on a row nobody has checked — there is no other source for
+            it, so the card says nothing rather than guessing. */}
+        {job.liveStatusCheckedAt && (
+          <div className="flex flex-col items-center gap-1 text-xs text-muted-foreground">
+            {job.liveClosed ? (
+              <span className={LIVE_CLOSED_CHIP_CLASS}>
+                No longer accepting applications
+              </span>
+            ) : (
+              // LinkedIn resets the caption once a posting closes, so the
+              // server stores null for it — a caption is an open job's.
+              <span className="flex items-center gap-1">
+                <Users className="h-3 w-3" />
+                {job.liveApplicants ?? "Accepting applications"}
+              </span>
+            )}
+            <span className="text-muted-foreground/70">
+              {formatCheckedAge(job.liveStatusCheckedAt, Date.now())}
+            </span>
+          </div>
         )}
 
         <div className="flex justify-center">

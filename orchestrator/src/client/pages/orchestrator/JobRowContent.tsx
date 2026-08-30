@@ -1,8 +1,14 @@
 import type { JobListItem } from "@shared/types.js";
 import { cn } from "@/lib/utils";
 import { CompanyNameButton } from "./CompanyNameButton";
-import { defaultStatusToken, outcomeLabel, statusTokens } from "./constants";
+import {
+  defaultStatusToken,
+  LIVE_CLOSED_CHIP_CLASS,
+  outcomeLabel,
+  statusTokens,
+} from "./constants";
 import { JobCategoryBadge } from "./JobCategoryBadge";
+import { dateValue, formatCheckedAge } from "./utils";
 
 interface JobRowContentProps {
   job: JobListItem;
@@ -15,38 +21,16 @@ interface JobRowContentProps {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function parseDate(value: string | null | undefined): number | null {
-  if (!value) return null;
-  // jobspy stores `date_posted` as a Unix-ms numeric string (e.g.
-  // "1777075200000") rather than ISO; coerce numeric-only strings.
-  if (/^\d+$/.test(value)) {
-    const ms = Number(value);
-    return Number.isFinite(ms) ? ms : null;
-  }
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function formatCheckedAge(
-  checkedAt: string | null,
-  now: number,
-): string | null {
-  const checked = parseDate(checkedAt);
-  if (checked == null) return null;
-  const days = Math.max(0, Math.floor((now - checked) / DAY_MS));
-  return days === 0 ? "checked today" : `checked ${days}d ago`;
-}
-
 function formatAge(
   job: JobListItem,
   now: number,
 ): { label: string; days: number } | null {
-  const posted = parseDate(job.datePosted);
+  const posted = dateValue(job.datePosted);
   if (posted != null) {
     const days = Math.max(0, Math.floor((now - posted) / DAY_MS));
     return { label: `Posted ${days}d`, days };
   }
-  const found = parseDate(job.discoveredAt);
+  const found = dateValue(job.discoveredAt);
   if (found != null) {
     const days = Math.max(0, Math.floor((now - found) / DAY_MS));
     return { label: `Found ${days}d`, days };
@@ -147,7 +131,7 @@ export const JobRowContent = ({
         {job.liveStatusCheckedAt && (
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
             {job.liveClosed ? (
-              <span className="rounded border border-[color:color-mix(in_oklab,var(--badge-base)_70%,var(--badge-bad))] bg-[color-mix(in_oklab,var(--badge-base)_90%,var(--badge-bad))] px-1.5 py-px text-[10px] font-medium text-rose-200">
+              <span className={LIVE_CLOSED_CHIP_CLASS}>
                 No longer accepting applications
               </span>
             ) : (
