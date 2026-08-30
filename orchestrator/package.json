@@ -21,6 +21,7 @@
     "repro:llm-timeout": "tsx scripts/repro-llm-request-timeout.ts",
     "repro:date-posted": "tsx scripts/repro-date-posted-drop.ts",
     "repro:diacritic-city": "tsx scripts/repro-diacritic-city-reject.ts",
+    "repro:linkedin-slug": "tsx scripts/repro-linkedin-slug-url.ts",
     "repro:mapper-drops": "tsx scripts/repro-silent-mapper-drops.ts",
     "repro:pdf-filename": "tsx scripts/repro-pdf-download-filename.ts",
     "verify:dup-identity": "tsx scripts/verify-duplicate-identity.ts",

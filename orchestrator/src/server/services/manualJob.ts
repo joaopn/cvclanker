@@ -4,6 +4,7 @@
 
 import { AppError, unprocessableEntity } from "@infra/errors";
 import { logger } from "@infra/logger";
+import { extractBoard, extractExternalId } from "@shared/duplicate-identity";
 import type { ManualJobDraft } from "@shared/types";
 import { JSDOM } from "jsdom";
 import { type Browser, firefox, type Page } from "playwright";
@@ -74,22 +75,31 @@ function getBrowser(): Promise<Browser> {
  * Per-host URL rewriting before fetch. Sites that ship SPA frontends often
  * expose a static, crawler-friendly endpoint with the same data — using that
  * dodges JS-rendering, fingerprinting, and authwall redirects entirely.
+ *
+ * Exported for test: the LinkedIn branch decides whether an import costs a
+ * static 78 KB GET or a Camoufox launch into the sign-in wall.
  */
-function rewriteUrlForFetch(input: string): string {
-  let parsed: URL;
-  try {
-    parsed = new URL(input);
-  } catch {
-    return input;
-  }
-
-  // LinkedIn: /jobs/view/<id> → /jobs-guest/jobs/api/jobPosting/<id>
-  // The guest endpoint returns a static HTML fragment with the job posting
+export function rewriteUrlForFetch(input: string): string {
+  // LinkedIn: /jobs/view/<id> → /jobs-guest/jobs/api/jobPosting/<id>. The
+  // guest endpoint returns a static HTML fragment with the job posting
   // content directly (designed for SEO crawlers). No authwall, no SPA.
-  if (parsed.hostname.endsWith("linkedin.com")) {
-    const match = parsed.pathname.match(/^\/jobs\/view\/(\d+)\/?$/);
-    if (match) {
-      return `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/${match[1]}`;
+  //
+  // The id comes from the shared board-identity rule rather than a second
+  // regex here. This function used to carry its own `^/jobs/view/(\d+)/?$`,
+  // which matched a bare-numeric path only — but LinkedIn's own UI copies a
+  // SLUGGED path, so every URL a user actually pastes missed the rewrite,
+  // fell through to the browser tier and died on the authwall while the guest
+  // endpoint served the posting in full (B56).
+  //
+  // The board is checked explicitly even though `extractExternalId` only
+  // answers for linkedin today: the host below is hardcoded, and that module
+  // documents adding a board as a one-line change. Without this gate, the day
+  // it learns a second board is the day another board's id is fetched from
+  // LinkedIn as though it were a LinkedIn posting.
+  if (extractBoard(input) === "linkedin") {
+    const linkedinJobId = extractExternalId({ jobUrl: input });
+    if (linkedinJobId) {
+      return `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/${linkedinJobId}`;
     }
   }
 
