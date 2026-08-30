@@ -14,6 +14,8 @@ interface TokenizedFieldProps {
   placeholder: string;
   removeLabelPrefix: string;
   helperText?: string;
+  /** See TokenizedInput: must agree with `parseInput`. */
+  commitKeys?: string[];
 }
 
 export function TokenizedField({
@@ -28,6 +30,7 @@ export function TokenizedField({
   placeholder,
   removeLabelPrefix,
   helperText,
+  commitKeys,
 }: TokenizedFieldProps) {
   const input = (
     <TokenizedInput
@@ -40,6 +43,7 @@ export function TokenizedField({
       placeholder={placeholder}
       removeLabelPrefix={removeLabelPrefix}
       helperText={helperText}
+      commitKeys={commitKeys}
     />
   );
 

@@ -351,7 +351,7 @@ describe("discoverJobsStep", () => {
     expect(result.sourceErrors).toEqual([]);
   });
 
-  it("drops discovered jobs when employer matches blocked company keywords", async () => {
+  it("drops a discovered job whose employer is a blocked company, and only that one", async () => {
     const registryModule = await import("@server/extractors/registry");
 
     const jobspyManifest = {
@@ -370,7 +370,7 @@ describe("discoverJobsStep", () => {
           {
             source: "linkedin",
             title: "Engineer II",
-            employer: "Contoso",
+            employer: "Contoso Recruiting",
             jobUrl: "https://example.com/job-2",
           },
         ],
@@ -391,13 +391,16 @@ describe("discoverJobsStep", () => {
       mergedConfig: {
         ...baseConfig,
         sources: ["linkedin"],
-        blockedCompanyKeywords: ["recruit", "staffing"],
+        // Exact match, case-insensitive: "Acme Staffing" goes, and the
+        // substring entry that would once have taken "Contoso Recruiting"
+        // with it now takes nothing.
+        blockedCompanyKeywords: ["acme staffing", "recruit"],
         locationIntent: createLocationIntentFromLegacyInputs({}),
       },
     });
 
     expect(result.discoveredJobs).toHaveLength(1);
-    expect(result.discoveredJobs[0]?.employer).toBe("Contoso");
+    expect(result.discoveredJobs[0]?.employer).toBe("Contoso Recruiting");
   });
 
   it("applies shared city filtering for sources without native city filtering", async () => {

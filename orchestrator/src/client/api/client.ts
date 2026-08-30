@@ -1634,8 +1634,8 @@ export async function duplicateProfile(id: string): Promise<Profile> {
 export interface BlockCompanyResponse {
   /** Profiles the company was newly added to. */
   blocked: Array<{ id: string; name: string }>;
-  /** Profiles already skipping it, with the keyword that does so. */
-  alreadyBlocked: Array<{ id: string; name: string; keyword: string }>;
+  /** Profiles that already blocked it, so nothing was written for them. */
+  alreadyBlocked: Array<{ id: string; name: string }>;
 }
 
 export async function blockCompanyOnProfiles(input: {

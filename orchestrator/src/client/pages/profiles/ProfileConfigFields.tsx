@@ -18,6 +18,7 @@ import {
   normalizeWorkplaceTypes,
   parseCityLocationsInput,
   parseCityLocationsSetting,
+  parseNewlineSeparatedInput,
   parseSearchTermsInput,
   serializeCityLocationsSetting,
   type WorkplaceType,
@@ -453,12 +454,16 @@ export const ProfileConfigFields: React.FC<ProfileConfigFieldsProps> = ({
               id="profile-blocked"
               values={form.blockedKeywords}
               draft={form.blockedDraft}
-              parseInput={parseSearchTermsInput}
+              // Company names contain commas ("Kforce, Inc."), so this list is
+              // newline-separated where every other one splits on commas too.
+              // The commit keys have to drop "," in step with the parser.
+              parseInput={parseNewlineSeparatedInput}
+              commitKeys={["Enter"]}
               onDraftChange={(value) => onChange({ blockedDraft: value })}
               onValuesChange={(value) => onChange({ blockedKeywords: value })}
-              placeholder="Company name keyword"
-              helperText="Jobs from companies matching these keywords are skipped."
-              removeLabelPrefix="Remove keyword"
+              placeholder="Company name"
+              helperText="Jobs from these companies are skipped, matched on the whole employer name (case doesn't matter). One per line; add each spelling you see."
+              removeLabelPrefix="Remove company"
             />
           </CardContent>
         </Card>

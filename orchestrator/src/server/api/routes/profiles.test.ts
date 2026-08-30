@@ -83,7 +83,7 @@ describe.sequential("Search profiles API routes", () => {
       expect(res.status).toBe(200);
       expect(body.data.blocked).toEqual([]);
       expect(body.data.alreadyBlocked).toEqual([
-        { id: profile.id, name: "Berlin", keyword: "acme corp" },
+        { id: profile.id, name: "Berlin" },
       ]);
       expect(await readKeywords(profile.id)).toEqual(["acme corp"]);
     });
@@ -98,23 +98,40 @@ describe.sequential("Search profiles API routes", () => {
       // The already-blocked profile is reported and SKIPPED, not treated as
       // the end of the request — every other ticked profile still gets it.
       expect(body.data.alreadyBlocked).toEqual([
-        { id: already.id, name: "Already", keyword: "acme corp" },
+        { id: already.id, name: "Already" },
       ]);
       expect(body.data.blocked).toEqual([{ id: fresh.id, name: "Fresh" }]);
       expect(await readKeywords(fresh.id)).toEqual(["Acme Corp"]);
       expect(await readKeywords(already.id)).toEqual(["acme corp"]);
     });
 
-    it("names the broader keyword that already covers the company", async () => {
+    it("blocks a company a mere substring entry does NOT already cover", async () => {
       const profile = await createProfile("Berlin", ["recruit"]);
 
       const res = await blockCompany("Global Recruitment Ltd", [profile.id]);
       const body = await res.json();
 
-      expect(body.data.alreadyBlocked).toEqual([
-        { id: profile.id, name: "Berlin", keyword: "recruit" },
+      // Under the old substring rule "recruit" already covered this employer
+      // and the request was a no-op. Matching is exact now, so it is a real
+      // company the profile does not block yet.
+      expect(body.data.alreadyBlocked).toEqual([]);
+      expect(body.data.blocked).toEqual([{ id: profile.id, name: "Berlin" }]);
+      expect(await readKeywords(profile.id)).toEqual([
+        "recruit",
+        "Global Recruitment Ltd",
       ]);
-      expect(await readKeywords(profile.id)).toEqual(["recruit"]);
+    });
+
+    it("treats a differently cased company name as already blocked", async () => {
+      const profile = await createProfile("Berlin", ["ACME CORP"]);
+
+      const res = await blockCompany("acme corp", [profile.id]);
+      const body = await res.json();
+
+      expect(body.data.alreadyBlocked).toEqual([
+        { id: profile.id, name: "Berlin" },
+      ]);
+      expect(await readKeywords(profile.id)).toEqual(["ACME CORP"]);
     });
 
     it("stores the company with its original casing", async () => {
@@ -169,9 +186,9 @@ describe.sequential("Search profiles API routes", () => {
       expect(await readKeywords(roomy.id)).toEqual([]);
     });
 
-    it("still blocks on a full profile that already covers the company", async () => {
+    it("still reports a full profile that already blocks the company", async () => {
       const full = await createProfile("Full", [
-        "acme",
+        "acme corp",
         ...Array.from({ length: 199 }, (_, index) => `blocked-${index}`),
       ]);
 

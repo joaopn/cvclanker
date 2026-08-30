@@ -17,6 +17,12 @@ interface TokenizedInputProps {
   removeLabelPrefix: string;
   collapsedTextLimit?: number;
   disabled?: boolean;
+  /**
+   * Keys that commit the draft as an entry. Must agree with `parseInput`: a
+   * separator here that the parser does not split on (or the reverse) makes
+   * typing and pasting the same text produce different entries.
+   */
+  commitKeys?: string[];
 }
 
 const TOKEN_PILL_CLASS_NAME =
@@ -34,6 +40,9 @@ function mergeUnique(values: string[], nextValues: string[]): string[] {
   return out;
 }
 
+/** Enter plus the comma every other tokenized list is separated by. */
+const DEFAULT_COMMIT_KEYS = ["Enter", ","];
+
 export const TokenizedInput: React.FC<TokenizedInputProps> = ({
   id,
   values,
@@ -46,6 +55,7 @@ export const TokenizedInput: React.FC<TokenizedInputProps> = ({
   removeLabelPrefix,
   collapsedTextLimit = 5,
   disabled = false,
+  commitKeys = DEFAULT_COMMIT_KEYS,
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const tokensRef = useRef<HTMLDivElement | null>(null);
@@ -101,7 +111,7 @@ export const TokenizedInput: React.FC<TokenizedInputProps> = ({
         onChange={(event) => onDraftChange(event.target.value)}
         onFocus={() => setIsFocused(true)}
         onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === ",") {
+          if (commitKeys.includes(event.key)) {
             event.preventDefault();
             addValues(draft);
             onDraftChange("");

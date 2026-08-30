@@ -11,7 +11,7 @@ import { getScrapeWatermarks } from "@server/repositories/source-scrape-watermar
 import { getEffectiveSettings } from "@server/services/settings";
 import { resolveSourceContextSettings } from "@server/services/source-configs/resolve";
 import { asyncPool } from "@server/utils/async-pool";
-import { findBlockingCompanyKeyword } from "@shared/blocked-companies.js";
+import { isEmployerBlocked } from "@shared/blocked-companies.js";
 import type { ExtractorSourceId } from "@shared/extractors";
 import {
   describeLocationRejection,
@@ -788,8 +788,7 @@ export async function discoverJobsStep(args: {
 
   const blockedCompanyKeywords = args.mergedConfig.blockedCompanyKeywords ?? [];
   const filteredDiscoveredJobs = locationFilteredJobs.filter(
-    (job) =>
-      findBlockingCompanyKeyword(job.employer, blockedCompanyKeywords) === null,
+    (job) => !isEmployerBlocked(job.employer, blockedCompanyKeywords),
   );
   const droppedCount =
     locationFilteredJobs.length - filteredDiscoveredJobs.length;

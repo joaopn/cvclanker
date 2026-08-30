@@ -2,7 +2,7 @@ import * as api from "@client/api";
 import { queryKeys } from "@client/lib/queryKeys";
 import { toast } from "@client/lib/toast";
 import {
-  findBlockingCompanyKeyword,
+  isEmployerBlocked,
   MAX_BLOCKED_COMPANY_KEYWORD_LENGTH,
 } from "@shared/blocked-companies.js";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -26,11 +26,9 @@ interface BlacklistCompanyMenuProps {
  * whichever Search Profiles the user ticks.
  *
  * Forward-looking only — the blocked list is read by the discovery step, so
- * jobs already found stay exactly where they are. A profile that already skips
- * the company is shown ticked and disabled, naming the keyword responsible,
- * because that keyword may be broader than this company (the filter is a
- * substring match) and unticking it here must not silently delete a rule
- * covering others. Removing one stays the Search Profile editor's job.
+ * jobs already found stay exactly where they are. A profile that already blocks
+ * the company is shown ticked and disabled; un-blacklisting is the Search
+ * Profile editor's job, so that this menu only ever adds.
  */
 export const BlacklistCompanyMenu: React.FC<BlacklistCompanyMenuProps> = ({
   employer,
@@ -54,7 +52,7 @@ export const BlacklistCompanyMenu: React.FC<BlacklistCompanyMenuProps> = ({
     () =>
       (profilesQuery.data?.profiles ?? []).map((profile) => ({
         profile,
-        blockedBy: findBlockingCompanyKeyword(
+        alreadyBlocked: isEmployerBlocked(
           employer,
           profile.config.blockedCompanyKeywords,
         ),
@@ -70,7 +68,7 @@ export const BlacklistCompanyMenu: React.FC<BlacklistCompanyMenuProps> = ({
   // under an open menu (another tab, or a second press), and the tick would
   // then be a no-op the server has to reject rather than a request.
   const selectedIds = rows
-    .filter((row) => row.blockedBy === null && ticked.has(row.profile.id))
+    .filter((row) => !row.alreadyBlocked && ticked.has(row.profile.id))
     .map((row) => row.profile.id);
 
   const mutation = useMutation({
@@ -150,8 +148,7 @@ export const BlacklistCompanyMenu: React.FC<BlacklistCompanyMenuProps> = ({
             <p className="py-2 text-sm text-muted-foreground">
               This company name is longer than{" "}
               {MAX_BLOCKED_COMPANY_KEYWORD_LENGTH} characters, so it cannot be
-              stored as a blocked keyword. Add a shorter part of the name under
-              a search profile's Blocked companies.
+              stored as a blocked company.
             </p>
           ) : profilesQuery.isLoading ? (
             <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
@@ -168,8 +165,7 @@ export const BlacklistCompanyMenu: React.FC<BlacklistCompanyMenuProps> = ({
             </p>
           ) : (
             <div className="flex max-h-64 flex-col gap-1 overflow-y-auto">
-              {rows.map(({ profile, blockedBy }) => {
-                const alreadyBlocked = blockedBy !== null;
+              {rows.map(({ profile, alreadyBlocked }) => {
                 const controlId = `blacklist-profile-${profile.id}`;
                 return (
                   <label
@@ -192,9 +188,7 @@ export const BlacklistCompanyMenu: React.FC<BlacklistCompanyMenuProps> = ({
                       <span className="block truncate">{profile.name}</span>
                       {alreadyBlocked && (
                         <span className="block truncate text-xs text-muted-foreground">
-                          {blockedBy.toLowerCase() === employer.toLowerCase()
-                            ? "Already blocked"
-                            : `Already blocked by "${blockedBy}"`}
+                          Already blocked
                         </span>
                       )}
                     </span>
@@ -206,9 +200,9 @@ export const BlacklistCompanyMenu: React.FC<BlacklistCompanyMenuProps> = ({
 
           {!tooLong && (
             <p className="text-[11px] text-muted-foreground">
-              Stored as a keyword: any employer whose name contains this text is
-              skipped, so a short name can catch unrelated companies. Edit or
-              remove it under a search profile's Blocked companies.
+              Matched on the exact company name, so a differently spelled
+              posting from the same company still comes through. Remove it under
+              a search profile's Blocked companies.
             </p>
           )}
 

@@ -69,6 +69,22 @@ export function parseSearchTermsInput(input: string): string[] {
     .filter(Boolean);
 }
 
+/**
+ * For lists whose entries may legitimately contain a comma — company names
+ * ("Kforce, Inc.") being the case that forced this. Splitting those on the
+ * comma yields two fragments, neither of which is the employer, and since the
+ * blocked-companies match is exact neither blocks anything.
+ *
+ * A caller using this MUST also drop "," from the input's commit keys, or
+ * typing the name still breaks it in two even though pasting it works.
+ */
+export function parseNewlineSeparatedInput(input: string): string[] {
+  return input
+    .split(/\n/g)
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 export function parseCityLocationsInput(input: string): string[] {
   const parsed = parseSearchTermsInput(input);
   const seen = new Set<string>();

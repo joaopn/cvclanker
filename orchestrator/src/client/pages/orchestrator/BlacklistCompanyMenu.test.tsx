@@ -153,14 +153,30 @@ describe("BlacklistCompanyMenu", () => {
     expect(screen.getByText("Already blocked")).toBeInTheDocument();
   });
 
-  it("names the broader keyword doing the blocking", async () => {
+  it("offers a profile whose entry merely contains the company name", async () => {
+    // "acme" no longer blocks "Acme Corp" — matching is exact — so this
+    // profile is tickable rather than shown as already covered.
     await openMenu([
       profile("p1", "Berlin"),
       profile("p2", "Vienna", ["acme"]),
     ]);
     await screen.findByText("Vienna");
 
-    expect(screen.getByText('Already blocked by "acme"')).toBeInTheDocument();
+    const vienna = screen.getByRole("checkbox", { name: /^Vienna/ });
+    expect(vienna).toBeEnabled();
+    expect(vienna).not.toBeChecked();
+    expect(screen.queryByText("Already blocked")).toBeNull();
+  });
+
+  it("treats a differently cased entry as already blocking", async () => {
+    await openMenu([
+      profile("p1", "Berlin"),
+      profile("p2", "Vienna", ["ACME CORP"]),
+    ]);
+    await screen.findByText("Vienna");
+
+    expect(screen.getByRole("checkbox", { name: /^Vienna/ })).toBeDisabled();
+    expect(screen.getByText("Already blocked")).toBeInTheDocument();
   });
 
   it("keeps the confirm button dead until something new is ticked", async () => {
@@ -193,7 +209,7 @@ describe("BlacklistCompanyMenu", () => {
   it("does not claim a change when every ticked profile already blocked it", async () => {
     blockCompanyOnProfiles.mockResolvedValue({
       blocked: [],
-      alreadyBlocked: [{ id: "p1", name: "Berlin", keyword: "acme corp" }],
+      alreadyBlocked: [{ id: "p1", name: "Berlin" }],
     });
     await openMenu([profile("p1", "Berlin")]);
     await screen.findByText("Berlin");
@@ -212,7 +228,7 @@ describe("BlacklistCompanyMenu", () => {
   it("still reports the write when only some of the ticks were new", async () => {
     blockCompanyOnProfiles.mockResolvedValue({
       blocked: [{ id: "p1", name: "Berlin" }],
-      alreadyBlocked: [{ id: "p2", name: "Vienna", keyword: "acme corp" }],
+      alreadyBlocked: [{ id: "p2", name: "Vienna" }],
     });
     await openMenu([profile("p1", "Berlin"), profile("p2", "Vienna")]);
     await screen.findByText("Berlin");
