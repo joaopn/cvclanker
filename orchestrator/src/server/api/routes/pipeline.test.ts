@@ -551,6 +551,7 @@ describe.sequential("Pipeline API routes", () => {
       const data = await optionsFor();
       expect(data.defaultRefreshLiveStatus).toBe(false);
       expect(data.liveStatusRefreshLimit).toBe(100);
+      expect(data.liveStatusRefreshMinAgeHours).toBe(24);
 
       await fetch(`${baseUrl}/api/settings`, {
         method: "PATCH",
@@ -558,12 +559,14 @@ describe.sequential("Pipeline API routes", () => {
         body: JSON.stringify({
           liveStatusRefreshEnabled: true,
           liveStatusRefreshLimit: 40,
+          liveStatusRefreshMinAgeHours: 6,
         }),
       });
 
       const updated = await optionsFor();
       expect(updated.defaultRefreshLiveStatus).toBe(true);
       expect(updated.liveStatusRefreshLimit).toBe(40);
+      expect(updated.liveStatusRefreshMinAgeHours).toBe(6);
     });
 
     /**

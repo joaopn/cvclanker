@@ -51,6 +51,10 @@ describe("refreshLiveStatusStep", () => {
     getJobsForLiveStatusRefreshMock.mockResolvedValue([]);
     getEffectiveSettingsMock.mockResolvedValue({
       liveStatusRefreshLimit: { value: 25 },
+      // Deliberately NOT the registry default of 24: a step that hardcoded
+      // the default, or read the wrong key, would satisfy an assertion made
+      // against it.
+      liveStatusRefreshMinAgeHours: { value: 7 },
     });
     updateJobMock.mockResolvedValue({});
     fetchLinkedinLiveStatusMock.mockResolvedValue({
@@ -77,7 +81,10 @@ describe("refreshLiveStatusStep", () => {
 
     const result = await refreshLiveStatusStep({});
 
-    expect(getJobsForLiveStatusRefreshMock).toHaveBeenCalledWith(25);
+    // Both knobs, not just the cap: the floor is what stops the run re-reading
+    // rows it read an hour ago, so a step that dropped it would look correct
+    // in every single-run assertion and only misbehave on the second run.
+    expect(getJobsForLiveStatusRefreshMock).toHaveBeenCalledWith(25, 7);
     expect(result).toEqual({ checked: 2, failed: 0, closed: 1, unchecked: 0 });
     expect(updateJobMock).toHaveBeenNthCalledWith(1, "1", {
       liveClosed: false,

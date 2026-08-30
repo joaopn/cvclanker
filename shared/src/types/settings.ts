@@ -77,6 +77,7 @@ export interface AppSettings {
   enableJobScoring: Resolved<boolean>;
   liveStatusRefreshEnabled: Resolved<boolean>;
   liveStatusRefreshLimit: Resolved<number>;
+  liveStatusRefreshMinAgeHours: Resolved<number>;
   jwtExpirySeconds: Resolved<number | null>;
   inboxStaleThresholdDays: Resolved<number>;
   maxBulkActionJobs: Resolved<number>;

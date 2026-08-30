@@ -935,6 +935,31 @@ export interface LiveStatusRefreshCandidate {
  * to the front (their applicant count is worth most at triage time), and
  * everything else rotates by staleness across later runs.
  *
+ * `minAgeHours` drops rows checked more recently than that. Without it,
+ * "don't repeat yourself" holds only by accident: checked rows are stamped and
+ * move to the tail, so consecutive runs take consecutive slices — but only
+ * while the eligible backlog is LARGER than the cap. Once it is smaller, or
+ * the cap is raised, stalest-first reaches the fresh end and every run
+ * re-reads it. Rows never checked always pass the floor — a NULL timestamp is
+ * not "recent".
+ *
+ * The floor spans surfaces: the manual `fetch_live_status` action stamps the
+ * same column, so a bulk check by hand makes those rows ineligible here for
+ * the same window. That is the intended reading — a check is a check, whoever
+ * asked for it — but it does mean a manual sweep quietly suppresses the
+ * automatic one for a while.
+ *
+ * Known limitation, and the reason the copy says "managed to check": a row
+ * whose check FAILS is never stamped, so it keeps a NULL timestamp, sorts
+ * first and is retried by every later run. Right for a transient failure;
+ * for a permanently unreadable posting (a deleted one) it means that row
+ * holds a slot at the head of the queue for good. Stamping on failure would
+ * fix the ordering and break something worse — `liveStatusCheckedAt` is the
+ * flag both the Manage row and the Swipe card read as "we have a verdict",
+ * and a stamped row with a null `liveClosed` renders as "Accepting
+ * applications". A separate attempted-at column is the honest fix if this
+ * ever bites.
+ *
  * Rows already known closed are excluded: re-deriving a verdict that has
  * almost certainly not changed is what a cap this tight can least afford. The
  * usual way back in is a repost — `createJobs`' forward-shift arm clears all
@@ -956,8 +981,30 @@ export interface LiveStatusRefreshCandidate {
  */
 export async function getJobsForLiveStatusRefresh(
   limit: number,
+  // Required, with no default: a second caller added later (a "refresh now"
+  // route, a maintenance script) that forgot it would silently get the
+  // pre-floor behaviour, and nothing would say so. 0 disables the floor, but
+  // it has to be asked for.
+  minAgeHours: number,
 ): Promise<LiveStatusRefreshCandidate[]> {
   if (limit <= 0) return [];
+
+  // Both sides go through `datetime()`. Our timestamps are ISO
+  // (`2026-08-30T14:00:40.947Z`) while `datetime('now', ...)` yields
+  // `2026-08-29 14:00:40`, and comparing those as TEXT only looks right while
+  // the date parts differ: once they match, 'T' (0x54) sorts above ' ' (0x20),
+  // so the row reads as freshly checked whatever its time — an error band up
+  // to a day wide, and it passes a casual two-sample test. Same family as the
+  // `date_posted` lexical-compare bug. An unparseable stored value makes
+  // `datetime()` NULL, which COALESCE turns into "ancient", so a corrupt
+  // timestamp means re-check rather than never-check.
+  const staleEnoughToCheck =
+    minAgeHours > 0
+      ? or(
+          isNull(jobs.liveStatusCheckedAt),
+          sql`COALESCE(datetime(${jobs.liveStatusCheckedAt}), '0001-01-01 00:00:00') < datetime('now', ${`-${minAgeHours} hours`})`,
+        )
+      : undefined;
 
   const rows = await db
     .select({
@@ -976,6 +1023,7 @@ export async function getJobsForLiveStatusRefresh(
         // explicit 0 row and silently drops every NULL one.
         or(isNull(jobs.liveClosed), eq(jobs.liveClosed, false)),
         like(jobs.jobUrl, "%linkedin.com%"),
+        staleEnoughToCheck,
       ),
     )
     .orderBy(asc(jobs.liveStatusCheckedAt), desc(jobs.discoveredAt));

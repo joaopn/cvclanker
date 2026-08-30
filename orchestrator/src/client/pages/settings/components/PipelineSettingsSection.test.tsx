@@ -102,6 +102,7 @@ const PipelineSettingsHarness = ({
             enableJobScoring: { effective: true, default: true },
             liveStatusRefreshEnabled: { effective: false, default: false },
             liveStatusRefreshLimit: { effective: 100, default: 100 },
+            liveStatusRefreshMinAgeHours: { effective: 24, default: 24 },
             autoSkipCategory: { effective: null, default: null },
             scoringInstructions: {
               effective: "Calibration: ties go to the more generous tier.",

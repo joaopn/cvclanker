@@ -34,6 +34,14 @@ export interface RefreshLiveStatusResult {
  * when it has to fall through to the browser tier, so the cap is a wide time
  * budget and the stop-on-blocked below is what really bounds a bad run.
  *
+ * `liveStatusRefreshMinAgeHours` is what keeps a run off rows it read an hour
+ * ago — but only where the cap was not already doing it by accident. Without a
+ * floor, checked rows are stamped and move to the tail, so consecutive runs
+ * take consecutive slices; that rotation holds ONLY while the eligible backlog
+ * is larger than the cap. Once it is smaller, or the cap is raised, every run
+ * reaches the fresh end and re-reads it, and each leg of a chain re-reads what
+ * the leg before it just stamped.
+ *
  * BEST-EFFORT, and that is enforced rather than asserted: the whole body is
  * wrapped, so nothing here — not a failed settings read, not a failed query —
  * can fail the run. This refreshes ancillary data; a run that scraped,
@@ -73,18 +81,27 @@ export async function refreshLiveStatusStep(args: {
   let index = 0;
 
   try {
-    const limit = (await getEffectiveSettings()).liveStatusRefreshLimit.value;
-    const candidates = await jobsRepo.getJobsForLiveStatusRefresh(limit);
+    const settings = await getEffectiveSettings();
+    const limit = settings.liveStatusRefreshLimit.value;
+    const minAgeHours = settings.liveStatusRefreshMinAgeHours.value;
+    const candidates = await jobsRepo.getJobsForLiveStatusRefresh(
+      limit,
+      minAgeHours,
+    );
     total = candidates.length;
 
     if (total === 0) {
-      logger.info("Live-status refresh found nothing to check", { limit });
+      logger.info("Live-status refresh found nothing to check", {
+        limit,
+        minAgeHours,
+      });
       return { checked: 0, failed: 0, closed: 0, unchecked: 0 };
     }
 
     logger.info("Running live-status refresh step", {
       candidates: total,
       limit,
+      minAgeHours,
     });
 
     for (const candidate of candidates) {

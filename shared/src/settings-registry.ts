@@ -39,6 +39,12 @@ export const MAX_POOL_CONCURRENCY = 100;
 // schema, the read-path clamp and the Settings form all mirror it.
 export const MAX_LIVE_STATUS_REFRESH_LIMIT = 1000;
 
+// A year, as the widest sane "still counts as recently checked" window. Unlike
+// the row cap this is not a containment number — a huge value just makes the
+// step do less — so the ceiling exists only to keep the stored value a
+// plausible number of hours rather than a mis-typed millisecond count.
+export const MAX_LIVE_STATUS_REFRESH_MIN_AGE_HOURS = 8760;
+
 // The ceiling on ONE LLM attempt, shared by every provider. It exists because
 // nothing below it is guaranteed to end: the HTTP providers hand their request
 // to fetch, whose only backstop is undici's idle timeout — and that resets on
@@ -533,6 +539,34 @@ export const settingsRegistry = {
       return Number.isNaN(parsed)
         ? null
         : Math.min(MAX_LIVE_STATUS_REFRESH_LIMIT, Math.max(1, parsed));
+    },
+    serialize: serializeNullableNumber,
+  },
+  // How long a row's last check stays fresh.
+  //
+  // What it actually buys, stated carefully because the loose version is
+  // wrong: WITHOUT a floor, a run does not generally repeat itself — every
+  // checked row is stamped and moves to the tail, so the next run takes the
+  // next `liveStatusRefreshLimit` rows. That rotation holds only while the
+  // eligible backlog is LARGER than the cap. Once it is smaller (or the cap
+  // is raised, or removed), stalest-first reaches the fresh end and every run
+  // re-reads rows it read minutes ago — and inside one chain, each leg
+  // re-reads what the leg before it just stamped. The floor is what makes the
+  // cap safe to raise, and what makes a small backlog cost nothing.
+  //
+  // 24h suits the data: a posting closing is the time-critical half and a day
+  // is well inside the window that matters, while applicant counts move over
+  // days. 0 disables the floor, which is the pre-floor behaviour and errs
+  // toward more checking rather than less.
+  liveStatusRefreshMinAgeHours: {
+    kind: "typed" as const,
+    schema: z.number().int().min(0).max(MAX_LIVE_STATUS_REFRESH_MIN_AGE_HOURS),
+    default: (): number => 24,
+    parse: (raw: string | undefined): number | null => {
+      const parsed = raw ? parseInt(raw, 10) : NaN;
+      return Number.isNaN(parsed)
+        ? null
+        : Math.min(MAX_LIVE_STATUS_REFRESH_MIN_AGE_HOURS, Math.max(0, parsed));
     },
     serialize: serializeNullableNumber,
   },

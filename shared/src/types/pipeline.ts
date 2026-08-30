@@ -705,4 +705,9 @@ export interface RunOptionsResponse {
   defaultRefreshLiveStatus: boolean;
   /** How many rows one run would check, so the menu can price the option. */
   liveStatusRefreshLimit: number;
+  /**
+   * How long a check stays fresh, in hours. The menu names it because it
+   * decides how much of that cap a repeat run actually spends. 0 = no floor.
+   */
+  liveStatusRefreshMinAgeHours: number;
 }

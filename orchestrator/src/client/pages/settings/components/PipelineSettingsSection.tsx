@@ -3,6 +3,7 @@ import type { PipelineSettingsValues } from "@client/pages/settings/types";
 import {
   MAX_LATEX_COMPILE_TIMEOUT_MS,
   MAX_LIVE_STATUS_REFRESH_LIMIT,
+  MAX_LIVE_STATUS_REFRESH_MIN_AGE_HOURS,
   MAX_LLM_REQUEST_TIMEOUT_MS,
   MAX_POOL_CONCURRENCY,
   MIN_LATEX_COMPILE_TIMEOUT_MS,
@@ -147,6 +148,7 @@ export const PipelineSettingsSection: React.FC<
     enableJobScoring,
     liveStatusRefreshEnabled,
     liveStatusRefreshLimit,
+    liveStatusRefreshMinAgeHours,
     autoSkipCategory,
     scoringInstructions,
     inboxStaleThresholdDays,
@@ -541,6 +543,50 @@ export const PipelineSettingsSection: React.FC<
             Current:{" "}
             <span className="font-mono">
               {liveStatusRefreshLimit.effective}
+            </span>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label
+            htmlFor="liveStatusRefreshMinAgeHours"
+            className="text-sm font-medium"
+          >
+            Live-status recheck interval (hours)
+          </label>
+          <Controller
+            name="liveStatusRefreshMinAgeHours"
+            control={control}
+            render={({ field }) => (
+              <Input
+                id="liveStatusRefreshMinAgeHours"
+                type="number"
+                min={0}
+                max={MAX_LIVE_STATUS_REFRESH_MIN_AGE_HOURS}
+                step={1}
+                placeholder={String(liveStatusRefreshMinAgeHours.default)}
+                disabled={isLoading || isSaving}
+                value={field.value ?? ""}
+                onChange={(e) => {
+                  const value = e.target.valueAsNumber;
+                  field.onChange(Number.isFinite(value) ? value : null);
+                }}
+              />
+            )}
+          />
+          <div className="text-xs text-muted-foreground">
+            How long a check stays fresh. A run skips postings checked more
+            recently than this, so the budget above goes to ones that have
+            actually gone stale. Without it, runs only avoid repeating
+            themselves while there are more eligible postings than the budget
+            above — once the backlog is smaller than that, every run re-reads
+            the same rows, and so does every profile of a multi-profile run.
+            Postings never checked are always eligible. 0 disables the interval.
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Current:{" "}
+            <span className="font-mono">
+              {liveStatusRefreshMinAgeHours.effective}
             </span>
           </div>
         </div>

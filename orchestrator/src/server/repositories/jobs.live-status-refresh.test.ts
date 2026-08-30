@@ -62,8 +62,10 @@ describe.sequential("getJobsForLiveStatusRefresh", () => {
       discoveredAt: overrides.discoveredAt ?? "2026-01-01T00:00:00.000Z",
     });
 
+  // 0 = no floor: the cases outside the freshness describe block are about
+  // ordering, eligibility and the cap, and a floor would confound them.
   const idsFor = async (limit: number) =>
-    (await jobsRepo.getJobsForLiveStatusRefresh(limit)).map((row) => row.id);
+    (await jobsRepo.getJobsForLiveStatusRefresh(limit, 0)).map((row) => row.id);
 
   it("puts never-checked rows first, newest discovery first among them", async () => {
     await insert("1", {
@@ -162,6 +164,100 @@ describe.sequential("getJobsForLiveStatusRefresh", () => {
     await insert("real2", { discoveredAt: "2026-01-01T00:00:00.000Z" });
 
     expect(await idsFor(2)).toEqual(["real1", "real2"]);
+  });
+
+  describe("the freshness floor", () => {
+    const hoursAgo = (h: number) =>
+      new Date(Date.now() - h * 3_600_000).toISOString();
+
+    it("skips rows checked inside the window and keeps ones outside it", async () => {
+      await insert("fresh", { liveStatusCheckedAt: hoursAgo(1) });
+      await insert("stale", { liveStatusCheckedAt: hoursAgo(72) });
+      await insert("never", { liveStatusCheckedAt: null });
+
+      const ids = (await jobsRepo.getJobsForLiveStatusRefresh(50, 24)).map(
+        (row) => row.id,
+      );
+
+      // A never-checked row is not "recently checked" — it always passes.
+      expect(ids.sort()).toEqual(["never", "stale"]);
+    });
+
+    it("compares timestamps as DATES, not as text", async () => {
+      // The regression that motivates `datetime()` on both sides. Our column
+      // holds ISO (`…T19:00:00.000Z`) while `datetime('now', …)` yields
+      // `… 19:00:00`; as text those only compare correctly while the DATE
+      // parts differ, because 'T' (0x54) sorts above ' ' (0x20). So this row
+      // is placed on the SAME calendar date as the cutoff and earlier in the
+      // day: genuinely stale, but a text compare calls it fresh and drops it.
+      // The floor is chosen from the clock so the cutoff always lands around
+      // midday, two days back: a fixed 48 would put it at whatever time the
+      // suite runs, and at 00:00:00 UTC the row (midnight of the same date)
+      // stops being strictly older and the test fails for a second a day —
+      // the B20 day-boundary flake again. Twelve hours of margin on each side
+      // also keeps the row and the cutoff on one date, which is what makes
+      // this discriminate against a text compare at all.
+      const minAgeHours = 36 + new Date().getUTCHours();
+      const cutoff = new Date(Date.now() - minAgeHours * 3_600_000);
+      const midnightOfCutoffDate = `${cutoff.toISOString().slice(0, 10)}T00:00:00.000Z`;
+      await insert("same-date-but-older", {
+        liveStatusCheckedAt: midnightOfCutoffDate,
+      });
+
+      const ids = (
+        await jobsRepo.getJobsForLiveStatusRefresh(50, minAgeHours)
+      ).map((row) => row.id);
+
+      expect(ids).toEqual(["same-date-but-older"]);
+    });
+
+    it("treats an unparseable timestamp as ancient rather than as fresh", async () => {
+      // `datetime()` answers NULL for junk, and a NULL comparison would drop
+      // the row for ever. Erring toward re-checking is the safe direction.
+      await insert("junk-timestamp", { liveStatusCheckedAt: "not a date" });
+
+      const ids = (await jobsRepo.getJobsForLiveStatusRefresh(50, 24)).map(
+        (row) => row.id,
+      );
+
+      expect(ids).toEqual(["junk-timestamp"]);
+    });
+
+    it("applies no floor at zero", async () => {
+      await insert("just-checked", { liveStatusCheckedAt: hoursAgo(0) });
+
+      expect(await idsFor(50)).toEqual(["just-checked"]);
+      expect(
+        (await jobsRepo.getJobsForLiveStatusRefresh(50, 0)).map((r) => r.id),
+      ).toEqual(["just-checked"]);
+    });
+
+    it("lets a later run carry on down the list instead of repeating it", async () => {
+      // The property the floor exists for, and the one a chain depends on:
+      // each leg stamps what it checked, so the next leg's candidate set is
+      // what is left rather than the same rows again.
+      await insert("a", { discoveredAt: "2026-01-03T00:00:00.000Z" });
+      await insert("b", { discoveredAt: "2026-01-02T00:00:00.000Z" });
+      await insert("c", { discoveredAt: "2026-01-01T00:00:00.000Z" });
+
+      const first = (await jobsRepo.getJobsForLiveStatusRefresh(2, 24)).map(
+        (row) => row.id,
+      );
+      expect(first).toEqual(["a", "b"]);
+
+      for (const id of first) {
+        await jobsRepo.updateJob(id, {
+          liveClosed: false,
+          liveApplicants: "12 applicants",
+          liveStatusCheckedAt: new Date().toISOString(),
+        });
+      }
+
+      const second = (await jobsRepo.getJobsForLiveStatusRefresh(2, 24)).map(
+        (row) => row.id,
+      );
+      expect(second).toEqual(["c"]);
+    });
   });
 
   it("returns the requested number at most, and nothing for a non-positive cap", async () => {

@@ -121,6 +121,8 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
   const capDays = optionsQuery.data?.capDays ?? null;
   const liveStatusRefreshLimit =
     optionsQuery.data?.liveStatusRefreshLimit ?? null;
+  const liveStatusMinAgeHours =
+    optionsQuery.data?.liveStatusRefreshMinAgeHours ?? 0;
   const windowInvalid = manualWindow && windowDays === null;
   const canRun =
     !optionsQuery.isLoading &&
@@ -335,9 +337,23 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
                         time. */}
                     After scoring, re-checks up to {liveStatusRefreshLimit ?? 0}{" "}
                     LinkedIn postings — still accepting applications, and how
-                    many applicants — starting with the ones never checked.
+                    many applicants — starting with the ones never checked
+                    {liveStatusMinAgeHours > 0
+                      ? `, skipping any checked in the last ${
+                          liveStatusMinAgeHours === 1
+                            ? "hour"
+                            : `${liveStatusMinAgeHours} hours`
+                        }.`
+                      : "."}
+                    {/* Deliberately says "managed to check", not "checked": a
+                        posting whose check FAILS is never stamped, so it stays
+                        at the head of the queue and the next leg tries it
+                        again. Claiming the work is never repeated would be
+                        false exactly where it costs the most. */}
                     {isChain
-                      ? " Runs once per profile, so a chain checks that many for each."
+                      ? liveStatusMinAgeHours > 0
+                        ? " That budget is per profile, and later profiles carry on past what the ones before them managed to check."
+                        : " That budget is per profile, and with no freshness floor set a profile can re-check what the one before it just did."
                       : ""}
                   </span>
                 </label>

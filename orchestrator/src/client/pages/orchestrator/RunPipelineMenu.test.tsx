@@ -1,6 +1,6 @@
 import { renderWithQueryClient } from "@client/test/renderWithQueryClient";
 import type { RunOptionSource, RunOptionsResponse } from "@shared/types";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import type React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -62,6 +62,7 @@ const options = (
   defaultSinceLastRun: true,
   defaultRefreshLiveStatus: false,
   liveStatusRefreshLimit: 100,
+  liveStatusRefreshMinAgeHours: 24,
   ...overrides,
 });
 
@@ -293,6 +294,42 @@ describe("RunPipelineMenu", () => {
     await renderMenu(options({ liveStatusRefreshLimit: 40 }));
 
     expect(screen.getByText(/up to 40 LinkedIn postings/)).toBeTruthy();
+  });
+
+  it("says what a repeat run will skip, and says nothing when nothing is skipped", async () => {
+    await renderMenu(options({ liveStatusRefreshMinAgeHours: 6 }));
+    expect(
+      screen.getByText(/skipping any checked in the last 6 hours/),
+    ).toBeTruthy();
+
+    cleanup();
+    await renderMenu(options({ liveStatusRefreshMinAgeHours: 0 }));
+    // With no floor the clause would read "in the last 0 hours", which is both
+    // meaningless and wrong — every run re-checks everything it can reach.
+    expect(screen.queryByText(/skipping any checked/)).toBeNull();
+  });
+
+  it("tells a chain what the per-profile budget does, both ways", async () => {
+    // The only factual claim the live-status copy makes about a chain, and it
+    // flips on the floor: with one, later legs carry on past what earlier ones
+    // managed; without one, a leg can redo the leg before it. Neither branch
+    // renders on a single profile, so both need a chain to be seen at all.
+    await renderMenu(options({ liveStatusRefreshMinAgeHours: 6 }), vi.fn(), [
+      "p1",
+      "p2",
+    ]);
+    expect(
+      screen.getByText(/carry on past what the ones before them managed/),
+    ).toBeTruthy();
+
+    cleanup();
+    await renderMenu(options({ liveStatusRefreshMinAgeHours: 0 }), vi.fn(), [
+      "p1",
+      "p2",
+    ]);
+    expect(
+      screen.getByText(/can re-check what the one before it just did/),
+    ).toBeTruthy();
   });
 
   it("asks for every selected profile's options", async () => {

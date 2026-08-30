@@ -94,6 +94,7 @@ const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
   enableJobScoring: null,
   liveStatusRefreshEnabled: null,
   liveStatusRefreshLimit: null,
+  liveStatusRefreshMinAgeHours: null,
   scoringInstructions: "",
   inboxStaleThresholdDays: null,
   maxBulkActionJobs: null,
@@ -361,6 +362,7 @@ export const SECTION_FIELD_MAP: Record<
     "enableJobScoring",
     "liveStatusRefreshEnabled",
     "liveStatusRefreshLimit",
+    "liveStatusRefreshMinAgeHours",
     "scoringInstructions",
     "autoSkipCategory",
     "inboxStaleThresholdDays",
@@ -443,6 +445,7 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   enableJobScoring: null,
   liveStatusRefreshEnabled: null,
   liveStatusRefreshLimit: null,
+  liveStatusRefreshMinAgeHours: null,
   scoringInstructions: null,
   inboxStaleThresholdDays: null,
   maxBulkActionJobs: null,
@@ -546,6 +549,7 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   enableJobScoring: data.enableJobScoring.override,
   liveStatusRefreshEnabled: data.liveStatusRefreshEnabled.override,
   liveStatusRefreshLimit: data.liveStatusRefreshLimit.override,
+  liveStatusRefreshMinAgeHours: data.liveStatusRefreshMinAgeHours.override,
   scoringInstructions:
     data.scoringInstructions.override ?? data.scoringInstructions.default,
   inboxStaleThresholdDays: data.inboxStaleThresholdDays.override,
@@ -686,6 +690,10 @@ const getDerivedSettings = (settings: AppSettings | null) => {
       liveStatusRefreshLimit: {
         effective: settings?.liveStatusRefreshLimit?.value ?? 100,
         default: settings?.liveStatusRefreshLimit?.default ?? 100,
+      },
+      liveStatusRefreshMinAgeHours: {
+        effective: settings?.liveStatusRefreshMinAgeHours?.value ?? 24,
+        default: settings?.liveStatusRefreshMinAgeHours?.default ?? 24,
       },
       autoSkipCategory: {
         effective: settings?.autoSkipCategory?.value ?? null,
@@ -994,6 +1002,10 @@ export const SettingsPage: React.FC = () => {
         liveStatusRefreshLimit: nullIfSame(
           data.liveStatusRefreshLimit,
           pipeline.liveStatusRefreshLimit.default,
+        ),
+        liveStatusRefreshMinAgeHours: nullIfSame(
+          data.liveStatusRefreshMinAgeHours,
+          pipeline.liveStatusRefreshMinAgeHours.default,
         ),
         scoringInstructions: nullIfSame(
           normalizeString(data.scoringInstructions),

@@ -909,6 +909,7 @@ pipelineRouter.get(
         profiles.every((profile) => profile.config.scrapeSinceLastRun === true),
       defaultRefreshLiveStatus: settings.liveStatusRefreshEnabled.value,
       liveStatusRefreshLimit: settings.liveStatusRefreshLimit.value,
+      liveStatusRefreshMinAgeHours: settings.liveStatusRefreshMinAgeHours.value,
     } satisfies RunOptionsResponse);
   }),
 );

@@ -54,6 +54,7 @@ export type PipelineSettingsValues = {
   enableJobScoring: EffectiveDefault<boolean>;
   liveStatusRefreshEnabled: EffectiveDefault<boolean>;
   liveStatusRefreshLimit: EffectiveDefault<number>;
+  liveStatusRefreshMinAgeHours: EffectiveDefault<number>;
   autoSkipCategory: EffectiveDefault<SuitabilityCategory | null>;
   scoringInstructions: EffectiveDefault<string>;
   inboxStaleThresholdDays: EffectiveDefault<number>;
