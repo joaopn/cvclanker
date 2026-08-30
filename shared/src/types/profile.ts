@@ -1,5 +1,9 @@
 import { z } from "zod";
 import {
+  MAX_BLOCKED_COMPANY_KEYWORD_LENGTH,
+  MAX_BLOCKED_COMPANY_KEYWORDS,
+} from "../blocked-companies";
+import {
   LOCATION_MATCH_STRICTNESS_VALUES,
   LOCATION_SEARCH_SCOPE_VALUES,
   LOCATION_WORKPLACE_TYPE_VALUES,
@@ -99,7 +103,9 @@ export const profileConfigSchema = z.object({
   remoteLocationBlocklist: z.array(z.string().trim().min(1).max(200)).max(200),
   scrapeMaxAgeDays: z.number().int().min(1).max(365).nullable(),
   scrapeSinceLastRun: z.boolean(),
-  blockedCompanyKeywords: z.array(z.string().trim().min(1).max(200)).max(200),
+  blockedCompanyKeywords: z
+    .array(z.string().trim().min(1).max(MAX_BLOCKED_COMPANY_KEYWORD_LENGTH))
+    .max(MAX_BLOCKED_COMPANY_KEYWORDS),
   runBudget: z.number().int().min(1).max(100_000),
   topN: z.number().int().min(1).max(10_000),
   minSuitabilityCategory: z.enum(SUITABILITY_CATEGORIES),

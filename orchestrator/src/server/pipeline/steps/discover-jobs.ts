@@ -11,6 +11,7 @@ import { getScrapeWatermarks } from "@server/repositories/source-scrape-watermar
 import { getEffectiveSettings } from "@server/services/settings";
 import { resolveSourceContextSettings } from "@server/services/source-configs/resolve";
 import { asyncPool } from "@server/utils/async-pool";
+import { findBlockingCompanyKeyword } from "@shared/blocked-companies.js";
 import type { ExtractorSourceId } from "@shared/extractors";
 import {
   describeLocationRejection,
@@ -72,18 +73,6 @@ type DiscoverySourceTask = {
   policyWindowDays: number | null;
   run: () => Promise<DiscoveryTaskResult>;
 };
-
-function isBlockedEmployer(
-  employer: string | null | undefined,
-  blockedKeywordsLowerCase: string[],
-): boolean {
-  if (!employer) return false;
-  if (blockedKeywordsLowerCase.length === 0) return false;
-  const normalizedEmployer = employer.toLowerCase();
-  return blockedKeywordsLowerCase.some((keyword) =>
-    normalizedEmployer.includes(keyword),
-  );
-}
 
 function getLegacyLocationSelection(
   intent: NonNullable<PipelineConfig["locationIntent"]>,
@@ -798,11 +787,9 @@ export async function discoverJobsStep(args: {
   }
 
   const blockedCompanyKeywords = args.mergedConfig.blockedCompanyKeywords ?? [];
-  const blockedKeywordsLowerCase = blockedCompanyKeywords.map((value) =>
-    value.toLowerCase(),
-  );
   const filteredDiscoveredJobs = locationFilteredJobs.filter(
-    (job) => !isBlockedEmployer(job.employer, blockedKeywordsLowerCase),
+    (job) =>
+      findBlockingCompanyKeyword(job.employer, blockedCompanyKeywords) === null,
   );
   const droppedCount =
     locationFilteredJobs.length - filteredDiscoveredJobs.length;
