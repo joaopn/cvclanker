@@ -8,6 +8,28 @@ import {
   type StartupJobRecord,
   scrapeStartupJobsViaAlgolia,
 } from "startup-jobs-scraper";
+import {
+  beginRateLimitedRun,
+  hasExhaustedWaitBudget,
+  isRateLimited,
+  isRetryableRateLimit,
+  registerRateLimit,
+  waitForRateLimitWindow,
+} from "./rate-limit";
+
+/**
+ * How many times one term's scrape is re-attempted through the shared backoff
+ * before the source gives up.
+ *
+ * Three covers the failure the measurements actually show — a short-window
+ * limit that clears in seconds — at a cost of one 5s and one 10s wait for the
+ * term. Two would let a single blip end a leg that was about to work.
+ *
+ * This bounds ONE TERM only. The run as a whole is bounded separately by
+ * `hasExhaustedWaitBudget`, because a limit that flaps is served on the retry
+ * every time and so never reaches the third attempt.
+ */
+const MAX_RATE_LIMIT_ATTEMPTS = 3;
 
 export type StartupJobsProgressEvent =
   | {
@@ -32,6 +54,11 @@ export interface RunStartupJobsOptions {
   locations?: string[];
   workplaceTypes?: Array<"remote" | "hybrid" | "onsite">;
   maxJobsPerTerm?: number;
+  /**
+   * How many detail pages the scraper fetches at once. The package defaults to
+   * 8, which is the measured-failing rate against startup.jobs' per-IP limit.
+   */
+  detailConcurrency?: number;
   onProgress?: (event: StartupJobsProgressEvent) => void;
   shouldCancel?: () => boolean;
 }
@@ -102,6 +129,66 @@ function mapStartupJob(row: StartupJobRecord): CreateJobInput | null {
   };
 }
 
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  return "Unexpected error while running startup.jobs extractor.";
+}
+
+/** "; the N jobs already scraped were kept", or nothing when none were. */
+function keptClause(count: number): string {
+  if (count <= 0) return "";
+  return count === 1
+    ? "; the 1 job already scraped was kept"
+    : `; the ${count} jobs already scraped were kept`;
+}
+
+/**
+ * The message the failed source row carries in the run banner.
+ *
+ * It names what was kept, because the funnel shows a failed source beside a
+ * non-zero Scraped count and that combination otherwise reads as a bug — but
+ * only when something actually was kept, since a first-term refusal keeps
+ * nothing.
+ */
+function describeRefusal(args: {
+  message: string;
+  termsCompleted: number;
+  termTotal: number;
+  keptCount: number;
+  detailConcurrency?: number;
+  budgetExhausted?: boolean;
+}): string {
+  const searches = args.termTotal === 1 ? "term search" : "term searches";
+  const scope = `stopped after ${args.termsCompleted} of ${args.termTotal} ${searches}${keptClause(args.keptCount)}`;
+
+  // Only worth suggesting the lever when there is room to move: 1 is the
+  // floor, both here and inside the scraper. The floor wording names another
+  // lever rather than explaining the failure — "the run is too big for the
+  // site's limit" is a cause, and the connection-refusal branch below has just
+  // said we cannot tell the cause.
+  //
+  // "Max jobs discovered" and not the source's own "Max jobs per term": the
+  // maxJobsPerTerm global mapping is enabledByDefault, so the run global
+  // overwrites that field, and cutting the search-term list RAISES the derived
+  // per-term cap proportionally rather than shrinking the run.
+  const advice =
+    (args.detailConcurrency ?? 1) > 1
+      ? ' Lower "Detail concurrency" for this source if it persists.'
+      : ' Detail concurrency is already at its floor of 1; to make the run smaller, lower "Max jobs discovered" on the search profile.';
+
+  if (args.budgetExhausted) {
+    return `startup.jobs kept rate limiting this machine — ${scope}. Waiting longer stopped being worthwhile, so the source gave up; its scrape window is unchanged and the next run re-covers it.${advice}`;
+  }
+
+  return isRetryableRateLimit(args.message)
+    ? `startup.jobs is rate limiting this machine (HTTP 429) — ${scope}.${advice}`
+    : // Deliberately does not assert a cause: a Cloudflare block and a genuine
+      // container connectivity failure are indistinguishable from here, which
+      // is the same reason these are not retried.
+      `startup.jobs is refusing connections from this machine — ${scope}. That is usually a rate limit escalating, but a connectivity problem in the container looks identical from here.${advice}`;
+}
+
 function resolveRunLocations(args: {
   selectedCountry?: string;
   locations?: string[];
@@ -157,8 +244,17 @@ export async function runStartupJobs(
   const seen = new Set<string>();
   let runIndex = 0;
 
+  // The escalation is per run; an already-open window from another leg of the
+  // same chain still applies.
+  beginRateLimitedRun();
+  // Set when startup.jobs refuses the machine. A refusal is per-IP, so every
+  // remaining term would only re-prove it at the cost of more requests — stop
+  // the whole source and keep what was scraped.
+  let stopReason: string | null = null;
+
   try {
     for (const location of usableLocations) {
+      if (stopReason) break;
       for (const searchTerm of searchTerms) {
         runIndex += 1;
         if (options.shouldCancel?.()) {
@@ -173,13 +269,67 @@ export async function runStartupJobs(
           location,
         });
 
-        const records = await scrapeStartupJobsViaAlgolia({
-          query: searchTerm,
-          requestedCount: maxJobsPerTerm,
-          enrichDetails: true,
-          location,
-          workplaceType,
-        });
+        let records: StartupJobRecord[] | null = null;
+        for (
+          let attempt = 1;
+          attempt <= MAX_RATE_LIMIT_ATTEMPTS;
+          attempt += 1
+        ) {
+          if (!(await waitForRateLimitWindow(options.shouldCancel))) {
+            return { success: true, jobs, droppedCount: unmappable };
+          }
+
+          try {
+            records = await scrapeStartupJobsViaAlgolia({
+              query: searchTerm,
+              requestedCount: maxJobsPerTerm,
+              enrichDetails: true,
+              detailConcurrency: options.detailConcurrency,
+              location,
+              workplaceType,
+            });
+            break;
+          } catch (error) {
+            const message = toErrorMessage(error);
+            // Anything that is not startup.jobs refusing this machine is a
+            // real fault: let it reach the outer catch, which still salvages.
+            if (!isRateLimited(message)) throw error;
+
+            registerRateLimit();
+            const lastAttempt = attempt === MAX_RATE_LIMIT_ATTEMPTS;
+            // Bounds the RUN, where the attempt count only bounds one term: a
+            // limit that flaps never exhausts attempts, so without this a long
+            // term list can sit in backoff for over an hour.
+            const outOfBudget = hasExhaustedWaitBudget();
+            // A connection-level refusal opens a window but earns no retry —
+            // retrying a genuine connectivity outage just waits into a wall.
+            if (!isRetryableRateLimit(message) || lastAttempt || outOfBudget) {
+              stopReason = describeRefusal({
+                message,
+                // runIndex counts the term that just FAILED, so the number of
+                // terms actually covered is one fewer.
+                termsCompleted: runIndex - 1,
+                termTotal,
+                keptCount: jobs.length,
+                detailConcurrency: options.detailConcurrency,
+                budgetExhausted: outOfBudget,
+              });
+              break;
+            }
+          }
+        }
+
+        if (stopReason) break;
+        // The retry loop always exits by assigning `records`, setting
+        // `stopReason`, or throwing, so this is unreachable through the loop
+        // itself — but it is reachable when the scraper resolves to something
+        // that is not an array, which is what a reset-but-unstubbed mock
+        // returns. Without it that would read as "this term found nothing",
+        // under-reporting a failure as an empty scrape.
+        if (!records) {
+          stopReason = `startup.jobs returned no result for term ${runIndex} of ${termTotal}${keptClause(jobs.length)}.`;
+          break;
+        }
 
         let jobsFoundTerm = 0;
         for (const record of records) {
@@ -208,38 +358,43 @@ export async function runStartupJobs(
       }
     }
 
+    if (stopReason) {
+      // Salvage: the jobs collected before the refusal are real and already
+      // paid for. The source still reports failure, so its scrape watermark
+      // holds and the next run re-covers the same window — the same contract
+      // the Apify provider uses for a run that dies mid-flight.
+      return {
+        success: false,
+        jobs,
+        droppedCount: unmappable,
+        error: stopReason,
+      };
+    }
+
     return {
       success: true,
       jobs,
       droppedCount: unmappable,
     };
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : typeof error === "string"
-          ? error
-          : "Unexpected error while running startup.jobs extractor.";
+    const message = toErrorMessage(error);
     const missingBrowser =
       /playwright|browser|executable/i.test(message) &&
       /install/i.test(message);
-    // The scraper bootstraps by loading a fixed startup.jobs URL (hardcoded in
-    // the package to a Preston, UK search) to scrape Algolia's config before
-    // running the real query. When that load fails on connectivity, the raw
-    // error leaks that misleading URL — collapse it to a clean network message
-    // so it doesn't read as a bogus location setting.
-    const isNetworkError =
-      /network is unreachable|tcp connect error|error sending request|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|EAI_AGAIN|client error \(Connect\)|dns error/i.test(
-        message,
-      );
+    // Connectivity failures no longer reach here: the retry loop classifies
+    // them first (isConnectionRefusal is a superset of the old test) and stops
+    // the source with its own message. What still lands here is a genuine
+    // fault — a missing browser, a shape the scraper could not parse — so the
+    // raw message is the useful thing to show.
     return {
+      // Salvage here too: `jobs` accumulates across every term, so returning
+      // an empty array would discard every term that had already succeeded.
       success: false,
-      jobs: [],
+      jobs,
+      droppedCount: unmappable,
       error: missingBrowser
         ? `${message}. Install browser binaries with 'npx playwright install'.`
-        : isNetworkError
-          ? "startup.jobs is unreachable (network error contacting the site). This is a connectivity issue from the container, not a location setting."
-          : message,
+        : message,
     };
   }
 }
