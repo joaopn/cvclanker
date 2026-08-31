@@ -527,7 +527,13 @@ describe.sequential("stats repository", () => {
       await seed({ id: "a", profileId: null });
       const discovery = await stats.getDiscoveryStats(ALL_TIME);
       expect(discovery.profiles).toEqual([
-        { profileId: null, name: "Unattributed", jobs: 1, goodFit: 0 },
+        {
+          profileId: null,
+          name: "Unattributed",
+          jobs: 1,
+          scored: 0,
+          goodFit: 0,
+        },
       ]);
     });
 
@@ -670,6 +676,7 @@ describe.sequential("stats repository", () => {
           profileId: "gone-forever",
           name: "Deleted profile",
           jobs: 1,
+          scored: 0,
           goodFit: 0,
         },
       ]);
@@ -699,6 +706,25 @@ describe.sequential("stats repository", () => {
 
       const companies = await stats.getCompanyStats(ALL_TIME);
       expect(companies.companies).toHaveLength(2);
+    });
+
+    it("reports how many companies exist beyond the cut", async () => {
+      await seed({ id: "a", employer: "One" });
+      await seed({ id: "b", employer: "Two" });
+      const companies = await stats.getCompanyStats(ALL_TIME);
+      expect(companies.companiesTotal).toBe(2);
+    });
+
+    it("carries a scored count so every fit rate shares one denominator", async () => {
+      await seed({ id: "a", employer: "Acme", suitability: "good_fit" });
+      await seed({ id: "b", employer: "Acme", suitability: null });
+
+      const companies = await stats.getCompanyStats(ALL_TIME);
+      expect(companies.companies[0]).toMatchObject({
+        jobs: 2,
+        scored: 1,
+        goodFit: 1,
+      });
     });
 
     it("ranks by good fit and reports its own cut", async () => {

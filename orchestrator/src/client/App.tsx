@@ -14,6 +14,7 @@ import { CSSTransition, SwitchTransition } from "react-transition-group";
 
 import { Toaster } from "@/components/ui/sonner";
 import { OnboardingGate } from "./components/OnboardingGate";
+import { SchedulingPausedBanner } from "./components/SchedulingPausedBanner";
 import { setAuthNavigator } from "./lib/auth-navigation";
 import { CoverLetterPage } from "./pages/CoverLetterPage";
 import { CvPage } from "./pages/CvPage";
@@ -21,11 +22,11 @@ import { OnboardingPage } from "./pages/OnboardingPage";
 import { OrchestratorPage } from "./pages/OrchestratorPage";
 import { ProfileEditorPage } from "./pages/ProfileEditorPage";
 import { ProfilesPage } from "./pages/ProfilesPage";
-import { SchedulingPausedBanner } from "./components/SchedulingPausedBanner";
 import { SchedulePage } from "./pages/SchedulePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SignInPage } from "./pages/SignInPage";
 import { SourcesPage } from "./pages/SourcesPage";
+import { StatsPage } from "./pages/StatsPage";
 import { SwipePage } from "./pages/SwipePage";
 
 /** Backwards-compatibility redirects: old URL paths -> new URL paths */
@@ -113,6 +114,7 @@ export const App: React.FC = () => {
                 <Route path="/profiles/:id" element={<ProfileEditorPage />} />
                 <Route path="/swipe" element={<SwipePage />} />
                 <Route path="/schedule" element={<SchedulePage />} />
+                <Route path="/stats" element={<StatsPage />} />
                 <Route path="/jobs/:tab" element={<OrchestratorPage />} />
                 <Route
                   path="/jobs/:tab/:jobId"

@@ -130,6 +130,13 @@ export interface StatsProfileRow {
   profileId: string | null;
   name: string;
   jobs: number;
+  /**
+   * Carried so every "fit rate" on the page divides by the same thing. Without
+   * it the profile table could only divide by `jobs`, which puts two different
+   * denominators under one column heading — and shows a hard 0% for a profile
+   * whose jobs are simply not scored yet.
+   */
+  scored: number;
   goodFit: number;
 }
 
@@ -222,12 +229,16 @@ export interface StatsCompanyRow {
   key: string;
   employer: string;
   jobs: number;
+  /** As on the profile and board rows: the shared fit-rate denominator. */
+  scored: number;
   goodFit: number;
   applied: number;
 }
 
 export interface StatsCompanies {
+  /** The leading companies by good fit; `companiesTotal` is how many exist. */
   companies: StatsCompanyRow[];
+  companiesTotal: number;
   /** Jobs seen re-posted at least once under the same URL. */
   repostedJobs: number;
   /** Jobs the board now reports closed, in whatever state they are held. */

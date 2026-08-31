@@ -1,6 +1,17 @@
 import type { JobStatus } from "@shared/types";
 
 export const queryKeys = {
+  stats: {
+    all: ["stats"] as const,
+    /**
+     * Keyed on the filters, so switching range or profile is a distinct cache
+     * entry rather than a refetch that briefly renders the previous answer.
+     */
+    panel: (
+      panel: "overview" | "discovery" | "applications" | "companies",
+      filters: { days: number | null; profileId: string | null },
+    ) => [...queryKeys.stats.all, panel, filters] as const,
+  },
   settings: {
     all: ["settings"] as const,
     current: () => [...queryKeys.settings.all, "current"] as const,

@@ -315,6 +315,7 @@ export async function getDiscoveryStats(
     .select({
       profileId: jobs.profileId,
       jobs: sql<number>`count(*)`,
+      scored: sql<number>`sum(case when ${jobs.suitabilityCategory} is not null then 1 else 0 end)`,
       goodFit: sql<number>`sum(case when ${goodFitSql} then 1 else 0 end)`,
     })
     .from(jobs)
@@ -342,6 +343,7 @@ export async function getDiscoveryStats(
         profileId: row.profileId,
         name,
         jobs: row.jobs,
+        scored: row.scored,
         goodFit: row.goodFit,
       };
     })
@@ -541,6 +543,7 @@ export async function getCompanyStats(
       key,
       employer: sql<string>`max(${jobs.employer})`,
       jobs: sql<number>`count(*)`,
+      scored: sql<number>`sum(case when ${jobs.suitabilityCategory} is not null then 1 else 0 end)`,
       goodFit: sql<number>`sum(case when ${goodFitSql} then 1 else 0 end)`,
       applied: sql<number>`sum(case when ${jobs.appliedAt} is not null then 1 else 0 end)`,
     })
@@ -553,6 +556,7 @@ export async function getCompanyStats(
       key: row.key,
       employer: row.employer,
       jobs: row.jobs,
+      scored: row.scored,
       goodFit: row.goodFit,
       applied: row.applied,
     }))
@@ -576,6 +580,7 @@ export async function getCompanyStats(
 
   return {
     companies,
+    companiesTotal: rows.length,
     repostedJobs: churn?.reposted ?? 0,
     liveClosedJobs: churn?.liveClosed ?? 0,
     // Reported as a count, never as a share of totalJobs: only LinkedIn-shaped

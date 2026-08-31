@@ -48,6 +48,10 @@ import type {
   RunTrigger,
   SearchTermsSuggestionResponse,
   StartBenchRunInput,
+  StatsApplications,
+  StatsCompanies,
+  StatsDiscovery,
+  StatsOverview,
   StoredUserProfile,
   SuitabilityCategory,
   UpdateJobNoteInput,
@@ -1110,6 +1114,53 @@ export interface SchedulesResponse {
   pausedReason: string | null;
   /** The zone every schedule's times and weekday mask are read in. */
   timeZone: string;
+}
+
+// ============================================================================
+// Stats
+// ============================================================================
+
+/**
+ * Filters shared by every stats endpoint. `days` omitted means all time;
+ * `profileId` omitted means every Search Profile, attributed or not.
+ */
+export interface StatsFilters {
+  days?: number | null;
+  profileId?: string | null;
+}
+
+function statsQuery(filters: StatsFilters | undefined): string {
+  const params = new URLSearchParams();
+  if (filters?.days != null) params.set("days", String(filters.days));
+  if (filters?.profileId) params.set("profileId", filters.profileId);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+export async function getStatsOverview(
+  filters?: StatsFilters,
+): Promise<StatsOverview> {
+  return fetchApi<StatsOverview>(`/stats/overview${statsQuery(filters)}`);
+}
+
+export async function getStatsDiscovery(
+  filters?: StatsFilters,
+): Promise<StatsDiscovery> {
+  return fetchApi<StatsDiscovery>(`/stats/discovery${statsQuery(filters)}`);
+}
+
+export async function getStatsApplications(
+  filters?: StatsFilters,
+): Promise<StatsApplications> {
+  return fetchApi<StatsApplications>(
+    `/stats/applications${statsQuery(filters)}`,
+  );
+}
+
+export async function getStatsCompanies(
+  filters?: StatsFilters,
+): Promise<StatsCompanies> {
+  return fetchApi<StatsCompanies>(`/stats/companies${statsQuery(filters)}`);
 }
 
 export async function getSchedules(): Promise<SchedulesResponse> {
