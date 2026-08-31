@@ -15,4 +15,5 @@ export * from "./run-schedule";
 export * from "./scoring-bench";
 export * from "./settings";
 export * from "./source-config";
+export * from "./stats";
 export * from "./user-profiles";
