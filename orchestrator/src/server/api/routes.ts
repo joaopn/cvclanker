@@ -21,6 +21,7 @@ import { schedulesRouter } from "./routes/schedules";
 import { scoringBenchRouter } from "./routes/scoring-bench";
 import { settingsRouter } from "./routes/settings";
 import { sourceConfigsRouter } from "./routes/source-configs";
+import { statsRouter } from "./routes/stats";
 import { userProfilesRouter } from "./routes/user-profiles";
 
 export const apiRouter = Router();
@@ -43,4 +44,5 @@ apiRouter.use("/provider-instances", providerInstancesRouter);
 apiRouter.use("/profiles", profilesRouter);
 apiRouter.use("/user-profiles", userProfilesRouter);
 apiRouter.use("/scoring-bench", scoringBenchRouter);
+apiRouter.use("/stats", statsRouter);
 apiRouter.use("/", extractorHealthRouter);
