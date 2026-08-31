@@ -5,5 +5,4 @@ export { OpenJobListingButton } from "./OpenJobListingButton";
 export { PipelineRunBanner } from "./PipelineRunBanner";
 export { ReadyPanel } from "./ReadyPanel";
 export { FitIndicator } from "./ScoreIndicator";
-export { Stats } from "./Stats";
 export { StatusBadge } from "./StatusBadge";
