@@ -14,6 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { ImportDatabaseButton } from "./onboarding/components/ImportDatabaseButton";
 import { OnboardingStepContent } from "./onboarding/components/OnboardingStepContent";
 import { OnboardingStepRail } from "./onboarding/components/OnboardingStepRail";
 import { useOnboardingFlow } from "./onboarding/useOnboardingFlow";
@@ -45,6 +46,7 @@ export const OnboardingPage: React.FC = () => {
           <Card className="border-border/60 bg-card/40 shadow-none">
             <CardHeader className="space-y-3">
               <CardTitle>Getting started</CardTitle>
+              <ImportDatabaseButton disabled={flow.isBusy} />
             </CardHeader>
             <CardContent className="space-y-4">
               <OnboardingStepRail
