@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const STORAGE_KEY = "cvclanker.importedProfileNotice";
@@ -45,6 +46,19 @@ describe("ImportedProfileNotice", () => {
     expect(consumeImportedProfileNotice()).toBe("Main hunt");
     expect(consumeImportedProfileNotice()).toBe("Main hunt");
     expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it("still renders under StrictMode's double mount", async () => {
+    const { rememberImportedProfile, ImportedProfileNotice } =
+      await loadFresh();
+    rememberImportedProfile("Main hunt");
+
+    render(
+      <StrictMode>
+        <ImportedProfileNotice />
+      </StrictMode>,
+    );
+    expect(screen.getByText(/Imported "Main hunt"/)).toBeInTheDocument();
   });
 
   it("stays quiet on the next page load", async () => {
