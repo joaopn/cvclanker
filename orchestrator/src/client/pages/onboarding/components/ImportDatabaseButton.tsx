@@ -1,6 +1,7 @@
 import * as api from "@client/api";
 import { ProfileSwitchOverlay } from "@client/components/ProfileSwitchOverlay";
 import { useProfileSwitch } from "@client/hooks/useProfileSwitch";
+import { rememberImportedProfile } from "@client/lib/importedProfileNotice";
 import { queryKeys } from "@client/lib/queryKeys";
 import { toast } from "@client/lib/toast";
 import type { StoredUserProfile } from "@shared/types";
@@ -53,6 +54,7 @@ export const ImportDatabaseButton: React.FC<ImportDatabaseButtonProps> = ({
       void queryClient.invalidateQueries({
         queryKey: queryKeys.userProfiles.all,
       });
+      rememberImportedProfile(profile.name);
       toast.success(`Imported "${profile.name}"`);
       activateProfile(profile.id);
     },

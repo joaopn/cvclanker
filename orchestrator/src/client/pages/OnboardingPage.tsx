@@ -1,6 +1,6 @@
 import { ActivityLogButton } from "@client/components/ActivityLogButton";
-import { PageHeader, PageMain } from "@client/components/layout";
 import { LlmStatusButton } from "@client/components/LlmStatusButton";
+import { PageHeader, PageMain } from "@client/components/layout";
 import { useOnboardingRequirement } from "@client/hooks/useOnboardingRequirement";
 import { ArrowLeft, ArrowRight, Loader2, Sparkles } from "lucide-react";
 import type React from "react";
@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ImportDatabaseButton } from "./onboarding/components/ImportDatabaseButton";
+import { ImportedProfileNotice } from "./onboarding/components/ImportedProfileNotice";
 import { OnboardingStepContent } from "./onboarding/components/OnboardingStepContent";
 import { OnboardingStepRail } from "./onboarding/components/OnboardingStepRail";
 import { useOnboardingFlow } from "./onboarding/useOnboardingFlow";
@@ -42,6 +43,7 @@ export const OnboardingPage: React.FC = () => {
       />
 
       <PageMain className="space-y-4">
+        <ImportedProfileNotice />
         <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
           <Card className="border-border/60 bg-card/40 shadow-none">
             <CardHeader className="space-y-3">

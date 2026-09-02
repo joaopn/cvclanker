@@ -1,4 +1,5 @@
 import { CodexAuthPanel } from "@client/components/CodexAuthPanel";
+import { ProviderCredentialsSection } from "@client/pages/settings/components/ProviderCredentialsSection";
 import { SettingsInput } from "@client/pages/settings/components/SettingsInput";
 import {
   getLlmProviderConfig,
@@ -174,6 +175,25 @@ export const LlmConnectionStep: React.FC<{
             No API key is required for this provider.
           </div>
         )}
+      </div>
+
+      <div className="space-y-3 rounded-lg border border-border/60 p-4">
+        <div className="text-sm font-medium">Other providers (optional)</div>
+        <ProviderCredentialsSection
+          layoutMode="panel"
+          configuredProvider={selectedProvider}
+          excludeConfigured
+          description={
+            <p className="text-sm text-muted-foreground">
+              Save a key for any other provider you use — each one saves on its
+              own, and you can add more later in Settings. These travel with a
+              database export that includes secrets, so a migration carries
+              every provider rather than just the one above. A key saved here
+              takes precedence for its provider, so if you later switch the app
+              to one of them, manage its key in Settings rather than above.
+            </p>
+          }
+        />
       </div>
 
       {isValidatingLlm ? (

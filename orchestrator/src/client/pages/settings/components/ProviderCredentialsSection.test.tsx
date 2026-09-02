@@ -7,6 +7,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import type React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProviderCredentialsSection } from "./ProviderCredentialsSection";
 
@@ -19,7 +20,12 @@ vi.mock("@client/lib/toast", () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }));
 
-function renderSection(configuredProvider = "claude_code") {
+function renderSection(
+  configuredProvider = "claude_code",
+  extraProps: Partial<
+    React.ComponentProps<typeof ProviderCredentialsSection>
+  > = {},
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -28,6 +34,7 @@ function renderSection(configuredProvider = "claude_code") {
       <ProviderCredentialsSection
         layoutMode="panel"
         configuredProvider={configuredProvider}
+        {...extraProps}
       />
     </QueryClientProvider>,
   );
@@ -104,5 +111,80 @@ describe("ProviderCredentialsSection", () => {
     // the form deliberately never displayed.
     expect("apiKey" in input).toBe(false);
     expect(input.baseUrl).toBe("https://proxy.example.test");
+  });
+});
+
+describe("reuse outside Settings", () => {
+  it("replaces the Settings blurb when given a description", async () => {
+    renderSection("openrouter", {
+      description: <p>Wizard framing goes here</p>,
+    });
+
+    expect(
+      await screen.findByText("Wizard framing goes here"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/The configured provider's own key stays in Models/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("drops the configured provider when asked, keeping the rest", async () => {
+    renderSection("openrouter", { excludeConfigured: true });
+
+    expect(await screen.findByText("OpenAI")).toBeInTheDocument();
+    expect(screen.queryByText("OpenRouter")).not.toBeInTheDocument();
+  });
+
+  it("keeps the configured provider by default", async () => {
+    renderSection("openrouter");
+
+    expect(await screen.findByText("OpenRouter")).toBeInTheDocument();
+  });
+
+  // The onboarding wizard hosts this inside its <form>, where a bare Enter
+  // implicitly submits. jsdom has no default action for key events, so a host
+  // form's onSubmit can never fire here — asserting it was NOT called proves
+  // nothing. Cancellation is the actual mechanism, so assert that directly:
+  // fireEvent returns false when preventDefault was called.
+  it("cancels Enter so a host form cannot implicitly submit", async () => {
+    renderSection();
+
+    const key = await screen.findByLabelText<HTMLInputElement>("API key", {
+      selector: "#credential-key-openai",
+    });
+    fireEvent.change(key, { target: { value: "sk-typed" } });
+
+    expect(fireEvent.keyDown(key, { key: "Enter" })).toBe(false);
+    await waitFor(() =>
+      expect(api.saveLlmProviderCredential).toHaveBeenCalledWith("openai", {
+        apiKey: "sk-typed",
+      }),
+    );
+  });
+
+  // An empty payload inserts a row of nulls: a success toast for nothing, and
+  // a Clear button beside a provider with no credential.
+  it("does not save an untouched card on Enter, but still cancels it", async () => {
+    renderSection();
+
+    const key = await screen.findByLabelText<HTMLInputElement>("API key", {
+      selector: "#credential-key-openai",
+    });
+
+    expect(fireEvent.keyDown(key, { key: "Enter" })).toBe(false);
+    await waitFor(() => expect(screen.getByText("OpenAI")).toBeInTheDocument());
+    expect(api.saveLlmProviderCredential).not.toHaveBeenCalled();
+  });
+
+  it("leaves other keys alone", async () => {
+    renderSection();
+
+    const key = await screen.findByLabelText<HTMLInputElement>("API key", {
+      selector: "#credential-key-openai",
+    });
+    fireEvent.change(key, { target: { value: "sk-typed" } });
+
+    expect(fireEvent.keyDown(key, { key: "a" })).toBe(true);
+    expect(api.saveLlmProviderCredential).not.toHaveBeenCalled();
   });
 });
