@@ -1,3 +1,5 @@
+import type { scrapeStartupJobsViaAlgolia } from "startup-jobs-scraper";
+import type { MockedFunction } from "vitest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -10,14 +12,59 @@ vi.mock("startup-jobs-scraper", () => ({
   scrapeStartupJobsViaAlgolia: vi.fn(),
 }));
 
-/** Minimal record shaped like what the scraper returns; only jobUrl is load-bearing. */
+/**
+ * A DETAIL-pass record, as the vendored scraper actually returns one: the
+ * employer is the "View company profile" call-to-action label it reads off the
+ * last company anchor on the job page (B65). Every test uses this shape so
+ * nothing can pass by reading the detail employer.
+ */
 function record(id: string) {
   return {
     title: `Engineer ${id}`,
-    employer: "Acme",
+    employer: "View company profile",
     jobUrl: `https://startup.jobs/${id}`,
     jobDescription: "description",
   };
+}
+
+/** The same job as the SEARCH INDEX returns it: the real company name, no description. */
+function listed(id: string, employer = `Employer ${id}`) {
+  return { ...record(id), employer, jobDescription: undefined };
+}
+
+type PhaseHandler = (call: number) => unknown;
+
+/**
+ * Answers the two calls each term makes -- the list pass (`enrichDetails:
+ * false`, which carries the employers) and the detail pass.
+ *
+ * Each handler is given a 1-based count of calls to ITS OWN phase, so a test
+ * can say "the second term is refused" without counting the other phase's
+ * calls. The returned counters are not the same number: the list result is
+ * cached for the term, so a detail-only retry adds to one and not the other.
+ */
+function mockPhases(
+  scrapeMock: MockedFunction<typeof scrapeStartupJobsViaAlgolia>,
+  handlers: { list?: PhaseHandler; detail?: PhaseHandler },
+) {
+  const counts = { list: 0, detail: 0 };
+  scrapeMock.mockImplementation(async (options) => {
+    if (options.enrichDetails) {
+      counts.detail += 1;
+      return (handlers.detail ? handlers.detail(counts.detail) : []) as never;
+    }
+    counts.list += 1;
+    return (handlers.list ? handlers.list(counts.list) : []) as never;
+  });
+  return counts;
+}
+
+/** A call's options minus the two keys the two passes are meant to differ on. */
+function searchShape(options: Record<string, unknown> | undefined) {
+  const rest: Record<string, unknown> = { ...options };
+  delete rest.enrichDetails;
+  delete rest.detailConcurrency;
+  return rest;
 }
 
 function rateLimit() {
@@ -43,7 +90,7 @@ describe("runStartupJobs", () => {
       "startup-jobs-scraper"
     );
     const scrapeMock = vi.mocked(scrapeStartupJobsViaAlgolia);
-    scrapeMock.mockResolvedValueOnce([]);
+    scrapeMock.mockResolvedValue([]);
 
     const { runStartupJobs } = await import("../src/run");
 
@@ -85,7 +132,7 @@ describe("runStartupJobs", () => {
       "startup-jobs-scraper"
     );
     const scrapeMock = vi.mocked(scrapeStartupJobsViaAlgolia);
-    scrapeMock.mockResolvedValueOnce([]);
+    scrapeMock.mockResolvedValue([]);
 
     const { runStartupJobs } = await import("../src/run");
 
@@ -106,7 +153,7 @@ describe("runStartupJobs", () => {
       "startup-jobs-scraper"
     );
     const scrapeMock = vi.mocked(scrapeStartupJobsViaAlgolia);
-    scrapeMock.mockResolvedValueOnce([]);
+    scrapeMock.mockResolvedValue([]);
 
     const { runStartupJobs } = await import("../src/run");
 
@@ -128,7 +175,7 @@ describe("runStartupJobs", () => {
       "startup-jobs-scraper"
     );
     const scrapeMock = vi.mocked(scrapeStartupJobsViaAlgolia);
-    scrapeMock.mockResolvedValueOnce([]);
+    scrapeMock.mockResolvedValue([]);
 
     const { runStartupJobs } = await import("../src/run");
 
@@ -150,7 +197,7 @@ describe("runStartupJobs", () => {
       "startup-jobs-scraper"
     );
     const scrapeMock = vi.mocked(scrapeStartupJobsViaAlgolia);
-    scrapeMock.mockResolvedValueOnce([]);
+    scrapeMock.mockResolvedValue([]);
 
     const { runStartupJobs } = await import("../src/run");
 
@@ -167,16 +214,251 @@ describe("runStartupJobs", () => {
     );
   });
 
+  it("takes the employer from the search index, never the detail page", async () => {
+    const { scrapeStartupJobsViaAlgolia } = await import(
+      "startup-jobs-scraper"
+    );
+    const scrapeMock = vi.mocked(scrapeStartupJobsViaAlgolia);
+    mockPhases(scrapeMock, {
+      list: () => [
+        listed("a", "Mind Foundry"),
+        listed("b", "Code First Girls"),
+      ],
+      detail: () => [record("a"), record("b")],
+    });
+
+    const { runStartupJobs } = await import("../src/run");
+
+    const result = await runStartupJobs({
+      searchTerms: ["ml engineer"],
+      locations: ["UK"],
+    });
+
+    // B65: the detail pass reports "View company profile" for every row, which
+    // is the CTA button's label. Reading it stored one fake company for the
+    // whole board.
+    expect(result.jobs.map((job) => job.employer)).toEqual([
+      "Mind Foundry",
+      "Code First Girls",
+    ]);
+    expect(result.jobs.map((job) => job.jobDescription)).toEqual([
+      "description",
+      "description",
+    ]);
+  });
+
+  it("asks the list pass for the index and the detail pass for the content", async () => {
+    const { scrapeStartupJobsViaAlgolia } = await import(
+      "startup-jobs-scraper"
+    );
+    const scrapeMock = vi.mocked(scrapeStartupJobsViaAlgolia);
+    mockPhases(scrapeMock, { list: () => [], detail: () => [] });
+
+    const { runStartupJobs } = await import("../src/run");
+
+    await runStartupJobs({
+      searchTerms: ["a"],
+      locations: ["UK"],
+      workplaceTypes: ["remote"],
+      detailConcurrency: 4,
+    });
+
+    const [listCall, detailCall] = scrapeMock.mock.calls.map(([opts]) => opts);
+    // The list pass must not enrich -- enriching it would double the detail
+    // fetches, which are the requests that get this machine refused.
+    expect(listCall?.enrichDetails).toBe(false);
+    expect(listCall?.detailConcurrency).toBeUndefined();
+    expect(detailCall?.enrichDetails).toBe(true);
+    expect(detailCall?.detailConcurrency).toBe(4);
+    // Everything else must be IDENTICAL, and is compared as a whole object
+    // rather than field by field: the passes join on jobUrl, so any query
+    // field that differs changes the hit set and silently turns the
+    // difference into "Unknown Employer" rows. A field-by-field check cannot
+    // see a field added to one pass only -- which is exactly how
+    // workplaceType, the one field here that filters the result set, sat
+    // unpinned.
+    expect(searchShape(listCall)).toEqual(searchShape(detailCall));
+    // Present, so the comparison above is over a workplace-filtered query and
+    // not a pair of objects that both happen to omit it.
+    expect(searchShape(listCall)).toMatchObject({ workplaceType: ["remote"] });
+  });
+
+  it("says Unknown Employer for a row the index cannot name", async () => {
+    const { scrapeStartupJobsViaAlgolia } = await import(
+      "startup-jobs-scraper"
+    );
+    const scrapeMock = vi.mocked(scrapeStartupJobsViaAlgolia);
+    mockPhases(scrapeMock, {
+      // The index moved between the two passes, so the detail pass carries a
+      // row the list pass never saw.
+      list: () => [listed("a", "Mind Foundry")],
+      detail: () => [record("a"), record("b")],
+    });
+
+    const { runStartupJobs } = await import("../src/run");
+
+    const result = await runStartupJobs({
+      searchTerms: ["a"],
+      locations: ["UK"],
+    });
+
+    // The job is kept -- an unnamed employer is not a reason to drop a real
+    // posting -- but it must not inherit the detail pass's CTA label, which
+    // would put it back in the fake company the whole bug is about.
+    expect(result.jobs).toHaveLength(2);
+    expect(result.jobs[1]?.employer).toBe("Unknown Employer");
+    expect(result.jobs.map((job) => job.employer)).not.toContain(
+      "View company profile",
+    );
+  });
+
+  it("trims an employer the index hands over padded", async () => {
+    const { scrapeStartupJobsViaAlgolia } = await import(
+      "startup-jobs-scraper"
+    );
+    const scrapeMock = vi.mocked(scrapeStartupJobsViaAlgolia);
+    mockPhases(scrapeMock, {
+      list: () => [listed("a", "  Mind Foundry\n")],
+      detail: () => [record("a")],
+    });
+
+    const { runStartupJobs } = await import("../src/run");
+
+    const result = await runStartupJobs({
+      searchTerms: ["a"],
+      locations: ["UK"],
+    });
+
+    // The company blocklist matches exactly, so a stray space is a company
+    // the user can never block.
+    expect(result.jobs[0]?.employer).toBe("Mind Foundry");
+  });
+
+  it("does not adopt the vendor's own placeholder as a company name", async () => {
+    const { scrapeStartupJobsViaAlgolia } = await import(
+      "startup-jobs-scraper"
+    );
+    const scrapeMock = vi.mocked(scrapeStartupJobsViaAlgolia);
+    mockPhases(scrapeMock, {
+      // What the scraper writes when the Algolia hit has no company_name.
+      // The second spelling is what a vendor capitalisation change would
+      // produce, and must be caught by the same rule.
+      list: () => [
+        listed("a", "Unknown employer"),
+        listed("b", "Unknown Employer"),
+      ],
+      detail: () => [record("a"), record("b")],
+    });
+
+    const { runStartupJobs } = await import("../src/run");
+
+    const result = await runStartupJobs({
+      searchTerms: ["a"],
+      locations: ["UK"],
+    });
+
+    // One spelling of "we don't know", not two -- a second one splits the
+    // company aggregates exactly the way a wrong name does.
+    expect(result.jobs.map((job) => job.employer)).toEqual([
+      "Unknown Employer",
+      "Unknown Employer",
+    ]);
+  });
+
+  it("never lends a name to a row whose url is the bare site url", async () => {
+    const { scrapeStartupJobsViaAlgolia } = await import(
+      "startup-jobs-scraper"
+    );
+    const scrapeMock = vi.mocked(scrapeStartupJobsViaAlgolia);
+    // What the vendor produces for an Algolia hit with no `path`: every such
+    // hit collapses onto the same url, so indexing them would hand one
+    // company's name to whichever of them the url dedupe keeps.
+    const pathless = (employer: string) => ({
+      ...listed("x", employer),
+      jobUrl: "https://startup.jobs",
+    });
+    mockPhases(scrapeMock, {
+      list: () => [pathless("Roku"), pathless("Mind Foundry")],
+      detail: () => [{ ...record("x"), jobUrl: "https://startup.jobs" }],
+    });
+
+    const { runStartupJobs } = await import("../src/run");
+
+    const result = await runStartupJobs({
+      searchTerms: ["a"],
+      locations: ["UK"],
+    });
+
+    // A plausible-looking wrong company is harder to notice than the CTA
+    // label was, so this must resolve to nothing rather than to a coin flip.
+    expect(result.jobs[0]?.employer).toBe("Unknown Employer");
+  });
+
+  it("does not re-run the list pass when only the detail pass is retried", async () => {
+    const { scrapeStartupJobsViaAlgolia } = await import(
+      "startup-jobs-scraper"
+    );
+    const scrapeMock = vi.mocked(scrapeStartupJobsViaAlgolia);
+    const counts = mockPhases(scrapeMock, {
+      list: () => [listed("a", "Mind Foundry")],
+      detail: (n) => {
+        if (n === 1) throw rateLimit();
+        return [record("a")];
+      },
+    });
+
+    const { runStartupJobs } = await import("../src/run");
+
+    const result = await runStartupJobs({
+      searchTerms: ["a"],
+      locations: ["UK"],
+    });
+
+    // The list pass is a request against the rate-limited host too, so a
+    // detail-phase retry must not buy it a second time.
+    expect(counts.list).toBe(1);
+    expect(counts.detail).toBe(2);
+    // And the cached index still names the row on the retry.
+    expect(result.jobs[0]?.employer).toBe("Mind Foundry");
+  });
+
+  it("survives a list pass that resolves to something that is not an array", async () => {
+    const { scrapeStartupJobsViaAlgolia } = await import(
+      "startup-jobs-scraper"
+    );
+    const scrapeMock = vi.mocked(scrapeStartupJobsViaAlgolia);
+    mockPhases(scrapeMock, {
+      list: () => undefined as never,
+      detail: () => [record("a")],
+    });
+
+    const { runStartupJobs } = await import("../src/run");
+
+    const result = await runStartupJobs({
+      searchTerms: ["a"],
+      locations: ["UK"],
+    });
+
+    // Degrades to an unnamed employer, not a TypeError that fails the term.
+    expect(result.success).toBe(true);
+    expect(result.jobs).toHaveLength(1);
+    expect(result.jobs[0]?.employer).toBe("Unknown Employer");
+  });
+
   it("retries the same term through the backoff after a 429 and keeps going", async () => {
     const { scrapeStartupJobsViaAlgolia } = await import(
       "startup-jobs-scraper"
     );
     const scrapeMock = vi.mocked(scrapeStartupJobsViaAlgolia);
-    let calls = 0;
-    scrapeMock.mockImplementation(async () => {
-      calls += 1;
-      if (calls === 1) throw rateLimit();
-      return [record(String(calls))];
+    const counts = mockPhases(scrapeMock, {
+      // The refusal lands on the list pass, which is one place a 429 reaches
+      // us -- the detail pass has its own bootstrap GET and can 429 there too
+      // (covered below), but its per-PAGE failures are swallowed (B64).
+      list: (n) => {
+        if (n === 1) throw rateLimit();
+        return [listed(String(n))];
+      },
+      detail: (n) => [record(String(n))],
     });
 
     const { runStartupJobs } = await import("../src/run");
@@ -187,7 +469,8 @@ describe("runStartupJobs", () => {
     });
 
     // Two terms, the first of which needed a second attempt.
-    expect(calls).toBe(3);
+    expect(counts.list).toBe(3);
+    expect(counts.detail).toBe(2);
     expect(result.success).toBe(true);
     expect(result.jobs).toHaveLength(2);
   });
@@ -197,11 +480,12 @@ describe("runStartupJobs", () => {
       "startup-jobs-scraper"
     );
     const scrapeMock = vi.mocked(scrapeStartupJobsViaAlgolia);
-    let term = 0;
-    scrapeMock.mockImplementation(async () => {
-      term += 1;
-      if (term <= 2) return [record(`t${term}-a`), record(`t${term}-b`)];
-      throw rateLimit();
+    mockPhases(scrapeMock, {
+      list: (n) => {
+        if (n > 2) throw rateLimit();
+        return [listed(`t${n}-a`), listed(`t${n}-b`)];
+      },
+      detail: (n) => [record(`t${n}-a`), record(`t${n}-b`)],
     });
 
     const { runStartupJobs } = await import("../src/run");
@@ -245,11 +529,14 @@ describe("runStartupJobs", () => {
       "startup-jobs-scraper"
     );
     const scrapeMock = vi.mocked(scrapeStartupJobsViaAlgolia);
-    let term = 0;
-    scrapeMock.mockImplementation(async () => {
-      term += 1;
-      if (term === 1) return [record("kept")];
-      throw new Error("error sending request for url (https://startup.jobs/)");
+    const counts = mockPhases(scrapeMock, {
+      list: (n) => {
+        if (n === 1) return [listed("kept")];
+        throw new Error(
+          "error sending request for url (https://startup.jobs/)",
+        );
+      },
+      detail: () => [record("kept")],
     });
 
     const { runStartupJobs } = await import("../src/run");
@@ -260,7 +547,7 @@ describe("runStartupJobs", () => {
     });
 
     // One good term, then a single failed attempt -- no retries.
-    expect(term).toBe(2);
+    expect(counts.list).toBe(2);
     expect(result.success).toBe(false);
     expect(result.jobs).toHaveLength(1);
     expect(result.error).toMatch(/refusing connections/i);
@@ -271,11 +558,12 @@ describe("runStartupJobs", () => {
       "startup-jobs-scraper"
     );
     const scrapeMock = vi.mocked(scrapeStartupJobsViaAlgolia);
-    let term = 0;
-    scrapeMock.mockImplementation(async () => {
-      term += 1;
-      if (term === 1) return [record("kept")];
-      throw new Error("Missing Algolia config fields: {}");
+    const counts = mockPhases(scrapeMock, {
+      list: (n) => {
+        if (n === 1) return [listed("kept")];
+        throw new Error("Missing Algolia config fields: {}");
+      },
+      detail: () => [record("kept")],
     });
 
     const { runStartupJobs } = await import("../src/run");
@@ -286,7 +574,7 @@ describe("runStartupJobs", () => {
     });
 
     // Reaches the outer catch (no retry), which must salvage too.
-    expect(term).toBe(2);
+    expect(counts.list).toBe(2);
     expect(result.success).toBe(false);
     expect(result.jobs).toHaveLength(1);
     expect(result.error).toMatch(/Missing Algolia config/);
@@ -301,11 +589,12 @@ describe("runStartupJobs", () => {
     const { scrapeStartupJobsViaAlgolia } = await import(
       "startup-jobs-scraper"
     );
-    let calls = 0;
-    vi.mocked(scrapeStartupJobsViaAlgolia).mockImplementation(async () => {
-      calls += 1;
-      if (calls === 1) throw rateLimit();
-      return [record("1")];
+    const counts = mockPhases(vi.mocked(scrapeStartupJobsViaAlgolia), {
+      list: (n) => {
+        if (n === 1) throw rateLimit();
+        return [listed("1")];
+      },
+      detail: () => [record("1")],
     });
 
     const { runStartupJobs } = await import("../src/run");
@@ -316,7 +605,8 @@ describe("runStartupJobs", () => {
     });
 
     expect(result.success).toBe(true);
-    expect(calls).toBe(2);
+    expect(counts.list).toBe(2);
+    expect(counts.detail).toBe(1);
     // Deleting either registerRateLimit() or waitForRateLimitWindow() from the
     // call site drops this to ~0ms — which is what makes the wiring, and not
     // just the module, tested.
@@ -350,13 +640,14 @@ describe("runStartupJobs", () => {
       "startup-jobs-scraper"
     );
     let cancelled = false;
-    let calls = 0;
-    vi.mocked(scrapeStartupJobsViaAlgolia).mockImplementation(async () => {
-      calls += 1;
-      if (calls === 1) return [record("kept")];
-      // Refused, and the user hits Cancel while the 5s window is open.
-      cancelled = true;
-      throw rateLimit();
+    mockPhases(vi.mocked(scrapeStartupJobsViaAlgolia), {
+      list: (n) => {
+        if (n === 1) return [listed("kept")];
+        // Refused, and the user hits Cancel while the 5s window is open.
+        cancelled = true;
+        throw rateLimit();
+      },
+      detail: () => [record("kept")],
     });
 
     const { runStartupJobs } = await import("../src/run");
@@ -382,14 +673,15 @@ describe("runStartupJobs", () => {
     const { scrapeStartupJobsViaAlgolia } = await import(
       "startup-jobs-scraper"
     );
-    let calls = 0;
-    vi.mocked(scrapeStartupJobsViaAlgolia).mockImplementation(async () => {
-      calls += 1;
+    const counts = mockPhases(vi.mocked(scrapeStartupJobsViaAlgolia), {
       // Flapping: every term is refused once and served on the retry, so the
       // per-term attempt limit is never reached and only the run-level budget
-      // can stop this.
-      if (calls % 2 === 1) throw rateLimit();
-      return [record(String(calls))];
+      // can stop this. Two list calls per term, the odd one refused.
+      list: (n) => {
+        if (n % 2 === 1) throw rateLimit();
+        return [listed(String(n))];
+      },
+      detail: (n) => [record(String(n))],
     });
 
     const { runStartupJobs } = await import("../src/run");
@@ -405,8 +697,8 @@ describe("runStartupJobs", () => {
     // timer can land either side of (measured ~1% of runs accrue one extra
     // millisecond and stop a term earlier). What matters is that it stopped at
     // all -- without the budget check all six terms are served, which is 12
-    // calls and a successful run.
-    expect(calls).toBeLessThan(12);
+    // list calls and a successful run.
+    expect(counts.list).toBeLessThan(12);
     expect(result.jobs.length).toBeGreaterThan(0);
     expect(result.jobs.length).toBeLessThan(6);
   });
@@ -438,11 +730,12 @@ describe("runStartupJobs", () => {
     const { scrapeStartupJobsViaAlgolia } = await import(
       "startup-jobs-scraper"
     );
-    let calls = 0;
-    vi.mocked(scrapeStartupJobsViaAlgolia).mockImplementation(async () => {
-      calls += 1;
-      if (calls === 1) return [record("kept")];
-      throw rateLimit();
+    mockPhases(vi.mocked(scrapeStartupJobsViaAlgolia), {
+      list: (n) => {
+        if (n === 1) return [listed("kept")];
+        throw rateLimit();
+      },
+      detail: () => [record("kept")],
     });
 
     const { runStartupJobs } = await import("../src/run");
@@ -463,10 +756,12 @@ describe("runStartupJobs", () => {
       "startup-jobs-scraper"
     );
     const scrapeMock = vi.mocked(scrapeStartupJobsViaAlgolia);
-    scrapeMock.mockResolvedValueOnce([record("kept")]);
-    // What a reset-but-unstubbed mock resolves to, and the only way the
-    // defensive guard after the retry loop can actually fire.
-    scrapeMock.mockResolvedValueOnce(undefined as never);
+    mockPhases(scrapeMock, {
+      list: () => [listed("kept")],
+      // What a reset-but-unstubbed mock resolves to, and the only way the
+      // defensive guard after the retry loop can actually fire.
+      detail: (n) => (n === 1 ? [record("kept")] : (undefined as never)),
+    });
 
     const { runStartupJobs } = await import("../src/run");
     const result = await runStartupJobs({

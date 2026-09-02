@@ -107,13 +107,97 @@ function inferJobType(disciplines: string | undefined): string | undefined {
   return segments.length > 1 ? segments[segments.length - 1] : undefined;
 }
 
-function mapStartupJob(row: StartupJobRecord): CreateJobInput | null {
+/**
+ * What the vendored scraper writes when an Algolia hit carries no
+ * `company_name`. Recognised so it does not reach the DB as a second spelling
+ * of this mapper's own "Unknown Employer" — two labels for "we don't know"
+ * split the company aggregates the same way a wrong name does.
+ *
+ * Compared case-insensitively for that same reason: the vendor spells it
+ * "Unknown employer" today, and a capitalisation change there would otherwise
+ * silently reopen the split this constant exists to close.
+ */
+const VENDOR_UNKNOWN_EMPLOYER = "unknown employer";
+
+/**
+ * Whether a job url names an actual posting.
+ *
+ * `buildRecordFromHit` falls back to the bare site url when an Algolia hit has
+ * no `path`, so every such hit shares one join key. Indexing them would let
+ * the last one's company name be handed to whichever of them the run's own
+ * url dedupe happened to keep — a plausible-looking wrong employer, which is
+ * the failure the index below exists to remove.
+ *
+ * Scoped to the index deliberately: such a row still imports, unnamed, as it
+ * did before. If a later slice decides it should not, the principled home is
+ * `mapStartupJob` returning null, which routes it through the run's existing
+ * unmappable counter rather than dropping it in silence.
+ */
+function namesAPosting(jobUrl: string): boolean {
+  try {
+    return new URL(jobUrl).pathname !== "/";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Employer names keyed by job url, taken from the search-index pass.
+ *
+ * This exists because the detail pass CANNOT be trusted for the employer. The
+ * vendored scraper reads it from the last `a[href^="/company/"]` on the job
+ * page, and on every current startup.jobs layout that anchor is the "View
+ * company profile" call-to-action rather than one of the earlier anchors that
+ * carry the company name — measured against live pages, five such anchors per
+ * page, the last one always the CTA. Its json-ld fallback is unreachable too
+ * (startup.jobs emits no `hiringOrganization`), so the detail pass overwrote
+ * the correct Algolia name with the button's label on 100% of rows.
+ *
+ * The list pass reads `company_name` straight off the search index, which is
+ * the site's own structured field, so it stays right regardless of how the
+ * page is laid out.
+ */
+function indexEmployersByJobUrl(
+  records: StartupJobRecord[],
+): Map<string, string> {
+  const index = new Map<string, string>();
+  // Deliberately SOFTER than the `!records` guard on the detail pass below,
+  // which fails the term: this one degrades to an empty index, so the rows
+  // still import and merely go unnamed. Losing the employers is not a reason
+  // to throw away a scrape the run has already paid for.
+  if (!Array.isArray(records)) return index;
+  for (const record of records) {
+    if (!record.jobUrl || !namesAPosting(record.jobUrl)) continue;
+    const employer = record.employer?.trim();
+    if (!employer || employer.toLowerCase() === VENDOR_UNKNOWN_EMPLOYER) {
+      continue;
+    }
+    index.set(record.jobUrl, employer);
+  }
+  return index;
+}
+
+function mapStartupJob(
+  row: StartupJobRecord,
+  employerByJobUrl: Map<string, string>,
+): CreateJobInput | null {
   if (!row.jobUrl) return null;
 
   return {
     source: "startupjobs",
     title: row.title || "Unknown Title",
-    employer: row.employer || "Unknown Employer",
+    // Index only, never `row.employer`: see indexEmployersByJobUrl. A row the
+    // index cannot name has no employer we trust, and saying so is better
+    // than storing the CTA label, which reads like a real company and groups
+    // every unrelated posting under it.
+    //
+    // What that gives up: the vendor's own fallback chain ends in the correct
+    // Algolia name, so `row.employer` IS right on a page carrying no company
+    // anchor at all. Separating that case from the CTA case needs the CTA
+    // string hardcoded here, and the anchor was present on 100% of pages
+    // sampled — so the trade is a rare missed name against never re-storing
+    // the fake company.
+    employer: employerByJobUrl.get(row.jobUrl) || "Unknown Employer",
     employerUrl: row.employerUrl || undefined,
     jobUrl: row.jobUrl,
     applicationLink: row.applicationLink || row.jobUrl,
@@ -270,6 +354,10 @@ export async function runStartupJobs(
         });
 
         let records: StartupJobRecord[] | null = null;
+        // Held outside the attempt loop: once the list pass has answered, a
+        // detail-phase retry must not pay for it again. The employers it
+        // carries do not go stale within a term.
+        let employerByJobUrl: Map<string, string> | null = null;
         for (
           let attempt = 1;
           attempt <= MAX_RATE_LIMIT_ATTEMPTS;
@@ -280,13 +368,53 @@ export async function runStartupJobs(
           }
 
           try {
-            records = await scrapeStartupJobsViaAlgolia({
+            const search = {
               query: searchTerm,
               requestedCount: maxJobsPerTerm,
-              enrichDetails: true,
-              detailConcurrency: options.detailConcurrency,
               location,
               workplaceType,
+            };
+
+            // Two passes over the same query, because the detail pass is the
+            // one that destroys the employer. What the extra pass costs, in
+            // the terms that matter for a source B62/B63 document as
+            // chronically rate-limiting this box:
+            //
+            // Volume — one more startup.jobs request per term, its bootstrap
+            // GET (the two Algolia calls it also makes go to algolia.net, not
+            // the limited host). Against the up-to-maxJobsPerTerm detail pages
+            // the second pass fetches that is ~2% at the default cap of 50,
+            // but the cap is usually rewritten far lower by the maxJobsPerTerm
+            // global mapping and the share grows as it shrinks: ~17% at five
+            // hits a term, and a doubling at none.
+            //
+            // Exposure — that bootstrap GET is the only request TO THAT HOST
+            // whose 429 this code can see, since the detail phase swallows its
+            // own per-page failures (B64). So refusal-surfacing requests per
+            // term go from one to two whatever the cap is, which is the honest
+            // headline rather than the volume figure. (The Algolia query and
+            // places lookup surface a 429 too — see rate-limit.ts — but they
+            // are a different host with a different limit.)
+            //
+            // Ordering, which is NOT an offset against the old cost: a refused
+            // term cost one request before this change and costs one or two
+            // now, never less. What the ordering buys is against the other
+            // arrangement of the same two passes — running the list pass
+            // second would surface its refusal only after the detail pass had
+            // already spent its bootstrap and up to fifty pages.
+            if (!employerByJobUrl) {
+              employerByJobUrl = indexEmployersByJobUrl(
+                await scrapeStartupJobsViaAlgolia({
+                  ...search,
+                  enrichDetails: false,
+                }),
+              );
+            }
+
+            records = await scrapeStartupJobsViaAlgolia({
+              ...search,
+              enrichDetails: true,
+              detailConcurrency: options.detailConcurrency,
             });
             break;
           } catch (error) {
@@ -332,8 +460,11 @@ export async function runStartupJobs(
         }
 
         let jobsFoundTerm = 0;
+        // Non-null whenever `records` is — both are assigned by the same
+        // successful attempt — but the compiler cannot see that.
+        const employers = employerByJobUrl ?? new Map<string, string>();
         for (const record of records) {
-          const mapped = mapStartupJob(record);
+          const mapped = mapStartupJob(record, employers);
           if (!mapped) {
             // A record the API returned that has no usable url/title. Counted
             // rather than dropped in silence.
