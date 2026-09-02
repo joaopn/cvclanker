@@ -254,6 +254,11 @@ export const UserProfilesPanel: React.FC<UserProfilesPanelProps> = ({
                 The file will contain credentials in plaintext — store it
                 securely.
               </span>
+              <span className="block text-[11px]">
+                Tick this to migrate to another install: without it the export
+                has no API keys, and the other end may land on the onboarding
+                wizard to enter them again.
+              </span>
             </span>
           </label>
 

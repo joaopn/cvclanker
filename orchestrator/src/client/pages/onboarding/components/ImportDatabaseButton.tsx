@@ -97,10 +97,20 @@ export const ImportDatabaseButton: React.FC<ImportDatabaseButtonProps> = ({
         className="hidden"
         onChange={handleFilePicked}
       />
-      <p className="text-xs text-muted-foreground">
-        Already using CV Clanker elsewhere? Import that database to carry your
-        jobs, CVs and settings across instead of setting up again.
-      </p>
+      <div className="space-y-1 text-xs text-muted-foreground">
+        <p>
+          Already using CV Clanker elsewhere? Import that database to carry your
+          jobs, CVs and settings across instead of setting up again.
+        </p>
+        <p>
+          Export it with{" "}
+          <span className="font-medium text-foreground">
+            &quot;Include API keys &amp; secrets&quot;
+          </span>{" "}
+          ticked. That box is off by default, and without it the file carries no
+          API keys — so you may have to enter them here anyway.
+        </p>
+      </div>
 
       {showSwitchRetry ? (
         <div className="space-y-2 rounded-md border border-border/60 p-2">
@@ -137,11 +147,14 @@ export const ImportDatabaseButton: React.FC<ImportDatabaseButtonProps> = ({
               into it. Your current database is stashed as its own profile —
               nothing is deleted, and you can switch back from the Profile line
               in the menu in the top-left. Sessions do not carry across
-              profiles, so expect a re-login where authentication is enabled. A
-              file exported without secrets holds no API keys and no basic-auth
-              password: you would come back here to re-enter the keys, and
-              authentication would be off unless your server sets its own
-              credentials in the environment.
+              profiles, so expect a re-login where authentication is enabled.
+              <span className="mt-2 block text-foreground">
+                Exported without &quot;Include API keys &amp; secrets&quot;?
+                Then the file carries no API keys, no tokens and no basic-auth
+                password. Unless your server supplies those itself, or your LLM
+                provider needs no key or token, this wizard will still be here
+                after the restart and authentication will be off.
+              </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

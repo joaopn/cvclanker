@@ -178,6 +178,16 @@ describe("ImportDatabaseButton", () => {
     await waitFor(() => expect(reloadApp).toHaveBeenCalled());
   });
 
+  // The export checkbox is off by default, and a secrets-stripped file cannot
+  // satisfy the onboarding gate — so the precondition has to be stated where
+  // the file is chosen, not only after it fails.
+  it("states the include-secrets precondition before a file is picked", () => {
+    renderButton();
+    expect(
+      screen.getByText(/ticked\. That box is off by default/i),
+    ).toBeInTheDocument();
+  });
+
   it("disables the trigger while the wizard is busy", () => {
     renderButton(true);
     expect(
