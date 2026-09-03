@@ -170,6 +170,7 @@ export async function getJobListItems(
     repostCount: jobs.repostCount,
     liveClosed: jobs.liveClosed,
     liveApplicants: jobs.liveApplicants,
+    liveEasyApply: jobs.liveEasyApply,
     liveStatusCheckedAt: jobs.liveStatusCheckedAt,
     discoveredAt: jobs.discoveredAt,
     readyAt: jobs.readyAt,
@@ -742,11 +743,12 @@ export async function createJobs(
             status: nextStatus,
             updatedAt: now,
             // A repost is a fresh posting state: the live LinkedIn check
-            // (closed / applicant count) predates it and no longer describes
-            // this row — clearing it keeps the live-closed sweep from
+            // (closed / applicant count / Easy Apply) predates it and no
+            // longer describes this row — clearing it keeps the sweep from
             // re-staling a freshly relisted job on a stale verdict.
             liveClosed: null,
             liveApplicants: null,
+            liveEasyApply: null,
             liveStatusCheckedAt: null,
           })
           .where(eq(jobs.id, existing.id));
@@ -973,7 +975,7 @@ export interface LiveStatusRefreshCandidate {
  * Rows already known closed are excluded: re-deriving a verdict that has
  * almost certainly not changed is what a cap this tight can least afford. The
  * usual way back in is a repost — `createJobs`' forward-shift arm clears all
- * three `live_*` columns, so a relisted posting re-enters with a NULL
+ * four `live_*` columns, so a relisted posting re-enters with a NULL
  * timestamp and sorts first. Residual, accepted: that arm needs a strictly
  * FORWARD `date_posted`, so a posting that reopens without one — or a verdict
  * this parser got wrong — stays out of the rotation for good. The manual
@@ -1379,6 +1381,7 @@ function mapRowToJob(row: typeof jobs.$inferSelect): Job {
     repostCount: row.repostCount ?? 0,
     liveClosed: row.liveClosed ?? null,
     liveApplicants: row.liveApplicants ?? null,
+    liveEasyApply: row.liveEasyApply ?? null,
     liveStatusCheckedAt: row.liveStatusCheckedAt ?? null,
     discoveredAt: row.discoveredAt,
     processedAt: row.processedAt,

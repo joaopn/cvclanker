@@ -4,8 +4,10 @@ import { CompanyNameButton } from "./CompanyNameButton";
 import {
   defaultStatusToken,
   LIVE_CLOSED_CHIP_CLASS,
+  LIVE_EASY_APPLY_CHIP_CLASS,
   outcomeLabel,
   showsAppliedBadge,
+  showsEasyApplyChip,
   statusTokens,
 } from "./constants";
 import { JobCategoryBadge } from "./JobCategoryBadge";
@@ -139,9 +141,14 @@ export const JobRowContent = ({
             ) : (
               // A closed posting's applicant caption is reset by LinkedIn, so
               // the server stores null for it — this branch is open jobs only.
-              <span className="truncate">
-                {job.liveApplicants ?? "Accepting applications"}
-              </span>
+              <>
+                <span className="truncate">
+                  {job.liveApplicants ?? "Accepting applications"}
+                </span>
+                {showsEasyApplyChip(job) && (
+                  <span className={LIVE_EASY_APPLY_CHIP_CLASS}>Easy Apply</span>
+                )}
+              </>
             )}
             <span
               className="text-muted-foreground/70"

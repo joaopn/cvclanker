@@ -53,6 +53,45 @@ describe("SwipeCardContent live status", () => {
     expect(screen.queryByText(/applicants/)).not.toBeInTheDocument();
   });
 
+  it("flags an Easy Apply posting on the live-status line", () => {
+    card({
+      liveClosed: false,
+      liveApplicants: "20 applicants",
+      liveEasyApply: true,
+      liveStatusCheckedAt: new Date().toISOString(),
+    });
+
+    expect(screen.getByText("Easy Apply")).toBeInTheDocument();
+    expect(screen.getByText("20 applicants")).toBeInTheDocument();
+  });
+
+  it("shows no chip for an offsite posting", () => {
+    // `false` is a real verdict ("apply on the employer's site") and describes
+    // most postings, so it deliberately renders nothing.
+    card({
+      liveClosed: false,
+      liveApplicants: "20 applicants",
+      liveEasyApply: false,
+      liveStatusCheckedAt: new Date().toISOString(),
+    });
+    expect(screen.queryByText("Easy Apply")).not.toBeInTheDocument();
+  });
+
+  it("shows no chip on a row nobody has checked", () => {
+    card({ liveClosed: null, liveEasyApply: null, liveStatusCheckedAt: null });
+    expect(screen.queryByText("Easy Apply")).not.toBeInTheDocument();
+  });
+
+  it("shows no Easy Apply chip on a closed posting", () => {
+    card({
+      liveClosed: true,
+      liveApplicants: null,
+      liveEasyApply: null,
+      liveStatusCheckedAt: new Date().toISOString(),
+    });
+    expect(screen.queryByText("Easy Apply")).not.toBeInTheDocument();
+  });
+
   it("shows nothing about applicants on a row nobody has checked", () => {
     card({ liveClosed: null, liveApplicants: null, liveStatusCheckedAt: null });
 

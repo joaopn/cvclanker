@@ -114,13 +114,15 @@ export async function refreshLiveStatusStep(args: {
           candidate.jobUrl,
           candidate.sourceJobId,
         );
-        // The same three columns the manual `fetch_live_status` action writes,
+        // The same four columns the manual `fetch_live_status` action writes,
         // including the rule that a closed posting stores a NULL applicant
         // count (LinkedIn resets the caption on closure, so the number would
-        // be fabricated).
+        // be fabricated) and a NULL Easy-Apply verdict (a closed posting
+        // renders no Apply button to read it from).
         const updated = await jobsRepo.updateJob(candidate.id, {
           liveClosed: status.closed,
           liveApplicants: status.applicants,
+          liveEasyApply: status.easyApply,
           liveStatusCheckedAt: new Date().toISOString(),
         });
         if (!updated) {

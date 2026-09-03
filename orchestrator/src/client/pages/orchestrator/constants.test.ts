@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { FilterTab, JobFilterChipType } from "./constants";
-import { filterChipTypesForTab, isFilterFamilyActive, tabs } from "./constants";
+import {
+  filterChipTypesForTab,
+  isFilterFamilyActive,
+  showsEasyApplyChip,
+  tabs,
+} from "./constants";
 
 // Written out per tab rather than derived from FIT_CHIP_TABS / FILTER_BAR_TABS:
 // re-deriving from the same constants the implementation filters on would pass
@@ -40,5 +45,61 @@ describe("isFilterFamilyActive", () => {
     expect(isFilterFamilyActive(["fit", "profile"], ["fit"], "profile")).toBe(
       false,
     );
+  });
+});
+
+// The Easy-Apply chip rule. Both render sites call this from inside JSX that
+// already guarantees "checked" and "not closed", so those two clauses decide
+// nothing THERE — these tests are what keeps them real for any third caller,
+// and what stops them rotting into decoration.
+describe("showsEasyApplyChip", () => {
+  const checked = "2026-09-03T10:00:00.000Z";
+
+  it("flags a checked, open, on-LinkedIn posting", () => {
+    expect(
+      showsEasyApplyChip({
+        liveStatusCheckedAt: checked,
+        liveClosed: false,
+        liveEasyApply: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("refuses a row nobody has checked, whatever the column says", () => {
+    // A stored verdict with no timestamp is stale bookkeeping, not evidence.
+    expect(
+      showsEasyApplyChip({
+        liveStatusCheckedAt: null,
+        liveClosed: false,
+        liveEasyApply: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("refuses a closed posting even if a verdict is stored", () => {
+    // A closed posting renders no Apply button, so any surviving `true` is a
+    // pre-closure verdict and presenting it would claim a route to apply that
+    // no longer exists.
+    expect(
+      showsEasyApplyChip({
+        liveStatusCheckedAt: checked,
+        liveClosed: true,
+        liveEasyApply: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("refuses offsite and unknown, which are different things", () => {
+    // `false` is a verdict ("apply on the employer's site"), `null` is "not
+    // known" — neither earns a chip, but they must not be conflated.
+    for (const liveEasyApply of [false, null]) {
+      expect(
+        showsEasyApplyChip({
+          liveStatusCheckedAt: checked,
+          liveClosed: false,
+          liveEasyApply,
+        }),
+      ).toBe(false);
+    }
   });
 });

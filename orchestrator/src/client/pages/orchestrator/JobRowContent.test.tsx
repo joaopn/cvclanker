@@ -71,3 +71,56 @@ describe("JobRowContent applied badge", () => {
     expect(screen.queryByText("Applied")).not.toBeInTheDocument();
   });
 });
+
+/**
+ * The Easy-Apply flag on a list row. It rides the live-status line, so it is
+ * only ever present on a row someone (or a run's refresh step) has checked.
+ */
+describe("JobRowContent Easy Apply chip", () => {
+  const row = (overrides: Partial<JobListItem>) =>
+    render(<JobRowContent job={createJob(overrides) as JobListItem} />);
+
+  it("flags an open posting that applies on LinkedIn", () => {
+    row({
+      liveClosed: false,
+      liveApplicants: "20 applicants",
+      liveEasyApply: true,
+      liveStatusCheckedAt: new Date().toISOString(),
+    });
+
+    expect(screen.getByText("Easy Apply")).toBeInTheDocument();
+    expect(screen.getByText("20 applicants")).toBeInTheDocument();
+  });
+
+  it("stays silent for an offsite posting", () => {
+    // `false` is a verdict, not a gap — it just describes most postings, so a
+    // chip for it would be noise on nearly every checked row.
+    row({
+      liveClosed: false,
+      liveApplicants: "20 applicants",
+      liveEasyApply: false,
+      liveStatusCheckedAt: new Date().toISOString(),
+    });
+
+    expect(screen.queryByText("Easy Apply")).not.toBeInTheDocument();
+  });
+
+  it("stays silent on a closed posting", () => {
+    // A closed posting renders no Apply button, so its verdict is null — the
+    // chip must not appear even on a row that was checked.
+    row({
+      liveClosed: true,
+      liveApplicants: null,
+      liveEasyApply: null,
+      liveStatusCheckedAt: new Date().toISOString(),
+    });
+
+    expect(screen.queryByText("Easy Apply")).not.toBeInTheDocument();
+  });
+
+  it("stays silent on a row nobody has checked", () => {
+    row({ liveClosed: null, liveEasyApply: null, liveStatusCheckedAt: null });
+
+    expect(screen.queryByText("Easy Apply")).not.toBeInTheDocument();
+  });
+});

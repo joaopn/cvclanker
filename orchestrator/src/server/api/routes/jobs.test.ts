@@ -24,6 +24,7 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     closedAt?: number | null;
     jobUrl?: string;
     tailoringFailureReason?: string | null;
+    liveEasyApply?: boolean | null;
   }) {
     const { db, schema } = await import("@server/db/index");
     await db.insert(schema.jobs).values({
@@ -51,6 +52,7 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
         | null,
       closedAt: overrides.closedAt ?? null,
       tailoringFailureReason: overrides.tailoringFailureReason ?? null,
+      liveEasyApply: overrides.liveEasyApply ?? null,
     });
   }
 
@@ -644,6 +646,9 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
       id: "live-ok",
       status: "discovered",
       jobUrl: "https://www.linkedin.com/jobs/view/4441896971",
+      // Pre-stamped so the assertion below is about the check CLEARING a
+      // stored verdict, not about a column that was already null.
+      liveEasyApply: true,
     });
     const manualJob = await import("@server/services/manualJob");
     vi.mocked(manualJob.tryStaticFetch).mockResolvedValue({
@@ -669,8 +674,47 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     // The caption on a closed posting is LinkedIn's reset value — stored null.
     expect(job.liveApplicants).toBeNull();
     expect(job.liveStatusCheckedAt).toBeTruthy();
+    // A closed posting renders no Apply button, so there is no Easy-Apply
+    // verdict to store — false would claim an offsite posting never seen, and
+    // the previously stored `true` must not survive the re-check.
+    expect(job.liveEasyApply).toBeNull();
     // The check must not move the job or touch its score.
     expect(job.status).toBe("discovered");
+  });
+
+  it("fetch_live_status stores the Easy-Apply flag off an onsite posting", async () => {
+    await seedJob({
+      id: "live-easy",
+      status: "discovered",
+      jobUrl: "https://www.linkedin.com/jobs/view/4458701238",
+    });
+    const manualJob = await import("@server/services/manualJob");
+    // Live-captured onsite CTA: `apply-button`, no data-modal. The Save
+    // outlet shares the container and carries a data-modal of its own.
+    vi.mocked(manualJob.tryStaticFetch).mockResolvedValue({
+      html: `<html><body>
+        <h2 class="top-card-layout__title topcard__title">AI Developer</h2>
+        <div class="contextual-sign-in-modal"></div>
+        <div class="top-card-layout__cta-container flex flex-wrap">
+          <button class="apply-button apply-button--default top-card-layout__cta btn-md btn-primary" data-reference-id="idN64ZZ4Tp==">Apply</button>
+          <button class="top-card-layout__cta btn-md btn-secondary sign-up-modal__outlet" data-modal="job-details-topcard-save-modal">Save</button>
+        </div>
+        <figcaption class="num-applicants__caption">20 applicants</figcaption>
+      </body></html>`,
+      finalUrl:
+        "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/4458701238",
+    });
+
+    const { body } = await postAction({
+      action: "fetch_live_status",
+      jobIds: ["live-easy"],
+    });
+
+    expect(body.data.succeeded).toBe(1);
+    const job = body.data.results[0].job;
+    expect(job.liveClosed).toBe(false);
+    expect(job.liveEasyApply).toBe(true);
+    expect(job.liveApplicants).toBe("20 applicants");
   });
 
   it("clear_score drops the stored suitability without moving the job", async () => {

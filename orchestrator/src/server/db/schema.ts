@@ -149,9 +149,12 @@ export const jobs = sqliteTable("jobs", {
   // by a run's live-status refresh step. `liveClosed` null = never checked;
   // `liveApplicants` is the board's caption text, null when never checked or
   // when the posting is closed (LinkedIn resets the caption on closed
-  // postings).
+  // postings). `liveEasyApply` says whether applying happens on LinkedIn,
+  // null when never checked or when the posting is closed (a closed posting
+  // renders no Apply button to read).
   liveClosed: integer("live_closed", { mode: "boolean" }),
   liveApplicants: text("live_applicants"),
+  liveEasyApply: integer("live_easy_apply", { mode: "boolean" }),
   liveStatusCheckedAt: text("live_status_checked_at"),
   suitabilityCategory: text("suitability_category", {
     enum: SUITABILITY_CATEGORIES,

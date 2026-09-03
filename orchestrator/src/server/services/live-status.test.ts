@@ -39,6 +39,12 @@ const APPLY_CTA = `<div class="top-card-layout__cta-container flex flex-wrap"><b
 // 4458701238), present on BOTH renders.
 const ONSITE_APPLY_CTA = `<div class="top-card-layout__cta-container flex flex-wrap"><button class="apply-button apply-button--default top-card-layout__cta btn-md btn-primary" data-reference-id="idN64ZZ4Tp==">Apply</button></div>`;
 
+// The Save button is a sign-up-modal outlet living in the SAME container as
+// the Apply CTA (measured on job 4456944509) — which is why the offsite probe
+// pins the exact `job-details-topcard-apply-modal` value rather than testing
+// for a data-modal attribute.
+const SAVE_OUTLET = `<button class="top-card-layout__cta mt-2 ml-1.5 h-auto babybear:flex-auto top-card-layout__cta--secondary btn-md btn-secondary sign-up-modal__outlet" data-tracking-client-ingraph data-modal="job-details-topcard-save-modal" data-impression-id="public_jobs_topcard-save-job" data-tracking-control-name="public_jobs_topcard-save-job">Save</button>`;
+
 const OPEN_FIGURE_VARIANT = `<html><body>${TITLE_MARKUP}${FULL_RENDER_MARKER}${APPLY_CTA}
   <figure class="num-applicants__figure topcard__flavor--metadata topcard__flavor--bullet">
     <span class="num-applicants__icon num-applicants__icon--clock lazy-load"></span>
@@ -93,6 +99,7 @@ describe("parseLinkedinLiveStatus", () => {
     expect(parseLinkedinLiveStatus(OPEN_FIGURE_VARIANT)).toEqual({
       closed: false,
       applicants: "Be among the first 25 applicants",
+      easyApply: false,
     });
   });
 
@@ -100,6 +107,7 @@ describe("parseLinkedinLiveStatus", () => {
     expect(parseLinkedinLiveStatus(OPEN_SPAN_VARIANT)).toEqual({
       closed: false,
       applicants: "45 applicants",
+      easyApply: false,
     });
   });
 
@@ -110,6 +118,7 @@ describe("parseLinkedinLiveStatus", () => {
     expect(parseLinkedinLiveStatus(html)).toEqual({
       closed: false,
       applicants: "20 applicants",
+      easyApply: true,
     });
   });
 
@@ -122,6 +131,7 @@ describe("parseLinkedinLiveStatus", () => {
     expect(parseLinkedinLiveStatus(html)).toEqual({
       closed: false,
       applicants: "20 applicants",
+      easyApply: true,
     });
   });
 
@@ -135,6 +145,7 @@ describe("parseLinkedinLiveStatus", () => {
     expect(parseLinkedinLiveStatus(html)).toEqual({
       closed: true,
       applicants: null,
+      easyApply: null,
     });
   });
 
@@ -142,6 +153,7 @@ describe("parseLinkedinLiveStatus", () => {
     expect(parseLinkedinLiveStatus(CLOSED_MARKUP)).toEqual({
       closed: true,
       applicants: null,
+      easyApply: null,
     });
   });
 
@@ -153,6 +165,7 @@ describe("parseLinkedinLiveStatus", () => {
     expect(parseLinkedinLiveStatus(condensedClosedA)).toEqual({
       closed: true,
       applicants: null,
+      easyApply: null,
     });
   });
 
@@ -160,6 +173,7 @@ describe("parseLinkedinLiveStatus", () => {
     expect(parseLinkedinLiveStatus(CLOSED_NO_BANNER)).toEqual({
       closed: true,
       applicants: null,
+      easyApply: null,
     });
   });
 
@@ -182,6 +196,72 @@ describe("parseLinkedinLiveStatus", () => {
     ).toBeNull();
   });
 
+  it("reads the Easy-Apply verdict off which Apply variant is present", () => {
+    // Measured 2026-09-03 over 68 guest pages / 34 jobs: the onsite and
+    // offsite markers never co-occur, and the onsite sample was drawn through
+    // LinkedIn's own Easy Apply search filter (f_AL=true).
+    expect(parseLinkedinLiveStatus(OPEN_FIGURE_VARIANT)?.easyApply).toBe(false);
+    const onsite = `<html><body>${TITLE_MARKUP}${FULL_RENDER_MARKER}${ONSITE_APPLY_CTA}</body></html>`;
+    expect(parseLinkedinLiveStatus(onsite)?.easyApply).toBe(true);
+  });
+
+  it("keeps the Easy-Apply verdict on the CONDENSED render", () => {
+    // The onsite button survives the condensed render where the offsite one
+    // does not, so an Easy Apply job needs no full draw to be flagged.
+    const html = `<html><body>${TITLE_MARKUP}${ONSITE_APPLY_CTA}</body></html>`;
+    expect(parseLinkedinLiveStatus(html)).toEqual({
+      closed: false,
+      applicants: null,
+      easyApply: true,
+    });
+  });
+
+  it("still flags Easy Apply when the Save outlet shares the CTA container", () => {
+    const html = `<html><body>${TITLE_MARKUP}${FULL_RENDER_MARKER}<div class="top-card-layout__cta-container flex flex-wrap"><button class="apply-button apply-button--default top-card-layout__cta btn-md btn-primary" data-reference-id="idN64ZZ4Tp==">Apply</button>${SAVE_OUTLET}</div></body></html>`;
+    expect(parseLinkedinLiveStatus(html)).toEqual({
+      closed: false,
+      applicants: null,
+      easyApply: true,
+    });
+  });
+
+  it("does not read the Save outlet as an offsite Apply", () => {
+    // This is the case that makes the offsite probe's EXACT data-modal value
+    // load-bearing: the Save button is a sign-up-modal outlet too, so a probe
+    // for a bare `[data-modal]` would call this bannerless page OPEN. The
+    // fixture is an adversarial construction, not a captured page — every
+    // closed page in the sample had a fully empty container — but the Save
+    // outlet and its `job-details-topcard-save-modal` value are measured
+    // (job 4456944509), and the selector it guards is real.
+    const html = `<html><body>${TITLE_MARKUP}${FULL_RENDER_MARKER}<div class="top-card-layout__cta-container flex flex-wrap">${SAVE_OUTLET}</div></body></html>`;
+    expect(parseLinkedinLiveStatus(html)).toEqual({
+      closed: true,
+      applicants: null,
+      easyApply: null,
+    });
+  });
+
+  it("prefers the onsite verdict if both Apply variants ever co-occur", () => {
+    // Never observed (0 of 68 measured pages) and deliberately not treated as
+    // undecidable: the open/closed verdict is the higher-value half of this
+    // check, and refusing one over a disagreement about the chip would cost a
+    // re-fetch and risk a 422 that leaves the row unchecked entirely. Pinned
+    // so the precedence is a decision rather than an accident of ordering.
+    const html = `<html><body>${TITLE_MARKUP}${FULL_RENDER_MARKER}<div class="top-card-layout__cta-container flex flex-wrap"><button class="apply-button" data-reference-id="x">Apply</button><button class="sign-up-modal__outlet" data-modal="job-details-topcard-apply-modal">Apply</button></div></body></html>`;
+    expect(parseLinkedinLiveStatus(html)).toEqual({
+      closed: false,
+      applicants: null,
+      easyApply: true,
+    });
+  });
+
+  it("leaves the Easy-Apply verdict NULL on both closed kinds", () => {
+    // A closed posting renders an empty CTA container, so there is no Apply
+    // variant left to read — false would claim an offsite posting we never saw.
+    expect(parseLinkedinLiveStatus(CLOSED_MARKUP)?.easyApply).toBeNull();
+    expect(parseLinkedinLiveStatus(CLOSED_NO_BANNER)?.easyApply).toBeNull();
+  });
+
   it("ignores a closed-job class outside a figure (description markup)", () => {
     const html = `<html><body>${TITLE_MARKUP}${FULL_RENDER_MARKER}${APPLY_CTA}
       <span class="num-applicants__caption">45 applicants</span>
@@ -190,6 +270,7 @@ describe("parseLinkedinLiveStatus", () => {
     expect(parseLinkedinLiveStatus(html)).toEqual({
       closed: false,
       applicants: "45 applicants",
+      easyApply: false,
     });
   });
 });
@@ -264,7 +345,11 @@ describe("fetchLinkedinLiveStatus", () => {
     const result = await settled(fetchLinkedinLiveStatus(JOB_URL), 0);
     expect(result).toEqual({
       ok: true,
-      value: { closed: false, applicants: "45 applicants" },
+      value: {
+        closed: false,
+        applicants: "45 applicants",
+        easyApply: false,
+      },
     });
     expect(tryBrowserFetchMock).not.toHaveBeenCalled();
   });
@@ -290,7 +375,11 @@ describe("fetchLinkedinLiveStatus", () => {
     const result = await settled(fetchLinkedinLiveStatus(JOB_URL), 30_000);
     expect(result).toEqual({
       ok: true,
-      value: { closed: true, applicants: null },
+      value: {
+        closed: true,
+        applicants: null,
+        easyApply: null,
+      },
     });
     // Second attempt sat out the 5s backoff window, not just the 1s spacing.
     expect(times[1] - times[0]).toBeGreaterThanOrEqual(5_000);
@@ -348,7 +437,11 @@ describe("fetchLinkedinLiveStatus", () => {
     const result = await settled(fetchLinkedinLiveStatus(JOB_URL), 10_000);
     expect(result).toEqual({
       ok: true,
-      value: { closed: true, applicants: null },
+      value: {
+        closed: true,
+        applicants: null,
+        easyApply: null,
+      },
     });
     expect(tryStaticFetchMock).toHaveBeenCalledTimes(1);
     expect(tryBrowserFetchMock).toHaveBeenCalledTimes(1);
@@ -363,7 +456,11 @@ describe("fetchLinkedinLiveStatus", () => {
     const result = await settled(fetchLinkedinLiveStatus(JOB_URL), 10_000);
     expect(result).toEqual({
       ok: true,
-      value: { closed: false, applicants: "45 applicants" },
+      value: {
+        closed: false,
+        applicants: "45 applicants",
+        easyApply: false,
+      },
     });
     expect(tryStaticFetchMock).toHaveBeenCalledTimes(2);
     expect(tryBrowserFetchMock).not.toHaveBeenCalled();
@@ -379,7 +476,11 @@ describe("fetchLinkedinLiveStatus", () => {
     const result = await settled(fetchLinkedinLiveStatus(JOB_URL), 10_000);
     expect(result).toEqual({
       ok: true,
-      value: { closed: true, applicants: null },
+      value: {
+        closed: true,
+        applicants: null,
+        easyApply: null,
+      },
     });
     expect(tryStaticFetchMock).toHaveBeenCalledTimes(3);
     expect(tryBrowserFetchMock).toHaveBeenCalledTimes(1);
@@ -482,7 +583,11 @@ describe("fetchLinkedinLiveStatus", () => {
     );
     expect(result).toEqual({
       ok: true,
-      value: { closed: false, applicants: "45 applicants" },
+      value: {
+        closed: false,
+        applicants: "45 applicants",
+        easyApply: false,
+      },
     });
     expect(tryStaticFetchMock).toHaveBeenCalledWith(
       GUEST_URL,
@@ -504,8 +609,16 @@ describe("fetchLinkedinLiveStatus", () => {
     await vi.advanceTimersByTimeAsync(30_000);
     const [resultA, resultB] = await outcomes;
 
-    expect(resultA).toEqual({ closed: false, applicants: "45 applicants" });
-    expect(resultB).toEqual({ closed: false, applicants: "45 applicants" });
+    expect(resultA).toEqual({
+      closed: false,
+      applicants: "45 applicants",
+      easyApply: false,
+    });
+    expect(resultB).toEqual({
+      closed: false,
+      applicants: "45 applicants",
+      easyApply: false,
+    });
     expect(times[1] - times[0]).toBeGreaterThanOrEqual(5_000);
     expect(tryBrowserFetchMock).not.toHaveBeenCalled();
   });

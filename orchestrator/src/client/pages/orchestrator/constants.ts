@@ -127,6 +127,55 @@ export const TITLE_FILTER_CHIP_CLASS = {
 export const LIVE_CLOSED_CHIP_CLASS =
   "rounded border border-[color:color-mix(in_oklab,var(--badge-base)_70%,var(--badge-bad))] bg-[color-mix(in_oklab,var(--badge-base)_90%,var(--badge-bad))] px-1.5 py-px text-[10px] font-medium text-rose-200";
 
+/**
+ * The Easy-Apply chip, worn by the Manage row and the Swipe card alike — one
+ * string for the same reason the closed chip is one string.
+ *
+ * Fuchsia because it is the unclaimed hue FURTHEST from anything this chip can
+ * sit beside: measured in oklch, 29.4 deg from violet (a fit tier) against
+ * indigo's 15.6 deg, with orange effectively on top of amber (0.6 deg) and
+ * lime reading as "good" next to the emerald fit tier. It matters more than it
+ * looks — every chip is flattened to a 10% tint over `--badge-base`, which
+ * compresses hue differences, and on the Swipe card the fit indicator renders
+ * directly under this line.
+ */
+export const LIVE_EASY_APPLY_CHIP_CLASS =
+  "rounded border border-[color:color-mix(in_oklab,var(--badge-base)_70%,var(--badge-fuchsia))] bg-[color-mix(in_oklab,var(--badge-base)_90%,var(--badge-fuchsia))] px-1.5 py-px text-[10px] font-medium text-fuchsia-200";
+
+/**
+ * Whether a row earns the Easy-Apply chip. Hoisted for the same reason
+ * `showsAppliedBadge` is: two surfaces render it and a copied predicate is
+ * free to drift.
+ *
+ * Only the `=== true` clause decides anything at today's two call sites: both
+ * render inside `liveStatusCheckedAt && (liveClosed ? … : …)`, so the other two
+ * are already guaranteed by the enclosing JSX. They are kept because this
+ * function — not that JSX — is the rule, and a third caller reaching for it
+ * from outside those guards must not get a chip on an unchecked or closed row.
+ * The unit test pins all three so they cannot rot into decoration.
+ *
+ * `liveStatusCheckedAt` gates on the row having been checked at all;
+ * `liveClosed` because a closed posting renders no Apply button, so its
+ * verdict is null and must never be presented; and the explicit `=== true`
+ * because `false` is a REAL verdict ("apply on the employer's site"), not a
+ * gap — it just describes the large majority of postings, so a chip for it
+ * would be noise on nearly every checked row.
+ *
+ * Params are REQUIRED, not optional: a narrower row type that has not been
+ * taught these fields should be a build error, not a silent `false`.
+ */
+export function showsEasyApplyChip(job: {
+  liveStatusCheckedAt: string | null;
+  liveClosed: boolean | null;
+  liveEasyApply: boolean | null;
+}): boolean {
+  return (
+    job.liveStatusCheckedAt != null &&
+    job.liveClosed !== true &&
+    job.liveEasyApply === true
+  );
+}
+
 export const orderedSources: ExtractorSourceId[] = [
   ...PIPELINE_EXTRACTOR_SOURCE_IDS,
 ].sort(

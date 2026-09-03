@@ -265,8 +265,14 @@ export interface Job {
   // board's caption ("45 applicants", "Be among the first 25 applicants");
   // null when never checked AND when the posting is closed — LinkedIn resets
   // the caption on closed postings, so the value would be fabricated.
+  // `liveEasyApply` true = applying happens on LinkedIn, false = the posting
+  // sends the applicant to the employer's site; null when never checked AND
+  // when the posting is closed, since a closed posting renders no Apply
+  // button to read. So `false` is a real verdict, not a missing one — read it
+  // only alongside `liveClosed === false`.
   liveClosed: boolean | null;
   liveApplicants: string | null;
+  liveEasyApply: boolean | null;
   liveStatusCheckedAt: string | null;
 
   // Timestamps
@@ -306,6 +312,7 @@ export type JobListItem = Pick<
   | "repostCount"
   | "liveClosed"
   | "liveApplicants"
+  | "liveEasyApply"
   | "liveStatusCheckedAt"
   | "discoveredAt"
   | "readyAt"
@@ -459,6 +466,7 @@ export interface UpdateJobInput {
   interviewPrep?: string;
   liveClosed?: boolean | null;
   liveApplicants?: string | null;
+  liveEasyApply?: boolean | null;
   liveStatusCheckedAt?: string | null;
   readyAt?: string;
   // Server-managed: the ONLY writer is `updateJob`, which coalesce-stamps it

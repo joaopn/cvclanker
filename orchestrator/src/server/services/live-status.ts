@@ -153,6 +153,13 @@ export interface LinkedinLiveStatus {
    * among the first 25 applicants", so the value would be fabricated.
    */
   applicants: string | null;
+  /**
+   * True when the posting applies ON LinkedIn (Easy Apply), false when it
+   * sends the applicant to the employer's own site. Null when the verdict is
+   * `closed`: a closed posting renders an EMPTY CTA container, so there is no
+   * Apply variant left to read and any value would be invented.
+   */
+  easyApply: boolean | null;
 }
 
 /**
@@ -170,7 +177,18 @@ export interface LinkedinLiveStatus {
  *   (`data-modal="job-details-topcard-apply-modal"`), FULL render only;
  *   ONSITE (Easy Apply — e.g. job 4458701238) renders `button.apply-button`
  *   with no data-modal at all, and keeps it on BOTH renders, so an onsite
- *   job is decidable even off the condensed page.
+ *   job is decidable even off the condensed page. Which variant is present
+ *   is therefore also the Easy-Apply verdict, at no extra fetch cost — and
+ *   because an open verdict REQUIRES one of the two markers, `easyApply` is
+ *   never unknown while `closed` is false.
+ * - The two variants are mutually exclusive and container-scoped (re-measured
+ *   2026-09-03 over 68 guest pages / 34 jobs: 22 onsite, 38 offsite, 0
+ *   carrying both, 0 with `.apply-button` outside the CTA container). The
+ *   onsite sample was drawn through LinkedIn's OWN Easy Apply search filter
+ *   (`f_AL=true`), which is what ties `.apply-button` to Easy Apply rather
+ *   than to some other onsite flow; LinkedIn labels the buttons the same way
+ *   in attributes we deliberately do not parse
+ *   (`public_jobs_apply-link-onsite` / `…-offsite`).
  * - Closed jobs come in two kinds: with the explicit "No longer accepting
  *   applications" figure (kind A), and WITHOUT it (kind B — e.g. job
  *   4442812721), where the tell is a full render whose CTA container is
@@ -191,20 +209,30 @@ export function parseLinkedinLiveStatus(
   // Scoped to <figure> so employer-authored description markup that happens
   // to reuse the class can never flip the verdict.
   if (document.querySelector("figure.closed-job")) {
-    return { closed: true, applicants: null };
+    return { closed: true, applicants: null, easyApply: null };
   }
 
-  // Either Apply variant proves the job is still taking applications.
-  const hasApplyCta =
+  // Either Apply variant proves the job is still taking applications; WHICH
+  // one also says whether applying happens on LinkedIn. The offsite probe
+  // pins the exact data-modal value because the same container carries a
+  // `job-details-topcard-save-modal` outlet for the Save button.
+  const isEasyApply =
+    document.querySelector(".top-card-layout__cta-container .apply-button") !==
+    null;
+  const isOffsiteApply =
     document.querySelector(
-      '.top-card-layout__cta-container .apply-button, .top-card-layout__cta-container [data-modal="job-details-topcard-apply-modal"]',
+      '.top-card-layout__cta-container [data-modal="job-details-topcard-apply-modal"]',
     ) !== null;
-  if (hasApplyCta) {
+  if (isEasyApply || isOffsiteApply) {
     const caption = document
       .querySelector(".num-applicants__caption")
       ?.textContent?.replace(/\s+/g, " ")
       .trim();
-    return { closed: false, applicants: caption ?? null };
+    return {
+      closed: false,
+      applicants: caption ?? null,
+      easyApply: isEasyApply,
+    };
   }
 
   // No banner, no Apply CTA: on the FULL render that means closed (kind B);
@@ -214,7 +242,7 @@ export function parseLinkedinLiveStatus(
     document.querySelector(".contextual-sign-in-modal") !== null;
   if (!isFullRender) return null;
 
-  return { closed: true, applicants: null };
+  return { closed: true, applicants: null, easyApply: null };
 }
 
 /**

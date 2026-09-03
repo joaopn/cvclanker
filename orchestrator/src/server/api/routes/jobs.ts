@@ -822,7 +822,7 @@ async function executeJobActionForJob(
 
     if (action === "fetch_live_status") {
       // Live-status check: reads LinkedIn's public guest endpoint and writes
-      // the three live_* columns; touches no status/score/tailoring field, so
+      // the four live_* columns; touches no status/score/tailoring field, so
       // no status guard — safe from any status, `processing` included. The id
       // guard runs BEFORE any fetch (keeps the hermetic route tests network-
       // free, and a non-LinkedIn row in a mixed selection fails fast).
@@ -842,6 +842,7 @@ async function executeJobActionForJob(
       const updated = await jobsRepo.updateJob(jobId, {
         liveClosed: status.closed,
         liveApplicants: status.applicants,
+        liveEasyApply: status.easyApply,
         liveStatusCheckedAt: new Date().toISOString(),
       });
       if (!updated) {

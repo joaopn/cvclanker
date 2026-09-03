@@ -26,7 +26,11 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Card } from "@/components/ui/card";
-import { LIVE_CLOSED_CHIP_CLASS } from "../orchestrator/constants";
+import {
+  LIVE_CLOSED_CHIP_CLASS,
+  LIVE_EASY_APPLY_CHIP_CLASS,
+  showsEasyApplyChip,
+} from "../orchestrator/constants";
 import { dateValue, formatCheckedAge } from "../orchestrator/utils";
 import type { SwipeAction } from "./useSwipeDeck";
 
@@ -93,10 +97,15 @@ export const SwipeCardContent: React.FC<{ job: Job }> = ({ job }) => {
             ) : (
               // LinkedIn resets the caption once a posting closes, so the
               // server stores null for it — a caption is an open job's.
-              <span className="flex items-center gap-1">
-                <Users className="h-3 w-3" />
-                {job.liveApplicants ?? "Accepting applications"}
-              </span>
+              <>
+                <span className="flex items-center gap-1">
+                  <Users className="h-3 w-3" />
+                  {job.liveApplicants ?? "Accepting applications"}
+                </span>
+                {showsEasyApplyChip(job) && (
+                  <span className={LIVE_EASY_APPLY_CHIP_CLASS}>Easy Apply</span>
+                )}
+              </>
             )}
             <span className="text-muted-foreground/70">
               {formatCheckedAge(job.liveStatusCheckedAt, Date.now())}

@@ -60,6 +60,7 @@ describe("refreshLiveStatusStep", () => {
     fetchLinkedinLiveStatusMock.mockResolvedValue({
       closed: false,
       applicants: "12 applicants",
+      easyApply: false,
     });
   });
 
@@ -76,8 +77,16 @@ describe("refreshLiveStatusStep", () => {
       candidate("2"),
     ]);
     fetchLinkedinLiveStatusMock
-      .mockResolvedValueOnce({ closed: false, applicants: "12 applicants" })
-      .mockResolvedValueOnce({ closed: true, applicants: null });
+      .mockResolvedValueOnce({
+        closed: false,
+        applicants: "12 applicants",
+        easyApply: true,
+      })
+      .mockResolvedValueOnce({
+        closed: true,
+        applicants: null,
+        easyApply: null,
+      });
 
     const result = await refreshLiveStatusStep({});
 
@@ -89,11 +98,13 @@ describe("refreshLiveStatusStep", () => {
     expect(updateJobMock).toHaveBeenNthCalledWith(1, "1", {
       liveClosed: false,
       liveApplicants: "12 applicants",
+      liveEasyApply: true,
       liveStatusCheckedAt: expect.any(String),
     });
     expect(updateJobMock).toHaveBeenNthCalledWith(2, "2", {
       liveClosed: true,
       liveApplicants: null,
+      liveEasyApply: null,
       liveStatusCheckedAt: expect.any(String),
     });
   });
@@ -117,7 +128,7 @@ describe("refreshLiveStatusStep", () => {
     fetchLinkedinLiveStatusMock.mockImplementation(async (url: string) =>
       url.endsWith("2")
         ? Promise.reject(new Error("that page did not parse"))
-        : { closed: false, applicants: null },
+        : { closed: false, applicants: null, easyApply: false },
     );
 
     const result = await refreshLiveStatusStep({});
@@ -133,7 +144,11 @@ describe("refreshLiveStatusStep", () => {
       candidate("3"),
     ]);
     fetchLinkedinLiveStatusMock
-      .mockResolvedValueOnce({ closed: false, applicants: null })
+      .mockResolvedValueOnce({
+        closed: false,
+        applicants: null,
+        easyApply: false,
+      })
       .mockRejectedValueOnce(blocked());
 
     const result = await refreshLiveStatusStep({});
@@ -153,7 +168,7 @@ describe("refreshLiveStatusStep", () => {
     let cancelled = false;
     fetchLinkedinLiveStatusMock.mockImplementation(async () => {
       cancelled = true;
-      return { closed: false, applicants: null };
+      return { closed: false, applicants: null, easyApply: false };
     });
 
     const result = await refreshLiveStatusStep({

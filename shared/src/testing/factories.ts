@@ -78,6 +78,7 @@ export const createJob = (overrides: Partial<Job> = {}): Job => ({
   repostCount: 0,
   liveClosed: null,
   liveApplicants: null,
+  liveEasyApply: null,
   liveStatusCheckedAt: null,
   discoveredAt: "2025-01-01T00:00:00Z",
   processedAt: null,
