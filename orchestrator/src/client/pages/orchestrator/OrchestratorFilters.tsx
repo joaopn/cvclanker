@@ -126,7 +126,7 @@ const sortFieldLabels: Record<JobSort["key"], string> = {
   title: "Title",
   employer: "Company",
   applicants: "Applicants",
-  easyApplyApplicants: "Easy apply + applicants",
+  easyApplyApplicants: "Easy Apply + applicants",
 };
 
 const datePresetOptions: Array<{

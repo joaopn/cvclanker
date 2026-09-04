@@ -57,7 +57,7 @@ describe("JobSorterMenu", () => {
       "None",
       "Posted / found",
       "Fewer applicants",
-      "Easy apply, fewer candidates",
+      "Easy Apply, Fewer applicants",
     ]);
     expect(
       screen.getByRole("menuitemradio", { name: "Posted / found" }),

@@ -358,7 +358,7 @@ export const JOB_SORTER_LABELS: Record<JobSorter, string> = {
   none: "None",
   posted: "Posted / found",
   applicants: "Fewer applicants",
-  easyApplyApplicants: "Easy apply, fewer candidates",
+  easyApplyApplicants: "Easy Apply, Fewer applicants",
 };
 
 // `posted` is the value behind the row's "Posted Xd / Found Xd" pill
@@ -387,7 +387,7 @@ export const sortLabels: Record<JobSort["key"], string> = {
   title: "Title",
   employer: "Company",
   applicants: "Applicants",
-  easyApplyApplicants: "Easy apply + applicants",
+  easyApplyApplicants: "Easy Apply + applicants",
 };
 
 export const defaultSortDirection: Record<JobSort["key"], SortDirection> = {

@@ -23,7 +23,7 @@ interface JobSorterMenuProps {
 /**
  * The list sorter: an icon at the right end of the filter bar's control row
  * opening a radio menu of the `JOB_SORTERS` options (None / Posted-found /
- * Fewer applicants / Easy apply, fewer candidates).
+ * Fewer applicants / Easy Apply, Fewer applicants).
  * "None" leaves the Filters-popover sort in charge; the icon reads as active
  * whenever anything else is picked.
  */
