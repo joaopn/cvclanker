@@ -1,3 +1,4 @@
+import { tailoringFailureSummary } from "@shared/tailoring-failure";
 import type { JobListItem } from "@shared/types.js";
 import { cn } from "@/lib/utils";
 import { CompanyNameButton } from "./CompanyNameButton";
@@ -122,7 +123,7 @@ export const JobRowContent = ({
             {job.tailoringFailureReason && (
               <span
                 className="rounded border border-[color:color-mix(in_oklab,var(--badge-base)_70%,var(--badge-bad))] bg-[color-mix(in_oklab,var(--badge-base)_90%,var(--badge-bad))] px-1.5 py-px text-[10px] font-medium text-rose-200"
-                title={job.tailoringFailureReason}
+                title={tailoringFailureSummary(job.tailoringFailureReason)}
               >
                 Tailor failed
               </span>

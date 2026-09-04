@@ -6,6 +6,7 @@
 
 import * as api from "@client/api";
 import { queryKeys } from "@client/lib/queryKeys";
+import { tailoringFailureSummary } from "@shared/tailoring-failure";
 import type { JobListItem } from "@shared/types.js";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -133,9 +134,14 @@ export const CompanyJobsDialog = ({
                         {job.tailoringFailureReason && (
                           <span
                             className="mt-0.5 block truncate text-xs text-status-bad-text/80"
-                            title={job.tailoringFailureReason}
+                            title={tailoringFailureSummary(
+                              job.tailoringFailureReason,
+                            )}
                           >
-                            Tailor failed: {job.tailoringFailureReason}
+                            Tailor failed:{" "}
+                            {tailoringFailureSummary(
+                              job.tailoringFailureReason,
+                            )}
                           </span>
                         )}
                       </span>

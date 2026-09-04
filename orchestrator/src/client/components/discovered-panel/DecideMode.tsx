@@ -1,4 +1,5 @@
 import { useSettings } from "@client/hooks/useSettings";
+import { splitTailoringFailure } from "@shared/tailoring-failure";
 import type { Job } from "@shared/types.js";
 import {
   AlertTriangle,
@@ -52,7 +53,19 @@ export const DecideMode: React.FC<DecideModeProps> = ({
   isMovingStatus,
 }) => {
   const [showDescription, setShowDescription] = useState(false);
+  const [showFailureDetail, setShowFailureDetail] = useState(false);
+  // This component is reused across jobs: nothing keys it, and neither of the
+  // two sites mounting its parent `DiscoveredPanel` (JobDetailPanel) keys that
+  // either — so without a reset a log expanded on one job renders already-open
+  // on the next. Adjusting state during render rather than in an effect keeps
+  // the expanded block from flashing before it collapses.
+  const [failureDetailJobId, setFailureDetailJobId] = useState(job.id);
+  if (failureDetailJobId !== job.id) {
+    setFailureDetailJobId(job.id);
+    setShowFailureDetail(false);
+  }
   const jobLink = job.applicationLink || job.jobUrl;
+  const tailoringFailure = splitTailoringFailure(job.tailoringFailureReason);
   const { renderMarkdownInJobDescriptions } = useSettings();
 
   const description = useMemo(
@@ -90,8 +103,21 @@ export const DecideMode: React.FC<DecideModeProps> = ({
               Last tailoring attempt failed
             </div>
             <p className="mt-1 whitespace-pre-wrap text-status-bad-text/90">
-              {job.tailoringFailureReason}
+              {tailoringFailure.summary}
             </p>
+            {tailoringFailure.detail ? (
+              <div className="mt-2">
+                <CollapsibleSection
+                  isOpen={showFailureDetail}
+                  onToggle={() => setShowFailureDetail((prev) => !prev)}
+                  label={showFailureDetail ? "Hide details" : "Show details"}
+                >
+                  <pre className="mt-1 max-h-64 overflow-auto rounded border border-status-bad/30 bg-status-bad/5 p-2 text-[11px] leading-relaxed text-status-bad-text/90 whitespace-pre-wrap break-words">
+                    {tailoringFailure.detail}
+                  </pre>
+                </CollapsibleSection>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
