@@ -24,6 +24,7 @@
     "repro:linkedin-slug": "tsx scripts/repro-linkedin-slug-url.ts",
     "repro:mapper-drops": "tsx scripts/repro-silent-mapper-drops.ts",
     "repro:pdf-filename": "tsx scripts/repro-pdf-download-filename.ts",
+    "repro:tailoring-reason": "tsx scripts/repro-tailoring-reason-wipe.ts",
     "verify:dup-identity": "tsx scripts/verify-duplicate-identity.ts",
     "db:migrate": "tsx src/server/db/migrate.ts",
     "db:migrate:prod": "tsx src/server/db/migrate.ts",

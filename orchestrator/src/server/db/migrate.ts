@@ -334,6 +334,16 @@ const migrations: string[] = [
   // INSERT SELECT references it, so legacy DBs need the column first.
   `ALTER TABLE jobs ADD COLUMN live_easy_apply INTEGER`,
 
+  // Tailoring failure reason. Set on any failed processJob, cleared on the
+  // next successful summarizeJob. Nullable; null = "no recorded failure".
+  // Same defensive-ALTER-before-rebuild pattern as the live_* columns above:
+  // the rebuild's INSERT SELECT references it, so legacy DBs need the column
+  // first. It sat AFTER the rebuild until B61 — where the rebuild dropped it
+  // on every boot and this ALTER silently re-added it empty. A row still at
+  // `processing` then had the real cause replaced by reconcileTransientStatuses'
+  // restart notice; a failed re-tailor on a ready/applied row simply lost it.
+  `ALTER TABLE jobs ADD COLUMN tailoring_failure_reason TEXT`,
+
   // Canonical jobs-table rebuild. Originally added in 5d to drop unused
   // columns (tailored_summary/headline/skills, tracer_links_enabled,
   // sponsor_match_*); 5g extended it with the new status + outcome enums and
@@ -397,6 +407,7 @@ const migrations: string[] = [
     cv_field_locks TEXT NOT NULL DEFAULT '[]',
     tailoring_matched TEXT,
     tailoring_skipped TEXT,
+    tailoring_failure_reason TEXT,
     cv_document_id TEXT REFERENCES cv_documents(id) ON DELETE SET NULL,
     pdf_path TEXT,
     cover_letter_draft TEXT NOT NULL DEFAULT '',
@@ -430,7 +441,8 @@ const migrations: string[] = [
     outcome, closed_at, profile_id, suitability_category, suitability_reason,
     suitability_model, suitability_effort, tailored_fields,
     cv_field_locks,
-    tailoring_matched, tailoring_skipped, cv_document_id,
+    tailoring_matched, tailoring_skipped, tailoring_failure_reason,
+    cv_document_id,
     pdf_path, cover_letter_draft,
     cover_letter_document_id, cover_letter_field_overrides, cover_letter_pdf_path,
     interview_prep,
@@ -460,7 +472,8 @@ const migrations: string[] = [
     suitability_model, suitability_effort,
     tailored_fields,
     COALESCE(cv_field_locks, '[]') AS cv_field_locks,
-    tailoring_matched, tailoring_skipped, cv_document_id,
+    tailoring_matched, tailoring_skipped, tailoring_failure_reason,
+    cv_document_id,
     pdf_path, cover_letter_draft,
     cover_letter_document_id,
     COALESCE(cover_letter_field_overrides, '{}') AS cover_letter_field_overrides,
@@ -524,10 +537,6 @@ const migrations: string[] = [
   // system prompt (default = the server's cv-template-extract YAML).
   // Empty value means "use the server default at extraction time".
   `ALTER TABLE cv_documents ADD COLUMN extraction_prompt TEXT NOT NULL DEFAULT ''`,
-
-  // Tailoring failure reason. Set on any failed processJob, cleared on the
-  // next successful summarizeJob. Nullable; null = "no recorded failure".
-  `ALTER TABLE jobs ADD COLUMN tailoring_failure_reason TEXT`,
 
   // Drop legacy settings keys that are no longer read by the app.
   `DELETE FROM settings WHERE key IN (
