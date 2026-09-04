@@ -305,7 +305,8 @@ export type SortKey =
   | "salary"
   | "title"
   | "employer"
-  | "applicants";
+  | "applicants"
+  | "easyApplyApplicants";
 export type SortDirection = "asc" | "desc";
 export type SponsorFilter =
   | "all"
@@ -340,11 +341,16 @@ export const DEFAULT_SORT: JobSort = { key: "posted", direction: "desc" };
  * The list sorter: the icon menu at the right end of the filter bar's control
  * row. It is a layer OVER the Filters-popover `sort` — `none` (the default)
  * means the sorter is idle and that sort governs, which is exactly the
- * pre-sorter behaviour; the other two pin a whole `JobSort`. A separate value
- * rather than a face for `sort` because `DEFAULT_SORT` IS posted-desc, so
+ * pre-sorter behaviour; every other value pins a whole `JobSort`. A separate
+ * value rather than a face for `sort` because `DEFAULT_SORT` IS posted-desc, so
  * "none" and "posted / found" would be one indistinguishable state there.
  */
-export const JOB_SORTERS = ["none", "posted", "applicants"] as const;
+export const JOB_SORTERS = [
+  "none",
+  "posted",
+  "applicants",
+  "easyApplyApplicants",
+] as const;
 export type JobSorter = (typeof JOB_SORTERS)[number];
 export const DEFAULT_JOB_SORTER: JobSorter = "none";
 
@@ -352,15 +358,18 @@ export const JOB_SORTER_LABELS: Record<JobSorter, string> = {
   none: "None",
   posted: "Posted / found",
   applicants: "Fewer applicants",
+  easyApplyApplicants: "Easy apply, fewer candidates",
 };
 
 // `posted` is the value behind the row's "Posted Xd / Found Xd" pill
 // (`getJobPostedValue`: datePosted, else discoveredAt). `applicants` is the
 // live-status count, fewest first — see `compareJobs` for the tiers that
-// order the rows without one.
+// order the rows without one. `easyApplyApplicants` is that same ladder with
+// the rows wearing the Easy Apply chip lifted above the rest.
 export const JOB_SORTER_SORTS: Record<Exclude<JobSorter, "none">, JobSort> = {
   posted: { key: "posted", direction: "desc" },
   applicants: { key: "applicants", direction: "asc" },
+  easyApplyApplicants: { key: "easyApplyApplicants", direction: "asc" },
 };
 export const DEFAULT_DATE_FILTER: JobDateFilter = {
   dimensions: [],
@@ -378,6 +387,7 @@ export const sortLabels: Record<JobSort["key"], string> = {
   title: "Title",
   employer: "Company",
   applicants: "Applicants",
+  easyApplyApplicants: "Easy apply + applicants",
 };
 
 export const defaultSortDirection: Record<JobSort["key"], SortDirection> = {
@@ -389,6 +399,7 @@ export const defaultSortDirection: Record<JobSort["key"], SortDirection> = {
   title: "asc",
   employer: "asc",
   applicants: "asc",
+  easyApplyApplicants: "asc",
 };
 
 /**

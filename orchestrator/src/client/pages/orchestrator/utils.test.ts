@@ -6,11 +6,12 @@ import {
   type Profile,
 } from "@shared/types";
 import { describe, expect, it } from "vitest";
-import type { SortDirection } from "./constants";
+import type { SortDirection, SortKey } from "./constants";
 import {
   applicantsSortRank,
   collectProfileSearchTitles,
   compareJobs,
+  easyApplySortRank,
   formatCheckedAge,
   getEnabledSources,
   getJobCountsFromStats,
@@ -271,5 +272,161 @@ describe("compareJobs applicants", () => {
         "4000000001",
       ]);
     }
+  });
+});
+
+describe("compareJobs easyApplyApplicants", () => {
+  const linkedin = (id: string, overrides: Partial<Job> = {}): JobListItem =>
+    createJob({
+      id,
+      jobUrl: `https://www.linkedin.com/jobs/view/${id}`,
+      liveStatusCheckedAt: "2026-08-24T10:00:00.000Z",
+      liveClosed: false,
+      datePosted: "2026-08-01T00:00:00.000Z",
+      ...overrides,
+    });
+
+  // Ids run backwards through the expected order, so nothing below can pass on
+  // `compareJobs`' id tiebreak alone.
+  const easyFew = linkedin("7000000007", {
+    liveEasyApply: true,
+    liveApplicants: "3 applicants",
+  });
+  const easyLots = linkedin("7000000006", {
+    liveEasyApply: true,
+    liveApplicants: "300 applicants",
+  });
+  // Checked and open, but LinkedIn rendered no applicant caption: an Easy
+  // Apply row with no count, i.e. applicant tier 1 inside group 0.
+  const easyNoCount = linkedin("7000000005", {
+    liveEasyApply: true,
+    liveApplicants: null,
+  });
+  const offsiteTwo = linkedin("7000000004", {
+    liveEasyApply: false,
+    liveApplicants: "2 applicants",
+  });
+  const unchecked = linkedin("7000000003", {
+    liveClosed: null,
+    liveEasyApply: null,
+    liveApplicants: null,
+    liveStatusCheckedAt: null,
+  });
+  const closed = linkedin("7000000002", {
+    liveClosed: true,
+    liveEasyApply: null,
+    liveApplicants: null,
+  });
+  const indeed = createJob({
+    id: "indeed-2",
+    source: "indeed",
+    jobUrl: "https://www.indeed.com/viewjob?jk=abc123",
+    datePosted: "2026-08-20T00:00:00.000Z",
+  });
+
+  const all = [
+    indeed,
+    closed,
+    unchecked,
+    offsiteTwo,
+    easyNoCount,
+    easyLots,
+    easyFew,
+  ];
+
+  const order = (key: SortKey, direction: SortDirection) =>
+    [...all]
+      .sort((a, b) => compareJobs(a, b, { key, direction }))
+      .map((job) => job.id);
+
+  it("groups on the chip's own rule, not on liveEasyApply alone", () => {
+    expect(easyApplySortRank(easyFew)).toBe(0);
+    expect(easyApplySortRank(offsiteTwo)).toBe(1);
+    expect(easyApplySortRank(unchecked)).toBe(1);
+    // Neither of these can reach the client today — the server writes a null
+    // verdict for a closed posting, and only a checked row has one at all —
+    // but the sort lifts exactly the rows wearing the chip, so an unshown
+    // verdict must not lift anything.
+    expect(
+      easyApplySortRank(
+        linkedin("7000000010", { liveEasyApply: true, liveClosed: true }),
+      ),
+    ).toBe(1);
+    expect(
+      easyApplySortRank(
+        linkedin("7000000011", {
+          liveEasyApply: true,
+          liveClosed: null,
+          liveStatusCheckedAt: null,
+        }),
+      ),
+    ).toBe(1);
+  });
+
+  it("keeps a slug-URL Easy Apply row in the group, at the bottom of it", () => {
+    // `applicantsSortRank` asks `hasLinkedinPostingId`, which reads the URL
+    // only, so an uncaptioned row whose id lives in `sourceJobId` ranks as
+    // non-LinkedIn (tier 3) — the group is what keeps it above the offsite
+    // postings instead of on the floor with them.
+    const slugEasy = createJob({
+      id: "7000000009",
+      jobUrl: "https://www.linkedin.com/jobs/view/senior-engineer-at-acme",
+      sourceJobId: "li-4383255214",
+      liveStatusCheckedAt: "2026-08-24T10:00:00.000Z",
+      liveClosed: false,
+      liveEasyApply: true,
+      liveApplicants: null,
+      datePosted: "2026-08-01T00:00:00.000Z",
+    });
+    expect(easyApplySortRank(slugEasy)).toBe(0);
+    expect(applicantsSortRank(slugEasy)).toEqual({ tier: 3, count: null });
+    expect(
+      [slugEasy, offsiteTwo, easyNoCount]
+        .sort((a, b) =>
+          compareJobs(a, b, { key: "easyApplyApplicants", direction: "asc" }),
+        )
+        .map((job) => job.id),
+    ).toEqual(["7000000005", "7000000009", "7000000004"]);
+  });
+
+  it("puts every Easy Apply row above the rest, whatever its count", () => {
+    // easyLots has 300 applicants and still outranks the 2-applicant offsite
+    // row: the group is a super-tier over the whole applicants ladder.
+    expect(order("easyApplyApplicants", "asc")).toEqual([
+      "7000000007",
+      "7000000006",
+      "7000000005",
+      "7000000004",
+      "7000000003",
+      "7000000002",
+      "indeed-2",
+    ]);
+  });
+
+  it("flips the counts inside each group but never the groups themselves", () => {
+    expect(order("easyApplyApplicants", "desc")).toEqual([
+      "7000000006",
+      "7000000007",
+      "7000000005",
+      "7000000004",
+      "7000000003",
+      "7000000002",
+      "indeed-2",
+    ]);
+  });
+
+  it("leaves the plain applicants sort alone — the grouping is keyed on the sort", () => {
+    // Counts first (2, 3, 300), then the two count-less checked/unchecked
+    // rows — same posted date, so the id tiebreak orders them — then closed,
+    // then the non-LinkedIn floor.
+    expect(order("applicants", "asc")).toEqual([
+      "7000000004",
+      "7000000007",
+      "7000000006",
+      "7000000003",
+      "7000000005",
+      "7000000002",
+      "indeed-2",
+    ]);
   });
 });

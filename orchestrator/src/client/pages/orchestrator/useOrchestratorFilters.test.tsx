@@ -49,6 +49,24 @@ describe("useOrchestratorFilters", () => {
     });
   });
 
+  it("parses the easy-apply applicants sort key", () => {
+    // Without its `allowedSortKeys` entry the popover's own round-trip breaks
+    // silently: `setSort` writes the param, the parse memo rejects the
+    // unknown key on the next render, and the field selection bounces back to
+    // the default with no error.
+    const { Wrapper } = createWrapper(
+      "/jobs/inbox?sort=easyApplyApplicants-asc",
+    );
+    const { result } = renderHook(() => useOrchestratorFilters(), {
+      wrapper: Wrapper,
+    });
+
+    expect(result.current.sort).toEqual({
+      key: "easyApplyApplicants",
+      direction: "asc",
+    });
+  });
+
   it("falls back to default sort for invalid sort query params", () => {
     const cases = [
       "/ready?sort=title",
@@ -114,6 +132,12 @@ describe("useOrchestratorFilters", () => {
       renderHook(() => useOrchestratorFilters(), { wrapper: valid.Wrapper })
         .result.current.sorter,
     ).toBe("applicants");
+
+    const easyApply = createWrapper("/jobs/inbox?sorter=easyApplyApplicants");
+    expect(
+      renderHook(() => useOrchestratorFilters(), { wrapper: easyApply.Wrapper })
+        .result.current.sorter,
+    ).toBe("easyApplyApplicants");
 
     const invalid = createWrapper("/jobs/inbox?sorter=salary");
     expect(

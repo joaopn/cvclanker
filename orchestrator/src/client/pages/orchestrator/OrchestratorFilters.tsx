@@ -112,6 +112,7 @@ const sortFieldOrder: JobSort["key"][] = [
   "posted",
   "salary",
   "applicants",
+  "easyApplyApplicants",
   "title",
   "employer",
 ];
@@ -125,6 +126,7 @@ const sortFieldLabels: Record<JobSort["key"], string> = {
   title: "Title",
   employer: "Company",
   applicants: "Applicants",
+  easyApplyApplicants: "Easy apply + applicants",
 };
 
 const datePresetOptions: Array<{
@@ -172,7 +174,9 @@ const getDirectionOptions = (
       { value: "asc", label: "Smallest first" },
     ];
   }
-  if (key === "applicants") {
+  if (key === "applicants" || key === "easyApplyApplicants") {
+    // The easy-apply grouping is direction-independent, so the direction only
+    // ever describes the applicant counts inside each group.
     return [
       { value: "asc", label: "Fewest first" },
       { value: "desc", label: "Most first" },

@@ -46,6 +46,7 @@ const allowedSortKeys: JobSort["key"][] = [
   "title",
   "employer",
   "applicants",
+  "easyApplyApplicants",
 ];
 const allowedSortDirections: JobSort["direction"][] = ["asc", "desc"];
 const allowedDateFilterPresets: DateFilterPreset[] = [

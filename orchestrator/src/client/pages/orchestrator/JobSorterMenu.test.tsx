@@ -49,7 +49,7 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
 }));
 
 describe("JobSorterMenu", () => {
-  it("offers the three sorter options with the current one checked", () => {
+  it("offers every sorter option with the current one checked", () => {
     render(<JobSorterMenu sorter="posted" onSorterChange={vi.fn()} />);
 
     const items = screen.getAllByRole("menuitemradio");
@@ -57,6 +57,7 @@ describe("JobSorterMenu", () => {
       "None",
       "Posted / found",
       "Fewer applicants",
+      "Easy apply, fewer candidates",
     ]);
     expect(
       screen.getByRole("menuitemradio", { name: "Posted / found" }),

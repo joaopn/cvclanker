@@ -6,6 +6,7 @@ import {
   DEFAULT_DATE_FILTER,
   DEFAULT_SORT,
   type FilterTab,
+  type JobSorter,
   UNATTRIBUTED_PROFILE_ID,
 } from "./constants";
 import type { ActiveFacet } from "./facets/registry";
@@ -214,7 +215,8 @@ describe("useFilteredJobs untailored toggle (Tailoring-only within-tab filter)",
 describe("useFilteredJobs sorter", () => {
   // Under the popover's score sort `high` leads; under posted / found `old`
   // (posted latest) leads; under fewer applicants `few` leads and the
-  // non-LinkedIn `high` row drops to the floor.
+  // non-LinkedIn `high` row drops to the floor. `old` is the Easy Apply row,
+  // so the easy-apply sort lifts it back over `few` despite its 40 applicants.
   const rows: JobListItem[] = [
     createJob({
       id: "high",
@@ -234,6 +236,7 @@ describe("useFilteredJobs sorter", () => {
       datePosted: "2026-08-20T00:00:00.000Z",
       liveClosed: false,
       liveApplicants: "40 applicants",
+      liveEasyApply: true,
       liveStatusCheckedAt: "2026-08-24T00:00:00.000Z",
       employer: "A",
       title: "T",
@@ -251,7 +254,7 @@ describe("useFilteredJobs sorter", () => {
       title: "T",
     }),
   ];
-  const runSorter = (sorter: "none" | "posted" | "applicants") =>
+  const runSorter = (sorter: JobSorter) =>
     renderHook(() =>
       useFilteredJobs(
         rows,
@@ -282,6 +285,10 @@ describe("useFilteredJobs sorter", () => {
 
   it("overrides the popover sort with fewer applicants, non-LinkedIn last", () => {
     expect(runSorter("applicants")).toEqual(["few", "old", "high"]);
+  });
+
+  it("lifts the Easy Apply row over a lower count under the easy-apply sort", () => {
+    expect(runSorter("easyApplyApplicants")).toEqual(["old", "few", "high"]);
   });
 });
 

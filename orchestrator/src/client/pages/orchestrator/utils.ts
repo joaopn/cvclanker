@@ -7,7 +7,11 @@ import {
   SUITABILITY_CATEGORY_RANK,
 } from "@shared/types";
 import type { DateFilterDimension, FilterTab, JobSort } from "./constants";
-import { orderedFilterSources, orderedSources } from "./constants";
+import {
+  orderedFilterSources,
+  orderedSources,
+  showsEasyApplyChip,
+} from "./constants";
 import { hasLinkedinPostingId } from "./jobActions";
 
 /**
@@ -162,6 +166,28 @@ export const applicantsSortRank = (job: JobListItem): ApplicantsSortRank => {
   return { tier: 1, count: null };
 };
 
+/**
+ * The group the easy-apply sort puts in front of the applicants ladder: 0 for
+ * a row wearing the Easy Apply chip, 1 for every other row.
+ *
+ * Deliberately the CHIP's own rule rather than a second `liveEasyApply ===
+ * true` test — the sort then lifts exactly the rows the user can see are Easy
+ * Apply, and there is no second predicate to drift away from the badge. Unlike
+ * the two JSX call sites, this one is UNGUARDED (it runs on every row of the
+ * list), so all three of that predicate's clauses are genuinely exercised here
+ * even though `liveEasyApply === true` implies the other two on data this app
+ * writes: every writer sets the four columns together, and the parse returns a
+ * null verdict for a closed posting.
+ *
+ * Group 0 spans applicant tiers 0, 1 AND 3 — tier 2 alone is unreachable,
+ * since an Easy Apply row is never closed. Tier 3 is the surprise: an
+ * uncaptioned row whose LinkedIn id lives in `sourceJobId` rather than in its
+ * URL reads as non-LinkedIn to `applicantsSortRank`'s URL-only check, so it
+ * sinks to the bottom OF ITS GROUP. Being in group 0 is what keeps it visible.
+ */
+export const easyApplySortRank = (job: JobListItem): 0 | 1 =>
+  showsEasyApplyChip(job) ? 0 : 1;
+
 // Newest posted / found first; a row with no date at all goes last. (Today
 // every row has one — `discoveredAt` is NOT NULL — so the null arms only pin
 // the intent for the next copy of this pattern.)
@@ -176,6 +202,7 @@ const comparePostedNewestFirst = (a: JobListItem, b: JobListItem) => {
 
 export const compareJobs = (a: JobListItem, b: JobListItem, sort: JobSort) => {
   let value = 0;
+  const easyApplyFirst = sort.key === "easyApplyApplicants";
 
   switch (sort.key) {
     case "title":
@@ -251,7 +278,19 @@ export const compareJobs = (a: JobListItem, b: JobListItem, sort: JobSort) => {
       value = compareNumber(aDate, bDate);
       break;
     }
+    case "easyApplyApplicants":
     case "applicants": {
+      // Stacked labels, empty first clause — the two sorts share one body so
+      // they cannot drift, and the guard below is the whole difference.
+      if (easyApplyFirst) {
+        // The easy-apply group is a super-tier over the whole applicants
+        // ladder, and — like the tiers below it — holds whatever the
+        // direction: "most applicants first" reorders the counts inside each
+        // group, it never hoists the offsite postings.
+        const aEasy = easyApplySortRank(a);
+        const bEasy = easyApplySortRank(b);
+        if (aEasy !== bEasy) return aEasy - bEasy;
+      }
       const aRank = applicantsSortRank(a);
       const bRank = applicantsSortRank(b);
       // Tiers hold whatever the direction — same shape as the null-last rule
