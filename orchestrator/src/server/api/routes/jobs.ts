@@ -37,6 +37,7 @@ import {
 } from "@server/services/job-actions/batch-store";
 import { LLM_DRIVING_ACTIONS } from "@server/services/job-actions/llm-actions";
 import { isUrlImportRunning } from "@server/services/url-import/batch-store";
+import { splitTailoringFailure } from "@shared/tailoring-failure";
 import { isJobScoringEnabled } from "@server/services/job-scoring-settings";
 import { fetchLinkedinLiveStatus } from "@server/services/live-status";
 import { fetchJobDraft } from "@server/services/manualJob";
@@ -259,6 +260,29 @@ function parseStatusFilter(statusFilter?: string): JobStatus[] | undefined {
     | JobStatus[]
     | undefined;
   return parsed && parsed.length > 0 ? parsed : undefined;
+}
+
+/**
+ * A tailoring or render failure is one string carrying a summary and a
+ * diagnostic detail block. An API error message is toasted verbatim by the
+ * client, and a 2000-character compiler log in a toast is unreadable — so hand
+ * back the summary and keep the detail in the server log.
+ *
+ * `/summarize` and `/generate-pdf` call in below `processJob`, so nothing
+ * persists their reason and the log is the only copy. `/re-tailor` goes through
+ * `processJob`, which stores the whole composed string on the job — the warn is
+ * redundant there, and kept so the three routes behave alike.
+ */
+function failureForClient(
+  error: string | undefined,
+  fallback: string,
+  context: { route: string; jobId: string },
+): string {
+  const { summary, detail } = splitTailoringFailure(error);
+  if (detail) {
+    logger.warn("Tailoring failure detail", { ...context, detail });
+  }
+  return summary || fallback;
 }
 
 function resolveRequestOrigin(req: Request): string | null {
@@ -2039,7 +2063,12 @@ jobsRouter.post("/:id/summarize", async (req: Request, res: Response) => {
     if (!result.success) {
       return fail(
         res,
-        badRequest(result.error ?? "Failed to summarize the job"),
+        badRequest(
+          failureForClient(result.error, "Failed to summarize the job", {
+            route: "POST /api/jobs/:id/summarize",
+            jobId: req.params.id,
+          }),
+        ),
       );
     }
 
@@ -2065,7 +2094,12 @@ jobsRouter.post("/:id/generate-pdf", async (req: Request, res: Response) => {
     if (!result.success) {
       return fail(
         res,
-        badRequest(result.error ?? "Failed to generate a resume PDF"),
+        badRequest(
+          failureForClient(result.error, "Failed to generate a resume PDF", {
+            route: "POST /api/jobs/:id/generate-pdf",
+            jobId: req.params.id,
+          }),
+        ),
       );
     }
 
@@ -2091,7 +2125,15 @@ jobsRouter.post("/:id/re-tailor", async (req: Request, res: Response) => {
     });
 
     if (!result.success) {
-      return fail(res, badRequest(result.error ?? "Re-tailor failed"));
+      return fail(
+        res,
+        badRequest(
+          failureForClient(result.error, "Re-tailor failed", {
+            route: "POST /api/jobs/:id/re-tailor",
+            jobId: req.params.id,
+          }),
+        ),
+      );
     }
 
     const job = await jobsRepo.getJobById(req.params.id);

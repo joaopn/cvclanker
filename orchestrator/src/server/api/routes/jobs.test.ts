@@ -998,6 +998,56 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     expect(body.data.failed).toBe(1);
   });
 
+  // `failureForClient`: an API error message is toasted verbatim, so the
+  // composed reason's detail block must not ride out on it.
+  it("re-tailor returns the failure SUMMARY, never the detail block", async () => {
+    await seedJob({ id: "job-rt-detail", status: "ready" });
+
+    const { processJob } = await import("@server/pipeline/index");
+    vi.mocked(processJob).mockResolvedValueOnce({
+      success: false,
+      error:
+        'Tailoring failed: The model returned the list of changes in an unexpected shape.\n\nParsed value was a string.\npatchesJson (2554 chars) was:\n"[{...}]"',
+    });
+
+    const res = await fetch(`${baseUrl}/api/jobs/job-rt-detail/re-tailor`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const body = (await res.json()) as {
+      error: { message: string };
+    };
+
+    expect(res.status).toBe(400);
+    expect(body.error.message).toBe(
+      "Tailoring failed: The model returned the list of changes in an unexpected shape.",
+    );
+    expect(body.error.message).not.toContain("patchesJson");
+  });
+
+  it("generate-pdf returns the summary alone when the compile log rides along", async () => {
+    await seedJob({ id: "job-gp-detail", status: "ready" });
+
+    const { generateFinalPdf } = await import("@server/pipeline/index");
+    vi.mocked(generateFinalPdf).mockResolvedValueOnce({
+      success: false,
+      error:
+        "LaTeX compile failed: tectonic exited with code 1.\n\n! Undefined control sequence.\nl.42 \\badmacro",
+    });
+
+    const res = await fetch(`${baseUrl}/api/jobs/job-gp-detail/generate-pdf`, {
+      method: "POST",
+    });
+    const body = (await res.json()) as { error: { message: string } };
+
+    expect(res.status).toBe(400);
+    expect(body.error.message).toBe(
+      "LaTeX compile failed: tectonic exited with code 1.",
+    );
+    expect(body.error.message).not.toContain("Undefined control sequence");
+  });
+
   describe("rescore screening", () => {
     async function scorerMock() {
       const scorer = await import("@server/services/scorer");

@@ -2,6 +2,7 @@ import { logger } from "@infra/logger";
 import * as jobsRepo from "@server/repositories/jobs";
 import { getActiveCvDocument } from "@server/services/cv-active";
 import { generatePdf } from "@server/services/pdf";
+import { splitTailoringFailure } from "@shared/tailoring-failure";
 import type { Job } from "@shared/types";
 
 export interface RenderCvArgs {
@@ -53,9 +54,16 @@ export async function renderCvPdf(
     allowBaselineRender: true,
   });
   if (!pdf.success || !pdf.pdfPath) {
+    // Summary only: this one surfaces in a toast, which a compiler log would
+    // overflow. Nothing on this path persists the reason — Render is not a
+    // tailoring run — so the detail is logged here or it is lost outright.
+    const { summary, detail } = splitTailoringFailure(pdf.error);
+    if (detail) {
+      logger.warn("CV render failed", { jobId: job.id, detail });
+    }
     return {
       success: false,
-      error: pdf.error ?? "Failed to render CV PDF.",
+      error: summary || "Failed to render CV PDF.",
     };
   }
 

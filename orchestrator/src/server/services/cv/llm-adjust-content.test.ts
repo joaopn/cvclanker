@@ -1,5 +1,9 @@
 // @vitest-environment node
 import { loadPrompt } from "@server/services/prompts";
+import {
+  composeTailoringFailure,
+  splitTailoringFailure,
+} from "@shared/tailoring-failure";
 import type { CvField } from "@shared/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getCvFormatNote } from "./cv-format-note";
@@ -229,7 +233,11 @@ describe("llmAdjustContent", () => {
   });
 
   it("returns failure when the LLM call fails", async () => {
-    callJsonMock.mockResolvedValue({ success: false, error: "rate limited" });
+    callJsonMock.mockResolvedValue({
+      success: false,
+      error: "rate limited",
+      code: "rate_limited",
+    });
 
     const result = await llmAdjustContent({
       personalBrief: "x",
@@ -238,9 +246,15 @@ describe("llmAdjustContent", () => {
       currentOverrides: {},
     });
 
+    // Exact shape, so a stowaway key still fails the assertion.
     expect(result).toEqual({
       success: false,
-      error: "LLM call failed: rate limited",
+      error: composeTailoringFailure(
+        "LLM call failed: rate limited",
+        // Which KIND of failure it was — what tells a user whether to wait or
+        // to go and fix a credential.
+        "Provider error code: rate_limited. Model: test-model.",
+      ),
     });
   });
 
@@ -264,6 +278,157 @@ describe("llmAdjustContent", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error).toMatch(/unexpected shape/);
+      // The whole point of the failure: say what the model actually sent, so
+      // a job that fails this way on every retry can be diagnosed from the UI.
+      const { summary, detail } = splitTailoringFailure(result.error);
+      expect(summary).toBe(
+        "The model returned the list of changes in an unexpected shape.",
+      );
+      expect(detail).toContain("Parsed value was an object.");
+      expect(detail).toContain('Its keys were: "fieldId", "newValue"');
+      expect(detail).toContain('{"fieldId":"x","newValue":"y"}');
+    }
+  });
+
+  it("unwraps a DOUBLE-ENCODED patch list", async () => {
+    // The measured shape behind the reported "fails on every retry": the model
+    // JSON-encodes the array twice, so one parse yields a string.
+    callJsonMock.mockResolvedValue({
+      success: true,
+      data: {
+        patchesJson: JSON.stringify(
+          JSON.stringify([
+            { fieldId: "basics.name", newValue: "Ada L." },
+            { fieldId: "experience.0.bullet.0", newValue: "Shipped things." },
+          ]),
+        ),
+        matched: ["algorithms"],
+        skipped: [],
+      },
+    });
+
+    const result = await llmAdjustContent({
+      personalBrief: "x",
+      jobDescription: "y",
+      currentFields: SAMPLE_FIELDS,
+      currentOverrides: {},
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.patches).toEqual([
+        { fieldId: "basics.name", newValue: "Ada L." },
+        { fieldId: "experience.0.bullet.0", newValue: "Shipped things." },
+      ]);
+    }
+  });
+
+  it("still rejects a triple-encoded list rather than unwrapping for ever", async () => {
+    callJsonMock.mockResolvedValue({
+      success: true,
+      data: {
+        patchesJson: JSON.stringify(
+          JSON.stringify(
+            JSON.stringify([{ fieldId: "basics.name", newValue: "z" }]),
+          ),
+        ),
+        matched: [],
+        skipped: [],
+      },
+    });
+
+    const result = await llmAdjustContent({
+      personalBrief: "x",
+      jobDescription: "y",
+      currentFields: SAMPLE_FIELDS,
+      currentOverrides: {},
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toMatch(/unexpected shape/);
+    }
+  });
+
+  it("names the wrapper key when the model wraps the array in an object", async () => {
+    callJsonMock.mockResolvedValue({
+      success: true,
+      data: {
+        patchesJson: JSON.stringify({
+          patches: [{ fieldId: "summary.text", newValue: "z" }],
+        }),
+        matched: [],
+        skipped: [],
+      },
+    });
+
+    const result = await llmAdjustContent({
+      personalBrief: "x",
+      jobDescription: "y",
+      currentFields: SAMPLE_FIELDS,
+      currentOverrides: {},
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const { detail } = splitTailoringFailure(result.error);
+      expect(detail).toContain('Its keys were: "patches"');
+    }
+  });
+
+  it("reports the received type when patchesJson is not a string at all", async () => {
+    callJsonMock.mockResolvedValue({
+      success: true,
+      data: { patchesJson: [{ fieldId: "a" }], matched: [], skipped: [] },
+    });
+
+    const result = await llmAdjustContent({
+      personalBrief: "x",
+      jobDescription: "y",
+      currentFields: SAMPLE_FIELDS,
+      currentOverrides: {},
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const { summary, detail } = splitTailoringFailure(result.error);
+      expect(summary).toBe(
+        "The model returned the list of changes in an unexpected type.",
+      );
+      expect(detail).toBe("patchesJson was an array, not a string.");
+    }
+  });
+
+  it("lists the unknown field ids and the CV's own ids when nothing matched", async () => {
+    callJsonMock.mockResolvedValue({
+      success: true,
+      data: {
+        patchesJson: JSON.stringify([
+          { fieldId: "ghost.one", newValue: "a" },
+          { fieldId: "ghost.two", newValue: "b" },
+        ]),
+        matched: [],
+        skipped: [],
+      },
+    });
+
+    const result = await llmAdjustContent({
+      personalBrief: "x",
+      jobDescription: "y",
+      currentFields: SAMPLE_FIELDS,
+      currentOverrides: {},
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const { detail } = splitTailoringFailure(result.error);
+      // The ids are what identify field-id drift between the CV document and
+      // what the model was shown; the summary only carries counts.
+      expect(detail).toContain("ghost.one");
+      expect(detail).toContain("ghost.two");
+      for (const field of SAMPLE_FIELDS) {
+        expect(detail).toContain(field.id);
+      }
     }
   });
 

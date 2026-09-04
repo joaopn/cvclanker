@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { composeTailoringFailure } from "@shared/tailoring-failure";
 import { createJob } from "@shared/testing/factories";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -144,6 +145,31 @@ describe("renderCvPdf", () => {
     if (result.success) return;
     expect(result.error).toMatch(/latex compile failed/i);
     expect(mocks.updateJob).not.toHaveBeenCalled();
+  });
+
+  it("returns the summary alone when generatePdf carries a detail block", async () => {
+    // This error reaches a toast. The detail is logged instead, since nothing
+    // on the Render path persists a reason.
+    const job = createJob({
+      id: "job-detail",
+      cvDocumentId: "cv-1",
+      tailoredFields: {},
+    });
+    mocks.getJobById.mockResolvedValueOnce(job);
+    mocks.generatePdf.mockResolvedValue({
+      success: false,
+      error: composeTailoringFailure(
+        "LaTeX compile failed: missing closing brace",
+        "! Undefined control sequence.\nl.42 \\badmacro",
+      ),
+    });
+
+    const result = await renderCvPdf({ jobId: "job-detail" });
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error).toBe("LaTeX compile failed: missing closing brace");
+    expect(result.error).not.toContain("Undefined control sequence");
   });
 
   it("passes allowBaselineRender=true so a no-override compile is allowed", async () => {

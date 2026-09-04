@@ -10,6 +10,10 @@ import {
   type WritingStyle,
 } from "@server/services/writing-style";
 import {
+  composeTailoringFailure,
+  formatIdList,
+} from "@shared/tailoring-failure";
+import {
   CHAT_STYLE_MANUAL_LANGUAGE_LABELS,
   type ChatStyleManualLanguage,
   type CvField,
@@ -173,31 +177,68 @@ export async function llmAdjustContent(
   });
 
   if (!result.success) {
-    return { success: false, error: `LLM call failed: ${result.error}` };
+    return {
+      success: false,
+      error: composeTailoringFailure(
+        `LLM call failed: ${result.error}`,
+        // The code is what separates a rate limit from a misconfigured key —
+        // the distinction `classifyLlmError` exists to recover, and the one a
+        // user needs to know which of the two to go and fix.
+        `Provider error code: ${result.code}. Model: ${model}.`,
+      ),
+    };
   }
 
   const { patchesJson, matched, skipped } = result.data;
   if (typeof patchesJson !== "string" || patchesJson.trim().length === 0) {
     return {
       success: false,
-      error: "The model returned an empty list of changes.",
+      error: composeTailoringFailure(
+        typeof patchesJson === "string"
+          ? "The model returned an empty list of changes."
+          : "The model returned the list of changes in an unexpected type.",
+        describePayload("patchesJson", patchesJson),
+      ),
     };
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(patchesJson);
+    // Measured against a real failing job (2026-09-04): models DOUBLE-ENCODE
+    // this field — `patchesJson` arrives as a JSON string whose content is
+    // itself the JSON array text, so one parse yields a string rather than the
+    // array, and the job then failed "unexpected shape" on every retry for
+    // ever. Unwrap exactly one extra layer: a legitimate patch list is an
+    // array, never a string, so this cannot mask a genuinely malformed
+    // payload — that still falls through to the checks below.
+    if (typeof parsed === "string") {
+      parsed = JSON.parse(parsed);
+    }
   } catch (error) {
     return {
       success: false,
-      error: `The model returned a malformed list of changes: ${error instanceof Error ? error.message : String(error)}`,
+      error: composeTailoringFailure(
+        `The model returned a malformed list of changes: ${error instanceof Error ? error.message : String(error)}`,
+        describePayload("patchesJson", patchesJson),
+      ),
     };
   }
 
   if (!Array.isArray(parsed)) {
     return {
       success: false,
-      error: "The model returned the list of changes in an unexpected shape.",
+      error: composeTailoringFailure(
+        "The model returned the list of changes in an unexpected shape.",
+        [
+          `Expected a JSON array of { fieldId, newValue }.`,
+          `Parsed value was ${describeType(parsed)}.`,
+          describeKeys(parsed),
+          describePayload("patchesJson", patchesJson),
+        ]
+          .filter((line): line is string => line !== null)
+          .join("\n"),
+      ),
     };
   }
 
@@ -300,9 +341,29 @@ export async function llmAdjustContent(
     if (reasons.length === 0) {
       reasons.push("no changes survived validation (cause unknown)");
     }
+    const detail: string[] = [];
+    if (droppedUnknownFieldIds.length > 0) {
+      detail.push(
+        `Proposed field ids the active CV does not have (${droppedUnknownFieldIds.length}):`,
+        ...formatIdList(droppedUnknownFieldIds),
+      );
+    }
+    if (droppedLockedFieldIds.length > 0) {
+      detail.push(
+        `Proposed field ids that are locked (${droppedLockedFieldIds.length}):`,
+        ...formatIdList(droppedLockedFieldIds),
+      );
+    }
+    detail.push(
+      `The active CV has ${args.currentFields.length} field(s):`,
+      ...formatIdList(args.currentFields.map((f) => f.id)),
+    );
     return {
       success: false,
-      error: `Tailoring produced no usable changes — ${reasons.join("; ")}.`,
+      error: composeTailoringFailure(
+        `Tailoring produced no usable changes — ${reasons.join("; ")}.`,
+        detail.join("\n"),
+      ),
     };
   }
 
@@ -316,9 +377,19 @@ export async function llmAdjustContent(
   }
   const serialized = JSON.stringify(overridesPreview);
   if (serialized.length > maxTailoredContentChars) {
+    const biggest = Object.entries(overridesPreview)
+      .map(([fid, value]) => ({ fid, size: value.length }))
+      .sort((a, b) => b.size - a.size)
+      .slice(0, 10);
     return {
       success: false,
-      error: `Tailored content exceeds the configured limit (${serialized.length} > ${maxTailoredContentChars} chars). Lift maxTailoredContentChars in Settings or trim your CV.`,
+      error: composeTailoringFailure(
+        `Tailored content exceeds the configured limit (${serialized.length} > ${maxTailoredContentChars} chars). Lift maxTailoredContentChars in Settings or trim your CV.`,
+        [
+          `${Object.keys(overridesPreview).length} field(s) would be stored, ${serialized.length} chars serialized. Largest:`,
+          ...biggest.map((entry) => `  ${entry.fid} — ${entry.size} chars`),
+        ].join("\n"),
+      ),
       cap: {
         field: "tailoredFields",
         observed: serialized.length,
@@ -333,6 +404,54 @@ export async function llmAdjustContent(
     matched: stringArray(matched),
     skipped: stringArray(skipped),
   };
+}
+
+/**
+ * How much of a rejected payload to quote. Independently bounded from the
+ * detail block's own cap so a snippet cannot crowd out the structured lines
+ * that sit beside it — those name the defect, the snippet only illustrates it.
+ */
+const PAYLOAD_SNIPPET_MAX_CHARS = 600;
+
+const TYPE_ARTICLES: Record<string, string> = {
+  object: "an object",
+  undefined: "undefined",
+  string: "a string",
+  number: "a number",
+  boolean: "a boolean",
+};
+
+function describeType(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "an array";
+  return TYPE_ARTICLES[typeof value] ?? `a ${typeof value}`;
+}
+
+/** The keys of a rejected object — the fastest read on a model that wrapped the array. */
+function describeKeys(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const keys = Object.keys(value as Record<string, unknown>);
+  if (keys.length === 0) return "It was an object with no keys.";
+  return `Its keys were: ${keys
+    .slice(0, 20)
+    .map((key) => `"${key}"`)
+    .join(", ")}${keys.length > 20 ? ", …" : ""}`;
+}
+
+/**
+ * A head snippet of what the model actually sent. The head rather than the
+ * tail because a wrapper key or a stray prose preamble — the two shapes that
+ * land here — both appear at the start.
+ */
+function describePayload(label: string, value: unknown): string {
+  if (typeof value !== "string") {
+    return `${label} was ${describeType(value)}, not a string.`;
+  }
+  const snippet =
+    value.length > PAYLOAD_SNIPPET_MAX_CHARS
+      ? `${value.slice(0, PAYLOAD_SNIPPET_MAX_CHARS)}…`
+      : value;
+  return `${label} (${value.length} chars) was:\n${snippet}`;
 }
 
 function stringArray(value: unknown): string[] {

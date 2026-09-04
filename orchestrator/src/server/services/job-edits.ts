@@ -1,6 +1,7 @@
 import { badRequest, conflict, notFound } from "@infra/errors";
 import { logger } from "@infra/logger";
 import { sanitizeUnknown } from "@infra/sanitize";
+import { tailoringFailureSummary } from "@shared/tailoring-failure";
 import type {
   CvDocument,
   CvFieldOverrides,
@@ -92,8 +93,10 @@ export async function acceptEditForJob(input: {
         messageId: message.id,
         reason: sanitizeUnknown(pdf.error),
       });
+      // Summary only — this reaches the ghostwriter toast. The full log is
+      // still logged above via sanitizeUnknown.
       throw badRequest(
-        `PDF render failed after edit: ${pdf.error ?? "unknown"}`,
+        `PDF render failed after edit: ${tailoringFailureSummary(pdf.error) || "unknown"}`,
       );
     }
 

@@ -20,6 +20,12 @@ import {
   runTectonic,
 } from "@server/services/cv/run-tectonic";
 import { getEffectiveSettings } from "@server/services/settings";
+import {
+  composeTailoringFailure,
+  formatIdList,
+  MAX_DETAIL_LIST_IDS,
+  TAILORING_FAILURE_DETAIL_MAX_CHARS,
+} from "@shared/tailoring-failure";
 import type { CvDocument, CvFieldOverrides } from "@shared/types";
 
 export interface GeneratePdfArgs {
@@ -140,7 +146,7 @@ export async function generatePdf(args: GeneratePdfArgs): Promise<PdfResult> {
     overrides,
     overrideCount,
     identicalToBaseline,
-    knownFieldIds: document.fields.slice(0, 5).map((f) => f.id),
+    knownFieldIds: document.fields.map((f) => f.id),
   });
   if (baselineFailure) return baselineFailure;
 
@@ -157,7 +163,13 @@ export async function generatePdf(args: GeneratePdfArgs): Promise<PdfResult> {
     return { success: true, pdfPath };
   } catch (error) {
     if (error instanceof RunTectonicError) {
-      return { success: false, error: `LaTeX compile failed: ${error.message}` };
+      return {
+        success: false,
+        error: composeTailoringFailure(
+          `LaTeX compile failed: ${error.message}`,
+          compilerLogTail(error.stderr),
+        ),
+      };
     }
     throw error;
   }
@@ -224,7 +236,7 @@ async function renderDocxJobPdf(input: DocxRenderArgs): Promise<PdfResult> {
     overrides: input.overrides,
     overrideCount: input.overrideCount,
     identicalToBaseline,
-    knownFieldIds: document.fields.slice(0, 5).map((f) => f.id),
+    knownFieldIds: document.fields.map((f) => f.id),
   });
   if (baselineFailure) return baselineFailure;
 
@@ -251,7 +263,10 @@ async function renderDocxJobPdf(input: DocxRenderArgs): Promise<PdfResult> {
     if (error instanceof ConvertDocxError) {
       return {
         success: false,
-        error: `PDF conversion failed: ${error.message}`,
+        error: composeTailoringFailure(
+          `PDF conversion failed: ${error.message}`,
+          compilerLogTail(error.stderr),
+        ),
       };
     }
     throw error;
@@ -298,10 +313,69 @@ function baselineGuardFailure(input: {
     jobId: args.jobId,
     cvDocumentId: args.cvDocumentId,
     overrideIds: Object.keys(input.overrides).slice(0, 10),
-    knownFieldIds: input.knownFieldIds,
+    knownFieldIds: input.knownFieldIds.slice(0, MAX_DETAIL_LIST_IDS),
   });
+  const overrideIds = Object.keys(input.overrides);
   return {
     success: false,
-    error: `Tailoring produced no actual change to the CV. The ${overrideCount} proposed change(s) either targeted unknown CV fields or matched the original values exactly. Try re-uploading the CV from the CV page.`,
+    error: composeTailoringFailure(
+      `Tailoring produced no actual change to the CV. The ${overrideCount} proposed change(s) either targeted unknown CV fields or matched the original values exactly. Try re-uploading the CV from the CV page.`,
+      [
+        `Field ids the tailoring wrote (${overrideIds.length}):`,
+        ...formatIdList(overrideIds),
+        `Field ids the active CV document has (${input.knownFieldIds.length}):`,
+        ...formatIdList(input.knownFieldIds),
+      ].join("\n"),
+    ),
   };
+}
+
+/**
+ * Lines of compiler log worth keeping. EITHER limit can bind: 40 lines fit the
+ * character budget only up to a mean line width of about 48 characters. A
+ * tectonic stderr — which is what reaches here, not the far chattier `.log`
+ * file — is normally under ten short lines, so neither limit engages; a
+ * LibreOffice traceback is long-lined and the character budget cuts it first.
+ */
+const MAX_LOG_LINES = 40;
+/** Room reserved for the "… (N earlier line(s))" marker the tail may prepend. */
+const ELISION_BUDGET = 40;
+
+/**
+ * The TAIL of a compiler log. LaTeX and LibreOffice both report the fatal error
+ * last, after however many pages of font and package chatter they emitted
+ * first, so the head is the half with no diagnostic value.
+ *
+ * This bounds ITSELF to the detail cap, from the end. `composeTailoringFailure`
+ * truncates from the START — right for a model payload, whose defect is at the
+ * head — so handing it an over-long tail would discard the very lines this
+ * function exists to keep, and label the result "truncated" as though nothing
+ * of value had gone.
+ */
+function compilerLogTail(stderr: string | null | undefined): string | null {
+  const trimmed = stderr?.trim();
+  if (!trimmed) return null;
+
+  const lines = trimmed.split("\n");
+  const kept: string[] = [];
+  let budget = TAILORING_FAILURE_DETAIL_MAX_CHARS - ELISION_BUDGET;
+  for (
+    let i = lines.length - 1;
+    i >= 0 && kept.length < MAX_LOG_LINES;
+    i -= 1
+  ) {
+    const line = lines[i];
+    if (budget - line.length - 1 < 0) break;
+    budget -= line.length + 1;
+    kept.unshift(line);
+  }
+
+  // Nothing fit: a single line longer than the whole budget. Keep its end.
+  if (kept.length === 0) {
+    return `…${trimmed.slice(-(TAILORING_FAILURE_DETAIL_MAX_CHARS - 1))}`;
+  }
+
+  const dropped = lines.length - kept.length;
+  const tail = kept.join("\n");
+  return dropped > 0 ? `… (${dropped} earlier line(s))\n${tail}` : tail;
 }

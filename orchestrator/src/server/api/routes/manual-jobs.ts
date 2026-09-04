@@ -29,6 +29,7 @@ import {
   startUrlImportBatch,
   subscribeToUrlImportBatch,
 } from "@server/services/url-import/batch-store";
+import { tailoringFailureSummary } from "@shared/tailoring-failure";
 import {
   BATCH_URL_IMPORT_MAX_URLS,
   type BatchUrlImportItemResult,
@@ -151,8 +152,10 @@ manualJobsRouter.post("/import", async (req: Request, res: Response) => {
         new AppError({
           status: 502,
           code: "UPSTREAM_ERROR",
+          // Summary only: this is a toast. `processJob` has already stored
+          // the full reason on the job, where the failure box reveals it.
           message:
-            processResult.error ||
+            tailoringFailureSummary(processResult.error) ||
             "Imported job but failed to move it to ready automatically",
           details: { jobId: createdJob.id },
         }),

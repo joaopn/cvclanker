@@ -67,8 +67,15 @@ import { normalizeStoryPart } from "@server/services/cv/docx/normalize-runs";
 import { parseDocx } from "@server/services/cv/docx/parse-docx";
 import { spliceMarkers } from "@server/services/cv/docx/splice-markers";
 import { simpleDoc } from "@server/services/cv/docx/test/fixture-builder";
-import { RunTectonicError, runTectonic } from "@server/services/cv/run-tectonic";
+import {
+  RunTectonicError,
+  runTectonic,
+} from "@server/services/cv/run-tectonic";
 import { getEffectiveSettings } from "@server/services/settings";
+import {
+  splitTailoringFailure,
+  TAILORING_FAILURE_DETAIL_MAX_CHARS,
+} from "@shared/tailoring-failure";
 import { createAppSettings } from "@shared/testing/factories";
 import { generatePdf } from "./pdf";
 
@@ -183,6 +190,60 @@ describe("generatePdf", () => {
     expect(upsertJobPdf).not.toHaveBeenCalled();
   });
 
+  it("names the written ids against the CV's own, with a true field count", async () => {
+    // Field-id drift is the thing this failure exists to diagnose, so the two
+    // id lists and the CV's real field count are the whole payload.
+    vi.mocked(cvRepo.getCvDocumentById).mockResolvedValueOnce({
+      ...FAKE_CV,
+      templatedTex: "\\documentclass{article}\n\\name{«basics.name»}\n",
+      defaultFieldValues: { "basics.name": "Ada Lovelace" },
+      fields: [
+        { id: "basics.name", role: "name", value: "Ada Lovelace" },
+        { id: "basics.email", role: "email", value: "ada@example.com" },
+      ],
+    });
+
+    const result = await generatePdf({
+      jobId: "job-44c",
+      cvDocumentId: "cv-1",
+      overrides: { "ghost.field": "ignored" },
+    });
+
+    const { detail } = splitTailoringFailure(result.error);
+    expect(detail).toContain("Field ids the tailoring wrote (1):");
+    expect(detail).toContain("  ghost.field");
+    // The real count, not the width of a slice.
+    expect(detail).toContain("Field ids the active CV document has (2):");
+    expect(detail).toContain("  basics.name");
+    expect(detail).toContain("  basics.email");
+  });
+
+  it("marks the cut when the CV has more fields than the list shows", async () => {
+    const fields: CvField[] = Array.from({ length: 30 }, (_, i) => ({
+      id: `f.${i}`,
+      role: "bullet" as const,
+      value: `v${i}`,
+    }));
+    vi.mocked(cvRepo.getCvDocumentById).mockResolvedValueOnce({
+      ...FAKE_CV,
+      templatedTex: "\\documentclass{article}\n\\name{«basics.name»}\n",
+      defaultFieldValues: { "basics.name": "Ada Lovelace" },
+      fields,
+    });
+
+    const result = await generatePdf({
+      jobId: "job-44d",
+      cvDocumentId: "cv-1",
+      overrides: { "ghost.field": "ignored" },
+    });
+
+    const { detail } = splitTailoringFailure(result.error);
+    expect(detail).toContain("Field ids the active CV document has (30):");
+    // A silently truncated list would read as the whole set.
+    expect(detail).toContain("… (5 more)");
+    expect(detail).not.toContain("  f.25");
+  });
+
   it("renders successfully when overrides are no-op but allowBaselineRender is true", async () => {
     vi.mocked(cvRepo.getCvDocumentById).mockResolvedValueOnce({
       ...FAKE_CV,
@@ -238,6 +299,119 @@ describe("generatePdf", () => {
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/LaTeX compile failed/);
     expect(upsertJobPdf).not.toHaveBeenCalled();
+  });
+
+  it("carries the tectonic log into the failure detail", async () => {
+    vi.mocked(runTectonic).mockRejectedValueOnce(
+      new RunTectonicError(
+        "compile failed",
+        "NON_ZERO_EXIT",
+        "! Misplaced alignment tab character &.\nl.42 Pricing & Underwriting",
+      ),
+    );
+    const result = await generatePdf({
+      jobId: "job-1",
+      cvDocumentId: "cv-1",
+    });
+
+    expect(result.success).toBe(false);
+    const { summary, detail } = splitTailoringFailure(result.error);
+    expect(summary).toBe("LaTeX compile failed: compile failed");
+    // The stderr is the only thing that names the offending line; before this
+    // it was carried on the error object and thrown away here.
+    expect(detail).toContain("Misplaced alignment tab character");
+    expect(detail).toContain("l.42 Pricing & Underwriting");
+  });
+
+  it("keeps only the TAIL of a long tectonic log, where the error is", async () => {
+    const chatter = Array.from(
+      { length: 200 },
+      (_, i) => `[package chatter line ${i}]`,
+    ).join("\n");
+    vi.mocked(runTectonic).mockRejectedValueOnce(
+      new RunTectonicError(
+        "compile failed",
+        "NON_ZERO_EXIT",
+        `${chatter}\n! Undefined control sequence.`,
+      ),
+    );
+    const result = await generatePdf({
+      jobId: "job-1",
+      cvDocumentId: "cv-1",
+    });
+
+    const { detail } = splitTailoringFailure(result.error);
+    expect(detail).toContain("! Undefined control sequence.");
+    expect(detail).toContain("earlier line(s)");
+    expect(detail).not.toContain("[package chatter line 0]");
+  });
+
+  it("cuts a log of SHORT lines at the line limit, well under the char cap", async () => {
+    // The line limit is the binding one on ordinary logs; without this the
+    // constant was deletable with the suite green.
+    const stderr = Array.from({ length: 500 }, (_, i) => `l.${i} short`).join(
+      "\n",
+    );
+    vi.mocked(runTectonic).mockRejectedValueOnce(
+      new RunTectonicError("compile failed", "NON_ZERO_EXIT", stderr),
+    );
+    const result = await generatePdf({ jobId: "job-1", cvDocumentId: "cv-1" });
+
+    const { detail } = splitTailoringFailure(result.error);
+    const body = (detail ?? "").split("\n").slice(1); // drop the elision marker
+    expect(body).toHaveLength(40);
+    expect(body.at(-1)).toBe("l.499 short");
+    expect(detail).toContain("(460 earlier line(s))");
+    // Nowhere near the character cap — the LINE limit is what bound this.
+    expect((detail ?? "").length).toBeLessThan(
+      TAILORING_FAILURE_DETAIL_MAX_CHARS / 2,
+    );
+  });
+
+  it("keeps the END of a log whose tail alone exceeds the detail cap", async () => {
+    // The regression the two truncation directions caused: the tail selection
+    // keeps the last 40 lines, then a head-slice at the cap threw the last of
+    // them away — discarding the error and calling the result "truncated".
+    const fatLine = "warning: ".padEnd(400, "x");
+    const stderr = `${Array.from({ length: 40 }, () => fatLine).join("\n")}\n! THE ACTUAL ERROR`;
+    vi.mocked(runTectonic).mockRejectedValueOnce(
+      new RunTectonicError("compile failed", "NON_ZERO_EXIT", stderr),
+    );
+    const result = await generatePdf({ jobId: "job-1", cvDocumentId: "cv-1" });
+
+    const { detail } = splitTailoringFailure(result.error);
+    expect(detail).toContain("! THE ACTUAL ERROR");
+    expect(detail).not.toContain("(truncated)");
+    expect((detail ?? "").length).toBeLessThanOrEqual(
+      TAILORING_FAILURE_DETAIL_MAX_CHARS,
+    );
+  });
+
+  it("keeps the end of a single line longer than the whole budget", async () => {
+    const stderr = `${"a".repeat(5000)}! TRAILING ERROR`;
+    vi.mocked(runTectonic).mockRejectedValueOnce(
+      new RunTectonicError("compile failed", "NON_ZERO_EXIT", stderr),
+    );
+    const result = await generatePdf({ jobId: "job-1", cvDocumentId: "cv-1" });
+
+    const { detail } = splitTailoringFailure(result.error);
+    expect(detail).toContain("! TRAILING ERROR");
+    expect((detail ?? "").length).toBeLessThanOrEqual(
+      TAILORING_FAILURE_DETAIL_MAX_CHARS,
+    );
+  });
+
+  it("omits the detail entirely when tectonic gave no log", async () => {
+    vi.mocked(runTectonic).mockRejectedValueOnce(
+      new RunTectonicError("compile failed", "NON_ZERO_EXIT", "   "),
+    );
+    const result = await generatePdf({
+      jobId: "job-1",
+      cvDocumentId: "cv-1",
+    });
+
+    expect(result.error).toBe("LaTeX compile failed: compile failed");
+    expect(splitTailoringFailure(result.error).detail).toBeNull();
   });
 });
 
@@ -319,6 +493,28 @@ describe("generatePdf on a Word profile", () => {
     expect(result.error).toMatch(/PDF conversion failed/);
     // The ordering invariant: no stranded .docx blob on a conversion failure.
     expect(upsertJobPdf).not.toHaveBeenCalled();
+  });
+
+  it("carries the LibreOffice log into the failure detail", async () => {
+    // Word-CV profiles never reach the LaTeX arm, so without this the whole
+    // feature delivers them nothing.
+    vi.mocked(convertDocxToPdf).mockRejectedValueOnce(
+      new ConvertDocxError(
+        "daemon down",
+        "UNAVAILABLE",
+        "Error: unoserver refused the connection on port 2003",
+      ),
+    );
+
+    const result = await generatePdf({
+      jobId: "job-53",
+      cvDocumentId: "cv-docx",
+      overrides: { [DOCX_FIELD_ID]: "Rebuilt the fleet." },
+    });
+
+    const { summary, detail } = splitTailoringFailure(result.error);
+    expect(summary).toBe("PDF conversion failed: daemon down");
+    expect(detail).toBe("Error: unoserver refused the connection on port 2003");
   });
 
   it("fails when the template references an unknown field", async () => {

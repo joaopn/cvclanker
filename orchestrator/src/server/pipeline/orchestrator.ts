@@ -12,6 +12,11 @@ import { logger } from "@infra/logger";
 import { runWithRequestContext } from "@infra/request-context";
 import { createLocationIntentFromLegacyInputs } from "@shared/location-domain.js";
 import type { ScrapedSourceMark } from "@shared/scrape-window.js";
+import {
+  composeTailoringFailure,
+  formatIdList,
+  splitTailoringFailure,
+} from "@shared/tailoring-failure";
 import type {
   PipelineConfig,
   PipelineRunSavedDetails,
@@ -479,9 +484,15 @@ export async function summarizeJob(
           "Tailoring failed; refusing to ship a baseline-identical PDF",
           { error: adjust.error },
         );
+        // Prefix the summary line only. Wrapping the whole string would push
+        // the prefix in front of a detail block for any failure carrying one.
+        const failure = splitTailoringFailure(adjust.error);
         return {
           success: false,
-          error: `Tailoring failed: ${adjust.error}`,
+          error: composeTailoringFailure(
+            `Tailoring failed: ${failure.summary}`,
+            failure.detail,
+          ),
         };
       }
 
@@ -512,8 +523,15 @@ export async function summarizeJob(
         );
         return {
           success: false,
-          error:
+          error: composeTailoringFailure(
             "Tailoring produced no usable changes — every proposed change targeted a CV field that doesn't exist in the active CV.",
+            [
+              `Proposed field ids (${adjust.patches.length}):`,
+              ...formatIdList(adjust.patches.map((p) => p.fieldId)),
+              `The active CV has ${cv.fields.length} field(s):`,
+              ...formatIdList(cv.fields.map((f) => f.id)),
+            ].join("\n"),
+          ),
         };
       }
 
