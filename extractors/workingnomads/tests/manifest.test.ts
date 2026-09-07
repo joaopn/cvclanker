@@ -24,6 +24,11 @@ describe("workingnomads manifest", () => {
       settings: {
         max_jobs_per_term: "70",
         workplaceTypes: '["remote","hybrid"]',
+        // A LEFTOVER stored value: the `searchCities` field and its `city`
+        // mapping are gone from the schema, but `resolveSourceContextSettings`
+        // copies every stored config key into settings regardless of schema, so
+        // an existing source_configs row still carries it. It must not be able
+        // to resurrect the city filtering B71 removed.
         searchCities: "Berlin",
       },
       searchTerms: ["backend engineer"],
@@ -34,10 +39,15 @@ describe("workingnomads manifest", () => {
       expect.objectContaining({
         maxJobsPerTerm: 70,
         workplaceTypes: ["remote", "hybrid"],
-        locations: ["Berlin"],
         selectedCountry: "germany",
       }),
     );
+    // objectContaining cannot prove a key is ABSENT, and toHaveBeenCalledWith
+    // uses toEqual semantics that ignore undefined-valued keys — so assert the
+    // key set directly.
+    expect(
+      Object.keys(runWorkingNomadsMock.mock.calls[0]?.[0] ?? {}),
+    ).not.toContain("locations");
   });
 
   it("forwards the runner's unreadable-item count to the pipeline", async () => {

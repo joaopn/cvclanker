@@ -1,9 +1,4 @@
 import { normalizeCountryKey } from "@shared/location-support.js";
-import {
-  matchesRequestedCity,
-  normalizeLocationToken,
-  resolveSearchCities,
-} from "@shared/search-cities.js";
 import type { CreateJobInput, JobLocationEvidence } from "@shared/types/jobs";
 
 const WORKING_NOMADS_SEARCH_URL =
@@ -30,7 +25,6 @@ export type WorkingNomadsProgressEvent =
 export interface RunWorkingNomadsOptions {
   searchTerms?: string[];
   selectedCountry?: string;
-  locations?: string[];
   workplaceTypes?: WorkingNomadsWorkplaceType[];
   maxJobsPerTerm?: number;
   onProgress?: (event: WorkingNomadsProgressEvent) => void;
@@ -216,25 +210,6 @@ function matchesAnySearchTerm(
   });
 }
 
-function isCountryLikeLocation(
-  requestedLocation: string,
-  selectedCountry: string | undefined,
-): boolean {
-  const normalizedRequested = normalizeLocationToken(requestedLocation);
-  const normalizedCountry = normalizeCountryKey(selectedCountry);
-  if (!normalizedRequested || !normalizedCountry) return false;
-  return normalizedRequested === normalizedCountry;
-}
-
-function resolveExplicitLocations(
-  locations: string[] | undefined,
-  selectedCountry: string | undefined,
-): string[] {
-  return resolveSearchCities({ list: locations }).filter(
-    (location) => !isCountryLikeLocation(location, selectedCountry),
-  );
-}
-
 const EUROPE_COUNTRIES = new Set([
   "albania",
   "andorra",
@@ -399,20 +374,6 @@ function getCountrySearchTokens(country: string | undefined): string[] {
   tokens.add(countryToken);
 
   return [...tokens];
-}
-
-function matchesRequestedLocation(
-  jobLocation: string | undefined,
-  requestedLocation: string,
-): boolean {
-  if (!jobLocation) return false;
-  if (matchesRequestedCity(jobLocation, requestedLocation)) return true;
-
-  const normalizedJobLocation = normalizeLocationToken(jobLocation);
-  const normalizedRequestedLocation = normalizeLocationToken(requestedLocation);
-  if (!normalizedJobLocation || !normalizedRequestedLocation) return false;
-
-  return normalizedJobLocation.includes(normalizedRequestedLocation);
 }
 
 function buildSearchRequest(args: {
@@ -619,14 +580,16 @@ export async function runWorkingNomads(
       ? options.searchTerms
       : ["software engineer"];
   const maxJobsPerTerm = toPositiveIntOrFallback(options.maxJobsPerTerm, 50);
-  const explicitLocations = resolveExplicitLocations(
-    options.locations,
-    options.selectedCountry,
-  );
-  const locationTokens =
-    explicitLocations.length > 0
-      ? []
-      : getCountrySearchTokens(options.selectedCountry);
+  // Working Nomads is a remote-only board and its location vocabulary is
+  // country/region-level ("USA", "Europe", "Germany"), never a city — measured
+  // over 500 live rows, not one carried a city name, and 72% carried an empty
+  // `location_base` with their geography in the `locations` array instead.
+  // So a city is deliberately ignored here rather than filtered on: the
+  // old post-map city filter rejected 100% of rows for every profile naming a
+  // real city, silently (a "city" equal to the selected country, or a region
+  // token like "Europe", escaped it). The country tokens are the only geography
+  // this source can honour, and they now always apply.
+  const locationTokens = getCountrySearchTokens(options.selectedCountry);
 
   if (!matchesWorkplaceTypes(options.workplaceTypes)) {
     return { success: true, jobs: [] };
@@ -676,23 +639,13 @@ export async function runWorkingNomads(
       const mapped = mapWorkingNomadsJob(job);
       if (!mapped) {
         // A search hit with nothing usable in it. Filtered rows are NOT
-        // counted here — the term filter above and the location filter below
-        // both skip rows that would have mapped fine. Consequence worth
-        // knowing: a row that is both term-mismatched AND unreadable is
-        // filtered before it reaches this branch, so it never shows up as
-        // unreadable.
+        // counted here — the term filter above skips rows that would have
+        // mapped fine. Consequence worth knowing: a row that is both
+        // term-mismatched AND unreadable is filtered before it reaches this
+        // branch, so it never shows up as unreadable.
         unmappable += 1;
         continue;
       }
-      if (
-        explicitLocations.length > 0 &&
-        !explicitLocations.some((location) =>
-          matchesRequestedLocation(mapped.location, location),
-        )
-      ) {
-        continue;
-      }
-
       const dedupeKey = mapped.sourceJobId || mapped.jobUrl;
       if (seen.has(dedupeKey)) continue;
 

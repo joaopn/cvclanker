@@ -1,4 +1,3 @@
-import { resolveSearchCities } from "@shared/search-cities.js";
 import type {
   ExtractorManifest,
   ExtractorProgressEvent,
@@ -17,14 +16,6 @@ const workingnomadsConfigSchema: SourceConfigSchema = {
         "Working Nomads joins all search terms into one boolean-OR Elasticsearch query, so this cap applies to the joined result set, not per individual term.",
     },
     {
-      key: "searchCities",
-      label: "Search cities",
-      type: "text",
-      default: "",
-      description:
-        "Authoritative city fallback. Used when the Run modal's city mapping is disabled.",
-    },
-    {
       key: "workplaceTypes",
       label: "Workplace types",
       type: "text",
@@ -34,11 +25,6 @@ const workingnomadsConfigSchema: SourceConfigSchema = {
     },
   ],
   globalMappings: [
-    {
-      globalField: "city",
-      sourceField: "searchCities",
-      enabledByDefault: true,
-    },
     {
       globalField: "workplaceTypes",
       sourceField: "workplaceTypes",
@@ -103,9 +89,6 @@ export const manifest: ExtractorManifest = {
     const result = await runWorkingNomads({
       selectedCountry: context.selectedCountry,
       searchTerms: context.searchTerms,
-      locations: resolveSearchCities({
-        single: context.settings.searchCities,
-      }),
       workplaceTypes: context.settings.workplaceTypes
         ? JSON.parse(context.settings.workplaceTypes)
         : undefined,

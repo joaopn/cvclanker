@@ -56,7 +56,12 @@ describe("runWorkingNomads", () => {
     );
   });
 
-  it("applies location filters using explicit cities before country fallback", async () => {
+  it("maps country/region-level rows, including one whose location_base is empty", async () => {
+    // A region name, and an EMPTY location_base — the latter is 72% of live
+    // rows. Note the mapper's `??` chain keeps "" rather than falling through
+    // to `locations`, so such a row maps to location "" (asserted below).
+    // Whether a configured city can still reject these is covered end-to-end
+    // in ignores-cities.test.ts, the only level that can express a city.
     const fetchMock = vi.fn().mockResolvedValue(
       createResponse([
         {
@@ -66,7 +71,8 @@ describe("runWorkingNomads", () => {
           company_name: "Acme",
           category_name: "Development",
           tags: "nodejs",
-          location: "Berlin, Germany",
+          locations: ["Europe"],
+          location_base: "Europe",
           pub_date: "2026-03-20T10:00:00-04:00",
         },
         {
@@ -76,7 +82,8 @@ describe("runWorkingNomads", () => {
           company_name: "Beta",
           category_name: "Development",
           tags: "python",
-          location: "Paris, France",
+          locations: ["Germany"],
+          location_base: "",
           pub_date: "2026-03-20T10:00:00-04:00",
         },
       ]),
@@ -85,13 +92,14 @@ describe("runWorkingNomads", () => {
     const result = await runWorkingNomads({
       searchTerms: ["backend"],
       selectedCountry: "germany",
-      locations: ["Berlin"],
       fetchImpl: fetchMock,
     });
 
     expect(result.success).toBe(true);
-    expect(result.jobs).toHaveLength(1);
-    expect(result.jobs[0]?.employer).toBe("Acme");
+    expect(result.jobs.map((job) => job.employer)).toEqual(["Acme", "Beta"]);
+    // `??` keeps the empty string; swapping it for `||` would silently change
+    // which location these rows are judged on.
+    expect(result.jobs.map((job) => job.location)).toEqual(["Europe", ""]);
   });
 
   it("returns no jobs when remote is not an allowed workplace type", async () => {

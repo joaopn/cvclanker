@@ -335,7 +335,7 @@ export const ProfileConfigFields: React.FC<ProfileConfigFieldsProps> = ({
                   helperText={
                     form.cityValues.length === 0
                       ? "No cities: the whole country is searched, as one search per source."
-                      : "Each city is searched separately, so the city list multiplies what a paid source costs. Clear it to search the whole country instead."
+                      : "Each city is searched separately, so the city list multiplies what a paid source costs. Clear it to search the whole country instead. Working Nomads ignores cities entirely — its listings are country- or region-wide."
                   }
                 />
               </div>
