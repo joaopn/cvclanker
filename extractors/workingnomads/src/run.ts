@@ -111,6 +111,20 @@ function inferJobType(text: string, positionType: string | undefined): string {
   return "Full-time";
 }
 
+/**
+ * Working Nomads returns a BLANK `location_base` on roughly 70% of rows (two
+ * 500-row live samples: 360 and 344) and puts the real geography in `locations`
+ * instead — in neither sample was a blank `location_base` accompanied by an
+ * empty `locations` array. The empty string is not nullish, so reading these
+ * fields raw makes `??` stop at the blank and discard the array, which is B72.
+ * Blank reads as absent so the fallback chain works. The value itself is
+ * returned unchanged: this decides presence, it does not normalise text.
+ */
+function nonBlankString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  return value.trim().length > 0 ? value : undefined;
+}
+
 function buildLocationEvidence(args: {
   locationBase?: string | undefined;
   legacyLocation?: string | undefined;
@@ -500,15 +514,18 @@ function mapWorkingNomadsJob(
   const description =
     typeof job.description === "string" ? job.description : undefined;
   const title = typeof job.title === "string" ? job.title : "Unknown Title";
-  const locationBase =
-    typeof job.location_base === "string" ? job.location_base : undefined;
+  const locationBase = nonBlankString(job.location_base);
+  // Blank ENTRIES are dropped for the same reason the blank scalars are: a
+  // `[""]` array joins to "" while `locations.length > 0` suppresses the
+  // "Remote" default, which is B72 all over again, and `["", "Germany"]` would
+  // join to ", Germany". No live row carries one — this is the rule holding
+  // where the measurement happens not to reach.
   const locations = Array.isArray(job.locations)
     ? job.locations.filter(
-        (value): value is string => typeof value === "string",
+        (value): value is string => nonBlankString(value) !== undefined,
       )
     : [];
-  const legacyLocation =
-    typeof job.location === "string" ? job.location : undefined;
+  const legacyLocation = nonBlankString(job.location);
   const location =
     locationBase ??
     legacyLocation ??
@@ -582,7 +599,7 @@ export async function runWorkingNomads(
   const maxJobsPerTerm = toPositiveIntOrFallback(options.maxJobsPerTerm, 50);
   // Working Nomads is a remote-only board and its location vocabulary is
   // country/region-level ("USA", "Europe", "Germany"), never a city — measured
-  // over 500 live rows, not one carried a city name, and 72% carried an empty
+  // over 500 live rows, not one carried a city name, and ~70% carried a blank
   // `location_base` with their geography in the `locations` array instead.
   // So a city is deliberately ignored here rather than filtered on: the
   // old post-map city filter rejected 100% of rows for every profile naming a

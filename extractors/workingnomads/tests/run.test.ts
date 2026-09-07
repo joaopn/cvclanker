@@ -56,10 +56,12 @@ describe("runWorkingNomads", () => {
     );
   });
 
-  it("maps country/region-level rows, including one whose location_base is empty", async () => {
-    // A region name, and an EMPTY location_base — the latter is 72% of live
-    // rows. Note the mapper's `??` chain keeps "" rather than falling through
-    // to `locations`, so such a row maps to location "" (asserted below).
+  it("falls through an empty location_base to the locations array", async () => {
+    // B72: ~70% of live rows carry `location_base: ""` with the real geography
+    // in `locations` (measured: 344 of 500 empty, and NOT ONE of those with an
+    // empty `locations` array). The empty string is not nullish, so the mapper
+    // used to stop at the blank and store `location: ""` — leaving the row with
+    // no location and no evidence, judged only by the remote-worldwide escape.
     // Whether a configured city can still reject these is covered end-to-end
     // in ignores-cities.test.ts, the only level that can express a city.
     const fetchMock = vi.fn().mockResolvedValue(
@@ -97,9 +99,119 @@ describe("runWorkingNomads", () => {
 
     expect(result.success).toBe(true);
     expect(result.jobs.map((job) => job.employer)).toEqual(["Acme", "Beta"]);
-    // `??` keeps the empty string; swapping it for `||` would silently change
-    // which location these rows are judged on.
-    expect(result.jobs.map((job) => job.location)).toEqual(["Europe", ""]);
+    expect(result.jobs.map((job) => job.location)).toEqual([
+      "Europe",
+      "Germany",
+    ]);
+    // The evidence reads the same two fields, so it has to fall through too —
+    // an undefined evidence is what left these rows with no country to judge.
+    expect(result.jobs.map((job) => job.locationEvidence?.location)).toEqual([
+      "Europe",
+      "Germany",
+    ]);
+  });
+
+  it("treats a whitespace-only location_base as absent, and keeps the Remote default", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      createResponse([
+        {
+          url: "https://www.workingnomads.com/job/go/125/",
+          title: "Backend Engineer",
+          description: "<p>Full-time role.</p>",
+          company_name: "Gamma",
+          tags: "nodejs",
+          locations: ["Poland"],
+          location_base: "   ",
+          pub_date: "2026-03-20T10:00:00-04:00",
+        },
+        {
+          // Nothing to fall through TO: the "Remote" default still applies, and
+          // no evidence is fabricated for it.
+          url: "https://www.workingnomads.com/job/go/126/",
+          title: "Backend Engineer",
+          description: "<p>Full-time role.</p>",
+          company_name: "Delta",
+          tags: "nodejs",
+          locations: [],
+          location_base: "",
+          pub_date: "2026-03-20T10:00:00-04:00",
+        },
+      ]),
+    );
+
+    const result = await runWorkingNomads({
+      searchTerms: ["backend"],
+      selectedCountry: "poland",
+      fetchImpl: fetchMock,
+    });
+
+    expect(result.jobs.map((job) => job.location)).toEqual([
+      "Poland",
+      "Remote",
+    ]);
+    expect(result.jobs[0]?.locationEvidence?.location).toBe("Poland");
+    // The whole evidence object is absent, not merely an evidence whose
+    // location is empty — `?.location` alone cannot tell those apart.
+    expect(result.jobs[1]?.locationEvidence).toBeUndefined();
+  });
+
+  it("drops blank entries inside locations, and pins the join/primary split", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      createResponse([
+        {
+          // A blank entry is B72 in miniature: it would join to ", Germany",
+          // and a lone "" would join to "" while `locations.length > 0`
+          // suppressed the "Remote" default.
+          url: "https://www.workingnomads.com/job/go/127/",
+          title: "Backend Engineer",
+          description: "<p>Full-time role.</p>",
+          company_name: "Epsilon",
+          tags: "nodejs",
+          locations: ["", "Germany"],
+          location_base: "",
+          pub_date: "2026-03-20T10:00:00-04:00",
+        },
+        {
+          url: "https://www.workingnomads.com/job/go/128/",
+          title: "Backend Engineer",
+          description: "<p>Full-time role.</p>",
+          company_name: "Zeta",
+          tags: "nodejs",
+          locations: ["   "],
+          location_base: "",
+          pub_date: "2026-03-20T10:00:00-04:00",
+        },
+        {
+          url: "https://www.workingnomads.com/job/go/129/",
+          title: "Backend Engineer",
+          description: "<p>Full-time role.</p>",
+          company_name: "Eta",
+          tags: "nodejs",
+          locations: ["Germany", "Poland"],
+          location_base: "",
+          pub_date: "2026-03-20T10:00:00-04:00",
+        },
+      ]),
+    );
+
+    const result = await runWorkingNomads({
+      searchTerms: ["backend"],
+      selectedCountry: "germany",
+      fetchImpl: fetchMock,
+    });
+
+    expect(result.jobs.map((job) => job.location)).toEqual([
+      "Germany",
+      // Nothing usable left in the array, so the default applies.
+      "Remote",
+      "Germany, Poland",
+    ]);
+    // The display string lists every location; the evidence names the primary
+    // one. They deliberately differ — pinned so neither drifts into the other.
+    expect(result.jobs[0]?.locationEvidence?.location).toBe("Germany");
+    expect(result.jobs[2]?.locationEvidence?.location).toBe("Germany");
+    // Absent, not merely an evidence carrying an empty location.
+    expect(result.jobs[1]?.locationEvidence).toBeUndefined();
   });
 
   it("returns no jobs when remote is not an allowed workplace type", async () => {

@@ -20,8 +20,8 @@ describe("workingnomads ignores a configured city", () => {
   });
 
   it("sends the country tokens and keeps every row even with a city stored", async () => {
-    // Both rows carry shapes measured on the live index: a region name, and an
-    // EMPTY location_base (72% of 500 sampled rows — those rows still carry a
+    // Both rows carry shapes measured on the live index: a region name, and a
+    // blank location_base (~70% of live rows — those rows still carry a
     // populated `locations` array, which is what the ES filter matches on).
     // Before B71 a stored city blanked the country filter AND rejected both of
     // these, which is how the source returned nothing for every non-remote
