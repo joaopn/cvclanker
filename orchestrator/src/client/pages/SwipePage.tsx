@@ -7,15 +7,18 @@
 import { PageHeader } from "@client/components/layout";
 import { PipelineProgressStrip } from "@client/components/PipelineProgressStrip";
 import { ViewToggle } from "@client/components/ViewToggle";
+import { useSettings } from "@client/hooks/useSettings";
 import type { JobStatus } from "@shared/types";
 import { Clock, Loader2, Play, Square } from "lucide-react";
 import type React from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { CompanyInFlightDialog } from "./orchestrator/CompanyInFlightDialog";
 import { ProfileSelect } from "./orchestrator/ProfileSelect";
 import { useOrchestratorData } from "./orchestrator/useOrchestratorData";
 import { usePipelineControls } from "./orchestrator/usePipelineControls";
 import { useSelectedProfile } from "./orchestrator/useSelectedProfile";
+import { useTailorCompanyGuard } from "./orchestrator/useTailorCompanyGuard";
 import { SwipeDeck } from "./swipe/SwipeDeck";
 
 // The deck triages the Inbox only — scope the shared data hook to it so this
@@ -39,6 +42,12 @@ export const SwipePage: React.FC = () => {
     });
 
   const { profiles, selectedProfileIds, toggleProfile } = useSelectedProfile();
+
+  // The deck's own guard instance. Manage and Swipe never render together, so
+  // sharing one would mean hoisting it above the router for no gain; the fetch
+  // is per press and its cache entry is shared through react-query anyway.
+  const { companyInFlightCheckEnabled } = useSettings();
+  const tailorGuard = useTailorCompanyGuard(companyInFlightCheckEnabled);
 
   const profileSelect = (
     <ProfileSelect
@@ -119,8 +128,14 @@ export const SwipePage: React.FC = () => {
           isPipelineRunning={isPipelineRunning}
           onRunPipeline={() => runPipelineNow(selectedProfileIds)}
           profiles={profiles}
+          confirmTailor={tailorGuard.confirmTailor}
         />
       </main>
+
+      <CompanyInFlightDialog
+        prompt={tailorGuard.prompt}
+        onResolve={tailorGuard.resolvePrompt}
+      />
     </div>
   );
 };

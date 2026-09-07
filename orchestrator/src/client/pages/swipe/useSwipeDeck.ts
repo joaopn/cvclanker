@@ -15,7 +15,11 @@ import {
 import { toast } from "@client/lib/toast";
 import { useQuery } from "@tanstack/react-query";
 import type { Job, SuitabilityCategory } from "@shared/types.js";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ConfirmTailor,
+  tailorApproved,
+} from "../orchestrator/tailorCompanyConflicts";
 import { dateValue } from "../orchestrator/utils";
 
 /** Actions reachable from the deck — all accept a `discovered` source job. */
@@ -51,10 +55,18 @@ interface UseSwipeDeckArgs {
    * terminal event regardless).
    */
   isPipelineRunning?: boolean;
+  /**
+   * The duplicate-application guard, applied to the tailor swipe only. Required
+   * so a mount cannot silently skip it — the deck is the surface where the user
+   * moves fastest and sees the least context about the employer.
+   */
+  confirmTailor: ConfirmTailor;
 }
 
 export interface UseSwipeDeckResult {
   cards: Job[];
+  /** True while a tailor swipe is waiting on the duplicate-application guard. */
+  tailorPending: boolean;
   isLoading: boolean;
   isError: boolean;
   act: (job: Job, action: SwipeAction) => Promise<void>;
@@ -66,12 +78,18 @@ export interface UseSwipeDeckResult {
 export function useSwipeDeck({
   pipelineTerminalEvent,
   isPipelineRunning = false,
+  confirmTailor,
 }: UseSwipeDeckArgs): UseSwipeDeckResult {
   // Jobs the user has already swiped this session — hidden optimistically so
   // the card leaves immediately, before the network round-trip resolves.
   const [committed, setCommitted] = useState<Set<string>>(() => new Set());
   // The most recent successfully-swiped job, available for a single-level undo.
   const [lastSwipe, setLastSwipe] = useState<Job | null>(null);
+  // A tailor swipe is parked on the guard. The ref is the decision-maker (state
+  // cannot be read back in the same tick, and the card is draggable for the
+  // whole fetch); the state only drives the action bar's disabled look.
+  const tailorPendingRef = useRef(false);
+  const [tailorPending, setTailorPending] = useState(false);
 
   const query = useQuery({
     queryKey: SWIPE_DECK_QUERY_KEY,
@@ -100,37 +118,82 @@ export function useSwipeDeck({
     .filter((job) => !committed.has(job.id))
     .sort(byFitThenDate);
 
-  const act = useCallback(async (job: Job, action: SwipeAction) => {
-    setCommitted((prev) => new Set(prev).add(job.id));
+  const act = useCallback(
+    async (job: Job, action: SwipeAction) => {
+      // Refuse a second tailor BEFORE committing anything. The UI also stops
+      // the gesture reaching here (`SwipeCard` is frozen while a tailor is
+      // parked), so this is the hook's own invariant rather than the visible
+      // behaviour — and refusing pre-commit means the deck never churns.
+      if (action === "move_to_ready" && tailorPendingRef.current) return;
 
-    let failed = false;
-    try {
-      // Detached like every other bulk action, so a swipe survives the tab
-      // closing mid-flight. Awaited all the same: the deck rolls the card back
-      // on failure, so it needs the outcome.
-      const batchId = await startJobActionBatch({ action, jobIds: [job.id] });
-      const final = await watchJobActionBatch(batchId);
-      if (final.failed > 0 || final.status !== "completed") failed = true;
-    } catch {
-      failed = true;
-    }
+      setCommitted((prev) => new Set(prev).add(job.id));
 
-    if (failed) {
-      // Roll back: surface the card again so the user can retry.
-      setCommitted((prev) => {
-        const next = new Set(prev);
-        next.delete(job.id);
-        return next;
-      });
-      toast.error(`Couldn't update "${job.title}"`);
-      return;
-    }
+      const rollBack = () =>
+        setCommitted((prev) => {
+          const next = new Set(prev);
+          next.delete(job.id);
+          return next;
+        });
 
-    // Tailoring runs in the background and resolves the row to ready; a PATCH
-    // back to discovered would race it. Exclude it from undo (skip/backlog
-    // only), matching the Manage view.
-    if (action !== "move_to_ready") setLastSwipe(job);
-  }, []);
+      if (action === "move_to_ready") {
+        // The dialog only mounts once the fetch resolves AND finds a conflict,
+        // so the whole round trip is unguarded input. A second tailor swipe in
+        // that window used to reach the guard too, whose "a newer press cancels
+        // the older" rule then resolved the FIRST press null — the first card
+        // silently un-swiped itself and the box that appeared was about the
+        // second. The reachable trigger is two cards at one employer, i.e.
+        // exactly what this feature is for.
+        tailorPendingRef.current = true;
+        setTailorPending(true);
+        let approved = false;
+        try {
+          approved = await tailorApproved(confirmTailor, job);
+        } catch {
+          // Both callers are fire-and-forget, so a throwing guard would escape
+          // as an unhandled rejection AND strand the card in `committed` with
+          // no rollback. Treat it as a refusal: the card comes back and the
+          // user can retry.
+          approved = false;
+        } finally {
+          tailorPendingRef.current = false;
+          setTailorPending(false);
+        }
+        if (!approved) {
+          // No toast: the user cancelled deliberately. That is the whole
+          // difference between this and the failure branch below.
+          rollBack();
+          return;
+        }
+      }
+
+      let failed = false;
+      try {
+        // Detached like every other bulk action, so a swipe survives the tab
+        // closing mid-flight ONCE DISPATCHED — with the guard on, closing the
+        // deck while the box is open cancels instead, which is right: the user
+        // never answered. Awaited all the same: the deck rolls the card back on
+        // failure, so it needs the outcome.
+        const batchId = await startJobActionBatch({ action, jobIds: [job.id] });
+        const final = await watchJobActionBatch(batchId);
+        if (final.failed > 0 || final.status !== "completed") failed = true;
+      } catch {
+        failed = true;
+      }
+
+      if (failed) {
+        // Roll back: surface the card again so the user can retry.
+        rollBack();
+        toast.error(`Couldn't update "${job.title}"`);
+        return;
+      }
+
+      // Tailoring runs in the background and resolves the row to ready; a PATCH
+      // back to discovered would race it. Exclude it from undo (skip/backlog
+      // only), matching the Manage view.
+      if (action !== "move_to_ready") setLastSwipe(job);
+    },
+    [confirmTailor],
+  );
 
   const undo = useCallback(async () => {
     if (!lastSwipe) return;
@@ -156,6 +219,7 @@ export function useSwipeDeck({
 
   return {
     cards,
+    tailorPending,
     isLoading: query.isLoading,
     isError: query.isError,
     act,

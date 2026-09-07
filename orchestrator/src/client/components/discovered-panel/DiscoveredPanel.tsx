@@ -68,6 +68,11 @@ export const DiscoveredPanel: React.FC<DiscoveredPanelProps> = ({
   };
 
   const handleFinalize = async () => {
+    // `isFinalizing` is the double-click guard, and it suffices: React flushes
+    // a discrete event's state before dispatching the next one, so the second
+    // click's handler closes over the updated value. A synchronous ref twin was
+    // tried here and removed — nothing could turn it red, which makes it dead
+    // weight a later reader would mistake for load-bearing.
     if (!job || isFinalizing) return;
     try {
       setIsFinalizing(true);

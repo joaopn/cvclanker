@@ -14,6 +14,7 @@ import {
   JOB_SORTER_LABELS,
   type JobSorter,
 } from "../orchestrator/constants";
+import type { ConfirmTailor } from "../orchestrator/tailorCompanyConflicts";
 import { collectProfileSearchTitles } from "../orchestrator/utils";
 import { FitCountChips } from "./FitCountChips";
 import { SwipeActionBar } from "./SwipeActionBar";
@@ -34,6 +35,8 @@ interface SwipeDeckProps {
   isPipelineRunning: boolean;
   onRunPipeline: () => void;
   profiles: Profile[];
+  /** The duplicate-application guard, applied to the tailor swipe. */
+  confirmTailor: ConfirmTailor;
 }
 
 export const SwipeDeck: React.FC<SwipeDeckProps> = ({
@@ -41,12 +44,22 @@ export const SwipeDeck: React.FC<SwipeDeckProps> = ({
   isPipelineRunning,
   onRunPipeline,
   profiles,
+  confirmTailor,
 }) => {
-  const { cards, isLoading, isError, act, canUndo, undo, refetch } =
-    useSwipeDeck({
-      pipelineTerminalEvent,
-      isPipelineRunning,
-    });
+  const {
+    cards,
+    tailorPending,
+    isLoading,
+    isError,
+    act,
+    canUndo,
+    undo,
+    refetch,
+  } = useSwipeDeck({
+    pipelineTerminalEvent,
+    isPipelineRunning,
+    confirmTailor,
+  });
   const cardRef = useRef<SwipeCardHandle>(null);
 
   const [filters, setFilters] = useState<SwipeFilterState>(EMPTY_SWIPE_FILTERS);
@@ -106,6 +119,7 @@ export const SwipeDeck: React.FC<SwipeDeckProps> = ({
         isPipelineRunning={isPipelineRunning}
         onRunPipeline={onRunPipeline}
         act={act}
+        tailorPending={tailorPending}
         canUndo={canUndo}
         undo={undo}
         cardRef={cardRef}
@@ -130,6 +144,7 @@ interface SwipeDeckBodyProps {
   isPipelineRunning: boolean;
   onRunPipeline: () => void;
   act: ReturnType<typeof useSwipeDeck>["act"];
+  tailorPending: boolean;
   canUndo: boolean;
   undo: () => Promise<void>;
   cardRef: React.RefObject<SwipeCardHandle>;
@@ -148,6 +163,7 @@ const SwipeDeckBody: React.FC<SwipeDeckBodyProps> = ({
   isPipelineRunning,
   onRunPipeline,
   act,
+  tailorPending,
   canUndo,
   undo,
   cardRef,
@@ -250,10 +266,15 @@ const SwipeDeckBody: React.FC<SwipeDeckBodyProps> = ({
           ref={cardRef}
           job={top}
           onCommit={(action) => act(top, action)}
+          frozen={tailorPending}
         />
       </div>
       <SwipeActionBar
         disabled={false}
+        // Tailor only: a second tailor press while one is parked would be
+        // discarded, but skip and backlog act on the NEXT card and stay legal
+        // — the hook leaves them unblocked and a test pins that.
+        tailorDisabled={tailorPending}
         canUndo={canUndo}
         filtersActive={filtersActive}
         sorterLabel={sorterLabel}

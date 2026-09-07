@@ -46,6 +46,7 @@ vi.mock("./SwipeFilterSheet", () => ({
 
 const deckResult: UseSwipeDeckResult = {
   cards: [],
+  tailorPending: false,
   isLoading: false,
   isError: false,
   act: vi.fn(),
@@ -73,6 +74,7 @@ const renderDeck = () =>
       isPipelineRunning={false}
       onRunPipeline={vi.fn()}
       profiles={[profile("p1")]}
+      confirmTailor={async (jobs) => jobs.map((j) => j.id)}
     />,
   );
 
@@ -82,6 +84,7 @@ beforeEach(() => {
   deckResult.isLoading = false;
   deckResult.isError = false;
   deckResult.canUndo = false;
+  deckResult.tailorPending = false;
 });
 
 describe("SwipeDeck", () => {
@@ -190,5 +193,29 @@ describe("SwipeDeck", () => {
     // something must not look idle from outside the sheet it lives in.
     expect(trigger()).toHaveAttribute("title", "Sorted by Fewer applicants");
     expect(trigger()).toHaveClass("text-primary");
+  });
+});
+
+describe("SwipeDeck while a tailor swipe is parked on the guard", () => {
+  it("disables Tailor but leaves Skip and Backlog live", () => {
+    // The bar's single `disabled` used to gate all three. Skip and backlog act
+    // on the NEXT card and cannot collide with the parked one, and the hook
+    // deliberately keeps accepting them.
+    deckResult.cards = [createJob({ id: "a", title: "Python Dev" })];
+    deckResult.tailorPending = true;
+    renderDeck();
+
+    expect(screen.getByRole("button", { name: "Tailor" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Skip" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Move to backlog" }),
+    ).toBeEnabled();
+  });
+
+  it("leaves Tailor live when nothing is parked", () => {
+    deckResult.cards = [createJob({ id: "a", title: "Python Dev" })];
+    renderDeck();
+
+    expect(screen.getByRole("button", { name: "Tailor" })).toBeEnabled();
   });
 });

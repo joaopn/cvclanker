@@ -144,10 +144,20 @@ interface SwipeCardProps {
   job: Job;
   /** Fired once the fly-off animation completes. */
   onCommit: (action: SwipeAction) => void;
+  /**
+   * Freeze the card while a tailor swipe waits on the duplicate-application
+   * guard. Without this the card can be flown out a SECOND time during the
+   * guard's fetch, and there is no way back: `x`/`y` are motion values reset
+   * only by remount, and a refused second swipe leaves this card at the top of
+   * the deck with its key unchanged — so it stays off-screen with an empty
+   * card area behind it. Refusing the gesture is the fix; `dragConstraints`
+   * springs the card back on its own.
+   */
+  frozen?: boolean;
 }
 
 export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(
-  ({ job, onCommit }, ref) => {
+  ({ job, onCommit, frozen = false }, ref) => {
     const x = useMotionValue(0);
     const y = useMotionValue(0);
     const rotate = useTransform(x, [-250, 250], [-12, 12]);
@@ -155,6 +165,7 @@ export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(
     const skipOpacity = useTransform(x, [-130, -20], [1, 0]);
 
     const flyOut = (action: SwipeAction) => {
+      if (frozen) return;
       const distance =
         (typeof window !== "undefined" ? window.innerWidth : 800) * 1.3;
       const opts = {
@@ -170,6 +181,7 @@ export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(
     useImperativeHandle(ref, () => ({ flyOut }));
 
     const handleDragEnd = (_: unknown, info: PanInfo) => {
+      if (frozen) return;
       const { offset, velocity } = info;
       if (offset.x > COMMIT_OFFSET || velocity.x > COMMIT_VELOCITY) {
         flyOut("move_to_ready");
@@ -185,7 +197,7 @@ export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(
         initial={{ scale: 0.97 }}
         animate={{ scale: 1 }}
         transition={{ duration: 0.15 }}
-        drag="x"
+        drag={frozen ? false : "x"}
         dragDirectionLock
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={1}

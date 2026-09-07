@@ -1,8 +1,9 @@
 import { createJob } from "@shared/testing/factories.js";
 import type { Job } from "@shared/types.js";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import { SwipeCardContent } from "./SwipeCard";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { createRef } from "react";
+import { describe, expect, it, vi } from "vitest";
+import { SwipeCard, SwipeCardContent, type SwipeCardHandle } from "./SwipeCard";
 
 const card = (overrides: Partial<Job> = {}) =>
   render(
@@ -101,5 +102,40 @@ describe("SwipeCardContent live status", () => {
       screen.queryByText("Accepting applications"),
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/^checked /)).not.toBeInTheDocument();
+  });
+});
+
+describe("SwipeCard frozen while a tailor is parked", () => {
+  const mount = (frozen: boolean) => {
+    const onCommit = vi.fn();
+    const ref = createRef<SwipeCardHandle>();
+    render(
+      <SwipeCard
+        ref={ref}
+        job={createJob({ id: "a", title: "Python Developer" })}
+        onCommit={onCommit}
+        frozen={frozen}
+      />,
+    );
+    return { onCommit, ref };
+  };
+
+  it("refuses an imperative fly-out, so nothing is dispatched", async () => {
+    // The card cannot come back from a second fly-out: x/y are motion values
+    // reset only by remount, and a refused second swipe leaves this card at the
+    // top with an unchanged key. Refusing the gesture is what avoids that.
+    const { onCommit, ref } = mount(true);
+
+    act(() => ref.current?.flyOut("move_to_ready"));
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("still flies out when not frozen", async () => {
+    const { onCommit, ref } = mount(false);
+
+    act(() => ref.current?.flyOut("move_to_ready"));
+    await waitFor(() => expect(onCommit).toHaveBeenCalledWith("move_to_ready"));
   });
 });

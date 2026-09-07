@@ -131,11 +131,11 @@ export const DisplaySettingsSection: React.FC<DisplaySettingsSectionProps> = ({
               Warn before tailoring a company you have work in flight at
             </label>
             <p className="text-xs text-muted-foreground">
-              When you press Tailor, check whether that employer already has
-              jobs in tailoring, tailored, applied to, or interviewing, and list
-              them first so you can decide. Catches the same opening scraped
-              twice under two URLs, which duplicate review cannot join. Applies
-              to the Manage screen; the Swipe deck is unaffected.
+              When you press Tailor — on the Manage screen or from the Swipe
+              deck — check whether that employer already has jobs in tailoring,
+              tailored, applied to, or interviewing, and list them first so you
+              can decide. Catches the same opening scraped twice under two URLs,
+              which duplicate review cannot join.
             </p>
           </div>
         </div>

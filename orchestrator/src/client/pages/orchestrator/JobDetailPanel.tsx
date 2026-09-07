@@ -86,6 +86,10 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
   const [processingJobId, setProcessingJobId] = useState<string | null>(null);
   const [isEditDetailsOpen, setIsEditDetailsOpen] = useState(false);
   const previousSelectedJobIdRef = useRef<string | null>(null);
+  // Synchronous double-click guards. Neither button has a disabled state that
+  // is committed before the handler's first await.
+  const tailorRowInFlightRef = useRef(false);
+  const processInFlightRef = useRef(false);
   const markAsAppliedMutation = useMarkAsAppliedMutation();
   const skipJobMutation = useSkipJobMutation();
 
@@ -208,6 +212,13 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
 
   const handleProcess = async () => {
     if (!selectedJob) return;
+    // `setProcessingJobId` below sits after an await and is never read by this
+    // handler — only the rendered `disabled` reads it, committed from a promise
+    // continuation — so it does not close the double-click window. Today the
+    // only caller is a menu item, and the menu closes on select; the ref makes
+    // that independent of the caller, as it is for handleTailorRow.
+    if (processInFlightRef.current) return;
+    processInFlightRef.current = true;
     try {
       const shouldProceed = await confirmAndSaveEdits();
       if (!shouldProceed) return;
@@ -232,6 +243,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
         error instanceof Error ? error.message : "Failed to process job";
       toast.error(message);
     } finally {
+      processInFlightRef.current = false;
       setProcessingJobId(null);
     }
   };
@@ -297,6 +309,12 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
 
   const handleTailorRow = async () => {
     if (!selectedJob) return;
+    // This button carries no disabled state, so nothing stopped a double click
+    // from starting two tailors on one row — and the guard now puts a network
+    // round trip in front of the dispatch, widening that window from a render
+    // to a fetch. A ref, not state: state cannot be read back in the same tick.
+    if (tailorRowInFlightRef.current) return;
+    tailorRowInFlightRef.current = true;
     try {
       if (!(await tailorApproved(confirmTailor, selectedJob))) return;
       // Tailoring runs in the background; the row flips to processing and
@@ -308,6 +326,8 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
       const message =
         error instanceof Error ? error.message : "Failed to start tailoring";
       toast.error(message);
+    } finally {
+      tailorRowInFlightRef.current = false;
     }
   };
 

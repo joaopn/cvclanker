@@ -171,6 +171,34 @@ describe("DiscoveredPanel duplicate-application guard", () => {
     await vi.waitFor(() => expect(api.processJob).toHaveBeenCalledWith("j1"));
   });
 
+  it("cannot start two tailors from a double click", async () => {
+    // `isFinalizing` is state, so two clicks in one tick both read it as false;
+    // the guard's fetch makes that window a whole round trip wide.
+    let release!: (ids: string[]) => void;
+    const confirmTailor = vi.fn(
+      () =>
+        new Promise<string[]>((resolve) => {
+          release = resolve;
+        }),
+    );
+    render(
+      <DiscoveredPanel
+        job={failedRow()}
+        onJobUpdated={noop}
+        onJobMoved={noop}
+        confirmTailor={confirmTailor}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: /retry tailoring/i });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    await vi.waitFor(() => expect(confirmTailor).toHaveBeenCalledTimes(1));
+
+    release(["j1"]);
+    await vi.waitFor(() => expect(api.processJob).toHaveBeenCalledTimes(1));
+  });
+
   it("does not tailor when the guard cancels", async () => {
     const confirmTailor = vi.fn().mockResolvedValue(null);
     render(

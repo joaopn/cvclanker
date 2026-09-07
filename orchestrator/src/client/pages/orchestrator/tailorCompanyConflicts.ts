@@ -146,11 +146,11 @@ export type ConfirmTailor = (
 
 /**
  * The single-job form of the guard, and the ONE definition of what counts as
- * approval. Four surfaces tailor one job at a time (the Inbox detail's Start
- * Tailoring, the backlog/stale row button, the More-actions item, and the
- * keyboard shortcut with nothing selected); without a shared helper each
- * carries its own copy of "null or empty means don't", which is exactly the
- * kind of rule that drifts.
+ * approval. Five surfaces tailor one job at a time (the Inbox detail's Start
+ * Tailoring, the backlog/stale row button, the More-actions item, the keyboard
+ * shortcut with nothing selected, and the Swipe deck's right-swipe); without a
+ * shared helper each carries its own copy of "null or empty means don't", which
+ * is exactly the kind of rule that drifts.
  *
  * Empty counts as a refusal, not just `null`: "Tailor the other N" on an
  * all-conflicting selection approves nothing, and a caller that only checked

@@ -22,6 +22,12 @@ interface SwipeActionBarProps {
    * not look idle from outside the menu it lives in.
    */
   sorterLabel: string | null;
+  /**
+   * Tailor alone, while a swipe waits on the duplicate-application guard.
+   * Separate from `disabled` because skip and backlog stay legal throughout —
+   * they act on the next card and cannot collide with the parked one.
+   */
+  tailorDisabled?: boolean;
   onSkip: () => void;
   onBacklog: () => void;
   onTailor: () => void;
@@ -31,6 +37,7 @@ interface SwipeActionBarProps {
 
 export const SwipeActionBar: React.FC<SwipeActionBarProps> = ({
   disabled,
+  tailorDisabled = false,
   canUndo,
   filtersActive,
   sorterLabel,
@@ -79,7 +86,7 @@ export const SwipeActionBar: React.FC<SwipeActionBarProps> = ({
         type="button"
         size="icon"
         variant="outline"
-        disabled={disabled}
+        disabled={disabled || tailorDisabled}
         onClick={onTailor}
         aria-label="Tailor"
         className="h-14 w-14 rounded-full border-status-good/40 text-status-good-text hover:bg-status-good/10 hover:text-status-good-text"
