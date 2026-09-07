@@ -679,7 +679,7 @@ export const progressHelpers = {
 
     const platforms = options?.platforms ?? [source];
     // When an extractor groups multiple platforms (e.g. jobspy →
-    // indeed/linkedin/glassdoor), suffix each row's label with `[<extractorId>]`
+    // indeed/linkedin), suffix each row's label with `[<extractorId>]`
     // so the banner shows "LinkedIn [jobspy]" — keeps per-platform attribution
     // visible while making the underlying extractor obvious. 1:1 extractors
     // (hiringcafe / workingnomads / startupjobs) stay unsuffixed.

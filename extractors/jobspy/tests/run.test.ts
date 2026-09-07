@@ -75,11 +75,10 @@ describe("parseJobSpyProgressLine", () => {
     ).toEqual({
       linkedinLocation: "croatia",
       indeedLocation: null,
-      glassdoorLocation: null,
     });
   });
 
-  it("keeps explicit locations for all JobSpy sites when a city is set", () => {
+  it("keeps explicit locations for both JobSpy sites when a city is set", () => {
     expect(
       resolveJobSpySiteLocations({
         location: "Zagreb",
@@ -88,7 +87,6 @@ describe("parseJobSpyProgressLine", () => {
     ).toEqual({
       linkedinLocation: "Zagreb",
       indeedLocation: "Zagreb",
-      glassdoorLocation: "Zagreb",
     });
   });
 });

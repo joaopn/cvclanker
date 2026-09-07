@@ -221,10 +221,10 @@ export function matchJobLocationIntent(
     // A source that reports per-row remoteness is believed: jobspy's
     // LinkedIn and Indeed legs return on-site postings even with their
     // remote filters on (LinkedIn's facet is degraded to a keyword), and
-    // python-jobspy's per-row is_remote is Indeed's Remote attribute,
-    // Glassdoor's location type, or on LinkedIn a remote/wfh keyword scan of
-    // title+description+location (title+location only when the detail fetch
-    // failed — a plain-city remote row can then drop; accepted). Unknown
+    // python-jobspy's per-row is_remote is Indeed's Remote attribute, or on
+    // LinkedIn a remote/wfh keyword scan of title+description+location
+    // (title+location only when the detail fetch failed — a plain-city remote
+    // row can then drop; accepted). Unknown
     // (hiring.cafe never sets it — its search was filtered to Remote
     // server-side) is kept.
     if (job.isRemote === false) {

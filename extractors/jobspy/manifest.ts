@@ -84,7 +84,7 @@ function parseMaxAgeDays(raw: string | undefined): number | undefined {
 
 type JobSpySite = NonNullable<Parameters<typeof runJobSpy>[0]["sites"]>[number];
 
-const JOBSPY_SOURCES = new Set<JobSpySite>(["indeed", "linkedin", "glassdoor"]);
+const JOBSPY_SOURCES = new Set<JobSpySite>(["indeed", "linkedin"]);
 
 function isJobSpySite(source: string): source is JobSpySite {
   return JOBSPY_SOURCES.has(source as JobSpySite);
@@ -94,8 +94,13 @@ export const manifest: ExtractorManifest = {
   id: "jobspy",
   displayName: "JobSpy",
   description:
-    "LinkedIn, Indeed and Glassdoor in one scraper. The broadest source, and the best coverage of large employers.",
-  providesSources: ["indeed", "linkedin", "glassdoor"],
+    "LinkedIn and Indeed in one scraper. The broadest source, and the best coverage of large employers.",
+  // Glassdoor was retired (B70): dead upstream in python-jobspy with no fixed
+  // release to move to. Its id survives in the shared catalog for historical
+  // rows, but nothing provides it any more — and this list must stay in step
+  // with PIPELINE_EXTRACTOR_SOURCE_IDS, since the registry warns about any
+  // pipeline source no manifest provides.
+  providesSources: ["indeed", "linkedin"],
   capabilities: { locationEvidence: true, joinedTerms: true },
   configSchema: jobspyConfigSchema,
   async run(context: ExtractorRuntimeContext) {

@@ -168,6 +168,29 @@ describe("extractor registry", () => {
     ).toBe(true);
   });
 
+  it("refuses a manifest that still provides a RETIRED source", async () => {
+    // The `retired` flag gates only PIPELINE_EXTRACTOR_SOURCE_IDS. The Run menu,
+    // health probing and Profile pin expansion key on providesSources instead,
+    // so a source that is retired AND still provided would be offered as a
+    // tickable platform whose tick then 400s the whole run against the filtered
+    // request enum. Both halves of a retirement have to move together.
+    const discovery = await import("./discovery");
+    const registryModule = await import("./registry");
+    registryModule.__resetExtractorRegistryForTests();
+    process.env.EXTRACTOR_REGISTRY_STRICT = "true";
+
+    vi.mocked(discovery.discoverManifestPaths).mockResolvedValue([
+      "/tmp/revived.ts",
+    ]);
+    vi.mocked(discovery.loadManifestFromFile).mockResolvedValue(
+      makeManifest("revived", ["indeed", "glassdoor"], "Revived"),
+    );
+
+    await expect(registryModule.initializeExtractorRegistry()).rejects.toThrow(
+      /still provide a retired source[\s\S]*glassdoor/,
+    );
+  });
+
   it("throws on configSchema mapping with no matching field", async () => {
     const discovery = await import("./discovery");
     const registryModule = await import("./registry");

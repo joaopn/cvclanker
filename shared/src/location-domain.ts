@@ -322,6 +322,12 @@ function createDefaultSupportedCountryKeys(
   source: JobSource | string,
 ): string[] | null {
   switch (source) {
+    // Glassdoor is RETIRED (B70) and no manifest provides it any more, so no
+    // live run reaches this arm: every planLocationSources call site takes its
+    // sources from the registry or the zod-gated request body, and a saved
+    // pipeline_runs row is never re-planned (its skippedSources are frozen at
+    // run start from the LIVE config). Kept only because location-domain.test.ts
+    // pins it; deleting it is a separate cleanup.
     case "glassdoor":
       return [
         "australia",
@@ -562,6 +568,8 @@ export function getDefaultLocationSourceCapabilities(
   return {
     source,
     supportedCountryKeys: createDefaultSupportedCountryKeys(source),
+    // Retired source, unreachable in production; see
+    // createDefaultSupportedCountryKeys above.
     requiresCityLocations: source === "glassdoor",
     // Guarded: `source` also carries synthetic provider ids ("apify:<uuid>")
     // that must not index the metadata Record.

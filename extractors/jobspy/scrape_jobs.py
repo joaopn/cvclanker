@@ -7,37 +7,6 @@ import pandas as pd
 from jobspy import scrape_jobs
 
 PROGRESS_PREFIX = "CVCLANKER_PROGRESS "
-COUNTRY_ALIASES = {
-    "uk": "united kingdom",
-    "united kingdom": "united kingdom",
-    "us": "united states",
-    "usa": "united states",
-    "united states": "united states",
-    "türkiye": "turkey",
-    "czech republic": "czechia",
-}
-GLASSDOOR_COUNTRY_TO_CITY = {
-    "australia": "Sydney",
-    "austria": "Vienna",
-    "belgium": "Brussels",
-    "brazil": "Sao Paulo",
-    "canada": "Toronto",
-    "france": "Paris",
-    "germany": "Berlin",
-    "hong kong": "Hong Kong",
-    "india": "Bengaluru",
-    "ireland": "Dublin",
-    "italy": "Milan",
-    "mexico": "Mexico City",
-    "netherlands": "Amsterdam",
-    "new zealand": "Auckland",
-    "singapore": "Singapore",
-    "spain": "Madrid",
-    "switzerland": "Zurich",
-    "united kingdom": "London",
-    "united states": "New York",
-    "vietnam": "Ho Chi Minh City",
-}
 
 
 def _env_str(name: str, default: str) -> str:
@@ -71,22 +40,6 @@ def _parse_sites(raw: str) -> list[str]:
     return [s.strip() for s in raw.split(",") if s.strip()]
 
 
-def _normalize_country_token(value: str) -> str:
-    normalized = " ".join(value.strip().lower().split())
-    return COUNTRY_ALIASES.get(normalized, normalized)
-
-
-def _is_country_level_location(location: str, country_indeed: str) -> bool:
-    if not location.strip() or not country_indeed.strip():
-        return False
-    return _normalize_country_token(location) == _normalize_country_token(country_indeed)
-
-
-def _glassdoor_city_for_country(country_indeed: str, location: str) -> str | None:
-    country_key = _normalize_country_token(country_indeed or location)
-    return GLASSDOOR_COUNTRY_TO_CITY.get(country_key)
-
-
 def _scrape_for_sites(
     *,
     sites: list[str],
@@ -116,7 +69,7 @@ def _scrape_for_sites(
 def _safe_scrape_into(frames: list[pd.DataFrame], site: str, **kwargs: object) -> bool:
     """Scrape one site, tolerating a per-site failure.
 
-    A single flaky site (Glassdoor CSRF timeouts, LinkedIn rate-limits) must not
+    A single flaky site (LinkedIn rate-limits, Indeed blocks) must not
     abort the whole run and discard the sites that already succeeded. Returns
     True on success, False on failure (logged, no frame contributed).
     """
@@ -134,7 +87,6 @@ def main() -> int:
     location = _env_str("JOBSPY_LOCATION", "")
     linkedin_location = _env_str("JOBSPY_LINKEDIN_LOCATION", location)
     indeed_location = _env_str("JOBSPY_INDEED_LOCATION", location)
-    glassdoor_location = _env_str("JOBSPY_GLASSDOOR_LOCATION", location)
     results_wanted = _env_int("JOBSPY_RESULTS_WANTED", 200)
     hours_old = _env_int("JOBSPY_HOURS_OLD", 72)
     country_indeed = _env_str("JOBSPY_COUNTRY_INDEED", "")
@@ -165,8 +117,8 @@ def main() -> int:
     succeeded = 0
     # JobSpy's site-level geo filters are inconsistent:
     # - LinkedIn only respects `location`.
-    # - Indeed/Glassdoor respect `country_indeed`, and `location` is optional
-    #   narrowing for a city/region search.
+    # - Indeed respects `country_indeed`, and `location` is optional narrowing
+    #   for a city/region search.
     # Run them separately so "country with no city" does not become a global
     # LinkedIn search, and so we do not inject synthetic locations into Indeed.
     if "linkedin" in sites:
@@ -191,35 +143,6 @@ def main() -> int:
             "indeed",
             search_term=search_term,
             location=indeed_location,
-            results_wanted=results_wanted,
-            hours_old=hours_old,
-            country_indeed=country_indeed,
-            linkedin_fetch_description=linkedin_fetch_description,
-            is_remote=is_remote,
-        ):
-            succeeded += 1
-
-    if "glassdoor" in sites:
-        effective_glassdoor_location = glassdoor_location
-        if _is_country_level_location(glassdoor_location, country_indeed):
-            # Glassdoor works best with city-level location terms.
-            fallback_city = _glassdoor_city_for_country(country_indeed, glassdoor_location)
-            if fallback_city:
-                effective_glassdoor_location = fallback_city
-                print(
-                    "jobspy: Glassdoor location matched country; using city fallback "
-                    f"({fallback_city})"
-                )
-            else:
-                print(
-                    "jobspy: Glassdoor location matched country; keeping original location"
-                )
-        attempted += 1
-        if _safe_scrape_into(
-            frames,
-            "glassdoor",
-            search_term=search_term,
-            location=effective_glassdoor_location,
             results_wanted=results_wanted,
             hours_old=hours_old,
             country_indeed=country_indeed,

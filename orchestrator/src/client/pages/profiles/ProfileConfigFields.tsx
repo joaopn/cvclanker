@@ -539,8 +539,7 @@ export const ProfileConfigFields: React.FC<ProfileConfigFieldsProps> = ({
                         ) : form.remoteProfile &&
                           extractor.extractorId === "jobspy" ? (
                           <span className="text-xs text-muted-foreground">
-                            no country: Indeed searches the US, Glassdoor is
-                            skipped
+                            no country: Indeed searches the US
                           </span>
                         ) : form.remoteProfile &&
                           extractor.extractorId === "startupjobs" ? (

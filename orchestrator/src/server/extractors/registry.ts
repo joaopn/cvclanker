@@ -92,11 +92,21 @@ function resolveCatalogMismatches(
 ): void {
   const missingFromCatalog = new Set<string>();
   const missingManifest = new Set<ExtractorSourceId>();
+  const providedButRetired = new Set<ExtractorSourceId>();
 
   for (const manifest of manifests.values()) {
     for (const source of manifest.providesSources) {
       if (!EXTRACTOR_SOURCE_IDS.includes(source as ExtractorSourceId)) {
         missingFromCatalog.add(source);
+        continue;
+      }
+      // The other half of a retirement. `retired` gates only
+      // PIPELINE_EXTRACTOR_SOURCE_IDS, while the Run menu, health probing and
+      // Profile pin expansion all key on providesSources — so a source that is
+      // retired AND still provided is offered as a tickable platform whose tick
+      // then 400s the whole run against the filtered request enum.
+      if (EXTRACTOR_SOURCE_METADATA[source as ExtractorSourceId].retired) {
+        providedButRetired.add(source as ExtractorSourceId);
       }
     }
   }
@@ -120,6 +130,15 @@ function resolveCatalogMismatches(
     };
     if (strict) {
       throw new Error(`${message}: ${[...missingFromCatalog].join(", ")}`);
+    }
+    logger.warn(message, context);
+  }
+
+  if (providedButRetired.size > 0) {
+    const message = "Extractor manifests still provide a retired source";
+    const context = { providedButRetired: [...providedButRetired], strict };
+    if (strict) {
+      throw new Error(`${message}: ${[...providedButRetired].join(", ")}`);
     }
     logger.warn(message, context);
   }

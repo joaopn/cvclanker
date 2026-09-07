@@ -268,6 +268,13 @@ export function isUkCountry(country: string | null | undefined): boolean {
   return normalizeCountryKey(country) === "united kingdom";
 }
 
+/**
+ * Glassdoor is RETIRED (B70) and this is UNREACHABLE in production: its only
+ * route is `isSourceAllowedForCountry`, whose two callers
+ * (`getCompatibleSourcesForCountry` here, `isSourceCompatibleWithLocationIntent`
+ * in location-domain) have no callers of their own. Kept because
+ * `location-support.test.ts` pins it; removing that dead trio is its own cleanup.
+ */
 export function isGlassdoorCountry(
   country: string | null | undefined,
 ): boolean {

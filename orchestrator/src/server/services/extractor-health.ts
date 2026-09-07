@@ -49,6 +49,10 @@ const HEALTH_PROBE_CONFIG_BY_SOURCE: Record<
       max_jobs_per_term: "1",
     },
   },
+  // Unreachable: glassdoor is retired (B70) and no manifest provides it, so
+  // checkExtractorHealth returns null before a probe runs. The entry stays only
+  // because this Record is exhaustive over ExtractorSourceId, which keeps the id
+  // for historical rows.
   glassdoor: {
     searchTerm: DEFAULT_HEALTH_SEARCH_TERM,
     selectedCountry: DEFAULT_HEALTH_SELECTED_COUNTRY,

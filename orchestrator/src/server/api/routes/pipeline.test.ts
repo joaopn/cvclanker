@@ -276,15 +276,18 @@ describe.sequential("Pipeline API routes", () => {
       { trigger: "manual" },
     );
 
-    const glassdoorRunRes = await fetch(`${baseUrl}/api/pipeline/run`, {
+    // startup.jobs requires a country; this run names none, so the override is
+    // refused. (This used to be Glassdoor, whose vehicle was requiresCityLocations
+    // — retired in B70, and no longer in the request enum at all.)
+    const incompatibleRunRes = await fetch(`${baseUrl}/api/pipeline/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sources: ["glassdoor"] }),
+      body: JSON.stringify({ sources: ["startupjobs"] }),
     });
-    const glassdoorRunBody = await glassdoorRunRes.json();
-    expect(glassdoorRunRes.status).toBe(400);
-    expect(glassdoorRunBody.ok).toBe(false);
-    expect(glassdoorRunBody.error.message).toContain("incompatible");
+    const incompatibleRunBody = await incompatibleRunRes.json();
+    expect(incompatibleRunRes.status).toBe(400);
+    expect(incompatibleRunBody.ok).toBe(false);
+    expect(incompatibleRunBody.error.message).toContain("incompatible");
 
     const hiringcafeRunRes = await fetch(`${baseUrl}/api/pipeline/run`, {
       method: "POST",
@@ -578,24 +581,25 @@ describe.sequential("Pipeline API routes", () => {
     it("splits a task's platforms into compatible and incompatible", async () => {
       const profileId = await createProfile(baseUrl, {
         searchTerms: ["x"],
-        // No cities, so Glassdoor (which requires them) cannot run.
+        // Himalayas is remote-only, so it cannot run on this NON-remote profile.
+        // (This used to be Glassdoor via requiresCityLocations, retired in B70;
+        // `remoteProfile` is stated explicitly rather than left to the default,
+        // so the fixture names the thing that makes it incompatible.)
         searchCountry: "united kingdom",
-        searchCities: "",
-        workplaceTypes: ["onsite"],
-        locationSearchScope: "selected_only",
-        enabledSourceIds: ["test-glassdoor", "test-linkedin"],
+        remoteProfile: false,
+        enabledSourceIds: ["test-himalayas", "test-linkedin"],
       });
 
       const data = await optionsFor(profileId);
-      const glassdoor = data.sources.find(
-        (source: { key: string }) => source.key === "test-glassdoor",
+      const himalayas = data.sources.find(
+        (source: { key: string }) => source.key === "test-himalayas",
       );
 
-      expect(glassdoor.platforms).toEqual([]);
-      expect(glassdoor.incompatible).toEqual([
-        expect.objectContaining({ platform: "glassdoor" }),
+      expect(himalayas.platforms).toEqual([]);
+      expect(himalayas.incompatible).toEqual([
+        expect.objectContaining({ platform: "himalayas" }),
       ]);
-      expect(glassdoor.incompatible[0].reasons.length).toBeGreaterThan(0);
+      expect(himalayas.incompatible[0].reasons.length).toBeGreaterThan(0);
     });
 
     it("reports the last successful scrape per source", async () => {
@@ -1970,7 +1974,7 @@ describe.sequential("Pipeline API routes", () => {
           searchCities: "",
           workplaceTypes: ["onsite"],
           locationSearchScope: "selected_only",
-          enabledSourceIds: ["test-glassdoor", "test-linkedin"],
+          enabledSourceIds: ["test-himalayas", "test-linkedin"],
         },
         "No cities",
       );
@@ -1985,7 +1989,7 @@ describe.sequential("Pipeline API routes", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           profileIds: [first, second],
-          sources: ["glassdoor", "linkedin"],
+          sources: ["himalayas", "linkedin"],
         }),
       });
 

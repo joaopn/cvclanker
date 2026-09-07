@@ -57,7 +57,8 @@ import {
 const DEFAULT_CONFIG: PipelineConfig = {
   topN: 10,
   minSuitabilityCategory: "good_fit",
-  // Keep Glassdoor opt-in via source picker/settings; do not enable by default.
+  // Every platform jobspy still provides. (Glassdoor was a third until B70
+  // retired it; it is no longer selectable anywhere.)
   sources: ["indeed", "linkedin"],
   outputDir: join(getDataDir(), "pdfs"),
   enableCrawling: true,
