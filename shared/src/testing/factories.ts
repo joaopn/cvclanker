@@ -49,7 +49,7 @@ export const createJob = (overrides: Partial<Job> = {}): Job => ({
   coverLetterFieldOverrides: {},
   coverLetterPdfPath: null,
   interviewPrep: "",
-  appliedDuplicateMatch: null,
+  companyInFlightCount: 0,
   jobType: null,
   salarySource: null,
   salaryInterval: null,

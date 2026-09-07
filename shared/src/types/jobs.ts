@@ -172,16 +172,6 @@ export type ProviderInstanceSourceId = `${string}:${string}`;
 
 export type JobSource = ExtractorSourceId | ProviderInstanceSourceId;
 
-export interface AppliedDuplicateMatch {
-  jobId: string;
-  title: string;
-  employer: string;
-  appliedAt: string;
-  score: number;
-  titleScore: number;
-  employerScore: number;
-}
-
 export interface Job {
   id: string;
 
@@ -228,7 +218,13 @@ export interface Job {
   coverLetterFieldOverrides: CvFieldOverrides; // Per-job cover-letter overrides; body field's value is the textarea state
   coverLetterPdfPath: string | null; // Canonical filename of the rendered cover-letter PDF (bytes live in job_pdfs); truthiness = "a PDF exists"
   interviewPrep: string; // User-generated interview strategy (freeform markdown); "" until generated
-  appliedDuplicateMatch?: AppliedDuplicateMatch | null; // Included on detail responses and may be omitted on list responses
+  /**
+   * How many OTHER jobs at this employer are in flight (Tailoring / Live /
+   * Interviewing). Server-computed on list responses; `0` when there are none
+   * and absent when the server did not compute it. Employer match is exact —
+   * see `@shared/company-in-flight`.
+   */
+  companyInFlightCount?: number;
 
   // JobSpy fields (nullable for non-JobSpy sources)
   jobType: string | null;
@@ -302,7 +298,7 @@ export type JobListItem = Pick<
   | "profileId"
   | "suitabilityCategory"
   | "tailoringFailureReason"
-  | "appliedDuplicateMatch"
+  | "companyInFlightCount"
   | "jobType"
   | "jobFunction"
   | "salaryMinAmount"

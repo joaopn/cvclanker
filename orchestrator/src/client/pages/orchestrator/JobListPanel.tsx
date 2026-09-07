@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import type { FilterTab, FitFilterValue } from "./constants";
 import {
-  appliedDuplicateIndicator,
+  companyInFlightIndicator,
   defaultStatusToken,
   emptyStateCopy,
   statusTokens,
@@ -274,12 +274,23 @@ export const JobListPanel = forwardRef<VirtualListHandle, JobListPanelProps>(
                 const isChecked = selectedJobIds.has(job.id);
                 const statusToken =
                   statusTokens[job.status] ?? defaultStatusToken;
-                const statusDotClassName = job.appliedDuplicateMatch
-                  ? appliedDuplicateIndicator.dot
-                  : statusToken.dot;
-                const statusDotTitle = job.appliedDuplicateMatch
-                  ? appliedDuplicateIndicator.label
-                  : statusToken.label;
+                // Warn about the user's OWN pipeline: another job at this
+                // employer is already being tailored, applied to or
+                // interviewing, so this one may be the same opening under a
+                // second URL. Passive and always on — it only tints a dot,
+                // where the tailor-time box interrupts an action and is opt-in.
+                const inFlightAtCompany = job.companyInFlightCount ?? 0;
+                const statusDotClassName =
+                  inFlightAtCompany > 0
+                    ? companyInFlightIndicator.dot
+                    : statusToken.dot;
+                const statusDotTitle =
+                  inFlightAtCompany > 0
+                    ? companyInFlightIndicator.describe(
+                        job.employer,
+                        inFlightAtCompany,
+                      )
+                    : statusToken.label;
 
                 return (
                   <div

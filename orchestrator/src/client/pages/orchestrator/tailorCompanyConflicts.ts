@@ -11,20 +11,13 @@
  * probably one role. This is what notices.
  */
 
-import type { JobListItem, JobStatus } from "@shared/types.js";
+import { employerKey, IN_FLIGHT_STATUSES } from "@shared/company-in-flight";
+import type { JobListItem } from "@shared/types.js";
 
-/**
- * Work the user has started and not concluded. `processing` covers both a
- * tailor running right now and a failed one awaiting retry; `ready` is tailored
- * and awaiting an apply. `discovered`/`backlog`/`stale` are untouched rows and
- * `skipped`/`closed` are concluded — neither is a double-application risk.
- */
-export const IN_FLIGHT_STATUSES: readonly JobStatus[] = [
-  "processing",
-  "ready",
-  "applied",
-  "in_progress",
-];
+// The rule itself lives in `@shared/company-in-flight` so the server's jobs-list
+// hydration and this client-side guard cannot drift apart. Re-exported because
+// this module is where the client already imports it from.
+export { IN_FLIGHT_STATUSES };
 
 /** The minimum a caller must know about a job to be checked. */
 export interface TailorCandidate {
@@ -39,17 +32,6 @@ export interface CompanyConflictGroup {
   candidates: TailorCandidate[];
   /** Jobs already in flight at this employer, in the order the API sent them. */
   inFlight: JobListItem[];
-}
-
-/**
- * Exact match, case- and whitespace-insensitive, and nothing else normalized —
- * the same rule `isEmployerBlocked` and the company panel use. No diacritic
- * folding, no `Ltd`/`GmbH` trimming: each of those guesses that two spellings
- * are one company, and over-matching here HIDES a real second opening behind a
- * warning about an unrelated one.
- */
-function employerKey(employer: string | null | undefined): string {
-  return (employer ?? "").trim().toLowerCase();
 }
 
 /**

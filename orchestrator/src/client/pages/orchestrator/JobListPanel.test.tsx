@@ -9,6 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { statusTokens } from "./constants";
 import { JobListPanel } from "./JobListPanel";
 
 const createJobs = (count: number) =>
@@ -331,23 +332,7 @@ describe("JobListPanel", () => {
     expect(onSelectJob).toHaveBeenCalledWith("job-2");
   });
 
-  it("shows a yellow status dot for flagged reposts without an inline badge", () => {
-    const jobs = [
-      createJob({
-        id: "job-1",
-        title: "Backend Engineer",
-        appliedDuplicateMatch: {
-          jobId: "job-applied",
-          title: "Backend Engineer",
-          employer: "Acme Labs",
-          appliedAt: "2026-04-01T10:00:00.000Z",
-          score: 96,
-          titleScore: 97,
-          employerScore: 95,
-        },
-      }),
-    ];
-
+  const renderRows = (jobs: ReturnType<typeof createJob>[]) =>
     render(
       <JobListPanel
         isLoading={false}
@@ -362,10 +347,58 @@ describe("JobListPanel", () => {
       />,
     );
 
-    expect(screen.queryByText("Previously Applied")).not.toBeInTheDocument();
-    expect(screen.getByTitle("Previously Applied")).toHaveClass(
-      "bg-status-warn",
+  it("tints the status dot when the employer has other jobs in flight", () => {
+    renderRows([
+      createJob({
+        id: "job-1",
+        title: "Backend Engineer",
+        employer: "Acme Labs",
+        companyInFlightCount: 2,
+      }),
+    ]);
+
+    // The warning is the dot alone — no inline badge competing with the row.
+    expect(screen.queryByText(/in flight at/)).not.toBeInTheDocument();
+    const dot = screen.getByTitle(
+      "2 other jobs in flight at Acme Labs (tailoring, applied or interviewing)",
     );
+    expect(dot).toHaveClass("bg-status-warn");
+  });
+
+  it("leaves the dot alone when nothing else at that employer is in flight", () => {
+    renderRows([
+      createJob({
+        id: "job-1",
+        title: "Backend Engineer",
+        employer: "Acme Labs",
+        status: "ready",
+        companyInFlightCount: 0,
+      }),
+    ]);
+
+    expect(screen.queryByText(/in flight at/)).not.toBeInTheDocument();
+    expect(document.querySelector(".bg-status-warn")).toBeNull();
+  });
+
+  it("does not tint on a row the server did not annotate", () => {
+    // The field is optional: a response that predates this hydration, or any
+    // caller the route does not annotate, must render exactly as before. This
+    // pins the `?? 0` specifically — the row must still carry a NORMAL status
+    // dot, which an `undefined > 0` comparison alone would also produce, but a
+    // thrown or blank render would not.
+    const job = createJob({
+      id: "job-1",
+      employer: "Acme Labs",
+      status: "discovered",
+    });
+    delete (job as { companyInFlightCount?: number }).companyInFlightCount;
+    renderRows([job]);
+
+    expect(document.querySelector(".bg-status-warn")).toBeNull();
+    // The row still renders its NORMAL status dot rather than nothing.
+    expect(
+      document.querySelector(`.${statusTokens.discovered.dot}`),
+    ).not.toBeNull();
   });
 
   it("toggles row selection and select-all", () => {

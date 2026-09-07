@@ -13,6 +13,7 @@ import {
   externalIdKey,
   normalizeTitleKey,
 } from "@shared/duplicate-identity";
+import { employerKey, IN_FLIGHT_STATUSES } from "@shared/company-in-flight";
 import { canonicalizeJobUrl } from "@shared/job-url";
 import { buildLocationEvidence } from "@shared/location-domain.js";
 import type {
@@ -64,15 +65,6 @@ const {
   jobs,
   tasks,
 } = schema;
-
-type AppliedDuplicateMatchCandidate = {
-  id: string;
-  title: string;
-  employer: string;
-  status: Extract<JobStatus, "applied" | "in_progress">;
-  appliedAt: string;
-  discoveredAt: string;
-};
 
 function normalizeStatusFilter(statuses?: JobStatus[]): string | null {
   if (!statuses || statuses.length === 0) return null;
@@ -289,35 +281,39 @@ export async function getDuplicateGroups(): Promise<DuplicateJobGroup[]> {
   return groups;
 }
 
-export async function getAppliedDuplicateMatchCandidates(): Promise<
-  AppliedDuplicateMatchCandidate[]
+/**
+ * How many jobs are in flight per employer, keyed by `employerKey`.
+ *
+ * The fold happens in JS, deliberately. Grouping in SQL looked cheaper but
+ * SQLite's `lower()` is ASCII-ONLY and its one-argument `trim()` strips U+0020
+ * only, so `lower(trim(employer))` and `employerKey` disagree on any accented
+ * or non-breaking-space employer — measured on the dev DB, 3 of 347 distinct
+ * employers diverged, including `Österreichische Post AG`. The lookup then
+ * misses for ever: the dot never lights, and an in-flight row at such an
+ * employer lands on a NEGATIVE count. Folding in JS makes `employerKey` the one
+ * home of the rule, which is the whole point of the shared module.
+ *
+ * The row set is bounded by the user's own open pipeline (five rows on this dev
+ * box), not by the jobs table, so reading rows instead of a grouped count costs
+ * nothing worth optimising — and the scored title+employer matcher this
+ * replaces was removed upstream (`a3dffb2`) for a cost that no longer exists.
+ */
+export async function getInFlightEmployerCounts(): Promise<
+  Map<string, number>
 > {
   const rows = await db
-    .select({
-      id: jobs.id,
-      title: jobs.title,
-      employer: jobs.employer,
-      status: jobs.status,
-      appliedAt: jobs.appliedAt,
-      discoveredAt: jobs.discoveredAt,
-    })
+    .select({ employer: jobs.employer })
     .from(jobs)
-    .where(
-      and(
-        inArray(jobs.status, ["applied", "in_progress"]),
-        sql`${jobs.appliedAt} IS NOT NULL`,
-      ),
-    )
-    .orderBy(desc(jobs.appliedAt));
+    .where(inArray(jobs.status, [...IN_FLIGHT_STATUSES]));
 
-  return rows.map((row) => ({
-    id: row.id,
-    title: row.title,
-    employer: row.employer,
-    status: row.status as AppliedDuplicateMatchCandidate["status"],
-    appliedAt: row.appliedAt as string,
-    discoveredAt: row.discoveredAt,
-  }));
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const key = employerKey(row.employer);
+    // An empty employer is unknown, not a company two rows have in common.
+    if (!key) continue;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
 }
 
 /**

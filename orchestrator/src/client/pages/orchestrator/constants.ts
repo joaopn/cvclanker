@@ -280,9 +280,18 @@ export const outcomeLabel: Record<JobOutcome, string> = {
   other: "Other",
 };
 
-export const appliedDuplicateIndicator = {
-  label: "Previously Applied",
+export const companyInFlightIndicator = {
   dot: "bg-status-warn",
+  /**
+   * A coloured dot on its own does not say which company or how much, so the
+   * tooltip carries both. `count` is how many OTHER jobs at this employer are
+   * in Tailoring / Live / Interviewing — see `@shared/company-in-flight`.
+   */
+  describe(employer: string, count: number): string {
+    const what = count === 1 ? "1 other job" : `${count} other jobs`;
+    const where = employer.trim() || "this company";
+    return `${what} in flight at ${where} (tailoring, applied or interviewing)`;
+  },
 };
 
 export type FilterTab =

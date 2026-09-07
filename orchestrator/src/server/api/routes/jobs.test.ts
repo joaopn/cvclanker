@@ -1414,3 +1414,170 @@ describe.sequential("detached job action batches", () => {
     expect(text).toContain(data.batchId);
   });
 });
+
+describe.sequential("GET /api/jobs — company in-flight hydration", () => {
+  let server: Server;
+  let baseUrl: string;
+  let closeDb: () => void;
+  let tempDir: string;
+
+  beforeEach(async () => {
+    ({ server, baseUrl, closeDb, tempDir } = await startServer());
+  });
+
+  afterEach(async () => {
+    await stopServer({ server, closeDb, tempDir });
+  });
+
+  async function seed(
+    rows: Array<{ id: string; employer: string; status: string }>,
+  ) {
+    const { db, schema } = await import("@server/db/index");
+    for (const row of rows) {
+      await db.insert(schema.jobs).values({
+        id: row.id,
+        source: "linkedin",
+        title: "Backend Engineer",
+        employer: row.employer,
+        jobUrl: `https://example.com/${row.id}`,
+        status: row.status as "discovered",
+        discoveredAt: new Date().toISOString(),
+      });
+    }
+  }
+
+  const listJobs = async (query = "") => {
+    const res = await fetch(`${baseUrl}/api/jobs${query}`);
+    const body = await res.json();
+    const byId = new Map<string, number | undefined>();
+    for (const job of body.data.jobs) {
+      byId.set(job.id, job.companyInFlightCount);
+    }
+    return byId;
+  };
+
+  it("counts the employer's in-flight jobs on an untouched row", async () => {
+    await seed([
+      { id: "inbox", employer: "Acme", status: "discovered" },
+      { id: "tailoring", employer: "Acme", status: "processing" },
+      { id: "live", employer: "Acme", status: "applied" },
+    ]);
+
+    expect((await listJobs()).get("inbox")).toBe(2);
+  });
+
+  it("never counts the row itself", async () => {
+    await seed([
+      { id: "only", employer: "Acme", status: "applied" },
+      { id: "elsewhere", employer: "Globex", status: "applied" },
+    ]);
+
+    const counts = await listJobs();
+    expect(counts.get("only")).toBe(0);
+    expect(counts.get("elsewhere")).toBe(0);
+  });
+
+  it("still flags two in-flight jobs at one employer, each about the other", async () => {
+    await seed([
+      { id: "a", employer: "Acme", status: "ready" },
+      { id: "b", employer: "Acme", status: "in_progress" },
+    ]);
+
+    const counts = await listJobs();
+    expect(counts.get("a")).toBe(1);
+    expect(counts.get("b")).toBe(1);
+  });
+
+  it("ignores the shelves and the concluded statuses", async () => {
+    await seed([
+      { id: "inbox", employer: "Acme", status: "discovered" },
+      { id: "shelved", employer: "Acme", status: "backlog" },
+      { id: "gone", employer: "Acme", status: "skipped" },
+      { id: "done", employer: "Acme", status: "closed" },
+    ]);
+
+    expect((await listJobs()).get("inbox")).toBe(0);
+  });
+
+  it("matches the employer exactly, ignoring case and surrounding space", async () => {
+    await seed([
+      { id: "inbox", employer: "acme labs", status: "discovered" },
+      { id: "live", employer: "  Acme Labs ", status: "applied" },
+      { id: "nearmiss", employer: "Acme Labs Ltd", status: "applied" },
+    ]);
+
+    // The Ltd row is a different company by this rule, deliberately.
+    expect((await listJobs()).get("inbox")).toBe(1);
+  });
+
+  it("matches a NON-ASCII employer, which SQL lowercasing cannot", async () => {
+    // SQLite's lower() is ASCII-only, so grouping the key in SQL made these
+    // rows unmatchable for ever AND drove the in-flight row's own count
+    // negative. Three of 347 employers on the dev DB were in this shape.
+    // The UPPERCASE non-ASCII must sit on the IN-FLIGHT row: that is the side
+    // a SQL `lower()` fold would fail to lowercase, so putting it on the inbox
+    // row instead lets the bug through with the test green.
+    await seed([
+      {
+        id: "inbox",
+        employer: "österreichische post ag",
+        status: "discovered",
+      },
+      { id: "live", employer: "Österreichische Post AG", status: "applied" },
+    ]);
+
+    const counts = await listJobs();
+    expect(counts.get("inbox")).toBe(1);
+    expect(counts.get("live")).toBe(0);
+  });
+
+  it("folds whitespace SQLite's trim() would not", async () => {
+    // JS .trim() strips all Unicode whitespace; SQLite's one-arg trim() strips
+    // U+0020 only.
+    await seed([
+      { id: "inbox", employer: "Acme", status: "discovered" },
+      { id: "live", employer: "\u00a0Acme\t", status: "applied" },
+    ]);
+
+    expect((await listJobs()).get("inbox")).toBe(1);
+  });
+
+  it("never groups rows on a blank employer, and never goes negative", async () => {
+    await seed([
+      { id: "inbox", employer: "   ", status: "discovered" },
+      { id: "live", employer: "", status: "applied" },
+    ]);
+
+    const counts = await listJobs();
+    expect(counts.get("inbox")).toBe(0);
+    // The in-flight row is in no bucket, so the self-exclusion must not take
+    // it below zero — the field is documented as a count.
+    expect(counts.get("live")).toBe(0);
+  });
+
+  it("annotates every row even when nothing is in flight anywhere", async () => {
+    // Otherwise the same endpoint answers with the key present on one request
+    // and absent on the next, depending on state elsewhere in the database.
+    await seed([{ id: "inbox", employer: "Acme", status: "discovered" }]);
+
+    // `has` cannot fail here — the helper sets a key for every returned row —
+    // so read the raw payload to prove the FIELD is present, not the map entry.
+    const res = await fetch(`${baseUrl}/api/jobs`);
+    const body = await res.json();
+    expect(body.data.jobs[0]).toHaveProperty("companyInFlightCount");
+    expect(body.data.jobs[0].companyInFlightCount).toBe(0);
+  });
+
+  it("annotates a status-scoped request too", async () => {
+    await seed([
+      { id: "inbox", employer: "Acme", status: "discovered" },
+      { id: "live", employer: "Acme", status: "applied" },
+    ]);
+
+    const counts = await listJobs("?status=discovered");
+    expect(counts.size).toBe(1);
+    // The candidate is OUTSIDE the requested scope — the count must not be
+    // limited to the rows the request happens to return.
+    expect(counts.get("inbox")).toBe(1);
+  });
+});

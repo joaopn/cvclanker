@@ -9,6 +9,7 @@ import {
 } from "@infra/errors";
 import { fail, ok } from "@infra/http";
 import { logger } from "@infra/logger";
+import { employerKey, isInFlightStatus } from "@shared/company-in-flight";
 import { setupSse, startSseHeartbeat, writeSseData } from "@infra/sse";
 import {
   generateFinalPdf,
@@ -1043,8 +1044,8 @@ jobsRouter.get("/", async (req: Request, res: Response) => {
     const benchmarkStart = performance.now();
     let queryParseMs = 0;
     let primaryQueryMs = 0;
-    const duplicateCandidatesQueryMs = 0;
-    const duplicateMatchCpuMs = 0;
+    let duplicateCandidatesQueryMs = 0;
+    let duplicateMatchCpuMs = 0;
     let statsAggregateMs = 0;
     let revisionAggregateMs = 0;
 
@@ -1072,8 +1073,39 @@ jobsRouter.get("/", async (req: Request, res: Response) => {
         ? await jobsRepo.getJobListItems(statuses, employer)
         : await jobsRepo.getAllJobs(statuses);
     primaryQueryMs = performance.now() - primaryQueryStart;
-    const candidateCount = 0;
-    const duplicateMatchingEnabled = false;
+
+    // "Do I already have work in flight at this company?" — hydrated here so
+    // the jobs list can flag it per row. One grouped aggregate plus a Set
+    // Map lookup per row: the scored title+employer matcher this replaces was
+    // removed upstream (`a3dffb2`) precisely because it cost rows x candidates
+    // fuzzy comparisons, and these benchmark slots are the ones it left behind.
+    const duplicateCandidatesQueryStart = performance.now();
+    const inFlightCounts = await jobsRepo.getInFlightEmployerCounts();
+    duplicateCandidatesQueryMs =
+      performance.now() - duplicateCandidatesQueryStart;
+    // These two benchmark slots are named for the scored matcher that used to
+    // live here. `candidateCount` is now distinct in-flight employers, and
+    // nothing is gated on `duplicateMatchingEnabled` — the hydration below is
+    // unconditional. Kept because `scripts/benchmark-jobs.ts` reads them.
+    const candidateCount = inFlightCounts.size;
+    const duplicateMatchingEnabled = candidateCount > 0;
+    // Assigned unconditionally, even with no in-flight rows at all: gating the
+    // loop would make the SAME endpoint answer with the key present on one
+    // request and absent on the next, depending on state elsewhere in the DB.
+    const duplicateMatchCpuStart = performance.now();
+    for (const job of jobs) {
+      const key = employerKey(job.employer);
+      // A blank employer is in no bucket, so it must not be decremented below
+      // zero by the self-exclusion — the field is documented as a count.
+      const total = key ? (inFlightCounts.get(key) ?? 0) : 0;
+      // Exclude the row itself, so a lone in-flight job never flags itself
+      // while two at one employer still flag each other.
+      job.companyInFlightCount = Math.max(
+        0,
+        total - (isInFlightStatus(job.status) ? 1 : 0),
+      );
+    }
+    duplicateMatchCpuMs = performance.now() - duplicateMatchCpuStart;
     const statsAggregateStart = performance.now();
     const stats = await jobsRepo.getJobStats();
     statsAggregateMs = performance.now() - statsAggregateStart;
