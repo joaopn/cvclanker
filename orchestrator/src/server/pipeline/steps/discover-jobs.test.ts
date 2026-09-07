@@ -716,6 +716,99 @@ describe("discoverJobsStep", () => {
     ]);
   });
 
+  it("synthesizes Remote evidence for a remote job whose location is blank", async () => {
+    const registryModule = await import("@server/extractors/registry");
+
+    const jobspyManifest = {
+      id: "jobspy",
+      displayName: "JobSpy",
+      providesSources: ["indeed", "linkedin"],
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        jobs: [
+          {
+            source: "linkedin",
+            title: "Engineer - Anywhere",
+            employer: "Remote Co",
+            location: "",
+            isRemote: true,
+            jobUrl: "https://example.com/blank-remote",
+          },
+        ],
+      }),
+    };
+
+    vi.mocked(registryModule.getExtractorRegistry).mockResolvedValue({
+      manifests: new Map([["jobspy", jobspyManifest as any]]),
+      manifestBySource: new Map([
+        ["indeed", jobspyManifest as any],
+        ["linkedin", jobspyManifest as any],
+      ]),
+      availableSources: ["indeed", "linkedin"],
+    } as any);
+
+    const result = await discoverJobsStep({
+      mergedConfig: {
+        ...baseConfig,
+        sources: ["linkedin"],
+        locationIntent: createLocationIntentFromLegacyInputs({
+          selectedCountry: "croatia",
+          workplaceTypes: ["remote"],
+          searchScope: "selected_plus_remote_worldwide",
+        }),
+      },
+    });
+
+    expect(result.discoveredJobs).toHaveLength(1);
+    expect(result.discoveredJobs[0]?.locationEvidence).toEqual(
+      expect.objectContaining({ location: "Remote" }),
+    );
+  });
+
+  it("records no location evidence for a blank location that is not remote", async () => {
+    const registryModule = await import("@server/extractors/registry");
+
+    const jobspyManifest = {
+      id: "jobspy",
+      displayName: "JobSpy",
+      providesSources: ["indeed", "linkedin"],
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        jobs: [
+          {
+            source: "linkedin",
+            title: "Engineer - Somewhere",
+            employer: "ACME",
+            location: "   ",
+            jobUrl: "https://example.com/blank-onsite",
+          },
+        ],
+      }),
+    };
+
+    vi.mocked(registryModule.getExtractorRegistry).mockResolvedValue({
+      manifests: new Map([["jobspy", jobspyManifest as any]]),
+      manifestBySource: new Map([
+        ["indeed", jobspyManifest as any],
+        ["linkedin", jobspyManifest as any],
+      ]),
+      availableSources: ["indeed", "linkedin"],
+    } as any);
+
+    const result = await discoverJobsStep({
+      mergedConfig: {
+        ...baseConfig,
+        sources: ["linkedin"],
+        // No country, so the row survives the filter and its evidence — the
+        // absence of it — is readable off the returned job.
+        locationIntent: createLocationIntentFromLegacyInputs({}),
+      },
+    });
+
+    expect(result.discoveredJobs).toHaveLength(1);
+    expect(result.discoveredJobs[0]?.locationEvidence).toBeUndefined();
+  });
+
   it("keeps country matches when strictness is flexible and city metadata disagrees", async () => {
     const registryModule = await import("@server/extractors/registry");
 

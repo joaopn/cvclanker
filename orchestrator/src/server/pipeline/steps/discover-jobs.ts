@@ -100,9 +100,16 @@ function buildLocationEvidence(args: {
   isRemote?: boolean | null;
   sourceNotes?: readonly string[] | null;
 }): CreateJobInput["locationEvidence"] {
-  if (!args.location && args.isRemote !== true) return undefined;
+  // A blank location is ABSENT, on both of the lines below. They used to
+  // disagree: the guard tested truthiness while the fallback used `??`, so a
+  // blank location on a remote row cleared the guard and then recorded a null
+  // location instead of the "Remote" the fallback exists to supply. (Null, not
+  // "": the shared builder below scrubs a blank location to null.)
+  const location = args.location?.trim() || null;
+  if (!location && args.isRemote !== true) return undefined;
   return buildSharedLocationEvidence({
-    location: args.location ?? (args.isRemote ? "Remote" : null),
+    // No location here means the guard admitted the row on isRemote alone.
+    location: location ?? "Remote",
     isRemote: args.isRemote ?? null,
     source:
       args.sourceNotes?.find((note) => note.startsWith("source:"))?.slice(7) ??
