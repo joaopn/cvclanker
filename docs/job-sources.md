@@ -11,14 +11,18 @@ covers the **built-in** sources; for the Apify marketplace, see
 |---|---|---|
 | **Indeed** | jobspy | Country-aware |
 | **LinkedIn** | jobspy | |
-| **Glassdoor** | jobspy | |
 | **Hiring Cafe** | headless browser | Fetches full descriptions |
 | **startup.jobs** | startup.jobs scraper | Startup / remote-leaning |
 | **Working Nomads** | Working Nomads API | Remote-focused |
 | **Manual** | you + the LLM | Paste a URL or a list; see below |
 
-> Indeed, LinkedIn, and Glassdoor are all served by a single scraper
-> (**jobspy**), so in the pipeline view they're grouped under that one engine.
+> Indeed and LinkedIn are both served by a single scraper (**jobspy**), so in
+> the pipeline view they're grouped under that one engine.
+>
+> Glassdoor used to be a third jobspy source. It was retired: the upstream
+> library can no longer reach Glassdoor at all, and there is no fixed release to
+> move to. Jobs scraped before the retirement are still shown and still
+> filterable by source.
 
 You enable or disable sources on the **Sources** page. Only enabled sources run
 when you scrape.

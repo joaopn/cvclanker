@@ -16,7 +16,7 @@ case it's useful — there's no roadmap, hosted version, or support commitment.
   edits the content of that document rather than generating a new one from a
   fixed template. LaTeX renders to PDF; Word is downloaded as a `.docx`, with a
   PDF preview.
-- **Job scraping.** Built-in sources are LinkedIn, Indeed, and Glassdoor (via
+- **Job scraping.** Built-in sources are LinkedIn and Indeed (via
   jobspy), Hiring Cafe, startup.jobs, and Working Nomads. [Apify](https://apify.com)
   actors can also be used as sources, with ready-made templates for LinkedIn and
   Indeed.

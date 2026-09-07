@@ -28,7 +28,7 @@ npm --workspace orchestrator run db:migrate
 npm --workspace orchestrator run dev
 ```
 
-If you are working with extractors that use Glassdoor, Indeed, or LinkedIn (powered by python-jobspy), set up the Python venv once:
+If you are working with extractors that use Indeed or LinkedIn (powered by python-jobspy), set up the Python venv once:
 
 ```bash
 python3 -m venv extractors/jobspy/.venv

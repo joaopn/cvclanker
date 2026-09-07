@@ -19,7 +19,7 @@ a single SQLite file, and **neither auto-applies**.
 | **CV model** | Your own `.tex` / `.docx`, any shape, + a free-text brief | Fixed Reactive Resume v5 schema |
 | **Tailoring** | Field-level edits over your real document + ATS coverage | Field-scoped (summary / headline / skills / projects) |
 | **Apify** | **Any actor + curated LinkedIn & Indeed templates** | Narrow (one hard-coded Seek actor) |
-| **Job sources** | Indeed, LinkedIn, Glassdoor, Hiring Cafe, startup.jobs, Working Nomads, + Apify | ~13 boards incl. Adzuna, Gradcracker, UK Visa Jobs, Seek |
+| **Job sources** | Indeed, LinkedIn, Hiring Cafe, startup.jobs, Working Nomads, + Apify | ~13 boards incl. Adzuna, Gradcracker, UK Visa Jobs, Seek |
 | **Cover letters** | Dedicated LaTeX substrate, per-job generate | Ghostwriter text drafts |
 | **Job lifecycle** | Inbox / Live / Closed + swipe + repost detection | Kanban (applied → offer → rejected) + watchlist |
 | **Post-application tracking** | — *(removed)* | Gmail auto-detection |
