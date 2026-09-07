@@ -20,7 +20,11 @@ export const DisplaySettingsSection: React.FC<DisplaySettingsSectionProps> = ({
   isSaving,
   layoutMode,
 }) => {
-  const { showSponsorInfo, renderMarkdownInJobDescriptions } = values;
+  const {
+    showSponsorInfo,
+    renderMarkdownInJobDescriptions,
+    companyInFlightCheckEnabled,
+  } = values;
   const { control } = useFormContext<UpdateSettingsInput>();
 
   return (
@@ -102,6 +106,42 @@ export const DisplaySettingsSection: React.FC<DisplaySettingsSectionProps> = ({
 
         <Separator />
 
+        <div className="flex items-start space-x-3">
+          <Controller
+            name="companyInFlightCheckEnabled"
+            control={control}
+            render={({ field }) => (
+              <Checkbox
+                id="companyInFlightCheckEnabled"
+                checked={field.value ?? companyInFlightCheckEnabled.default}
+                onCheckedChange={(checked) => {
+                  field.onChange(
+                    checked === "indeterminate" ? null : checked === true,
+                  );
+                }}
+                disabled={isLoading || isSaving}
+              />
+            )}
+          />
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="companyInFlightCheckEnabled"
+              className="text-sm font-medium leading-none cursor-pointer"
+            >
+              Warn before tailoring a company you have work in flight at
+            </label>
+            <p className="text-xs text-muted-foreground">
+              When you press Tailor, check whether that employer already has
+              jobs in tailoring, tailored, applied to, or interviewing, and list
+              them first so you can decide. Catches the same opening scraped
+              twice under two URLs, which duplicate review cannot join. Applies
+              to the Manage screen; the Swipe deck is unaffected.
+            </p>
+          </div>
+        </div>
+
+        <Separator />
+
         <div className="grid gap-3 text-sm sm:grid-cols-2">
           <div>
             <div className="text-xs text-muted-foreground">
@@ -135,6 +175,22 @@ export const DisplaySettingsSection: React.FC<DisplaySettingsSectionProps> = ({
             </div>
             <div className="break-words font-mono text-xs font-semibold">
               {renderMarkdownInJobDescriptions.default ? "Enabled" : "Disabled"}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">
+              Company check effective
+            </div>
+            <div className="break-words font-mono text-xs">
+              {companyInFlightCheckEnabled.effective ? "Enabled" : "Disabled"}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">
+              Company check default
+            </div>
+            <div className="break-words font-mono text-xs font-semibold">
+              {companyInFlightCheckEnabled.default ? "Enabled" : "Disabled"}
             </div>
           </div>
         </div>

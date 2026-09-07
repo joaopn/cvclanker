@@ -10,6 +10,7 @@ import type {
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ConfirmTailor } from "./tailorCompanyConflicts";
 import { useJobSelectionActions } from "./useJobSelectionActions";
 
 vi.mock("@client/api", () => ({
@@ -87,6 +88,13 @@ const mockBatch = (
   });
 };
 
+/**
+ * Approves everything — what the duplicate-application guard does with the
+ * setting off, which is the default and what these fixtures exercise.
+ */
+const identityGuard = async (jobs: readonly { id: string }[]) =>
+  jobs.map((job) => job.id);
+
 describe("useJobSelectionActions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -104,6 +112,7 @@ describe("useJobSelectionActions", () => {
         activeTab: "inbox",
         loadJobs,
         maxBulkActionJobs: 100,
+        confirmTailor: identityGuard,
       }),
     );
 
@@ -125,6 +134,7 @@ describe("useJobSelectionActions", () => {
         activeTab: "inbox",
         loadJobs,
         maxBulkActionJobs: 100,
+        confirmTailor: identityGuard,
       }),
     );
 
@@ -175,6 +185,7 @@ describe("useJobSelectionActions", () => {
         activeTab: "inbox",
         loadJobs: vi.fn().mockResolvedValue(undefined),
         maxBulkActionJobs: 100,
+        confirmTailor: identityGuard,
         pushUndo,
       }),
     );
@@ -225,6 +236,7 @@ describe("useJobSelectionActions", () => {
         activeTab: "inbox",
         loadJobs: vi.fn().mockResolvedValue(undefined),
         maxBulkActionJobs: 100,
+        confirmTailor: identityGuard,
       }),
     );
 
@@ -284,6 +296,7 @@ describe("useJobSelectionActions", () => {
         activeTab: "inbox",
         loadJobs,
         maxBulkActionJobs: 100,
+        confirmTailor: identityGuard,
       }),
     );
 
@@ -351,6 +364,7 @@ describe("useJobSelectionActions", () => {
         activeTab: "inbox",
         loadJobs,
         maxBulkActionJobs: 100,
+        confirmTailor: identityGuard,
       }),
     );
 
@@ -406,6 +420,7 @@ describe("useJobSelectionActions", () => {
         activeTab: "tailoring",
         loadJobs,
         maxBulkActionJobs: 100,
+        confirmTailor: identityGuard,
       }),
     );
 
@@ -451,6 +466,7 @@ describe("useJobSelectionActions", () => {
         activeTab: "tailoring",
         loadJobs,
         maxBulkActionJobs: 100,
+        confirmTailor: identityGuard,
       }),
     );
 
@@ -499,6 +515,7 @@ describe("useJobSelectionActions", () => {
         activeTab: "tailoring",
         loadJobs,
         maxBulkActionJobs: 100,
+        confirmTailor: identityGuard,
       }),
     );
 
@@ -516,5 +533,183 @@ describe("useJobSelectionActions", () => {
       jobIds: ["job-1", "job-2"],
     });
     expect(toast.success).toHaveBeenCalledWith("2 matches recalculated");
+  });
+});
+
+describe("runTailorAction and the duplicate-application guard", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(toast.loading).mockReturnValue("job-progress-toast");
+  });
+
+  const activeJobs = [
+    createJob({ id: "job-1", employer: "Acme", status: "discovered" }),
+    createJob({ id: "job-2", employer: "Globex", status: "discovered" }),
+  ];
+
+  const setup = (confirmTailor: ConfirmTailor = identityGuard) =>
+    renderHook(() =>
+      useJobSelectionActions({
+        activeJobs,
+        activeTab: "inbox",
+        loadJobs: vi.fn().mockResolvedValue(undefined),
+        maxBulkActionJobs: 100,
+        confirmTailor,
+      }),
+    );
+
+  const selectBoth = (result: {
+    current: { toggleSelectJob: (id: string) => void };
+  }) => {
+    act(() => {
+      result.current.toggleSelectJob("job-1");
+      result.current.toggleSelectJob("job-2");
+    });
+  };
+
+  it("hands the guard the selected job objects, not just ids", async () => {
+    mockBatch({ results: [], updated: 0 } as unknown as JobActionResponse);
+    const confirmTailor = vi.fn().mockResolvedValue(["job-1", "job-2"]);
+    const { result } = setup(confirmTailor);
+    selectBoth(result);
+
+    await act(async () => {
+      await result.current.runTailorAction();
+    });
+
+    expect(confirmTailor).toHaveBeenCalledTimes(1);
+    expect(confirmTailor.mock.calls[0][0]).toEqual([
+      expect.objectContaining({ id: "job-1", employer: "Acme" }),
+      expect.objectContaining({ id: "job-2", employer: "Globex" }),
+    ]);
+  });
+
+  it("dispatches only the ids the guard approved", async () => {
+    mockBatch({ results: [], updated: 0 } as unknown as JobActionResponse);
+    const { result } = setup(vi.fn().mockResolvedValue(["job-2"]));
+    selectBoth(result);
+
+    await act(async () => {
+      await result.current.runTailorAction();
+    });
+
+    await waitFor(() =>
+      expect(startJobActionBatch).toHaveBeenCalledWith({
+        action: "move_to_ready",
+        jobIds: ["job-2"],
+      }),
+    );
+  });
+
+  it("dispatches nothing when the guard cancels", async () => {
+    mockBatch({ results: [], updated: 0 } as unknown as JobActionResponse);
+    const { result } = setup(vi.fn().mockResolvedValue(null));
+    selectBoth(result);
+
+    await act(async () => {
+      await result.current.runTailorAction();
+    });
+
+    expect(startJobActionBatch).not.toHaveBeenCalled();
+  });
+
+  it("dispatches nothing when the guard approves an empty set", async () => {
+    // "Tailor the other N" on an all-conflicting selection would otherwise
+    // POST a batch of zero jobs.
+    mockBatch({ results: [], updated: 0 } as unknown as JobActionResponse);
+    const { result } = setup(vi.fn().mockResolvedValue([]));
+    selectBoth(result);
+
+    await act(async () => {
+      await result.current.runTailorAction();
+    });
+
+    expect(startJobActionBatch).not.toHaveBeenCalled();
+  });
+
+  it("dispatches the whole selection when the guard approves it all", async () => {
+    mockBatch({ results: [], updated: 0 } as unknown as JobActionResponse);
+    const { result } = setup();
+    selectBoth(result);
+
+    await act(async () => {
+      await result.current.runTailorAction();
+    });
+
+    await waitFor(() =>
+      expect(startJobActionBatch).toHaveBeenCalledWith({
+        action: "move_to_ready",
+        jobIds: ["job-1", "job-2"],
+      }),
+    );
+  });
+
+  it("locks the whole action bar while the guard is deciding", async () => {
+    // Not just the Tailor button: Delete/Skip/Close all key off the same flag,
+    // and any of them landing during the round trip acts on rows a tailor is
+    // about to claim.
+    mockBatch({ results: [], updated: 0 } as unknown as JobActionResponse);
+    let releaseGuard!: (ids: string[]) => void;
+    const { result } = setup(
+      () =>
+        new Promise<string[]>((resolve) => {
+          releaseGuard = resolve;
+        }),
+    );
+    selectBoth(result);
+
+    expect(result.current.jobActionInFlight).toBeNull();
+
+    await act(async () => {
+      void result.current.runTailorAction();
+      await Promise.resolve();
+    });
+
+    expect(result.current.jobActionInFlight).toBe("move_to_ready");
+
+    await act(async () => {
+      releaseGuard(["job-1", "job-2"]);
+    });
+
+    await waitFor(() => expect(result.current.jobActionInFlight).toBeNull());
+  });
+
+  it("releases the bar when the guard cancels", async () => {
+    mockBatch({ results: [], updated: 0 } as unknown as JobActionResponse);
+    const { result } = setup(vi.fn().mockResolvedValue(null));
+    selectBoth(result);
+
+    await act(async () => {
+      await result.current.runTailorAction();
+    });
+
+    expect(result.current.jobActionInFlight).toBeNull();
+  });
+
+  it("cannot dispatch twice from two presses across the guard's round trip", async () => {
+    // The Tailor button's disabled state comes from `jobActionInFlight`, which
+    // runStreamingAction only sets AFTER the guard resolves — so without a
+    // synchronous latch the button is live for a whole round trip and a second
+    // press starts a second batch on the same rows.
+    mockBatch({ results: [], updated: 0 } as unknown as JobActionResponse);
+    let releaseGuard!: (ids: string[]) => void;
+    const confirmTailor = vi.fn(
+      () =>
+        new Promise<string[]>((resolve) => {
+          releaseGuard = resolve;
+        }),
+    );
+    const { result } = setup(confirmTailor);
+    selectBoth(result);
+
+    await act(async () => {
+      void result.current.runTailorAction();
+      void result.current.runTailorAction();
+      await Promise.resolve();
+      releaseGuard(["job-1", "job-2"]);
+    });
+
+    expect(confirmTailor).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(startJobActionBatch).toHaveBeenCalledTimes(1));
   });
 });

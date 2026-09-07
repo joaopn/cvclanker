@@ -34,6 +34,7 @@ import {
   hasLinkedinPostingId,
   isRetailorable,
 } from "./jobActions";
+import type { ConfirmTailor } from "./tailorCompanyConflicts";
 import { clampNumber } from "./utils";
 
 const jobActionLabel: Record<JobAction, string> = {
@@ -93,6 +94,12 @@ interface UseJobSelectionActionsArgs {
   maxBulkActionJobs: number;
   pushUndo?: (entry: { label: string; restore: () => Promise<void> }) => void;
   undo?: () => void;
+  /**
+   * The duplicate-application guard. Passed in rather than read from context
+   * because this hook is called by OrchestratorPage itself, which sits ABOVE
+   * its own provider.
+   */
+  confirmTailor: ConfirmTailor;
 }
 
 /** Provider messages can be arbitrarily long; a toast cannot. */
@@ -109,6 +116,7 @@ export function useJobSelectionActions({
   maxBulkActionJobs,
   pushUndo,
   undo,
+  confirmTailor,
 }: UseJobSelectionActionsArgs) {
   // Always-fresh view of the list so the streaming callback (whose useCallback
   // deps deliberately omit activeJobs) can snapshot pre-action state.
@@ -125,6 +133,9 @@ export function useJobSelectionActions({
   // row; the next shift-click extends the selection from the anchor to the
   // target (additive — never deselects).
   const rangeAnchorRef = useRef<string | null>(null);
+  // Synchronous companion to `jobActionInFlight` for the guard's round trip:
+  // state cannot be read back within the same tick. See runTailorAction.
+  const tailorInFlightRef = useRef(false);
 
   const selectedJobs = useMemo(
     () => activeJobs.filter((job) => selectedJobIds.has(job.id)),
@@ -453,16 +464,55 @@ export function useJobSelectionActions({
     [loadJobs, maxBulkActionJobs, pushUndo, undo],
   );
 
-  // Option-less variants. mark_closed needs an outcome and goes through
-  // runMarkClosedAction below; fetch_live_status and retailor must go through
-  // their own dispatchers, which send only the LinkedIn / eligible subset — a
-  // bare dispatch would spray per-job failures on the mixed selections both
-  // are designed for.
+  // Option-less variants that always dispatch the WHOLE selection. mark_closed
+  // needs an outcome and goes through runMarkClosedAction below;
+  // fetch_live_status, retailor and move_to_ready must go through their own
+  // dispatchers, which send only the LinkedIn / eligible / guard-approved
+  // subset — a bare dispatch would spray per-job failures on the mixed
+  // selections the first two are designed for, and would ignore the
+  // duplicate-application guard's answer on the third.
+  /**
+   * Tailoring the selection, behind the duplicate-application guard. Its own
+   * dispatcher for the same reason as `runRetailorAction`: the guard can answer
+   * with a SUBSET of the selection ("tailor the ones that don't clash"), and
+   * the bare `runJobAction` only ever dispatches the whole thing.
+   */
+  const runTailorAction = useCallback(async () => {
+    // `runStreamingAction` sets `jobActionInFlight` — which disables the WHOLE
+    // action bar — only once the guard has resolved. With the check on that is
+    // a network round trip during which every button stays live: a second
+    // Tailor press dispatches a second batch for the same rows (react-query
+    // dedupes the guard's fetch, so both see no conflict, and
+    // `scheduleBackgroundTailor` has no per-job dedupe — one row, two tailors
+    // racing on its PDF), and Delete/Skip/Close land on rows a tailor is about
+    // to claim. So the bar is locked here, before the first await, and the ref
+    // is its synchronous twin because state cannot be read back in the same
+    // tick. Mirrors `shortcutActionInFlight`, which is why the keyboard arm
+    // never had this window.
+    if (tailorInFlightRef.current) return;
+    const selected = activeJobsRef.current.filter((job) =>
+      selectedJobIds.has(job.id),
+    );
+    if (selected.length === 0) return;
+    tailorInFlightRef.current = true;
+    setJobActionInFlight("move_to_ready");
+    try {
+      const approved = await confirmTailor(selected);
+      if (approved === null || approved.length === 0) return;
+      await runStreamingAction({ action: "move_to_ready", jobIds: approved });
+    } finally {
+      tailorInFlightRef.current = false;
+      // runStreamingAction's own finally has already nulled this when it ran;
+      // this covers the paths where it never did (cancel, empty, a throw).
+      setJobActionInFlight(null);
+    }
+  }, [selectedJobIds, confirmTailor, runStreamingAction]);
+
   const runJobAction = useCallback(
     async (
       action: Exclude<
         JobAction,
-        "mark_closed" | "fetch_live_status" | "retailor"
+        "mark_closed" | "fetch_live_status" | "retailor" | "move_to_ready"
       >,
     ) => {
       const jobIds = Array.from(selectedJobIds);
@@ -550,6 +600,7 @@ export function useJobSelectionActions({
     toggleSelectAll,
     clearSelection,
     runJobAction,
+    runTailorAction,
     runScreenedRescoreAction,
     runFetchLiveStatusAction,
     runRetailorAction,

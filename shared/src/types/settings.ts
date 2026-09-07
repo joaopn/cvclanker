@@ -61,6 +61,7 @@ export interface AppSettings {
   scoringInstructions: Resolved<string>;
   showSponsorInfo: Resolved<boolean>;
   renderMarkdownInJobDescriptions: Resolved<boolean>;
+  companyInFlightCheckEnabled: Resolved<boolean>;
   chatStyleTone: Resolved<string>;
   chatStyleFormality: Resolved<string>;
   chatStyleConstraints: Resolved<string>;

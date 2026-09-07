@@ -25,6 +25,7 @@ export type ModelValues = EffectiveDefault<string> & {
 export type DisplayValues = {
   showSponsorInfo: EffectiveDefault<boolean>;
   renderMarkdownInJobDescriptions: EffectiveDefault<boolean>;
+  companyInFlightCheckEnabled: EffectiveDefault<boolean>;
 };
 export type ChatValues = {
   tone: EffectiveDefault<string>;

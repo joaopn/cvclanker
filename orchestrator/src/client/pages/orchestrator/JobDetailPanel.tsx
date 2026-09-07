@@ -53,6 +53,7 @@ import { JobDocumentsPanel } from "./JobDocumentsPanel";
 import { JobNotesSection } from "./JobNotesSection";
 import { JobStageSwitcher } from "./JobStageSwitcher";
 import { MarkClosedPopover } from "./MarkClosedPopover";
+import { type ConfirmTailor, tailorApproved } from "./tailorCompanyConflicts";
 import { useUndo } from "./useUndoController";
 import { appliedBadgeTitle } from "./utils";
 
@@ -63,6 +64,8 @@ interface JobDetailPanelProps {
   onSelectJobId: (jobId: string | null) => void;
   onJobUpdated: () => Promise<void>;
   onPauseRefreshChange?: (paused: boolean) => void;
+  /** The duplicate-application guard. Required so a mount cannot skip it. */
+  confirmTailor: ConfirmTailor;
 }
 
 export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
@@ -72,6 +75,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
   onSelectJobId,
   onJobUpdated,
   onPauseRefreshChange,
+  confirmTailor,
 }) => {
   const [detailTab, setDetailTab] = useState<
     "overview" | "description" | "notes" | "documents" | "interview"
@@ -214,6 +218,9 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
         await api.generateJobPdf(selectedJob.id);
         toast.success("Resume regenerated successfully");
       } else {
+        // The `ready` arm above re-renders an existing PDF; only this one
+        // starts a tailor, so only this one is guarded.
+        if (!(await tailorApproved(confirmTailor, selectedJob))) return;
         await api.processJob(selectedJob.id);
         toast.success("Tailoring started", {
           description: "It'll appear in the Tailoring tab when ready.",
@@ -291,6 +298,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
   const handleTailorRow = async () => {
     if (!selectedJob) return;
     try {
+      if (!(await tailorApproved(confirmTailor, selectedJob))) return;
       // Tailoring runs in the background; the row flips to processing and
       // appears in the Tailoring tab. Not undoable (creates a PDF).
       await api.processJob(selectedJob.id);
@@ -398,6 +406,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
         onJobUpdated={onJobUpdated}
         onJobMoved={handleJobMoved}
         onTailoringDirtyChange={handleTailoringDirtyChange}
+        confirmTailor={confirmTailor}
       />
     );
   }
@@ -424,6 +433,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
         onJobUpdated={onJobUpdated}
         onJobMoved={handleJobMoved}
         onTailoringDirtyChange={handleTailoringDirtyChange}
+        confirmTailor={confirmTailor}
       />
     );
   }

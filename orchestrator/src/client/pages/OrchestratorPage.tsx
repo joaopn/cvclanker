@@ -21,6 +21,7 @@ import { KeyboardShortcutBar } from "../components/KeyboardShortcutBar";
 import { KeyboardShortcutDialog } from "../components/KeyboardShortcutDialog";
 import { BatchUrlImportSheet } from "./orchestrator/BatchUrlImportSheet";
 import { ClosedFilterChips } from "./orchestrator/ClosedFilterChips";
+import { CompanyInFlightDialog } from "./orchestrator/CompanyInFlightDialog";
 import { CompanyJobsDialog } from "./orchestrator/CompanyJobsDialog";
 import { CompanyPanelProvider } from "./orchestrator/CompanyPanelContext";
 import {
@@ -63,6 +64,7 @@ import { useOrchestratorFilters } from "./orchestrator/useOrchestratorFilters";
 import { usePipelineControls } from "./orchestrator/usePipelineControls";
 import { useScrollToJobItem } from "./orchestrator/useScrollToJobItem";
 import { useSelectedProfile } from "./orchestrator/useSelectedProfile";
+import { useTailorCompanyGuard } from "./orchestrator/useTailorCompanyGuard";
 import {
   UndoProvider,
   useUndoController,
@@ -259,7 +261,13 @@ export const OrchestratorPage: React.FC = () => {
     inboxStaleThresholdDays,
     maxBulkActionJobs,
     hasScorerPrefilter,
+    companyInFlightCheckEnabled,
   } = useSettings();
+  // The duplicate-application guard on every Tailor press in this screen.
+  // Created here so the page's own hooks can call it directly — they run above
+  // the provider that shares it with the detail panels.
+  const tailorGuard = useTailorCompanyGuard(companyInFlightCheckEnabled);
+  const confirmTailor = tailorGuard.confirmTailor;
   const effectiveStaleThresholdDays =
     staleThresholdDays ?? inboxStaleThresholdDays;
   // Facets narrow (and their bar renders) only on FACET_TABS; a Tier-2 facet
@@ -509,6 +517,7 @@ export const OrchestratorPage: React.FC = () => {
     toggleSelectAll,
     clearSelection,
     runJobAction,
+    runTailorAction,
     runScreenedRescoreAction,
     runFetchLiveStatusAction,
     runRetailorAction,
@@ -520,6 +529,7 @@ export const OrchestratorPage: React.FC = () => {
     maxBulkActionJobs,
     pushUndo: undoController.pushUndo,
     undo: undoController.undo,
+    confirmTailor,
   });
 
   // Only fetched when the Generate confirm can actually be opened — the dialog
@@ -552,6 +562,7 @@ export const OrchestratorPage: React.FC = () => {
     isBatchUrlImportOpen ||
     isLlmQueueOpen ||
     isDuplicateModalOpen ||
+    tailorGuard.prompt !== null ||
     navOpen;
 
   const isAnyModalOpenExcludingCommandBar =
@@ -561,6 +572,7 @@ export const OrchestratorPage: React.FC = () => {
     isBatchUrlImportOpen ||
     isLlmQueueOpen ||
     isDuplicateModalOpen ||
+    tailorGuard.prompt !== null ||
     navOpen;
 
   const isAnyModalOpenExcludingHelp =
@@ -570,6 +582,7 @@ export const OrchestratorPage: React.FC = () => {
     isBatchUrlImportOpen ||
     isLlmQueueOpen ||
     isDuplicateModalOpen ||
+    tailorGuard.prompt !== null ||
     navOpen;
 
   useKeyboardShortcuts({
@@ -590,6 +603,8 @@ export const OrchestratorPage: React.FC = () => {
     clearSelection,
     toggleSelectJob,
     runJobAction,
+    runTailorAction,
+    confirmTailor,
     loadJobs,
     onUndo: undoController.undo,
   });
@@ -960,6 +975,7 @@ export const OrchestratorPage: React.FC = () => {
                       onSelectJobId={handleSelectJobId}
                       onJobUpdated={loadJobs}
                       onPauseRefreshChange={setIsRefreshPaused}
+                      confirmTailor={confirmTailor}
                     />
                   </div>
                 )}
@@ -988,7 +1004,7 @@ export const OrchestratorPage: React.FC = () => {
           activeCvName={activeCvName}
           hasScorerPrefilter={hasScorerPrefilter}
           jobActionInFlight={jobActionInFlight !== null}
-          onMoveToReady={() => void runJobAction("move_to_ready")}
+          onMoveToReady={() => void runTailorAction()}
           onSkipSelected={() => void runJobAction("skip")}
           onRescoreSelected={() => void runJobAction("rescore")}
           onScreenRescoreSelected={() => void runScreenedRescoreAction()}
@@ -1053,6 +1069,7 @@ export const OrchestratorPage: React.FC = () => {
                   onSelectJobId={handleSelectJobId}
                   onJobUpdated={loadJobs}
                   onPauseRefreshChange={setIsRefreshPaused}
+                  confirmTailor={confirmTailor}
                 />
               </div>
             </DrawerContent>
@@ -1075,6 +1092,11 @@ export const OrchestratorPage: React.FC = () => {
           employer={companyPanelEmployer}
           onClose={() => setCompanyPanelEmployer(null)}
           onSelectJob={handleCommandSelectJob}
+        />
+
+        <CompanyInFlightDialog
+          prompt={tailorGuard.prompt}
+          onResolve={tailorGuard.resolvePrompt}
         />
       </CompanyPanelProvider>
     </UndoProvider>

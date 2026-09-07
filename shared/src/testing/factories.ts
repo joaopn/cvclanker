@@ -191,6 +191,11 @@ export const createAppSettings = (
     default: true,
     override: null,
   },
+  companyInFlightCheckEnabled: {
+    value: false,
+    default: false,
+    override: null,
+  },
   chatStyleTone: {
     value: "professional",
     default: "professional",

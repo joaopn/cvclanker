@@ -111,12 +111,18 @@ const Wrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return <FormProvider {...form}>{children}</FormProvider>;
 };
 
-function renderSection() {
+function renderSection(
+  overrides: Partial<
+    React.ComponentProps<typeof DisplaySettingsSection>["values"]
+  > = {},
+) {
   return render(
     <DisplaySettingsSection
       values={{
         showSponsorInfo: { effective: false, default: false },
         renderMarkdownInJobDescriptions: { effective: true, default: true },
+        companyInFlightCheckEnabled: { effective: false, default: false },
+        ...overrides,
       }}
       isLoading={false}
       isSaving={false}
@@ -217,5 +223,50 @@ describe("DisplaySettingsSection palette dropdowns", () => {
     expect(document.documentElement.getAttribute("data-theme")).toBe(
       "sandstone",
     );
+  });
+});
+
+describe("DisplaySettingsSection company in-flight check", () => {
+  const LABEL = /Warn before tailoring a company you have work in flight at/;
+
+  it("renders unchecked on the shipped default", () => {
+    renderSection();
+    expect(screen.getByRole("checkbox", { name: LABEL })).not.toBeChecked();
+  });
+
+  it("is a real checkbox, not an indeterminate one, on that default", () => {
+    // Radix resolves an undefined `checked` to false, so this does NOT catch a
+    // dropped `?? default` fallback — the default:true case below is what pins
+    // that. What this pins is that the control is a settled checkbox rather
+    // than rendering indeterminate.
+    renderSection();
+    expect(screen.getByRole("checkbox", { name: LABEL })).toHaveAttribute(
+      "data-state",
+      "unchecked",
+    );
+  });
+
+  it("falls back to the DEFAULT, not to off, when the form holds no value", () => {
+    // The field is uncontrolled until the user touches it, so an unset form
+    // value must read the registry default through. Pinning this is what stops
+    // the checkbox silently showing "off" for an install that turned it on.
+    renderSection({
+      companyInFlightCheckEnabled: { effective: true, default: true },
+    });
+    expect(screen.getByRole("checkbox", { name: LABEL })).toBeChecked();
+  });
+
+  it("reports the effective and default values separately", () => {
+    renderSection({
+      companyInFlightCheckEnabled: { effective: true, default: false },
+    });
+    const effective = screen.getByText(
+      "Company check effective",
+    ).nextElementSibling;
+    const fallback = screen.getByText(
+      "Company check default",
+    ).nextElementSibling;
+    expect(effective).toHaveTextContent("Enabled");
+    expect(fallback).toHaveTextContent("Disabled");
   });
 });

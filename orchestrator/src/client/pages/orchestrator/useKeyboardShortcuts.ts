@@ -13,6 +13,7 @@ import { toast } from "@client/lib/toast";
 import { safeFilenamePart } from "@/lib/utils";
 import type { FilterTab } from "./constants";
 import { tabs } from "./constants";
+import { type ConfirmTailor, tailorApproved } from "./tailorCompanyConflicts";
 
 type UseKeyboardShortcutsArgs = {
   isAnyModalOpen: boolean;
@@ -33,13 +34,23 @@ type UseKeyboardShortcutsArgs = {
   toggleSelectJob: (id: string, options?: { range?: boolean }) => void;
   // Same exclusions as the hook's dispatcher: mark_closed needs an outcome,
   // fetch_live_status and retailor must go through their subset-filtering
-  // dispatchers.
+  // dispatchers, and move_to_ready must go through runTailorAction so the
+  // duplicate-application guard cannot be bypassed from here.
   runJobAction: (
     action: Exclude<
       JobAction,
-      "mark_closed" | "fetch_live_status" | "retailor"
+      "mark_closed" | "fetch_live_status" | "retailor" | "move_to_ready"
     >,
   ) => Promise<void>;
+  /** Tailor the current selection, behind the duplicate-application guard. */
+  runTailorAction: () => Promise<void>;
+  /**
+   * The guard itself, for the no-selection arm below, which tailors one job
+   * directly instead of going through the selection dispatcher. Passed rather
+   * than read from context: this hook is called by OrchestratorPage's own body,
+   * which sits ABOVE the provider it renders.
+   */
+  confirmTailor: ConfirmTailor;
   loadJobs: () => Promise<void>;
   onUndo: () => void;
 };
@@ -63,6 +74,8 @@ export function useKeyboardShortcuts(args: UseKeyboardShortcutsArgs): void {
     clearSelection,
     toggleSelectJob,
     runJobAction,
+    runTailorAction,
+    confirmTailor,
     loadJobs,
     onUndo,
   } = args;
@@ -226,32 +239,36 @@ export function useKeyboardShortcuts(args: UseKeyboardShortcutsArgs): void {
         if (shortcutActionInFlight.current) return;
 
         if (selectedJobIds.size > 0) {
-          void runJobAction("move_to_ready");
+          void runTailorAction();
           return;
         }
 
         if (!selectedJob) return;
 
         shortcutActionInFlight.current = true;
-        const jobId = selectedJob.id;
+        const job = selectedJob;
+        const jobId = job.id;
 
-        api
-          .processJob(jobId)
-          .then(async () => {
+        // An async body rather than a .then chain: a cancelled guard must skip
+        // the success toast AND the row advance, which a chained .then would
+        // still run on the undefined it passes along.
+        void (async () => {
+          try {
+            if (!(await tailorApproved(confirmTailor, job))) return;
+            await api.processJob(jobId);
             toast.success("Tailoring started", {
               description: "It'll appear in the Tailoring tab when ready.",
             });
             selectNextAfterAction(jobId);
             await loadJobs();
-          })
-          .catch((err: unknown) => {
+          } catch (err: unknown) {
             const msg =
               err instanceof Error ? err.message : "Failed to tailor job";
             toast.error(msg);
-          })
-          .finally(() => {
+          } finally {
             shortcutActionInFlight.current = false;
-          });
+          }
+        })();
       },
 
       [SHORTCUTS.moveToBacklog.key]: () => {

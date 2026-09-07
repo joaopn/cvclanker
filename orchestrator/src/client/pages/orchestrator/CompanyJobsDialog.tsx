@@ -7,7 +7,6 @@
 import * as api from "@client/api";
 import { queryKeys } from "@client/lib/queryKeys";
 import { tailoringFailureSummary } from "@shared/tailoring-failure";
-import type { JobListItem } from "@shared/types.js";
 import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
@@ -21,31 +20,7 @@ import { type FilterTab, outcomeLabel } from "./constants";
 import { JobCategoryBadge } from "./JobCategoryBadge";
 import { getFilterTab } from "./JobCommandBar.utils";
 import { JobStatusBadge } from "./JobStatusBadge";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-function parseDate(value: string | null | undefined): number | null {
-  if (!value) return null;
-  if (/^\d+$/.test(value)) {
-    const ms = Number(value);
-    return Number.isFinite(ms) ? ms : null;
-  }
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function ageLabel(job: JobListItem): string | null {
-  const now = Date.now();
-  const posted = parseDate(job.datePosted);
-  if (posted != null) {
-    return `Posted ${Math.max(0, Math.floor((now - posted) / DAY_MS))}d`;
-  }
-  const found = parseDate(job.discoveredAt);
-  if (found != null) {
-    return `Found ${Math.max(0, Math.floor((now - found) / DAY_MS))}d`;
-  }
-  return null;
-}
+import { jobAgeLabel } from "./jobAgeLabel";
 
 interface CompanyJobsDialogProps {
   employer: string | null;
@@ -107,7 +82,7 @@ export const CompanyJobsDialog = ({
           {query.isSuccess && jobs.length > 0 && (
             <ul className="flex flex-col gap-1 py-1">
               {jobs.map((job) => {
-                const age = ageLabel(job);
+                const age = jobAgeLabel(job);
                 const closureReason =
                   job.status === "closed" && job.outcome
                     ? outcomeLabel[job.outcome]

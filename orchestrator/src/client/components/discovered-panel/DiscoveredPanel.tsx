@@ -6,6 +6,10 @@ import type { Job } from "@shared/types.js";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "@client/lib/toast";
+import {
+  type ConfirmTailor,
+  tailorApproved,
+} from "@client/pages/orchestrator/tailorCompanyConflicts";
 import { JobDetailsEditDrawer } from "../JobDetailsEditDrawer";
 import { DecideMode } from "./DecideMode";
 import { EmptyState } from "./EmptyState";
@@ -16,6 +20,8 @@ interface DiscoveredPanelProps {
   onJobUpdated: () => void | Promise<void>;
   onJobMoved: (jobId: string) => void;
   onTailoringDirtyChange?: (isDirty: boolean) => void;
+  /** The duplicate-application guard. Required so a mount cannot skip it. */
+  confirmTailor: ConfirmTailor;
 }
 
 export const DiscoveredPanel: React.FC<DiscoveredPanelProps> = ({
@@ -23,6 +29,7 @@ export const DiscoveredPanel: React.FC<DiscoveredPanelProps> = ({
   onJobUpdated,
   onJobMoved,
   onTailoringDirtyChange,
+  confirmTailor,
 }) => {
   const [isSkipping, setIsSkipping] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
@@ -64,6 +71,7 @@ export const DiscoveredPanel: React.FC<DiscoveredPanelProps> = ({
     if (!job || isFinalizing) return;
     try {
       setIsFinalizing(true);
+      if (!(await tailorApproved(confirmTailor, job))) return;
       await api.processJob(job.id);
 
       toast.success("Tailoring started", {

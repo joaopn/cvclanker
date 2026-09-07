@@ -44,6 +44,7 @@ export const queryKeys = {
     duplicates: () => [...queryKeys.jobs.all, "duplicates"] as const,
     byCompany: (employer: string) =>
       [...queryKeys.jobs.all, "by-company", employer] as const,
+    inFlight: () => [...queryKeys.jobs.all, "in-flight"] as const,
     detail: (id: string) => [...queryKeys.jobs.all, "detail", id] as const,
     tasks: (id: string) => [...queryKeys.jobs.all, "tasks", id] as const,
     notes: (id: string) => [...queryKeys.jobs.all, "notes", id] as const,

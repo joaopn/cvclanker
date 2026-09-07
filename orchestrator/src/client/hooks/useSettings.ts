@@ -29,6 +29,11 @@ export function useSettings() {
     showSponsorInfo: settings?.showSponsorInfo?.value ?? true,
     renderMarkdownInJobDescriptions:
       settings?.renderMarkdownInJobDescriptions?.value ?? true,
+    // Opt-in duplicate-application guard on the Tailor action. Defaults off
+    // here too, so a settings fetch that has not landed yet cannot silently
+    // gate a tailor behind a check the user never enabled.
+    companyInFlightCheckEnabled:
+      settings?.companyInFlightCheckEnabled?.value ?? false,
     inboxStaleThresholdDays:
       settings?.inboxStaleThresholdDays?.value ?? 7,
     maxBulkActionJobs: settings?.maxBulkActionJobs?.value ?? 1000,

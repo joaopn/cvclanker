@@ -64,6 +64,14 @@ describe("buildSectionResetPayload", () => {
     expect(buildSectionResetPayload("danger-zone")).toEqual({});
   });
 
+  it("the company in-flight toggle is mapped to its section", () => {
+    // The loop below only checks fields that ARE in the map, so it stays green
+    // when one is dropped from it — and a rendered-but-unmapped field is
+    // silently skipped by section reset and undercounted by the dirty badge.
+    // Membership needs its own assertion to be mutation-caught at all.
+    expect(SECTION_FIELD_MAP.display).toContain("companyInFlightCheckEnabled");
+  });
+
   it("every mapped non-secret field is resettable (no silent exclusions)", () => {
     // Guards the NULL_SETTINGS_PAYLOAD membership check inside the builder:
     // a field added to a section map but forgotten there would silently drop

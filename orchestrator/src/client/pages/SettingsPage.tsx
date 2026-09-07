@@ -75,6 +75,7 @@ const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
   showSponsorInfo: null,
 
   renderMarkdownInJobDescriptions: null,
+  companyInFlightCheckEnabled: null,
   chatStyleTone: "",
   chatStyleFormality: "",
   chatStyleConstraints: "",
@@ -356,7 +357,11 @@ export const SECTION_FIELD_MAP: Record<
     "basicAuthPassword",
     "jwtExpirySeconds",
   ],
-  display: ["showSponsorInfo", "renderMarkdownInJobDescriptions"],
+  display: [
+    "showSponsorInfo",
+    "renderMarkdownInJobDescriptions",
+    "companyInFlightCheckEnabled",
+  ],
   pipeline: [
     "autoTailoringEnabled",
     "enableJobScoring",
@@ -426,6 +431,7 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   showSponsorInfo: null,
 
   renderMarkdownInJobDescriptions: null,
+  companyInFlightCheckEnabled: null,
   chatStyleTone: null,
   chatStyleFormality: null,
   chatStyleConstraints: null,
@@ -529,6 +535,7 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   showSponsorInfo: data.showSponsorInfo.override,
   renderMarkdownInJobDescriptions:
     data.renderMarkdownInJobDescriptions.override,
+  companyInFlightCheckEnabled: data.companyInFlightCheckEnabled.override,
   chatStyleTone: data.chatStyleTone.override ?? "",
   chatStyleFormality: data.chatStyleFormality.override ?? "",
   chatStyleConstraints: data.chatStyleConstraints.override ?? "",
@@ -614,6 +621,10 @@ const getDerivedSettings = (settings: AppSettings | null) => {
       renderMarkdownInJobDescriptions: {
         effective: settings?.renderMarkdownInJobDescriptions?.value ?? true,
         default: settings?.renderMarkdownInJobDescriptions?.default ?? true,
+      },
+      companyInFlightCheckEnabled: {
+        effective: settings?.companyInFlightCheckEnabled?.value ?? false,
+        default: settings?.companyInFlightCheckEnabled?.default ?? false,
       },
     },
     chat: {
@@ -956,6 +967,10 @@ export const SettingsPage: React.FC = () => {
         renderMarkdownInJobDescriptions: nullIfSame(
           data.renderMarkdownInJobDescriptions,
           display.renderMarkdownInJobDescriptions.default,
+        ),
+        companyInFlightCheckEnabled: nullIfSame(
+          data.companyInFlightCheckEnabled,
+          display.companyInFlightCheckEnabled.default,
         ),
         chatStyleTone: normalizeString(data.chatStyleTone),
         chatStyleFormality: normalizeString(data.chatStyleFormality),

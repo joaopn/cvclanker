@@ -2,7 +2,17 @@ import { composeTailoringFailure } from "@shared/tailoring-failure";
 import { createJob } from "@shared/testing/factories.js";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { StrictMode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// The panel starts a tailor through the API client; the guard tests assert
+// exactly whether that call happens, so it must not reach the network.
+// A factory mock replaces the WHOLE module, and a missing export throws on
+// first access rather than at mock time — so every `@client/api` function this
+// component tree can reach has to be listed, not just the one under test.
+vi.mock("@client/api", () => ({
+  processJob: vi.fn().mockResolvedValue(undefined),
+  updateJob: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock("@client/hooks/queries/useJobMutations", () => ({
   useSkipJobMutation: () => ({ mutateAsync: vi.fn() }),
@@ -14,9 +24,18 @@ vi.mock("@client/hooks/useSettings", () => ({
   useSettings: () => ({ renderMarkdownInJobDescriptions: false }),
 }));
 
+import * as api from "@client/api";
 import { DiscoveredPanel } from "./DiscoveredPanel";
 
+beforeEach(() => {
+  vi.mocked(api.processJob).mockClear();
+});
+
 const noop = () => {};
+
+/** Default guard for the existing fixtures: approve everything, ask nothing. */
+const allowTailor = async (jobs: readonly { id: string }[]) =>
+  jobs.map((job) => job.id);
 
 describe("DiscoveredPanel failed-tailor state", () => {
   it("shows the retry state (reason + Retry) for a failed processing row, not the spinner", () => {
@@ -29,6 +48,7 @@ describe("DiscoveredPanel failed-tailor state", () => {
         })}
         onJobUpdated={noop}
         onJobMoved={noop}
+        confirmTailor={allowTailor}
       />,
     );
     expect(
@@ -47,6 +67,7 @@ describe("DiscoveredPanel failed-tailor state", () => {
         job={createJob({ id: "r", status: "processing" })}
         onJobUpdated={noop}
         onJobMoved={noop}
+        confirmTailor={allowTailor}
       />,
     );
     expect(screen.getByText(/Processing job/i)).toBeInTheDocument();
@@ -70,6 +91,7 @@ describe("failed-tailor detail disclosure", () => {
         job={createJob({ id, status: "processing", tailoringFailureReason })}
         onJobUpdated={noop}
         onJobMoved={noop}
+        confirmTailor={allowTailor}
       />
     </StrictMode>
   );
@@ -114,5 +136,55 @@ describe("failed-tailor detail disclosure", () => {
     expect(
       screen.getByRole("button", { name: /show details/i }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("DiscoveredPanel duplicate-application guard", () => {
+  const failedRow = () =>
+    createJob({
+      id: "j1",
+      employer: "Acme",
+      status: "processing",
+      tailoringFailureReason: "LLM provider error",
+    });
+
+  const retry = () =>
+    fireEvent.click(screen.getByRole("button", { name: /retry tailoring/i }));
+
+  it("asks the guard before starting a tailor, with the job it would tailor", async () => {
+    const confirmTailor = vi.fn().mockResolvedValue(["j1"]);
+    render(
+      <DiscoveredPanel
+        job={failedRow()}
+        onJobUpdated={noop}
+        onJobMoved={noop}
+        confirmTailor={confirmTailor}
+      />,
+    );
+
+    retry();
+
+    await vi.waitFor(() => expect(confirmTailor).toHaveBeenCalledTimes(1));
+    expect(confirmTailor.mock.calls[0][0]).toEqual([
+      expect.objectContaining({ id: "j1", employer: "Acme" }),
+    ]);
+    await vi.waitFor(() => expect(api.processJob).toHaveBeenCalledWith("j1"));
+  });
+
+  it("does not tailor when the guard cancels", async () => {
+    const confirmTailor = vi.fn().mockResolvedValue(null);
+    render(
+      <DiscoveredPanel
+        job={failedRow()}
+        onJobUpdated={noop}
+        onJobMoved={noop}
+        confirmTailor={confirmTailor}
+      />,
+    );
+
+    retry();
+
+    await vi.waitFor(() => expect(confirmTailor).toHaveBeenCalledTimes(1));
+    expect(api.processJob).not.toHaveBeenCalled();
   });
 });
