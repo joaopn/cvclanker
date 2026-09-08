@@ -1,4 +1,7 @@
-import { DEFAULT_SCORING_INSTRUCTIONS } from "../settings-registry";
+import {
+  DEFAULT_COVER_LETTER_INSTRUCTIONS,
+  DEFAULT_SCORING_INSTRUCTIONS,
+} from "../settings-registry";
 import type {
   ApplicationTask,
   AppSettings,
@@ -183,6 +186,11 @@ export const createAppSettings = (
   scoringInstructions: {
     value: DEFAULT_SCORING_INSTRUCTIONS,
     default: DEFAULT_SCORING_INSTRUCTIONS,
+    override: null,
+  },
+  coverLetterInstructions: {
+    value: DEFAULT_COVER_LETTER_INSTRUCTIONS,
+    default: DEFAULT_COVER_LETTER_INSTRUCTIONS,
     override: null,
   },
   showSponsorInfo: { value: true, default: true, override: null },

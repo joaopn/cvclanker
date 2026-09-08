@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CLAUDE_CODE_EFFORT_LEVELS,
+  DEFAULT_COVER_LETTER_INSTRUCTIONS,
   DEFAULT_LATEX_COMPILE_TIMEOUT_MS,
   DEFAULT_LLM_REQUEST_TIMEOUT_MS,
   getDefaultModelForProvider,
@@ -312,6 +313,25 @@ describe("settingsRegistry helpers", () => {
       expect(
         settingsRegistry.claudeCodeEffort.schema.safeParse("").success,
       ).toBe(false);
+    });
+  });
+
+  describe("coverLetterInstructions", () => {
+    // The client saves with nullIfSame(normalizeString(field), default), where
+    // normalizeString TRIMS and nullIfSame is ===. Edge whitespace on the
+    // constant would therefore make every untouched save pin a redundant
+    // override, which then never tracks a later change to the default.
+    it("ships a trim-stable default", () => {
+      expect(DEFAULT_COVER_LETTER_INSTRUCTIONS).toBe(
+        DEFAULT_COVER_LETTER_INSTRUCTIONS.trim(),
+      );
+    });
+
+    it("defaults to the shipped policy and drops a blank override", () => {
+      expect(settingsRegistry.coverLetterInstructions.default()).toBe(
+        DEFAULT_COVER_LETTER_INSTRUCTIONS,
+      );
+      expect(settingsRegistry.coverLetterInstructions.parse("")).toBeNull();
     });
   });
 });

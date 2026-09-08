@@ -59,6 +59,7 @@ export interface AppSettings {
   llmProvider: Resolved<string>;
   llmBaseUrl: Resolved<string>;
   scoringInstructions: Resolved<string>;
+  coverLetterInstructions: Resolved<string>;
   showSponsorInfo: Resolved<boolean>;
   renderMarkdownInJobDescriptions: Resolved<boolean>;
   companyInFlightCheckEnabled: Resolved<boolean>;

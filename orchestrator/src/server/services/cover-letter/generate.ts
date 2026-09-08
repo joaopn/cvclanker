@@ -5,11 +5,13 @@ import { LlmService } from "@server/services/llm/service";
 import type { JsonSchemaDefinition } from "@server/services/llm/types";
 import { resolveLlmModel } from "@server/services/modelSelection";
 import { loadPrompt } from "@server/services/prompts";
+import { getEffectiveSettings } from "@server/services/settings";
 import {
   getWritingStyle,
   stripLanguageDirectivesFromConstraints,
   type WritingStyle,
 } from "@server/services/writing-style";
+import { DEFAULT_COVER_LETTER_INSTRUCTIONS } from "@shared/settings-registry";
 import {
   CHAT_STYLE_MANUAL_LANGUAGE_LABELS,
   type ChatStyleManualLanguage,
@@ -134,9 +136,10 @@ export async function generateCoverLetter(
     job.coverLetterFieldOverrides ?? {},
   );
 
-  const [model, writingStyle] = await Promise.all([
+  const [model, writingStyle, settings] = await Promise.all([
     resolveLlmModel("tailoring"),
     getWritingStyle(),
+    getEffectiveSettings(),
   ]);
 
   const styleVars = buildWritingStyleVars(writingStyle);
@@ -149,6 +152,12 @@ export async function generateCoverLetter(
     companyName: job.employer ?? "the company",
     roleTitle: job.title ?? "the role",
     bodyFieldId: bodyField.id,
+    // The prompt is a structural shell; these instructions ARE the letter
+    // policy, so an empty value must fall back to the shipped one - a bare
+    // shell tells the model nothing about length, structure, or voice.
+    coverLetterInstructionsText:
+      settings.coverLetterInstructions?.value ||
+      DEFAULT_COVER_LETTER_INSTRUCTIONS,
     language: styleVars.outputLanguage,
     ...styleVars,
   });

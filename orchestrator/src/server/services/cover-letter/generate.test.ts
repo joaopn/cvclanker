@@ -1,5 +1,10 @@
 // @vitest-environment node
-import { createCoverLetterDocument, createJob } from "@shared/testing/factories";
+import { DEFAULT_COVER_LETTER_INSTRUCTIONS } from "@shared/settings-registry";
+import {
+  createAppSettings,
+  createCoverLetterDocument,
+  createJob,
+} from "@shared/testing/factories";
 import type { CvDocument } from "@shared/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -27,14 +32,15 @@ vi.mock("@server/services/llm/service", () => ({
   },
 }));
 
+const loadPromptMock = vi.fn();
 vi.mock("@server/services/prompts", () => ({
-  loadPrompt: vi.fn().mockResolvedValue({
-    name: "cover-letter-generate",
-    description: "",
-    system: "stub-system",
-    user: "stub-user-with-bodyFieldId",
-    modelHints: {},
-  }),
+  loadPrompt: (...args: unknown[]) => loadPromptMock(...args),
+}));
+
+const getEffectiveSettingsMock = vi.fn();
+vi.mock("@server/services/settings", () => ({
+  getEffectiveSettings: (...args: unknown[]) =>
+    getEffectiveSettingsMock(...args),
 }));
 
 vi.mock("@server/services/modelSelection", () => ({
@@ -81,6 +87,16 @@ import { generateCoverLetter } from "./generate";
 const BODY_FIELD_ID = "body.text";
 
 beforeEach(() => {
+  loadPromptMock.mockReset();
+  loadPromptMock.mockResolvedValue({
+    name: "cover-letter-generate",
+    description: "",
+    system: "stub-system",
+    user: "stub-user-with-bodyFieldId",
+    modelHints: {},
+  });
+  getEffectiveSettingsMock.mockReset();
+  getEffectiveSettingsMock.mockResolvedValue(createAppSettings());
   callJsonMock.mockReset();
   getJobByIdMock.mockReset();
   updateJobMock.mockReset();
@@ -278,5 +294,60 @@ describe("generateCoverLetter", () => {
     expect(result.success).toBe(false);
     if (result.success) return;
     expect(result.error).toMatch(/LLM call failed.*rate limited/);
+  });
+
+  describe("letter policy", () => {
+    const runWithPolicy = async (value: string) => {
+      getEffectiveSettingsMock.mockResolvedValue(
+        createAppSettings({
+          coverLetterInstructions: {
+            value,
+            default: DEFAULT_COVER_LETTER_INSTRUCTIONS,
+            override:
+              value === DEFAULT_COVER_LETTER_INSTRUCTIONS ? null : value,
+          },
+        }),
+      );
+      const job = createJob({ id: "job-1", coverLetterDocumentId: null });
+      const cl = createCoverLetterDocument({
+        id: "cl-1",
+        fields: [{ id: BODY_FIELD_ID, role: "body", value: "default" }],
+      });
+      getJobByIdMock
+        .mockResolvedValueOnce(job)
+        .mockResolvedValueOnce({ ...job, coverLetterDocumentId: "cl-1" });
+      getActiveCvDocumentMock.mockResolvedValue(buildCv());
+      getActiveCoverLetterDocumentMock.mockResolvedValue(cl);
+      callJsonMock.mockResolvedValue(
+        llmReply([{ fieldId: BODY_FIELD_ID, newValue: "body" }]),
+      );
+
+      const result = await generateCoverLetter({ jobId: "job-1" });
+      expect(result.success).toBe(true);
+      const vars = loadPromptMock.mock.calls.at(-1)?.[1] as Record<
+        string,
+        unknown
+      >;
+      return vars;
+    };
+
+    it("sends the configured policy to the prompt", async () => {
+      const custom = "Body length: 90 words. No hook, no closing flourish.";
+      const vars = await runWithPolicy(custom);
+      expect(vars.coverLetterInstructionsText).toBe(custom);
+    });
+
+    // Defence in depth rather than a reachable state: a stored "" is mapped
+    // to null by parseNonEmptyStringOrNull and getEffectiveSettings resolves
+    // override ?? default, so `value` is never empty in production. The
+    // prompt is a shell with no length/structure/voice guidance of its own,
+    // so if that ever changes this is what stops the model being told
+    // nothing at all.
+    it("falls back to the shipped policy when the setting is empty", async () => {
+      const vars = await runWithPolicy("");
+      expect(vars.coverLetterInstructionsText).toBe(
+        DEFAULT_COVER_LETTER_INSTRUCTIONS,
+      );
+    });
   });
 });

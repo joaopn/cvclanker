@@ -72,6 +72,13 @@ describe("buildSectionResetPayload", () => {
     expect(SECTION_FIELD_MAP.display).toContain("companyInFlightCheckEnabled");
   });
 
+  it("the cover-letter policy is mapped to the writing-style section", () => {
+    // Same reason as above: it renders in ChatSettingsSection, so without this
+    // entry "Reset Writing Style to defaults" would silently leave a tuned
+    // policy in place and the dirty badge would not count it.
+    expect(SECTION_FIELD_MAP.chat).toContain("coverLetterInstructions");
+  });
+
   it("every mapped non-secret field is resettable (no silent exclusions)", () => {
     // Guards the NULL_SETTINGS_PAYLOAD membership check inside the builder:
     // a field added to a section map but forgotten there would silently drop

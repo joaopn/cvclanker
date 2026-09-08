@@ -276,6 +276,20 @@ Calibration examples (real verdicts, corrected by the user):
 - Ad: commercial data scientist — core is statistical/ML modeling with Python/SQL; insurance domain and Azure/Databricks listed as desirable. Brief: PhD-level statistical modeling on messy real-world data plus TB-scale production pipelines, all from academia -> very_good_fit, not great_fit. The core is practiced directly and the academic venue is not a demotion, but the desirables are not covered.
 - Ad: university research data scientist embedded with academic teams. Brief: PhD computational scientist with a cross-disciplinary research record, covering the desirables and matching the candidate's stated target roles -> great_fit. The role reads as written for the candidate.`;
 
+// How the cover letter should READ. cover-letter-generate.yaml is the
+// structural shell (which fields to patch, the JSON contract, the honesty and
+// field-shape rules) and injects this wholesale via
+// {{coverLetterInstructionsText}}; a stored coverLetterInstructions override
+// replaces it entirely, so this text is the single home of letter length,
+// structure and voice. Must stay trim-stable (no edge whitespace): the client
+// save path compares the trimmed field against this constant to decide
+// override-vs-default.
+export const DEFAULT_COVER_LETTER_INSTRUCTIONS = `Body length: 200-400 words.
+
+Structure the body as an opening paragraph (who you are, what you are applying for, one short hook), one or two value paragraphs grounded in the personal brief, and a closing paragraph (enthusiasm, attached CV, availability for next steps). Separate paragraphs with a blank line.
+
+Avoid corporate cliches ("synergy", "leverage", "passionate about delivering value", "hit the ground running") and obvious LLM-pattern openings ("I am excited to apply for the ... role at .... With my proven track record of delivering ..."). Sound like a competent human writing one cover letter, not a template generator.`;
+
 const parseChatStyleManualLanguageOrNull = createEnumParser(
   CHAT_STYLE_MANUAL_LANGUAGE_VALUES,
 );
@@ -331,6 +345,18 @@ export const settingsRegistry = {
     // without letting a runaway paste bloat every scoring call unnoticed.
     schema: z.string().trim().max(16000),
     default: (): string => DEFAULT_SCORING_INSTRUCTIONS,
+    parse: parseNonEmptyStringOrNull,
+    serialize: (value: string | null | undefined): string | null =>
+      value ?? null,
+  },
+  coverLetterInstructions: {
+    kind: "typed" as const,
+    // ~630 chars shipped; 8k is blast containment on a string that rides
+    // every Generate call, sized for a grown policy rather than for pasted
+    // sample letters - the shell's honesty rules make pasted prose a style
+    // reference, never a source of claims.
+    schema: z.string().trim().max(8000),
+    default: (): string => DEFAULT_COVER_LETTER_INSTRUCTIONS,
     parse: parseNonEmptyStringOrNull,
     serialize: (value: string | null | undefined): string | null =>
       value ?? null,

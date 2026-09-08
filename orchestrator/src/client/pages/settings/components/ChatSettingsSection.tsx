@@ -34,6 +34,10 @@ type ChatSettingsSectionProps = {
   layoutMode?: "accordion" | "panel";
 };
 
+// Mirrors the registry's z.string().max(8000) on coverLetterInstructions - a
+// longer value would 400 on save, so the form refuses it upfront.
+const MAX_COVER_LETTER_INSTRUCTIONS_CHARS = 8000;
+
 const LANGUAGE_MODE_LABELS: Record<ChatStyleLanguageMode, string> = {
   manual: "Choose specific language",
   "match-resume": "Match current resume language",
@@ -65,6 +69,7 @@ export const ChatSettingsSection: React.FC<ChatSettingsSectionProps> = ({
     formality,
     constraints,
     doNotUse,
+    coverLetterInstructions,
     languageMode,
     manualLanguage,
     summaryMaxWords,
@@ -124,8 +129,9 @@ export const ChatSettingsSection: React.FC<ChatSettingsSectionProps> = ({
     >
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          These defaults shape AI-generated writing across Ghostwriter and
-          resume tailoring.
+          These defaults shape AI-generated writing across Ghostwriter, resume
+          tailoring and cover letters. The cover-letter policy below is the one
+          field that applies to cover letters alone.
         </p>
 
         <div className="space-y-2">
@@ -335,8 +341,8 @@ export const ChatSettingsSection: React.FC<ChatSettingsSectionProps> = ({
             {...register("chatStyleConstraints")}
           />
           <div className="text-xs text-muted-foreground">
-            Optional global writing constraints applied to Ghostwriter replies
-            and resume tailoring.
+            Optional global writing constraints applied to Ghostwriter replies,
+            resume tailoring and cover letters.
           </div>
           <div className="text-xs text-muted-foreground">
             Current:{" "}
@@ -367,6 +373,62 @@ export const ChatSettingsSection: React.FC<ChatSettingsSectionProps> = ({
           <div className="text-xs text-muted-foreground">
             Current:{" "}
             <span className="font-mono">{doNotUse.effective || "—"}</span>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label
+            htmlFor="coverLetterInstructions"
+            className="text-sm font-medium"
+          >
+            Cover-letter policy
+          </label>
+          <Controller
+            name="coverLetterInstructions"
+            control={control}
+            rules={{
+              validate: (v) =>
+                v == null ||
+                (typeof v === "string" &&
+                  v.length <= MAX_COVER_LETTER_INSTRUCTIONS_CHARS) ||
+                `Must be at most ${MAX_COVER_LETTER_INSTRUCTIONS_CHARS} characters`,
+            }}
+            render={({ field }) => (
+              <Textarea
+                id="coverLetterInstructions"
+                rows={8}
+                placeholder={coverLetterInstructions.default}
+                disabled={isLoading || isSaving}
+                value={typeof field.value === "string" ? field.value : ""}
+                onChange={(e) => field.onChange(e.target.value)}
+              />
+            )}
+          />
+          {errors.coverLetterInstructions && (
+            <div className="text-xs text-destructive">
+              {errors.coverLetterInstructions.message as string}
+            </div>
+          )}
+          <div className="text-xs text-muted-foreground">
+            How the cover-letter body should read - length, paragraph structure,
+            and voice. The cover-letter prompt is the structural shell around it
+            (which fields to patch, the honesty rules), so this is the primary
+            place letter length and style are tuned. Constraints above applies
+            to cover letters too; where the two disagree, this policy wins. It
+            governs the Generate button on a job's cover letter. The pre-filled
+            text is your current policy - the built-in default until you edit
+            it; clearing the field restores the default on save. If you have
+            edited the cover-letter-generate prompt under Prompts and dropped
+            its <code>{"{{coverLetterInstructionsText}}"}</code> placeholder,
+            this policy is ignored until you reset that prompt.
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Current:{" "}
+            <span className="font-mono">
+              {coverLetterInstructions.effective
+                ? `${coverLetterInstructions.effective.length} chars${coverLetterInstructions.effective === coverLetterInstructions.default ? " (built-in default)" : " (custom)"}`
+                : "none"}
+            </span>
           </div>
         </div>
 

@@ -1,3 +1,4 @@
+import { DEFAULT_COVER_LETTER_INSTRUCTIONS } from "@shared/settings-registry";
 import type { UpdateSettingsInput } from "@shared/settings-schema.js";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
@@ -79,6 +80,7 @@ const ChatSettingsHarness = ({
       chatStyleFormality: "",
       chatStyleConstraints: "",
       chatStyleDoNotUse: "",
+      coverLetterInstructions: "",
       chatStyleLanguageMode: null,
       chatStyleManualLanguage: null,
       chatStyleSummaryMaxWords: null,
@@ -95,6 +97,10 @@ const ChatSettingsHarness = ({
             formality: { effective: "medium", default: "medium" },
             constraints: { effective: "", default: "" },
             doNotUse: { effective: "", default: "" },
+            coverLetterInstructions: {
+              effective: DEFAULT_COVER_LETTER_INSTRUCTIONS,
+              default: DEFAULT_COVER_LETTER_INSTRUCTIONS,
+            },
             languageMode: { effective: "manual", default: "manual" },
             manualLanguage: { effective: "english", default: "english" },
             summaryMaxWords: { effective: null, default: null },
@@ -118,6 +124,31 @@ describe("ChatSettingsSection", () => {
     expect(screen.getByDisplayValue("medium")).toBeInTheDocument();
     expect(screen.getByDisplayValue("manual")).toBeInTheDocument();
     expect(screen.getByDisplayValue("english")).toBeInTheDocument();
+  });
+
+  it("offers the cover-letter policy with the shipped default as its placeholder", () => {
+    const { container } = render(<ChatSettingsHarness />);
+
+    const box = container.querySelector(
+      "#coverLetterInstructions",
+    ) as HTMLTextAreaElement;
+    expect(box).toBeInTheDocument();
+    expect(box.placeholder).toBe(DEFAULT_COVER_LETTER_INSTRUCTIONS);
+    expect(box.placeholder).toMatch(/200-400 words/);
+  });
+
+  it("leaves the cover-letter policy alone when a preset is applied", () => {
+    // The presets own the four chatStyle* fields only. A preset click that
+    // also wrote here would silently wipe a tuned letter policy.
+    const { container } = render(<ChatSettingsHarness />);
+    const box = container.querySelector(
+      "#coverLetterInstructions",
+    ) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "Body length: 80 words." } });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Friendly" })[0]);
+
+    expect(box.value).toBe("Body length: 80 words.");
   });
 
   it("applies preset values to the writing style fields", () => {

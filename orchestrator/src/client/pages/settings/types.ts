@@ -32,6 +32,7 @@ export type ChatValues = {
   formality: EffectiveDefault<string>;
   constraints: EffectiveDefault<string>;
   doNotUse: EffectiveDefault<string>;
+  coverLetterInstructions: EffectiveDefault<string>;
   languageMode: EffectiveDefault<ChatStyleLanguageMode>;
   manualLanguage: EffectiveDefault<ChatStyleManualLanguage>;
   summaryMaxWords: EffectiveDefault<number | null>;

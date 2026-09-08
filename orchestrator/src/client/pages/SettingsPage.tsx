@@ -80,6 +80,7 @@ const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
   chatStyleFormality: "",
   chatStyleConstraints: "",
   chatStyleDoNotUse: "",
+  coverLetterInstructions: "",
   chatStyleSummaryMaxWords: null,
   chatStyleMaxKeywordsPerSkill: null,
   chatStyleLanguageMode: null,
@@ -209,8 +210,17 @@ const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
       {
         id: "chat",
         label: "Writing Style",
-        description: "Tone, language, presets, and writing constraints.",
-        searchTerms: ["ghostwriter", "language", "tone", "formality"],
+        description:
+          "Tone, language, presets, writing constraints, and the cover-letter policy.",
+        searchTerms: [
+          "ghostwriter",
+          "language",
+          "tone",
+          "formality",
+          "cover letter",
+          "length",
+          "words",
+        ],
       },
       {
         id: "context-limits",
@@ -338,6 +348,7 @@ export const SECTION_FIELD_MAP: Record<
     "chatStyleFormality",
     "chatStyleConstraints",
     "chatStyleDoNotUse",
+    "coverLetterInstructions",
     "chatStyleLanguageMode",
     "chatStyleManualLanguage",
     "chatStyleSummaryMaxWords",
@@ -436,6 +447,7 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   chatStyleFormality: null,
   chatStyleConstraints: null,
   chatStyleDoNotUse: null,
+  coverLetterInstructions: null,
   chatStyleSummaryMaxWords: null,
   chatStyleMaxKeywordsPerSkill: null,
   chatStyleLanguageMode: null,
@@ -540,6 +552,9 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   chatStyleFormality: data.chatStyleFormality.override ?? "",
   chatStyleConstraints: data.chatStyleConstraints.override ?? "",
   chatStyleDoNotUse: data.chatStyleDoNotUse.override ?? "",
+  coverLetterInstructions:
+    data.coverLetterInstructions.override ??
+    data.coverLetterInstructions.default,
   chatStyleSummaryMaxWords: data.chatStyleSummaryMaxWords.override ?? null,
   chatStyleMaxKeywordsPerSkill:
     data.chatStyleMaxKeywordsPerSkill.override ?? null,
@@ -643,6 +658,10 @@ const getDerivedSettings = (settings: AppSettings | null) => {
       doNotUse: {
         effective: settings?.chatStyleDoNotUse?.value ?? "",
         default: settings?.chatStyleDoNotUse?.default ?? "",
+      },
+      coverLetterInstructions: {
+        effective: settings?.coverLetterInstructions?.value ?? "",
+        default: settings?.coverLetterInstructions?.default ?? "",
       },
       languageMode: {
         effective: settings?.chatStyleLanguageMode?.value ?? "manual",
@@ -976,6 +995,10 @@ export const SettingsPage: React.FC = () => {
         chatStyleFormality: normalizeString(data.chatStyleFormality),
         chatStyleConstraints: normalizeString(data.chatStyleConstraints),
         chatStyleDoNotUse: normalizeString(data.chatStyleDoNotUse),
+        coverLetterInstructions: nullIfSame(
+          normalizeString(data.coverLetterInstructions),
+          chat.coverLetterInstructions.default,
+        ),
         chatStyleSummaryMaxWords: Number.isNaN(data.chatStyleSummaryMaxWords)
           ? null
           : (data.chatStyleSummaryMaxWords ?? null),
