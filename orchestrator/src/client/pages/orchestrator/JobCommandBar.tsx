@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import type { FilterTab } from "./constants";
 import {
   buildCommandBarRows,
+  type CommandBarLock,
   type CommandBarRow,
   extractLeadingAtToken,
   getFilterTab,
@@ -22,9 +23,9 @@ import {
   groupJobsForCommandBar,
   jobMatchesLock,
   lockLabel,
+  lockTokens,
   orderCommandGroups,
   resolveLockFromAliasPrefix,
-  type StatusLock,
   stripLeadingAtToken,
 } from "./JobCommandBar.utils";
 import { JobCommandBarLockBadge } from "./JobCommandBarLockBadge";
@@ -48,7 +49,7 @@ const ROW_HEIGHT_ESTIMATES: Record<CommandBarRow["kind"], number> = {
 const LOCK_ROW_HEIGHT_ESTIMATE = 56;
 const RESULTS_LIST_ID = "job-command-bar-results";
 
-const lockDialogAccentClass: Record<StatusLock, string> = {
+const lockDialogAccentClass: Record<CommandBarLock, string> = {
   ready:
     "border-status-good/50 shadow-[0_0_0_1px_color-mix(in_oklab,var(--status-good)_20%,transparent),0_0_36px_-12px_color-mix(in_oklab,var(--status-good)_55%,transparent)]",
   discovered:
@@ -59,6 +60,11 @@ const lockDialogAccentClass: Record<StatusLock, string> = {
     "border-accent-cyan/50 shadow-[0_0_0_1px_color-mix(in_oklab,var(--accent-cyan)_20%,transparent),0_0_36px_-12px_color-mix(in_oklab,var(--accent-cyan)_55%,transparent)]",
   skipped:
     "border-status-bad/50 shadow-[0_0_0_1px_color-mix(in_oklab,var(--status-bad)_20%,transparent),0_0_36px_-12px_color-mix(in_oklab,var(--status-bad)_55%,transparent)]",
+  // `--badge-teal` rather than a semantic token: no status owns teal, which
+  // is the point — this lock is not a status. It is `:root`-only, so unlike
+  // its five neighbours this glow does not shift with the palette.
+  ever_applied:
+    "border-[color:color-mix(in_oklab,var(--badge-teal)_50%,transparent)] shadow-[0_0_0_1px_color-mix(in_oklab,var(--badge-teal)_20%,transparent),0_0_36px_-12px_color-mix(in_oklab,var(--badge-teal)_55%,transparent)]",
 };
 
 const buildSelectableRows = (rows: CommandBarRow[]) =>
@@ -123,7 +129,7 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
 }) => {
   const [internalOpen, setInternalOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [activeLock, setActiveLock] = useState<StatusLock | null>(null);
+  const [activeLock, setActiveLock] = useState<CommandBarLock | null>(null);
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const resultsScrollRef = useRef<HTMLDivElement | null>(null);
@@ -295,7 +301,7 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
     }
   }, [activeRowIndex, estimatedLayout, scrollToIndex, virtualItems.length]);
 
-  const applyLock = useCallback((lock: StatusLock) => {
+  const applyLock = useCallback((lock: CommandBarLock) => {
     setActiveLock(lock);
     setQuery((current) => stripLeadingAtToken(current));
   }, []);
@@ -427,7 +433,8 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
     >
       <DialogTitle className="sr-only">Job Search</DialogTitle>
       <DialogDescription className="sr-only">
-        Search jobs across all states by job title or company name.
+        Search jobs across all states by job title or company name, and narrow
+        the results to one status or to every job you have applied for.
       </DialogDescription>
       <CommandInput
         placeholder="Search jobs by job title or company name..."
@@ -446,8 +453,10 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
         aria-expanded={isOpen}
       />
       <div className="px-3 py-1 text-[11px] text-muted-foreground border-b">
-        Use <span className="font-mono">@</span> + status + Tab/Enter to lock a
-        status. Backspace on empty search clears the lock.
+        Use <span className="font-mono">@</span> + a filter + Tab/Enter to lock
+        the results — a status, or{" "}
+        <span className="font-mono">ever-applied</span> for every job you have
+        applied for. Backspace on empty search clears the lock.
       </div>
 
       {rows.length === 0 ? (
@@ -528,11 +537,7 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
                         <span
                           className={cn(
                             "h-1.5 w-1.5 rounded-full",
-                            row.lock === "ready" && "bg-status-good",
-                            row.lock === "discovered" && "bg-status-info",
-                            row.lock === "applied" && "bg-status-good",
-                            row.lock === "in_progress" && "bg-accent-cyan",
-                            row.lock === "skipped" && "bg-status-bad",
+                            lockTokens[row.lock].dot,
                           )}
                         />
                         <span className="truncate text-sm font-medium">

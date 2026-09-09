@@ -11,7 +11,11 @@ import type {
   JobSorter,
   SalaryFilter,
 } from "./constants";
-import { JOB_SORTER_SORTS, UNATTRIBUTED_PROFILE_ID } from "./constants";
+import {
+  isEverApplied,
+  JOB_SORTER_SORTS,
+  UNATTRIBUTED_PROFILE_ID,
+} from "./constants";
 import { type ActiveFacet, buildFacetPredicates } from "./facets/registry";
 import {
   compareJobs,
@@ -134,9 +138,7 @@ export const useFilteredJobs = (
 
     if (appliedFilter !== "all") {
       const wantApplied = appliedFilter === "applied";
-      filtered = filtered.filter(
-        (job) => (job.appliedAt != null) === wantApplied,
-      );
+      filtered = filtered.filter((job) => isEverApplied(job) === wantApplied);
     }
 
     // Search Profile badges. A row with no attribution (manual import, or

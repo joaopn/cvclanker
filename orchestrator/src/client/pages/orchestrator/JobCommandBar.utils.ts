@@ -1,14 +1,24 @@
 import { foldDiacritics } from "@shared/location-support";
 import type { JobListItem, JobStatus } from "@shared/types.js";
+import type { BadgeTone } from "./JobStatusBadge";
+import { isEverApplied, statusTokens } from "./constants";
 import type { FilterTab } from "./constants";
 
 export type CommandGroupId = "ready" | "discovered" | "applied" | "other";
-export type StatusLock =
+/**
+ * A narrowing the search box can hold, applied with `@<alias>` + Tab/Enter.
+ *
+ * Five of the six name a job status; `ever_applied` does not, which is why
+ * this is not called `StatusLock` any more and why `jobMatchesLock` is a
+ * switch rather than a comparison against `job.status`.
+ */
+export type CommandBarLock =
   | "ready"
   | "discovered"
   | "applied"
   | "in_progress"
-  | "skipped";
+  | "skipped"
+  | "ever_applied";
 
 export type CommandBarRow =
   | {
@@ -27,7 +37,7 @@ export type CommandBarRow =
       kind: "option";
       optionKind: "lockSuggestion" | "job";
       groupId: CommandGroupId | "filters";
-      lock?: StatusLock;
+      lock?: CommandBarLock;
       job?: JobListItem;
     };
 
@@ -39,20 +49,61 @@ export const commandGroupMeta: Array<{ id: CommandGroupId; heading: string }> =
     { id: "other", heading: "Other" },
   ];
 
-const lockAliases: Record<StatusLock, string[]> = {
+/**
+ * Insertion order is user-visible twice over: it is the order the "Filters"
+ * suggestions render in, and a bare `@` + Enter applies whichever lock is
+ * listed first. New locks go on the END so neither answer moves.
+ *
+ * `ever_applied`'s aliases deliberately start at "e" rather than reading
+ * "applied-ever": `resolveLockFromAliasPrefix` refuses a token that prefixes
+ * more than one lock, so an alias beginning "applied" would make `@applied`
+ * and `@app` ambiguous and silently stop completing.
+ */
+const lockAliases: Record<CommandBarLock, string[]> = {
   ready: ["ready", "rdy"],
   discovered: ["discovered", "discover", "disc"],
   applied: ["applied", "apply", "app"],
   in_progress: ["in-progress", "inprogress", "progress", "prog"],
   skipped: ["skipped", "skip", "skp"],
+  ever_applied: ["ever-applied", "everapplied", "ever"],
 };
 
-export const lockLabel: Record<StatusLock, string> = {
+export const lockLabel: Record<CommandBarLock, string> = {
   ready: "ready",
   discovered: "discovered",
   applied: "applied",
   in_progress: "in-progress",
   skipped: "skipped",
+  ever_applied: "ever-applied",
+};
+
+/**
+ * How a lock is coloured, in the input's badge and in its suggestion row's
+ * dot. One home for both, so a lock added later cannot get a badge and no dot
+ * — which is what the hand-written `row.lock === …` chain this replaced did,
+ * silently, for anything it had not been taught.
+ *
+ * The five status locks borrow their status token, so a suggestion dot now
+ * matches the dot on the rows it filters to, listed directly beneath it by
+ * `JobRowContent`. That is a deliberate change: the suggestion dot used to
+ * read the per-palette semantic token while the badge beside it read the
+ * status shade, so one lock rendered in two colours at once.
+ *
+ * `ever_applied` is teal because that is the hue the permanent Applied badge
+ * already wears on every row it marks, and because no status owns it — a
+ * filter that is not a status must not look like one.
+ */
+export const lockTokens: Record<CommandBarLock, BadgeTone> = {
+  ready: statusTokens.ready,
+  discovered: statusTokens.discovered,
+  applied: statusTokens.applied,
+  in_progress: statusTokens.in_progress,
+  skipped: statusTokens.skipped,
+  ever_applied: {
+    badge:
+      "border-[color:color-mix(in_oklab,var(--badge-base)_70%,var(--badge-teal))] bg-[color-mix(in_oklab,var(--badge-base)_90%,var(--badge-teal))] text-teal-200",
+    dot: "bg-teal-400",
+  },
 };
 
 const tokenRegex = /^\s*@([a-z-]*)/i;
@@ -134,13 +185,13 @@ export const stripLeadingAtToken = (input: string) =>
 
 export const getLockMatchesFromAliasPrefix = (
   rawToken: string,
-): StatusLock[] => {
+): CommandBarLock[] => {
   const token = rawToken.trim().toLowerCase();
-  if (!token) return Object.keys(lockAliases) as StatusLock[];
+  if (!token) return Object.keys(lockAliases) as CommandBarLock[];
 
-  const matches: StatusLock[] = [];
+  const matches: CommandBarLock[] = [];
   for (const [status, aliases] of Object.entries(lockAliases) as Array<
-    [StatusLock, string[]]
+    [CommandBarLock, string[]]
   >) {
     if (aliases.some((alias) => alias.startsWith(token))) {
       matches.push(status);
@@ -151,19 +202,40 @@ export const getLockMatchesFromAliasPrefix = (
 
 export const resolveLockFromAliasPrefix = (
   rawToken: string,
-): StatusLock | null => {
+): CommandBarLock | null => {
   const matches = getLockMatchesFromAliasPrefix(rawToken);
   if (matches.length !== 1) return null;
   return matches[0];
 };
 
-export const jobMatchesLock = (job: JobListItem, lock: StatusLock) => {
-  if (lock === "ready") return job.status === "ready";
-  if (lock === "discovered") return job.status === "discovered";
-  if (lock === "applied") return job.status === "applied";
-  if (lock === "in_progress") return job.status === "in_progress";
-  if (lock === "skipped") return job.status === "skipped";
-  return false;
+/**
+ * A switch with an exhaustive default, not an if-chain falling through to
+ * `false`: a lock with no arm here would not fail the build, it would quietly
+ * match no jobs at all and render "No jobs found."
+ *
+ * `ever_applied` reads the permanent mark rather than the status, which is
+ * the whole point of it — a job applied for months ago and since closed,
+ * skipped or reopened still counts.
+ */
+export const jobMatchesLock = (job: JobListItem, lock: CommandBarLock) => {
+  switch (lock) {
+    case "ready":
+      return job.status === "ready";
+    case "discovered":
+      return job.status === "discovered";
+    case "applied":
+      return job.status === "applied";
+    case "in_progress":
+      return job.status === "in_progress";
+    case "skipped":
+      return job.status === "skipped";
+    case "ever_applied":
+      return isEverApplied(job);
+    default: {
+      const exhaustive: never = lock;
+      return exhaustive;
+    }
+  }
 };
 
 export const computeJobMatchScore = (
@@ -259,9 +331,9 @@ export const buildCommandBarRows = ({
   lockSuggestions,
   orderedGroups,
 }: {
-  activeLock: StatusLock | null;
+  activeLock: CommandBarLock | null;
   groupedJobs: Record<CommandGroupId, JobListItem[]>;
-  lockSuggestions: StatusLock[];
+  lockSuggestions: CommandBarLock[];
   orderedGroups: Array<{ id: CommandGroupId; heading: string }>;
 }): CommandBarRow[] => {
   const rows: CommandBarRow[] = [];

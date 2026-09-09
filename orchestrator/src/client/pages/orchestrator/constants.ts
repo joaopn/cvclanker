@@ -442,6 +442,25 @@ export const appliedFilterLabels: Record<AppliedFilter, string> = {
 };
 
 /**
+ * Whether this job was ever applied to. ONE home for the rule, because two
+ * filters answer it — the Filters panel's "Ever applied" and the ctrl+K
+ * search's `@ever-applied` lock — and two surfaces that disagree about which
+ * jobs count as applied is precisely the drift the search lock exists to
+ * avoid.
+ *
+ * Deliberately NOT `showsAppliedBadge`: that is the BADGE rule and suppresses
+ * on Applied / Interviewing, where the row's own status already says it. A
+ * filter for "applied for, closed and otherwise" has to keep those rows.
+ *
+ * `appliedAt` is the permanent mark, so this stays true through a close, a
+ * skip and a reopen. Its one known gap is legacy: the boot backfill leaves a
+ * pre-mark row unstamped when it can find no usable timestamp for it.
+ */
+export function isEverApplied(job: { appliedAt?: string | null }): boolean {
+  return job.appliedAt != null;
+}
+
+/**
  * The permanent applied mark, as rendered. ONE home for the rule, because two
  * surfaces show it (the list row and the detail header) and a drifted copy
  * would show the badge in one place and not the other.
