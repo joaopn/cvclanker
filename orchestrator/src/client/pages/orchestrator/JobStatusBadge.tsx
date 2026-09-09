@@ -1,17 +1,6 @@
 import type { JobStatus } from "@shared/types.js";
 import { cn } from "@/lib/utils";
-import { defaultStatusToken, statusTokens } from "./constants";
-
-/**
- * The colour half of a badge: the pill's own classes plus its leading dot.
- * `statusTokens` entries satisfy it structurally, and so does any token that
- * is not a job status — which is what lets the command bar's filter locks
- * wear the same chrome without pretending to be statuses.
- */
-export interface BadgeTone {
-  badge: string;
-  dot: string;
-}
+import { type BadgeTone, defaultStatusToken, statusTokens } from "./constants";
 
 interface TokenBadgeProps {
   tone: BadgeTone;

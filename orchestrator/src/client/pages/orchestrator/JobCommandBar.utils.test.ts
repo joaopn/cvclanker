@@ -2,6 +2,7 @@ import { createJob } from "@shared/testing/factories.js";
 import type { JobStatus } from "@shared/types.js";
 import { describe, expect, it } from "vitest";
 import {
+  type CommandBarLock,
   computeJobMatchScore,
   getLockMatchesFromAliasPrefix,
   groupJobsForCommandBar,
@@ -148,10 +149,29 @@ describe("JobCommandBar locks", () => {
     }
   });
 
-  it("gives every lock a colour of its own, and the non-status lock a distinct one", () => {
+  it("matches nothing, not everything, for a lock it does not know", () => {
+    // Only reachable with a cast — every caller resolves a lock through
+    // `lockAliases`. Pinned because this line was first written returning the
+    // lock itself, which is a non-empty string and therefore matched EVERY
+    // job: the opposite of the if-chain it replaced, and invisible to tsc.
+    expect(
+      jobMatchesLock(
+        createJob({ appliedAt: "2025-03-01T00:00:00Z" }),
+        "bogus" as CommandBarLock,
+      ),
+    ).toBe(false);
+  });
+
+  it("gives the non-status lock a colour no status lock wears", () => {
     // The Record is exhaustive so tsc forces an ENTRY, but nothing type-level
     // stops that entry being empty or a copy of a status's — and the whole
     // claim is that a filter which is not a status must not look like one.
+    //
+    // Only the second loop pins anything. The five status locks ARE their
+    // status tokens, so their strings cannot go empty without breaking every
+    // status badge in the app — and two of them (ready, applied) are
+    // deliberately identical to each other, which is why nothing here compares
+    // one status lock against another.
     const statusLocks = [
       "ready",
       "discovered",

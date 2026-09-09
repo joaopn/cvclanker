@@ -13,9 +13,15 @@ import { JobCommandBar } from "./JobCommandBar";
 
 const APPLIED_AT = "2025-03-01T00:00:00Z";
 
-// Small on purpose: the dialog's fallback layout renders roughly the first ten
-// rows at jsdom's viewport, so a long fixture would make an absence assertion
-// pass because the row was scrolled out rather than filtered out.
+// Small on purpose. The results list is virtualized, and several tests below
+// assert that a row is ABSENT — which only means "filtered out" while every row
+// would have been rendered had it survived the filter. Two things keep that
+// true here and both are fragile: the whole fixture is 446px against a window
+// hundreds of pixels taller, and no test moves the selection off the first
+// selectable row, so the window stays pinned at the top of the list (it slides
+// with `scrollTop`, and its leading edge cuts rows off the top, not just the
+// bottom). Grow the fixture or add an ArrowDown and re-check every absence
+// assertion.
 const jobs: JobListItem[] = [
   createJob({
     id: "live",
@@ -76,17 +82,16 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const renderBar = (onSelectJob = vi.fn()) => {
+const renderBar = () => {
   render(
     <JobCommandBar
       jobs={jobs}
-      onSelectJob={onSelectJob}
+      onSelectJob={vi.fn()}
       open
       onOpenChange={vi.fn()}
     />,
   );
   return {
-    onSelectJob,
     input: screen.getByRole("combobox"),
     results: () => screen.getByRole("listbox", { name: "Job search results" }),
   };
@@ -144,18 +149,46 @@ describe("JobCommandBar", () => {
     expect(screen.getByText("@applied")).toBeInTheDocument();
   });
 
-  it("offers the lock as a suggestion row and applies it on click", () => {
+  // Both click tests drive a bare `@`, which offers all six locks, and click one
+  // that is NOT first. A narrower query offers a single suggestion, and then
+  // `applyLock(row.lock)`, `applyLock(lockSuggestions[0])` and a hardcoded
+  // literal are indistinguishable — the click proves nothing about which lock
+  // was picked.
+  it("applies the clicked lock, not the first one offered", () => {
     const { input, results } = renderBar();
 
-    fireEvent.change(input, { target: { value: "@ever" } });
+    fireEvent.change(input, { target: { value: "@" } });
+    const options = within(results()).getAllByRole("option");
+    expect(options).toHaveLength(6);
+    expect(options[0]).toHaveTextContent("Lock to @ready");
+
     fireEvent.click(
-      within(results()).getByText("Lock to @ever-applied").closest("div")
-        ?.parentElement as HTMLElement,
+      within(results()).getByRole("option", { name: /Lock to @ever-applied/ }),
     );
 
     expect(screen.getByText("@ever-applied")).toBeInTheDocument();
     expect(
+      within(results()).getByText("Applied Rejected Role"),
+    ).toBeInTheDocument();
+    expect(
       within(results()).queryByText("Untouched Ready Role"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("applies a different clicked lock the same way", () => {
+    const { input, results } = renderBar();
+
+    fireEvent.change(input, { target: { value: "@" } });
+    fireEvent.click(
+      within(results()).getByRole("option", { name: /Lock to @applied$/ }),
+    );
+
+    expect(screen.getByText("@applied")).toBeInTheDocument();
+    expect(
+      within(results()).getByText("Applied Live Role"),
+    ).toBeInTheDocument();
+    expect(
+      within(results()).queryByText("Applied Rejected Role"),
     ).not.toBeInTheDocument();
   });
 

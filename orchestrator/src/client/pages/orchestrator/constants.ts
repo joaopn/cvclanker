@@ -191,6 +191,17 @@ export const orderedFilterSources: ExtractorSourceId[] = [
     EXTRACTOR_SOURCE_METADATA[right].order,
 );
 
+/**
+ * The colour half of a badge: the pill's own classes plus its leading dot.
+ * `statusTokens` entries satisfy it structurally, and so does any token that
+ * is not a job status — which is what lets the command bar's filter locks
+ * wear the same chrome without pretending to be statuses.
+ */
+export interface BadgeTone {
+  badge: string;
+  dot: string;
+}
+
 // Opaque badge colors. The HUE is theme-independent (fixed Tailwind -500
 // values in --badge-* , src/index.css) so a status keeps one identity across
 // every palette; only --badge-base, the surface the tint is flattened over, is
@@ -453,8 +464,15 @@ export const appliedFilterLabels: Record<AppliedFilter, string> = {
  * filter for "applied for, closed and otherwise" has to keep those rows.
  *
  * `appliedAt` is the permanent mark, so this stays true through a close, a
- * skip and a reopen. Its one known gap is legacy: the boot backfill leaves a
- * pre-mark row unstamped when it can find no usable timestamp for it.
+ * skip and a reopen. Rows predating the mark can be missing it: the boot
+ * backfill only looks at rows still carrying evidence of an application, it
+ * deliberately reads a `closed` row with outcome `other` as no evidence
+ * (that outcome also absorbs the legacy `expired` status, i.e. postings
+ * nobody applied to, so stamping it would inflate the very statistic the mark
+ * exists to produce), and it leaves even a candidate unstamped when it can
+ * find no usable timestamp. A legacy row that had already been reopened or
+ * moved back to Tailoring is outside that population entirely. See the
+ * backfill block in `db/migrate.ts`; it is the authority, not this comment.
  */
 export function isEverApplied(job: { appliedAt?: string | null }): boolean {
   return job.appliedAt != null;

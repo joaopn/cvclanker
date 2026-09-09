@@ -1,8 +1,11 @@
 import { foldDiacritics } from "@shared/location-support";
 import type { JobListItem, JobStatus } from "@shared/types.js";
-import type { BadgeTone } from "./JobStatusBadge";
-import { isEverApplied, statusTokens } from "./constants";
-import type { FilterTab } from "./constants";
+import {
+  type BadgeTone,
+  type FilterTab,
+  isEverApplied,
+  statusTokens,
+} from "./constants";
 
 export type CommandGroupId = "ready" | "discovered" | "applied" | "other";
 /**
@@ -84,10 +87,12 @@ export const lockLabel: Record<CommandBarLock, string> = {
  * silently, for anything it had not been taught.
  *
  * The five status locks borrow their status token, so a suggestion dot now
- * matches the dot on the rows it filters to, listed directly beneath it by
- * `JobRowContent`. That is a deliberate change: the suggestion dot used to
- * read the per-palette semantic token while the badge beside it read the
- * status shade, so one lock rendered in two colours at once.
+ * matches the dot `JobRowContent` puts on the rows that lock will filter to.
+ * That is a deliberate change: the suggestion dot used to read the
+ * per-palette semantic token while the badge the lock turns into read the
+ * status shade, so one lock was drawn in two different colours — never at the
+ * same moment (the suggestions clear as soon as a lock is applied), which is
+ * why it went unnoticed.
  *
  * `ever_applied` is teal because that is the hue the permanent Applied badge
  * already wears on every row it marks, and because no status owns it — a
@@ -209,9 +214,14 @@ export const resolveLockFromAliasPrefix = (
 };
 
 /**
- * A switch with an exhaustive default, not an if-chain falling through to
- * `false`: a lock with no arm here would not fail the build, it would quietly
- * match no jobs at all and render "No jobs found."
+ * A switch rather than an if-chain: in a chain a lock with no arm does not
+ * fail the build, it falls through and quietly matches no jobs at all, which
+ * reads as "No jobs found." rather than as a bug. Here `satisfies never`
+ * makes that a compile error instead.
+ *
+ * The `false` after it still matters. It is what a value TypeScript cannot
+ * see falls back to, and it has to match NOTHING rather than everything —
+ * returning `lock` there would be returning a non-empty string, i.e. truthy.
  *
  * `ever_applied` reads the permanent mark rather than the status, which is
  * the whole point of it — a job applied for months ago and since closed,
@@ -231,10 +241,9 @@ export const jobMatchesLock = (job: JobListItem, lock: CommandBarLock) => {
       return job.status === "skipped";
     case "ever_applied":
       return isEverApplied(job);
-    default: {
-      const exhaustive: never = lock;
-      return exhaustive;
-    }
+    default:
+      lock satisfies never;
+      return false;
   }
 };
 
