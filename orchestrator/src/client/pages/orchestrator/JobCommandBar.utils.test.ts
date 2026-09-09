@@ -167,11 +167,15 @@ describe("JobCommandBar locks", () => {
     // stops that entry being empty or a copy of a status's — and the whole
     // claim is that a filter which is not a status must not look like one.
     //
-    // Only the second loop pins anything. The five status locks ARE their
-    // status tokens, so their strings cannot go empty without breaking every
-    // status badge in the app — and two of them (ready, applied) are
-    // deliberately identical to each other, which is why nothing here compares
-    // one status lock against another.
+    // Each loop catches a different thing, and only for `ever_applied`: the
+    // first is the only assertion that fails when its badge or dot is empty
+    // (an empty string is still `not.toBe` every status token, so the second
+    // loop sails past it), and the second is the only one that fails when it
+    // is a copy. The five status iterations of the first loop are vacuous —
+    // those locks ARE their status tokens, which cannot go empty without
+    // breaking every status badge in the app. Nothing compares one status lock
+    // against another because two of them (ready, applied) are deliberately
+    // identical.
     const statusLocks = [
       "ready",
       "discovered",
