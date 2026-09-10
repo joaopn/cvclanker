@@ -9,10 +9,11 @@ import {
   useRef,
   useState,
 } from "react";
+import { Button } from "@/components/ui/button";
 import { CommandDialog, CommandInput } from "@/components/ui/command";
 import { DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import type { FilterTab } from "./constants";
+import { EVER_APPLIED_CHIP_CLASS, type FilterTab } from "./constants";
 import {
   buildCommandBarRows,
   type CommandBarLock,
@@ -48,6 +49,10 @@ const ROW_HEIGHT_ESTIMATES: Record<CommandBarRow["kind"], number> = {
 
 const LOCK_ROW_HEIGHT_ESTIMATE = 56;
 const RESULTS_LIST_ID = "job-command-bar-results";
+const FILTER_ROW_HINT_ID = "job-command-bar-filter-hint";
+// Matches the Manage filter bar's chips, which is also what buys the 28px
+// touch target, the focus ring and `cursor-pointer` from the Button primitive.
+const CHIP_CLASS = "h-7 px-2 text-xs font-medium";
 
 const lockDialogAccentClass: Record<CommandBarLock, string> = {
   ready:
@@ -306,6 +311,17 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
     setQuery((current) => stripLeadingAtToken(current));
   }, []);
 
+  const toggleEverAppliedLock = useCallback(() => {
+    if (activeLock === "ever_applied") {
+      setActiveLock(null);
+      return;
+    }
+    // Through `applyLock`, so a half-typed `@ev` is consumed the same way the
+    // suggestion row consumes it — otherwise the token stays in the query and
+    // silently scores every row to zero.
+    applyLock("ever_applied");
+  }, [activeLock, applyLock]);
+
   useEffect(() => {
     if (isOpen) return;
     setActiveLock(null);
@@ -452,11 +468,47 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
         role="combobox"
         aria-expanded={isOpen}
       />
-      <div className="px-3 py-1 text-[11px] text-muted-foreground border-b">
-        Use <span className="font-mono">@</span> + a filter + Tab/Enter to lock
-        the results — a status, or{" "}
-        <span className="font-mono">ever-applied</span> for every job you have
-        applied for. Backspace on empty search clears the lock.
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-3 py-1.5">
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className={cn(
+            CHIP_CLASS,
+            "shrink-0 whitespace-nowrap",
+            activeLock === "ever_applied"
+              ? EVER_APPLIED_CHIP_CLASS.active
+              : EVER_APPLIED_CHIP_CLASS.inactive,
+          )}
+          aria-pressed={activeLock === "ever_applied"}
+          aria-describedby={FILTER_ROW_HINT_ID}
+          onClick={toggleEverAppliedLock}
+          // Keeps the caret in the search box, so a press can be followed by
+          // typing a company name. Same reason the option rows do it.
+          onMouseDown={(event) => event.preventDefault()}
+          // cmdk's Command root cancels EVERY Enter that reaches it, before it
+          // looks for an item to select — and it finds none here, since this
+          // component renders no CommandList. Without this the button is
+          // focusable, looks focused, and does nothing on the one key a
+          // keyboard user presses on a button. Space is unaffected: its
+          // activation fires on keyup, which cmdk does not touch.
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            event.stopPropagation();
+            toggleEverAppliedLock();
+          }}
+        >
+          Ever applied
+        </Button>
+        <span
+          id={FILTER_ROW_HINT_ID}
+          className="text-[11px] text-muted-foreground"
+        >
+          every job you applied for, however it ended — or type{" "}
+          <span className="font-mono">@</span> + a filter + Tab/Enter to lock
+          one. Backspace on an empty search clears the lock.
+        </span>
       </div>
 
       {rows.length === 0 ? (

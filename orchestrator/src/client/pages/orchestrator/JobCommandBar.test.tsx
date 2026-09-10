@@ -192,6 +192,114 @@ describe("JobCommandBar", () => {
     ).not.toBeInTheDocument();
   });
 
+  // The button exists because the typed `@ever-applied` token was not
+  // discoverable: the maintainer could not find the feature on a running
+  // build that demonstrably contained it.
+  it("filters to every job ever applied for when the button is pressed", () => {
+    const { results } = renderBar();
+
+    const button = screen.getByRole("button", { name: "Ever applied" });
+    expect(button).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(button);
+
+    expect(button).toHaveAttribute("aria-pressed", "true");
+    const listed = within(results());
+    expect(listed.getByText("Applied Live Role")).toBeInTheDocument();
+    expect(listed.getByText("Applied Rejected Role")).toBeInTheDocument();
+    expect(listed.getByText("Applied Then Skipped Role")).toBeInTheDocument();
+    expect(listed.queryByText("Untouched Ready Role")).not.toBeInTheDocument();
+    expect(listed.queryByText("Untouched Closed Role")).not.toBeInTheDocument();
+  });
+
+  it("releases the filter when the button is pressed again", () => {
+    const { results } = renderBar();
+
+    const button = screen.getByRole("button", { name: "Ever applied" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(button).toHaveAttribute("aria-pressed", "false");
+    expect(
+      within(results()).getByText("Untouched Ready Role"),
+    ).toBeInTheDocument();
+  });
+
+  it("takes over from another lock rather than sitting alongside it", () => {
+    const { input, results } = renderBar();
+
+    lockTo(input, "@applied");
+    fireEvent.click(screen.getByRole("button", { name: "Ever applied" }));
+
+    expect(screen.getByText("@ever-applied")).toBeInTheDocument();
+    // Structurally guaranteed rather than load-bearing (the input renders at
+    // most one prefix badge), kept as documentation of the intent.
+    expect(screen.queryByText("@applied")).not.toBeInTheDocument();
+    expect(
+      within(results()).getByText("Applied Rejected Role"),
+    ).toBeInTheDocument();
+  });
+
+  it("consumes a half-typed token so the button's filter is not scored away", () => {
+    // Without the strip the query keeps "@ev", which scores every row below
+    // the relevance floor — the button would appear to filter to nothing.
+    const { input, results } = renderBar();
+
+    fireEvent.change(input, { target: { value: "@ev" } });
+    fireEvent.click(screen.getByRole("button", { name: "Ever applied" }));
+
+    expect(input).toHaveValue("");
+    expect(
+      within(results()).getByText("Applied Rejected Role"),
+    ).toBeInTheDocument();
+  });
+
+  it("cancels the press's mousedown, which is what keeps focus in the search box", () => {
+    const { input } = renderBar();
+
+    input.focus();
+    // The cancellation IS the assertion. jsdom implements no focus default
+    // action for mousedown, so `document.activeElement` would still be the
+    // input whether or not the handler existed — asserting it would prove
+    // nothing. `fireEvent` returns false exactly when the event was cancelled,
+    // and a cancelled mousedown is what stops a browser moving focus.
+    expect(
+      fireEvent.mouseDown(screen.getByRole("button", { name: "Ever applied" })),
+    ).toBe(false);
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("toggles on Enter, which cmdk's root would otherwise swallow", () => {
+    const { results } = renderBar();
+
+    const button = screen.getByRole("button", { name: "Ever applied" });
+    fireEvent.keyDown(button, { key: "Enter" });
+
+    expect(button).toHaveAttribute("aria-pressed", "true");
+    expect(
+      within(results()).queryByText("Untouched Ready Role"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("stays on screen when its own filter empties the list", () => {
+    // The button row renders ABOVE the empty-state branch on purpose: a filter
+    // that matches nothing must still be releasable, or the dialog is a dead
+    // end with no visible way back.
+    render(
+      <JobCommandBar
+        jobs={[jobs[3], jobs[4]]}
+        onSelectJob={vi.fn()}
+        open
+        onOpenChange={vi.fn()}
+      />,
+    );
+
+    const button = screen.getAllByRole("button", { name: "Ever applied" })[0];
+    fireEvent.click(button);
+
+    expect(screen.getByText("No jobs found.")).toBeInTheDocument();
+    expect(button).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("clears the lock on backspace at an empty query", () => {
     const { input, results } = renderBar();
 

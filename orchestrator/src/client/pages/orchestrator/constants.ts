@@ -192,6 +192,22 @@ export const orderedFilterSources: ExtractorSourceId[] = [
 );
 
 /**
+ * The Ever-applied control, active and at rest, plus the badge treatment the
+ * lock it applies wears — one home, because they are one identity.
+ *
+ * Teal at rest rather than grey, matching `PROFILE_FILTER_CHIP_CLASS`: this
+ * control exists because the typed `@ever-applied` token was not
+ * discoverable, and a chip that shows no colour until it is hovered is
+ * invisible on a touch screen, where there is no hover at all.
+ */
+export const EVER_APPLIED_CHIP_CLASS = {
+  active:
+    "border-[color:color-mix(in_oklab,var(--badge-base)_70%,var(--badge-teal))] bg-[color-mix(in_oklab,var(--badge-base)_90%,var(--badge-teal))] text-teal-200",
+  inactive:
+    "border border-transparent text-[#2dd4bf] hover:bg-[color-mix(in_oklab,var(--badge-base)_90%,var(--badge-teal))] hover:text-teal-200",
+};
+
+/**
  * The colour half of a badge: the pill's own classes plus its leading dot.
  * `statusTokens` entries satisfy it structurally, and so does any token that
  * is not a job status — which is what lets the command bar's filter locks

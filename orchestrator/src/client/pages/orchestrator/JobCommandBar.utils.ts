@@ -2,6 +2,7 @@ import { foldDiacritics } from "@shared/location-support";
 import type { JobListItem, JobStatus } from "@shared/types.js";
 import {
   type BadgeTone,
+  EVER_APPLIED_CHIP_CLASS,
   type FilterTab,
   isEverApplied,
   statusTokens,
@@ -104,11 +105,7 @@ export const lockTokens: Record<CommandBarLock, BadgeTone> = {
   applied: statusTokens.applied,
   in_progress: statusTokens.in_progress,
   skipped: statusTokens.skipped,
-  ever_applied: {
-    badge:
-      "border-[color:color-mix(in_oklab,var(--badge-base)_70%,var(--badge-teal))] bg-[color-mix(in_oklab,var(--badge-base)_90%,var(--badge-teal))] text-teal-200",
-    dot: "bg-teal-400",
-  },
+  ever_applied: { badge: EVER_APPLIED_CHIP_CLASS.active, dot: "bg-teal-400" },
 };
 
 const tokenRegex = /^\s*@([a-z-]*)/i;
