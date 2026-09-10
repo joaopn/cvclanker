@@ -61,6 +61,12 @@ describe("JobRowContent applied badge", () => {
   /**
    * Suppressed where it would only restate the row's own status: on the Live
    * and Interviewing tabs the status dot and the tab already say it.
+   *
+   * The word still reaches those rows — the date pill reads "Applied 12d"
+   * there (see the date-pill block below), which is why this asserts the bare
+   * BADGE text: the text matchers match exactly, so "Applied 12d" is not
+   * "Applied". The two are one design, not a contradiction — do not "fix"
+   * either by making the other say something else.
    */
   it.each([
     "applied",
@@ -69,6 +75,101 @@ describe("JobRowContent applied badge", () => {
     row({ status, appliedAt: "2026-05-01T09:00:00.000Z" });
 
     expect(screen.queryByText("Applied")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The row's single date pill. It reports the most useful measure the row has,
+ * which on a row whose status already says "applied" is how long ago the
+ * application went out rather than how old the posting is.
+ */
+describe("JobRowContent date pill", () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  /**
+   * Half a day of slack, so the floored day count cannot tip over while the
+   * test runs — asserting a value an accumulator reaches exactly is B20.
+   */
+  const daysAgo = (days: number) =>
+    new Date(Date.now() - days * DAY_MS - DAY_MS / 2).toISOString();
+
+  const row = (overrides: Partial<JobListItem>) =>
+    render(<JobRowContent job={createJob(overrides) as JobListItem} />);
+
+  it.each([
+    "applied",
+    "in_progress",
+  ] as const)("reports the application date on a %s row", (status) => {
+    row({ status, appliedAt: daysAgo(12), datePosted: daysAgo(60) });
+
+    expect(screen.getByText("Applied 12d")).toBeInTheDocument();
+    expect(screen.queryByText("Posted 60d")).not.toBeInTheDocument();
+  });
+
+  it("hangs the exact application date off the pill", () => {
+    // The Applied badge normally carries this tooltip, and it is suppressed on
+    // exactly the rows the pill swaps on — so the pill is the only place the
+    // date is still reachable.
+    const appliedAt = daysAgo(12);
+    row({ status: "applied", appliedAt, datePosted: daysAgo(60) });
+
+    expect(screen.getByText("Applied 12d")).toHaveAttribute(
+      "title",
+      `Applied ${new Date(appliedAt).toLocaleDateString()}`,
+    );
+  });
+
+  it("keeps the posting date on a closed row that was applied to", () => {
+    // The badge renders there and carries the date itself, so the pill is free
+    // to go on describing the posting.
+    row({
+      status: "closed",
+      outcome: "rejected",
+      appliedAt: daysAgo(12),
+      datePosted: daysAgo(60),
+    });
+
+    // ...and the tooltip goes with it: an "Applied <date>" title on a pill
+    // reading "Posted 60d" would describe a different date than its own label.
+    expect(screen.getByText("Posted 60d")).not.toHaveAttribute("title");
+    expect(screen.getByText("Applied")).toBeInTheDocument();
+  });
+
+  it("ages a reopened row carrying the mark by its posting date", () => {
+    // The pill's day count is also what the Inbox stale marker reads, and that
+    // marker is gated on `discovered` — a reopened row keeps its permanent
+    // applied mark, so measuring from the application would silently un-stale
+    // an old posting.
+    render(
+      <JobRowContent
+        job={
+          createJob({
+            status: "discovered",
+            outcome: null,
+            appliedAt: daysAgo(12),
+            datePosted: daysAgo(60),
+          }) as JobListItem
+        }
+        staleThresholdDays={30}
+      />,
+    );
+
+    const pill = screen.getByText("Posted 60d");
+    expect(pill).toBeInTheDocument();
+    expect(pill.className).toContain("text-muted-foreground/70");
+  });
+
+  it("falls back to the posting date when the stamp is missing", () => {
+    // A legacy row the boot backfill could find no usable timestamp for still
+    // sits on the Live tab; it must not lose its date pill.
+    row({ status: "applied", appliedAt: null, datePosted: daysAgo(60) });
+
+    expect(screen.getByText("Posted 60d")).toBeInTheDocument();
+  });
+
+  it("falls back to the posting date when the stamp will not parse", () => {
+    row({ status: "applied", appliedAt: "whenever", datePosted: daysAgo(60) });
+
+    expect(screen.getByText("Posted 60d")).toBeInTheDocument();
   });
 });
 

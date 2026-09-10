@@ -244,7 +244,8 @@ describe("compareJobs applicants", () => {
       liveStatusCheckedAt: null,
       datePosted: "2026-08-15T00:00:00.000Z",
     });
-    // No datePosted: falls back to discoveredAt, like the row's pill.
+    // No datePosted: falls back to discoveredAt, as the row's pill does on
+    // any row not reporting its application date instead.
     const foundToday = linkedin("4000000000", {
       liveClosed: null,
       liveApplicants: null,

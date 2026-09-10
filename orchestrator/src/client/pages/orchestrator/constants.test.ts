@@ -1,8 +1,11 @@
+import type { JobStatus } from "@shared/types";
 import { describe, expect, it } from "vitest";
 import type { FilterTab, JobFilterChipType } from "./constants";
 import {
   filterChipTypesForTab,
   isFilterFamilyActive,
+  showsAppliedBadge,
+  showsAppliedDate,
   showsEasyApplyChip,
   tabs,
 } from "./constants";
@@ -100,6 +103,75 @@ describe("showsEasyApplyChip", () => {
           liveEasyApply,
         }),
       ).toBe(false);
+    }
+  });
+});
+
+/**
+ * Which of the two applied surfaces a row gets. `showsAppliedDate` is written
+ * as `isEverApplied` minus `showsAppliedBadge`, and its FIRST term is invisible
+ * from `JobRowContent`: that caller re-checks the stamp with `dateValue`, so
+ * dropping the term there changes nothing it renders. Asserted directly on the
+ * predicate instead, which is what the exported contract actually promises.
+ */
+describe("the applied mark's two surfaces", () => {
+  const marked = "2026-05-01T09:00:00.000Z";
+  /**
+   * `satisfies Record<JobStatus, true>` is what makes this exhaustive. An
+   * annotation of `JobStatus[]` constrains the members and never the
+   * cardinality, so a status added to the union and forgotten here would
+   * type-check and go silently untested. (`pages/settings/constants.ts` keeps
+   * its own `ALL_JOB_STATUSES` — the same ten strings in the same order, but
+   * annotated `JobStatus[]` and therefore NOT exhaustiveness-checked. Not
+   * imported here because it belongs to another page directory; the
+   * `satisfies` protects this copy only.)
+   */
+  const ALL_STATUSES = Object.keys({
+    discovered: true,
+    selected: true,
+    processing: true,
+    ready: true,
+    applied: true,
+    in_progress: true,
+    backlog: true,
+    stale: true,
+    skipped: true,
+    closed: true,
+  } satisfies Record<JobStatus, true>) as JobStatus[];
+
+  it("swaps the pill on exactly the two post-application statuses", () => {
+    // The positive contract, and the only assertion anywhere that reddens when
+    // the BADGE rule is narrowed on a status no render test covers: those
+    // cover `closed`, `skipped` and a reopened `discovered`, so suppressing
+    // the badge on `ready`, `processing`, `backlog` or `stale` would otherwise
+    // swap that tab's pill to the application date with the suite green.
+    for (const status of ALL_STATUSES) {
+      expect(showsAppliedDate({ appliedAt: marked, status })).toBe(
+        status === "applied" || status === "in_progress",
+      );
+    }
+  });
+
+  it("gives a marked row exactly one of the badge and the date", () => {
+    // Both true would say it twice on one row; both false would lose the mark
+    // entirely. This catches DIVERGENCE, not un-derivation — rewriting
+    // `showsAppliedDate` as an equivalent explicit list keeps it green, which
+    // is correct — and while the derivation stands it is a tautology. The test
+    // above is what pins which statuses actually swap.
+    for (const status of ALL_STATUSES) {
+      const job = { appliedAt: marked, status };
+      expect(showsAppliedBadge(job) !== showsAppliedDate(job)).toBe(true);
+    }
+  });
+
+  it("gives an unmarked row neither", () => {
+    // The `appliedAt != null` term of each predicate. `showsAppliedDate`'s is
+    // invisible from `JobRowContent`, whose ternary re-checks the stamp with
+    // `dateValue` before using it — so this is the only thing holding it.
+    for (const status of ALL_STATUSES) {
+      const job = { appliedAt: null, status };
+      expect(showsAppliedBadge(job)).toBe(false);
+      expect(showsAppliedDate(job)).toBe(false);
     }
   });
 });

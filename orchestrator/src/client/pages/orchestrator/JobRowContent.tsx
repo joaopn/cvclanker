@@ -8,6 +8,7 @@ import {
   LIVE_EASY_APPLY_CHIP_CLASS,
   outcomeLabel,
   showsAppliedBadge,
+  showsAppliedDate,
   showsEasyApplyChip,
   statusTokens,
 } from "./constants";
@@ -25,18 +26,40 @@ interface JobRowContentProps {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+const daysSince = (value: number, now: number) =>
+  Math.max(0, Math.floor((now - value) / DAY_MS));
+
+/**
+ * The row's one date pill, most useful measure first. On a row whose status
+ * already says it was applied to, that is the application date — see
+ * `showsAppliedDate`; everywhere else it is the posting date, with the
+ * discovery date as the fallback for a posting that never carried one.
+ */
 function formatAge(
   job: JobListItem,
   now: number,
-): { label: string; days: number } | null {
+): { label: string; days: number; title?: string } | null {
+  const applied = showsAppliedDate(job) ? dateValue(job.appliedAt) : null;
+  // A stamp that will not parse falls through to the posting date rather than
+  // blanking the pill.
+  if (applied != null) {
+    const days = daysSince(applied, now);
+    return {
+      label: `Applied ${days}d`,
+      days,
+      // The badge that normally carries the exact date is suppressed on these
+      // rows, so the pill is the only place left to hang it.
+      title: appliedBadgeTitle(job.appliedAt),
+    };
+  }
   const posted = dateValue(job.datePosted);
   if (posted != null) {
-    const days = Math.max(0, Math.floor((now - posted) / DAY_MS));
+    const days = daysSince(posted, now);
     return { label: `Posted ${days}d`, days };
   }
   const found = dateValue(job.discoveredAt);
   if (found != null) {
-    const days = Math.max(0, Math.floor((now - found) / DAY_MS));
+    const days = daysSince(found, now);
     return { label: `Found ${days}d`, days };
   }
   return null;
@@ -108,6 +131,7 @@ export const JobRowContent = ({
                   "tabular-nums",
                   isStale && "text-muted-foreground/70",
                 )}
+                title={age.title}
               >
                 {age.label}
               </span>

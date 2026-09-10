@@ -397,11 +397,17 @@ export const JOB_SORTER_LABELS: Record<JobSorter, string> = {
   easyApplyApplicants: "Easy Apply, Fewer applicants",
 };
 
-// `posted` is the value behind the row's "Posted Xd / Found Xd" pill
-// (`getJobPostedValue`: datePosted, else discoveredAt). `applicants` is the
-// live-status count, fewest first — see `compareJobs` for the tiers that
-// order the rows without one. `easyApplyApplicants` is that same ladder with
-// the rows wearing the Easy Apply chip lifted above the rest.
+// `posted` is the value behind the row's posting-age pill
+// (`getJobPostedValue`: datePosted, else discoveredAt); on a row whose pill
+// reports the application date instead (`showsAppliedDate`) this sorter goes
+// on ordering by the posting age. Ordering by the application date is the
+// Filters popover's `date` sort with the Applied dimension ticked — which
+// also FILTERS the list to rows carrying the stamp, so it is not a pure
+// re-sort. No single key reproduces the pill's per-row mixture of the two.
+// `applicants` is the live-status count, fewest first — see `compareJobs`
+// for the tiers that order the rows without one. `easyApplyApplicants` is
+// that same ladder with the rows wearing the Easy Apply chip lifted above
+// the rest.
 export const JOB_SORTER_SORTS: Record<Exclude<JobSorter, "none">, JobSort> = {
   posted: { key: "posted", direction: "desc" },
   applicants: { key: "applicants", direction: "asc" },
@@ -514,6 +520,47 @@ export function showsAppliedBadge(job: {
     job.status !== "applied" &&
     job.status !== "in_progress"
   );
+}
+
+/**
+ * Whether the row's age pill reports the APPLICATION date instead of the
+ * posting date. True on `applied` / `in_progress` — the Live and Interviewing
+ * tabs, and those same rows wherever else they surface (All, the ctrl+K
+ * search) — because that is where the posting date is inert: the number being
+ * waited on is how long ago the application went out.
+ *
+ * Written as `isEverApplied` MINUS `showsAppliedBadge` rather than as its own
+ * status list. Not the complement of the badge rule — that would be true of
+ * every row never applied to — but the marked rows the badge does not claim,
+ * so a row carrying the mark surfaces it exactly once: as the badge where the
+ * status does not already say "applied", as the date pill where it does. Two
+ * status lists that merely agree today drift into a row that shows both, or
+ * neither. The deliberate cost of deriving it: a future reason to suppress the
+ * badge somewhere is a reason to swap the pill there, unasked. What holds that
+ * shut is `constants.test.ts`'s "swaps the pill on exactly the two
+ * post-application statuses", red for any narrowing of the badge rule alone —
+ * the only render tests asserting the badge is PRESENT cover `closed`,
+ * `skipped` and a reopened `discovered`, so without it a badge suppressed on
+ * `ready` or `stale` would move that tab's pill with the whole suite green.
+ * Narrowing the badge AND rewriting this predicate to match is the other half;
+ * the XOR test beside it is what catches that.
+ *
+ * `appliedAt` can be missing even on those statuses (a legacy row the boot
+ * backfill found no usable timestamp for), which this predicate answers false
+ * for, and it can be present but unparseable (the PATCH zod bounds its length,
+ * not its format), which only the caller can catch — hence its fall-through to
+ * the posting date rather than a blanked pill.
+ *
+ * The pill's day count also feeds the Inbox stale marker, which is gated on
+ * `discovered`. This branch never covers that status: a reopened `discovered`
+ * row still carries the mark, but `showsAppliedBadge` claims it, so the pill
+ * keeps measuring the posting date there.
+ */
+export function showsAppliedDate(job: {
+  appliedAt?: string | null;
+  status: JobStatus;
+}): boolean {
+  return isEverApplied(job) && !showsAppliedBadge(job);
 }
 
 export type ClosedSubFilter =
