@@ -46,6 +46,7 @@ describe.sequential("jobs repository duplicate groups", () => {
     status: JobStatusLiteral;
     jobUrl: string;
     source?: string;
+    appliedAt?: string;
   }) =>
     db.insert(schema.jobs).values({
       id: args.id,
@@ -54,6 +55,7 @@ describe.sequential("jobs repository duplicate groups", () => {
       employer: args.employer ?? "Acme Corp",
       jobUrl: args.jobUrl,
       status: args.status,
+      appliedAt: args.appliedAt ?? null,
     });
 
   it("groups rows the board lists under one posting id, across subdomains and scrapers", async () => {
@@ -234,7 +236,9 @@ describe.sequential("jobs repository duplicate groups", () => {
       source
         .slice(source.indexOf(name))
         .slice(0, 260)
-        .match(/"(discovered|selected|processing|ready|backlog|stale|skipped|closed)"/g);
+        .match(
+          /"(discovered|selected|processing|ready|backlog|stale|skipped|closed)"/g,
+        );
 
     const scope = statuses(repoSource, "DUPLICATE_SCOPE_STATUSES");
     const guard = statuses(routeSource, "DUPLICATE_FROM_STATUSES");
@@ -244,5 +248,53 @@ describe.sequential("jobs repository duplicate groups", () => {
     expect(scope).toHaveLength(4);
     expect(guard).toHaveLength(4);
     expect(scope).toEqual(guard);
+  });
+
+  /**
+   * The scope's status list used to guarantee this: an applied row could not
+   * be moved back to a triage status. The stage switcher can move it anywhere,
+   * so the guard reads the permanent `applied_at` mark instead. It matters
+   * because these groups feed the scheduler's AUTOMATIC resolver, which closes
+   * the loser with outcome `duplicated` and has no server-side undo — and
+   * `STATUS_KEEPER_RANK` puts a `discovered` row BELOW a tailored twin.
+   */
+  it("excludes a row carrying the applied mark, whatever status it sits at", async () => {
+    await insert({
+      id: "ap1",
+      title: "Senior Data Architect",
+      status: "discovered",
+      appliedAt: "2026-04-02T00:00:00.000Z",
+      jobUrl: "https://www.linkedin.com/jobs/view/4383993999",
+    });
+    await insert({
+      id: "ap2",
+      title: "Senior Data Architect",
+      status: "ready",
+      source: "apify:17217e9c",
+      jobUrl:
+        "https://at.linkedin.com/jobs/view/senior-data-architect-at-nagarro-4383993999",
+    });
+
+    // One row left in scope is not a group, so nothing is proposed to close.
+    expect(await jobsRepo.getDuplicateGroups()).toHaveLength(0);
+  });
+
+  it("still groups the same pair when neither carries the mark", async () => {
+    await insert({
+      id: "np1",
+      title: "Senior Data Architect",
+      status: "discovered",
+      jobUrl: "https://www.linkedin.com/jobs/view/4383993998",
+    });
+    await insert({
+      id: "np2",
+      title: "Senior Data Architect",
+      status: "ready",
+      source: "apify:17217e9c",
+      jobUrl:
+        "https://at.linkedin.com/jobs/view/senior-data-architect-at-nagarro-4383993998",
+    });
+
+    expect(await jobsRepo.getDuplicateGroups()).toHaveLength(1);
   });
 });

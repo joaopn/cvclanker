@@ -11,6 +11,12 @@
  * unclearable Applied badge on it — the mark would claim an application that
  * never happened. Restoring the prior value is what makes undo mean "this
  * action did not happen"; the mark stays permanent against everything else.
+ *
+ * `readyAt` rides along for exactly the same reason, and became reachable when
+ * the stage switcher started offering Tailoring from every status: a move to
+ * `ready` coalesce-stamps it, `stats`' overview funnel counts a stamped row as
+ * Tailored, and nothing else clears it — so without it here, undoing a move
+ * to Tailoring left a never-tailored row counted as tailored for ever.
  */
 
 import * as api from "@client/api";
@@ -21,6 +27,7 @@ export interface JobStateSnapshot {
   status: JobStatus;
   outcome: JobOutcome | null;
   closedAt: number | null;
+  readyAt: string | null;
   appliedAt: string | null;
 }
 
@@ -30,6 +37,7 @@ export const snapshotJob = (job: Job | JobListItem): JobStateSnapshot => ({
   status: job.status,
   outcome: job.outcome,
   closedAt: job.closedAt,
+  readyAt: job.readyAt ?? null,
   appliedAt: job.appliedAt ?? null,
 });
 
@@ -48,6 +56,7 @@ export const restoreJobStates = async (
         status: snap.status,
         outcome: snap.outcome,
         closedAt: snap.closedAt,
+        readyAt: snap.readyAt,
         appliedAt: snap.appliedAt,
       }),
     ),

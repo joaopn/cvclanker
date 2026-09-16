@@ -19,6 +19,7 @@ describe("snapshotJob", () => {
       status: "applied",
       outcome: null,
       closedAt: null,
+      readyAt: "2026-04-28T09:00:00.000Z",
       appliedAt: "2026-05-01T09:00:00.000Z",
     });
     expect(snapshotJob(job)).toEqual({
@@ -26,6 +27,7 @@ describe("snapshotJob", () => {
       status: "applied",
       outcome: null,
       closedAt: null,
+      readyAt: "2026-04-28T09:00:00.000Z",
       appliedAt: "2026-05-01T09:00:00.000Z",
     });
   });
@@ -41,6 +43,18 @@ describe("snapshotJob", () => {
 
     expect(snapshotJob(job).appliedAt).toBeNull();
   });
+
+  /**
+   * Same load-bearing case for the ready mark, and the reason it had to join:
+   * the stage switcher moves a never-tailored row straight to Tailoring, which
+   * stamps `ready_at` and makes the overview funnel count it as Tailored.
+   * Capturing `null` is what lets undo take that back.
+   */
+  it("captures an absent ready mark as null", () => {
+    const job = createJob({ id: "j3", status: "backlog", readyAt: null });
+
+    expect(snapshotJob(job).readyAt).toBeNull();
+  });
 });
 
 describe("restoreJobStates", () => {
@@ -51,6 +65,7 @@ describe("restoreJobStates", () => {
         status: "discovered",
         outcome: null,
         closedAt: null,
+        readyAt: null,
         appliedAt: null,
       },
       {
@@ -58,6 +73,7 @@ describe("restoreJobStates", () => {
         status: "applied",
         outcome: "rejected",
         closedAt: 1700,
+        readyAt: "2026-04-28T09:00:00.000Z",
         appliedAt: "2026-05-01T09:00:00.000Z",
       },
     ]);
@@ -69,12 +85,14 @@ describe("restoreJobStates", () => {
       status: "discovered",
       outcome: null,
       closedAt: null,
+      readyAt: null,
       appliedAt: null,
     });
     expect(api.updateJob).toHaveBeenCalledWith("b", {
       status: "applied",
       outcome: "rejected",
       closedAt: 1700,
+      readyAt: "2026-04-28T09:00:00.000Z",
       appliedAt: "2026-05-01T09:00:00.000Z",
     });
     expect(result).toEqual({ restored: 2, failed: 0 });
@@ -93,6 +111,7 @@ describe("restoreJobStates", () => {
         status: "discovered",
         outcome: null,
         closedAt: null,
+        readyAt: null,
         appliedAt: null,
       },
       {
@@ -100,6 +119,7 @@ describe("restoreJobStates", () => {
         status: "selected",
         outcome: null,
         closedAt: null,
+        readyAt: null,
         appliedAt: null,
       },
     ]);

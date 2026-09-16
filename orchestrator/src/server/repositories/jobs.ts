@@ -241,6 +241,12 @@ export async function getDuplicateGroups(): Promise<DuplicateJobGroup[]> {
   const byKey = new Map<string, JobListItem[]>();
 
   for (const item of items) {
+    // A row the user applied to is out of duplicate scope however it got back
+    // into a triage status. The status list used to guarantee that; since the
+    // stage switcher can move an applied row to Inbox, it no longer does — and
+    // this feeds the scheduler's AUTOMATIC resolver, which closes the loser
+    // with outcome `duplicated` and has no server-side undo.
+    if (item.appliedAt != null) continue;
     // `JobListItem` carries `jobUrl` but not `sourceJobId`, and the id
     // extractor's fallback to that field is measured DEAD for this caller:
     // across all 15,121 LinkedIn rows of a real database, zero have a job-view
@@ -1160,7 +1166,15 @@ export async function deleteJobById(jobId: string): Promise<boolean> {
  * Delete jobs by status.
  */
 export async function deleteJobsByStatus(status: JobStatus): Promise<number> {
-  const result = await db.delete(jobs).where(eq(jobs.status, status)).run();
+  const result = await db
+    .delete(jobs)
+    // Never delete a row the user applied to, whatever status it now sits at.
+    // The status alone used to imply it — an applied row could not be moved
+    // to a clearable status — and the stage switcher broke that implication,
+    // so the guard reads the permanent mark. Notes, chat and the rendered PDF
+    // go with the row, and there is no undo for this one.
+    .where(and(eq(jobs.status, status), isNull(jobs.appliedAt)))
+    .run();
   // No FK cascade at runtime (PRAGMA foreign_keys is never enabled) — sweep
   // the deleted jobs' PDF blobs explicitly.
   await deleteOrphanedJobPdfs();
@@ -1225,6 +1239,12 @@ export async function sweepStaleJobs(
   )`;
   const ageWhere = and(
     inArray(jobs.status, eligibleStatuses),
+    // The scope's own rule is "applied/interviewing rows are out of every
+    // scope: moving a job the user has applied to is their call", and the
+    // status list used to be enough to enforce it — nothing could put an
+    // applied row on a shelf. The stage switcher can, so the rule now reads
+    // the permanent mark instead of inferring it from where the row sits.
+    isNull(jobs.appliedAt),
     sql`${effectiveDateClause} < ${cutoffClause}`,
   );
   const rows = await db
@@ -1262,6 +1282,10 @@ export async function sweepLiveClosedJobs(): Promise<{
   const eligibleStatuses: JobStatus[] = [...STALE_SWEEP_SCOPE_STATUSES.shelf];
   const closedWhere = and(
     inArray(jobs.status, eligibleStatuses),
+    // Same reason as the age sweep, and it bites harder here: this sweep has
+    // no age test at all, and `live_closed` is the NORMAL state of a posting
+    // you already applied to.
+    isNull(jobs.appliedAt),
     eq(jobs.liveClosed, true),
   );
   const rows = await db
@@ -1298,6 +1322,10 @@ export async function deleteJobsByCategory(
         inArray(jobs.suitabilityCategory, categories as SuitabilityCategory[]),
         ne(jobs.status, "applied"),
         ne(jobs.status, "in_progress"),
+        // The two status tests above stopped covering the whole population
+        // when the stage switcher made an applied row movable anywhere; the
+        // permanent mark is what actually means "was applied to".
+        isNull(jobs.appliedAt),
       ),
     )
     .run();

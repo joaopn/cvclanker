@@ -464,7 +464,14 @@ export interface UpdateJobInput {
   liveApplicants?: string | null;
   liveEasyApply?: boolean | null;
   liveStatusCheckedAt?: string | null;
-  readyAt?: string;
+  // Server-managed on the same terms as `appliedAt` below: `updateJob`
+  // coalesce-stamps it on a move to Ready, and an explicit value here takes
+  // the pass-through branch instead. Nullable for the same one caller — undo.
+  // It matters because the stage switcher can move a NEVER-tailored row
+  // straight to Tailoring, and `ready_at` is what the overview funnel counts
+  // as "Tailored"; without a way to clear it, reversing that move would leave
+  // the row counted for ever.
+  readyAt?: string | null;
   // Server-managed: the ONLY writer is `updateJob`, which coalesce-stamps it
   // on the first move to Applied/Interviewing. Passing an explicit value here
   // takes the pass-through branch and OVERWRITES, so it exists for exactly one

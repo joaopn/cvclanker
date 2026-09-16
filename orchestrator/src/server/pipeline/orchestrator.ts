@@ -624,7 +624,18 @@ export async function generateFinalPdf(
         return { success: false, error: pdfResult.error };
       }
 
-      if (isInitialTailoringFunnel) {
+      // The row can have MOVED while this ran. `originalStatus` was captured
+      // above, before an LLM call and a tectonic run, and the funnel branch
+      // used to act on it unconditionally — safe only while nothing could
+      // change the status mid-tailor. The stage switcher can: it offers a free
+      // move from every status, `processing` included, which is how a user
+      // frees a tailor that never finishes. So re-read, and promote only a row
+      // still sitting in the funnel — one closed, skipped or shelved mid-tailor
+      // keeps where the user put it and still gets the finished PDF.
+      const current = isInitialTailoringFunnel
+        ? await jobsRepo.getJobById(job.id)
+        : null;
+      if (isInitialTailoringFunnel && current?.status === "processing") {
         await jobsRepo.updateJob(job.id, {
           status: "ready",
           pdfPath: pdfResult.pdfPath,

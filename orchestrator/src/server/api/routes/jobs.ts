@@ -104,6 +104,7 @@ const updateJobSchema = z.object({
   outcome: z.enum(APPLICATION_OUTCOMES).nullable().optional(),
   closedAt: z.number().int().nullable().optional(),
   // Server-managed everywhere except undo, which restores the pre-action value.
+  readyAt: z.string().trim().min(1).max(40).nullable().optional(),
   appliedAt: z.string().trim().min(1).max(40).nullable().optional(),
   jobDescription: z.string().trim().nullable().optional(),
   suitabilityCategory: z.enum(SUITABILITY_CATEGORIES).nullable().optional(),
