@@ -18,6 +18,7 @@ import {
   splitTailoringFailure,
 } from "@shared/tailoring-failure";
 import type {
+  JobStatus,
   PipelineConfig,
   PipelineRunSavedDetails,
   RunTrigger,
@@ -435,6 +436,16 @@ export async function runPipeline(
 export type ProcessJobOptions = {
   force?: boolean;
   requestOrigin?: string | null;
+  /**
+   * The row's status when the WHOLE tailor began, captured by `runProcessJob`
+   * before step 1. `generateFinalPdf` re-reads the row and needs a way to tell
+   * "this is the pipeline's own `discovered` row" from "the user moved it to
+   * Inbox while cv-adjust was running" — the two are indistinguishable from
+   * the status alone, and the second must not be dragged back into the funnel.
+   * Absent for the one-step `POST /:id/generate-pdf` caller, which has no
+   * earlier moment to compare against and keeps the pre-existing behaviour.
+   */
+  entryStatus?: JobStatus;
 };
 
 /**
@@ -569,7 +580,7 @@ export async function summarizeJob(
  */
 export async function generateFinalPdf(
   jobId: string,
-  _options?: ProcessJobOptions,
+  options?: ProcessJobOptions,
 ): Promise<{
   success: boolean;
   error?: string;
@@ -598,14 +609,25 @@ export async function generateFinalPdf(
       // silently moved closed jobs into the Inbox tab, making them appear
       // to vanish.
       const originalStatus = job.status;
+      // The row can also have moved while STEP 1 (cv-adjust — the long LLM
+      // call) ran, which the re-read above cannot see on its own: a job the
+      // user sent back to Inbox mid-tailor reads `discovered`, exactly like a
+      // pipeline row that has not been flipped yet. Without `entryStatus` to
+      // compare against, the funnel branch below would flip it back to
+      // `processing` and then promote it, silently undoing the move — and the
+      // spinner's stage switcher exists precisely so that move can be made.
+      const movedSinceEntry =
+        options?.entryStatus !== undefined &&
+        options.entryStatus !== originalStatus;
       // The initial tailoring funnel. The pipeline/auto path enters as
       // `discovered` and flips itself to `processing` here; the manual Tailor
       // button pre-sets `processing` at the route before calling in, so that
       // counts as in-funnel too. `selected` is retained for any legacy rows.
       const isInitialTailoringFunnel =
-        originalStatus === "discovered" ||
-        originalStatus === "selected" ||
-        originalStatus === "processing";
+        !movedSinceEntry &&
+        (originalStatus === "discovered" ||
+          originalStatus === "selected" ||
+          originalStatus === "processing");
       if (isInitialTailoringFunnel && originalStatus !== "processing") {
         await jobsRepo.updateJob(job.id, { status: "processing" });
       }
@@ -617,10 +639,15 @@ export async function generateFinalPdf(
       });
 
       if (!pdfResult.success) {
-        // Keep the row in Tailoring (`processing`) on failure — processJob's
-        // safety net records the reason, and the Tailoring tab renders a
-        // reason-carrying `processing` row as a retryable failure instead of
-        // bouncing it back to the Inbox.
+        // Leave the row's status ALONE on failure — processJob's safety net
+        // records the reason, and the Tailoring tab renders a reason-carrying
+        // `processing` row as a retryable failure instead of bouncing it back
+        // to the Inbox. This used to read "keep the row in Tailoring", which
+        // assumed the row was still at `processing`; since it can have been
+        // re-staged mid-tailor, the reason now lands on wherever it is. That
+        // is deliberate — the note is true either way, and `skip` leaves a
+        // stale reason behind for the same reason — but it does mean a moved
+        // row can carry a reason its tab never renders.
         return { success: false, error: pdfResult.error };
       }
 
@@ -690,12 +717,20 @@ async function runProcessJob(
   options?: ProcessJobOptions,
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    // Read once, before step 1, so step 2 can tell a row that has not moved
+    // from one the user re-staged while cv-adjust was running. A missing row
+    // is left to `summarizeJob` to report.
+    const entryStatus = (await jobsRepo.getJobById(jobId))?.status;
+
     // Step 1: Summarize & Select Projects
     const sumResult = await summarizeJob(jobId, options);
     if (!sumResult.success) return sumResult;
 
     // Step 2: Generate PDF
-    const pdfResult = await generateFinalPdf(jobId, options);
+    const pdfResult = await generateFinalPdf(jobId, {
+      ...options,
+      entryStatus,
+    });
     return pdfResult;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

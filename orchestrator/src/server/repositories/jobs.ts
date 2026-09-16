@@ -1166,15 +1166,15 @@ export async function deleteJobById(jobId: string): Promise<boolean> {
  * Delete jobs by status.
  */
 export async function deleteJobsByStatus(status: JobStatus): Promise<number> {
-  const result = await db
-    .delete(jobs)
-    // Never delete a row the user applied to, whatever status it now sits at.
-    // The status alone used to imply it — an applied row could not be moved
-    // to a clearable status — and the stage switcher broke that implication,
-    // so the guard reads the permanent mark. Notes, chat and the rendered PDF
-    // go with the row, and there is no undo for this one.
-    .where(and(eq(jobs.status, status), isNull(jobs.appliedAt)))
-    .run();
+  // Deliberately NOT guarded on `applied_at`, unlike `deleteJobsByCategory`
+  // below and the two sweeps. This one is TARGETED: the caller is Settings →
+  // Danger Zone, where the user ticks the exact statuses to clear and confirms
+  // a dialog that says so — `applied` and `in_progress` are among the boxes on
+  // offer. A guard here would silently keep rows the user explicitly named and
+  // report a count that did not match, and it would leave no way to purge an
+  // application at all. The guards elsewhere exist because those operations
+  // INFER which rows are expendable; this one is told.
+  const result = await db.delete(jobs).where(eq(jobs.status, status)).run();
   // No FK cascade at runtime (PRAGMA foreign_keys is never enabled) — sweep
   // the deleted jobs' PDF blobs explicitly.
   await deleteOrphanedJobPdfs();

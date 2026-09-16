@@ -11,7 +11,7 @@ Every job sits somewhere in a three-part arc, spread across the tabs:
 - **Closed** — done, with an outcome recorded.
 
 Jobs advance as you act on them, and you can move them by hand any time. Every
-job's detail panel carries a **Stage** dropdown that moves it to any tab —
+job's detail panel carries a **Stage** dropdown that moves it to any stage —
 Inbox, Tailoring, Live, Interviewing, Backlog, Stale or Skipped — from wherever
 it is now, including rows the ordinary buttons can't reach. Closing a job asks
 for an outcome and is offered only for jobs you actually applied to; everything

@@ -174,7 +174,8 @@ export const DangerZoneSection: React.FC<DangerZoneSectionProps> = ({
               </div>
               <div className="text-xs text-muted-foreground">
                 Remove all jobs whose suitability is at or below the selected
-                category. Live jobs (Applied + In Progress) are preserved.
+                category. Live jobs and anything you ever applied to are
+                preserved, wherever they now sit.
               </div>
             </div>
 
@@ -235,8 +236,9 @@ export const DangerZoneSection: React.FC<DangerZoneSectionProps> = ({
                       {isValidCategory
                         ? SUITABILITY_CATEGORY_LABELS[selectedCategory]
                         : ""}
-                      ". Live jobs (Applied + In Progress) are preserved. This
-                      action cannot be undone.
+                      ". Live jobs and anything you ever applied to are
+                      preserved, wherever they now sit. This action cannot be
+                      undone.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>

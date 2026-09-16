@@ -120,7 +120,17 @@ describe.sequential("applied-mark guards on bulk and automatic sweeps", () => {
     expect(await statusOf("lc-plain")).toBe("stale");
   });
 
-  it("delete-by-status keeps a row that was applied to", async () => {
+  /**
+   * The deliberate NON-guard, pinned so nobody "fixes" it into consistency
+   * with its neighbours. `deleteJobsByStatus` is TARGETED: Settings → Danger
+   * Zone has the user tick the exact statuses and confirm a dialog naming
+   * them, `applied` and `in_progress` among the boxes on offer. A mark guard
+   * here would silently keep rows the user explicitly named, report a count
+   * that did not match, and leave no way to purge an application at all. The
+   * guards in this file exist because those operations INFER which rows are
+   * expendable; this one is told.
+   */
+  it("delete-by-status deletes a row that was applied to, because it was named", async () => {
     await insert({
       id: "del-applied",
       status: "skipped",
@@ -130,8 +140,8 @@ describe.sequential("applied-mark guards on bulk and automatic sweeps", () => {
 
     const deleted = await jobsRepo.deleteJobsByStatus("skipped");
 
-    expect(deleted).toBe(1);
-    expect(await statusOf("del-applied")).toBe("skipped");
+    expect(deleted).toBe(2);
+    expect(await statusOf("del-applied")).toBeNull();
     expect(await statusOf("del-plain")).toBeNull();
   });
 

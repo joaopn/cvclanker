@@ -27,8 +27,13 @@ import type { JobStatus } from "@shared/types";
  */
 /**
  * The statuses `mark_duplicated` accepts. Mirrors `DUPLICATE_FROM_STATUSES` in
- * the jobs route, which mirrors `DUPLICATE_SCOPE_STATUSES` in the repository —
- * the three must agree, or this starts closing rows the action would refuse.
+ * the jobs route — the two must agree, or this starts closing rows the action
+ * would refuse. `DUPLICATE_SCOPE_STATUSES` in the repository is the same list,
+ * but the repository's grouping is now strictly NARROWER than both: it also
+ * drops any row carrying `applied_at`, since the stage switcher can move an
+ * applied row back to a triage status and this resolver has no undo. Narrower
+ * is the safe direction (fewer groups reach here), so the lists still agree in
+ * the sense that matters.
  */
 const CLOSEABLE_STATUSES: ReadonlySet<JobStatus> = new Set<JobStatus>([
   "discovered",

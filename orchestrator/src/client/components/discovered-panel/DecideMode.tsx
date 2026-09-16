@@ -40,9 +40,11 @@ interface DecideModeProps {
   /**
    * The stage switcher. Rendered beside the triage buttons rather than in
    * place of them: those are the fast paths for an Inbox row, this is the one
-   * that reaches the parts of the pipeline they do not cover.
+   * that reaches the parts of the pipeline they do not cover. Required for the
+   * same reason `DiscoveredPanel`'s own `confirmTailor` is: one construction
+   * site, so a mount cannot quietly drop it.
    */
-  stageSwitcher?: React.ReactNode;
+  stageSwitcher: React.ReactNode;
 }
 
 export const DecideMode: React.FC<DecideModeProps> = ({
@@ -129,11 +131,9 @@ export const DecideMode: React.FC<DecideModeProps> = ({
         ) : null}
 
         <div className="flex flex-col gap-2.5 pt-2 sm:flex-row sm:flex-wrap sm:items-center">
-          {stageSwitcher ? (
-            <div className="shrink-0 [&>button]:h-11 [&>button]:w-full sm:[&>button]:h-10 sm:[&>button]:w-auto">
-              {stageSwitcher}
-            </div>
-          ) : null}
+          <div className="shrink-0 [&>button]:h-11 [&>button]:w-full sm:[&>button]:h-10 sm:[&>button]:w-auto">
+            {stageSwitcher}
+          </div>
           {jobLink ? (
             <OpenJobListingButton
               href={jobLink}

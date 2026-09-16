@@ -23,6 +23,12 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
     <div>{children}</div>
   ),
   DropdownMenuSeparator: () => <hr />,
+  // `disabled` is reported via aria only, NOT via the DOM `disabled`
+  // attribute: jsdom refuses to dispatch click on a disabled button, which
+  // would make "selecting the current stage does nothing" pass even with the
+  // component's own guard deleted. Radix likewise keeps its items focusable
+  // and marks them `data-disabled`/`aria-disabled` rather than disabling a
+  // native control, so this is the closer model as well.
   DropdownMenuItem: ({
     children,
     disabled,
@@ -35,7 +41,6 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
     <button
       type="button"
       role="menuitem"
-      disabled={disabled}
       aria-disabled={disabled ? "true" : "false"}
       onClick={() => onSelect?.()}
     >
@@ -99,6 +104,23 @@ const STAGE_LABELS = [
 
 const REASON_LABELS = ["Rejected", "Withdrew", "Ghosted", "Other"];
 
+/**
+ * Every status's menu label. Exhaustive over `JobStatus` by construction, so a
+ * new status forces a decision here rather than defaulting to invisible.
+ */
+const STATUS_LABEL = {
+  discovered: "Inbox",
+  ready: "Tailoring",
+  applied: "Live",
+  in_progress: "Interviewing",
+  backlog: "Backlog",
+  stale: "Stale",
+  skipped: "Skipped",
+  processing: "Processing",
+  selected: "Selected",
+  closed: "Closed",
+} satisfies Record<JobStatus, string>;
+
 /** The permanent applied mark — what gates the close-with-reason group. */
 const APPLIED_AT = "2026-01-02T03:04:05.000Z";
 
@@ -159,6 +181,37 @@ describe("JobStageSwitcher visibility", () => {
   });
 });
 
+describe("JobStageSwitcher status coverage", () => {
+  /**
+   * The `satisfies` list above is exhaustive at COMPILE time, but every other
+   * table in this file is a hand-kept literal — so without this a status added
+   * to `JobStatus` would silently become a non-destination with nothing red.
+   * `STAGES` is a plain array in the component and has no exhaustiveness of
+   * its own; this is what supplies it.
+   */
+  it("accounts for every JobStatus as a destination or a named exception", () => {
+    // The three `STAGES` deliberately omits, each for a documented reason:
+    // `processing`/`selected` are destinations nobody should pick, and `closed`
+    // is reached through the reason group instead.
+    const EXCEPTIONS: JobStatus[] = ["processing", "selected", "closed"];
+    const offered = new Set<string>(STAGE_LABELS);
+
+    const unaccounted = ALL_STATUSES.filter(
+      (status) =>
+        !EXCEPTIONS.includes(status) && !offered.has(STATUS_LABEL[status]),
+    );
+
+    expect(unaccounted).toEqual([]);
+    // And the exceptions are exactly the statuses NOT offered, so removing a
+    // destination without removing it here fails too.
+    expect(
+      ALL_STATUSES.filter(
+        (status) => !offered.has(STATUS_LABEL[status]),
+      ).sort(),
+    ).toEqual([...EXCEPTIONS].sort());
+  });
+});
+
 describe("JobStageSwitcher menu", () => {
   it("offers every pipeline destination plus the four close reasons", () => {
     // Carries a PDF so no item wears the "no PDF" annotation — this test is
@@ -216,8 +269,14 @@ describe("JobStageSwitcher menu", () => {
   it("disables the stage the job is already in", () => {
     renderSwitcher({ id: "m2", status: "backlog" });
 
-    expect(screen.getByRole("menuitem", { name: "Backlog" })).toBeDisabled();
-    expect(screen.getByRole("menuitem", { name: "Stale" })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "Backlog" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("menuitem", { name: "Stale" })).toHaveAttribute(
+      "aria-disabled",
+      "false",
+    );
   });
 
   it("disables only the close reason a closed job already carries", () => {
@@ -228,8 +287,14 @@ describe("JobStageSwitcher menu", () => {
       appliedAt: APPLIED_AT,
     });
 
-    expect(screen.getByRole("menuitem", { name: "Ghosted" })).toBeDisabled();
-    expect(screen.getByRole("menuitem", { name: "Rejected" })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "Ghosted" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("menuitem", { name: "Rejected" })).toHaveAttribute(
+      "aria-disabled",
+      "false",
+    );
   });
 
   // `handleClose` deliberately has no same-status early return, so a closed
@@ -256,7 +321,7 @@ describe("JobStageSwitcher menu", () => {
 
     const item = screen.getByRole("menuitem", { name: /Tailoring/ });
     expect(item).toHaveTextContent("no PDF");
-    expect(item).toBeEnabled();
+    expect(item).toHaveAttribute("aria-disabled", "false");
   });
 
   // The fork this slice took: the guard that used to DISABLE this item is now
@@ -365,6 +430,8 @@ describe("JobStageSwitcher moves", () => {
     expect(closedAt).toBeLessThanOrEqual(nowSeconds);
   });
 
+  // The mock leaves disabled items clickable on purpose, so this exercises
+  // `handleMove`'s own `status === job.status` early return. Red if it goes.
   it("does nothing when the current stage is selected anyway", async () => {
     renderSwitcher({ id: "same", status: "stale" });
 
@@ -372,6 +439,45 @@ describe("JobStageSwitcher moves", () => {
 
     await waitFor(() => expect(toastSuccess).not.toHaveBeenCalled());
     expect(api.updateJob).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Correcting the reason on an already-closed row must NOT re-date the
+   * closure: `closed_at` drives the Closed date filter and the time-to-close
+   * the application stats derive from `closed_at - applied_at`.
+   */
+  it("keeps the original close date when only the reason changes", async () => {
+    renderSwitcher({
+      id: "redate",
+      status: "closed",
+      outcome: "ghosted",
+      closedAt: 1_700_000_000,
+      appliedAt: APPLIED_AT,
+    });
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rejected" }));
+
+    await waitFor(() => expect(api.updateJob).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.updateJob).mock.calls[0][1]).toEqual({
+      status: "closed",
+      outcome: "rejected",
+      closedAt: 1_700_000_000,
+    });
+  });
+
+  /**
+   * Undo restores the captured status verbatim, so an undo here would put the
+   * row back at `processing` with no tailor behind it — the stuck state this
+   * control exists to escape, one click from the toast.
+   */
+  it("offers no undo for a move OFF processing", async () => {
+    renderSwitcher({ id: "stuck", status: "processing" });
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Inbox" }));
+
+    await waitFor(() => expect(api.updateJob).toHaveBeenCalledTimes(1));
+    expect(pushUndo).not.toHaveBeenCalled();
+    expect(toastSuccess).toHaveBeenCalledWith("Moved to Inbox", {});
   });
 
   it("pushes an undo entry carrying the pre-move state", async () => {
@@ -387,11 +493,11 @@ describe("JobStageSwitcher moves", () => {
 
     await waitFor(() => expect(pushUndo).toHaveBeenCalledTimes(1));
     expect(pushUndo.mock.calls[0][0]).toMatchObject({
-      label: "Move to Interviewing",
+      label: "Moved to Interviewing",
     });
     expect(toastSuccess).toHaveBeenCalledWith(
       "Moved to Interviewing",
-      expect.anything(),
+      expect.objectContaining({ action: expect.anything() }),
     );
   });
 

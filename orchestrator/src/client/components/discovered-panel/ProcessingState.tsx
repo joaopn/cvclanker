@@ -6,9 +6,11 @@ interface ProcessingStateProps {
    * The stage switcher. This spinner is the ONLY detail view a clean
    * `processing` row has, and the bulk skip and delete guards both refuse that
    * status — so without a control here a tailor that never finishes leaves its
-   * row stuck with nothing in the app able to move it.
+   * row stuck with nothing in the app able to move it. Required, not optional:
+   * there is one construction site, and a mount that skipped it would silently
+   * restore the dead end this state exists to escape.
    */
-  stageSwitcher?: React.ReactNode;
+  stageSwitcher: React.ReactNode;
 }
 
 export const ProcessingState: React.FC<ProcessingStateProps> = ({
@@ -23,7 +25,7 @@ export const ProcessingState: React.FC<ProcessingStateProps> = ({
       <p className="text-xs text-muted-foreground max-w-[220px]">
         This job is currently being analyzed by the pipeline. Please wait.
       </p>
-      {stageSwitcher ? <div className="pt-1">{stageSwitcher}</div> : null}
+      <div className="pt-1">{stageSwitcher}</div>
     </div>
   );
 };

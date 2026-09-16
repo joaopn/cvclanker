@@ -9,6 +9,16 @@ vi.mock("../services/pdf", () => ({
   generatePdf: (...args: unknown[]) => generatePdfMock(...args),
 }));
 
+const llmAdjustMock = vi.fn();
+vi.mock("../services/cv", () => ({
+  llmAdjustContent: (...args: unknown[]) => llmAdjustMock(...args),
+}));
+
+const activeCvMock = vi.fn();
+vi.mock("../services/cv-active", () => ({
+  getActiveCvDocument: (...args: unknown[]) => activeCvMock(...args),
+}));
+
 /**
  * `generateFinalPdf` captures the row's status at entry and used to write
  * `ready` back unconditionally at the end of the initial tailoring funnel —
@@ -29,6 +39,8 @@ describe.sequential("generateFinalPdf respects a status moved mid-tailor", () =>
   beforeEach(async () => {
     vi.resetModules();
     generatePdfMock.mockReset();
+    llmAdjustMock.mockReset();
+    activeCvMock.mockReset();
     tempDir = await mkdtemp(join(tmpdir(), "cvclanker-tailor-race-"));
     process.env.DATA_DIR = tempDir;
     process.env.NODE_ENV = "test";
@@ -114,5 +126,58 @@ describe.sequential("generateFinalPdf respects a status moved mid-tailor", () =>
     const after = await jobsRepo.getJobById(id);
     expect(after?.status).toBe("applied");
     expect(after?.pdfPath).toBe("/pdfs/resume_retailor.pdf");
+  });
+
+  /**
+   * The other half of the window, and the longer one: step 1 (cv-adjust, an
+   * LLM call) runs BEFORE `generateFinalPdf` re-reads the row, so a move made
+   * during it is already visible in that read. Without the entry status to
+   * compare against, a row the user sent back to Inbox is indistinguishable
+   * from a pipeline row that has not been flipped yet — and the funnel branch
+   * would flip it to `processing` and then promote it, undoing the move.
+   *
+   * Inbox is the FIRST item in the menu and the natural "put it back" choice
+   * for a row that looks stuck, so this is the likely press, not a corner.
+   */
+  it("keeps a move made during step 1, not just during the render", async () => {
+    const id = await seed("https://ex/mid-summarize", "processing");
+    const { db, schema } = await import("../db/index");
+    await db.insert(schema.cvDocuments).values({
+      id: "cv-doc-2",
+      name: "cv",
+      originalArchive: Buffer.from(""),
+      flattenedTex: "",
+      createdAt: 0,
+      updatedAt: 0,
+    });
+    activeCvMock.mockResolvedValue({
+      id: "cv-doc-2",
+      name: "cv",
+      personalBrief: "",
+      fields: [{ id: "summary", value: "old" }],
+    });
+    llmAdjustMock.mockImplementation(async () => {
+      // The move lands while cv-adjust is in flight — the long LLM phase,
+      // which is where a user watching a spinner actually reaches for it.
+      await jobsRepo.updateJob(id, { status: "discovered" });
+      return {
+        success: true,
+        patches: [{ fieldId: "summary", newValue: "new" }],
+        matched: [],
+        skipped: [],
+      };
+    });
+    generatePdfMock.mockResolvedValue({
+      success: true,
+      pdfPath: "/pdfs/resume_mid.pdf",
+    });
+
+    const { processJob } = await import("./orchestrator");
+    const result = await processJob(id);
+
+    expect(result.success).toBe(true);
+    const after = await jobsRepo.getJobById(id);
+    expect(after?.status).toBe("discovered");
+    expect(after?.pdfPath).toBe("/pdfs/resume_mid.pdf");
   });
 });
