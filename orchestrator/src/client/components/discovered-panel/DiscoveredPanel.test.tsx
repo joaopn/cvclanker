@@ -1,6 +1,7 @@
 import { composeTailoringFailure } from "@shared/tailoring-failure";
 import { createJob } from "@shared/testing/factories.js";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
+import type React from "react";
 import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -25,7 +26,33 @@ vi.mock("@client/hooks/useSettings", () => ({
 }));
 
 import * as api from "@client/api";
+import {
+  type UndoController,
+  UndoProvider,
+} from "@client/pages/orchestrator/useUndoController";
 import { DiscoveredPanel } from "./DiscoveredPanel";
+
+/**
+ * The panel mounts `JobStageSwitcher`, which reads the Manage screen's undo
+ * controller — `OrchestratorPage` provides it around this whole tree. Wrapping
+ * here keeps the real switcher on the path rather than mocking it away, and
+ * `rerender` re-wraps because RTL re-renders at the ROOT.
+ */
+const undoStub: UndoController = {
+  pushUndo: () => {},
+  undo: async () => {},
+  canUndo: false,
+  pendingLabel: null,
+};
+
+const render = (ui: React.ReactElement) => {
+  const result = rtlRender(<UndoProvider value={undoStub}>{ui}</UndoProvider>);
+  return {
+    ...result,
+    rerender: (next: React.ReactElement) =>
+      result.rerender(<UndoProvider value={undoStub}>{next}</UndoProvider>),
+  };
+};
 
 beforeEach(() => {
   vi.mocked(api.processJob).mockClear();
@@ -74,6 +101,46 @@ describe("DiscoveredPanel failed-tailor state", () => {
     expect(
       screen.queryByText("Last tailoring attempt failed"),
     ).not.toBeInTheDocument();
+  });
+
+  /**
+   * The escape hatch. A clean `processing` row is refused by the bulk skip
+   * guard (`SKIPPABLE_STATUSES` has no `processing`) and by delete (which keys
+   * on a null failure reason), and this spinner is its only detail view — so
+   * a tailor that never finishes used to leave the row stuck with nothing in
+   * the app able to move it.
+   */
+  it("offers the stage switcher on the spinner so a stuck row can be moved", () => {
+    render(
+      <DiscoveredPanel
+        job={createJob({ id: "stuck", status: "processing" })}
+        onJobUpdated={noop}
+        onJobMoved={noop}
+        confirmTailor={allowTailor}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: /^Stage: Processing/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers the stage switcher beside the triage buttons", () => {
+    render(
+      <DiscoveredPanel
+        job={createJob({ id: "triage", status: "discovered" })}
+        onJobUpdated={noop}
+        onJobMoved={noop}
+        confirmTailor={allowTailor}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: /^Stage: Inbox/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /start tailoring/i }),
+    ).toBeInTheDocument();
   });
 });
 

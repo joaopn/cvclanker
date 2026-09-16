@@ -4,13 +4,19 @@ Jobs move through a simple lifecycle, with a few tools for managing the list.
 
 ## Inbox → Live → Closed
 
-Every job sits in one of three stages, shown as tabs:
+Every job sits somewhere in a three-part arc, spread across the tabs:
 
 - **Inbox** — newly discovered jobs waiting for triage.
 - **Live** — jobs you're working: tailoring, applied, interviewing.
 - **Closed** — done, with an outcome recorded.
 
-Jobs advance as you act on them, and you can move them by hand any time.
+Jobs advance as you act on them, and you can move them by hand any time. Every
+job's detail panel carries a **Stage** dropdown that moves it to any tab —
+Inbox, Tailoring, Live, Interviewing, Backlog, Stale or Skipped — from wherever
+it is now, including rows the ordinary buttons can't reach. Closing a job asks
+for an outcome and is offered only for jobs you actually applied to; everything
+else you're done with goes to Skipped, which shares the Closed tab. Moving a
+closed job anywhere else clears its outcome again.
 
 ## Fit scoring
 

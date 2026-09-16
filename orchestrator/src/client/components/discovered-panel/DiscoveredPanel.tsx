@@ -2,14 +2,15 @@ import * as api from "@client/api";
 import { useSkipJobMutation } from "@client/hooks/queries/useJobMutations";
 import { useRescoreJob } from "@client/hooks/useRescoreJob";
 import { useSettings } from "@client/hooks/useSettings";
-import type { Job } from "@shared/types.js";
-import type React from "react";
-import { useEffect, useRef, useState } from "react";
 import { toast } from "@client/lib/toast";
+import { JobStageSwitcher } from "@client/pages/orchestrator/JobStageSwitcher";
 import {
   type ConfirmTailor,
   tailorApproved,
 } from "@client/pages/orchestrator/tailorCompanyConflicts";
+import type { Job } from "@shared/types.js";
+import type React from "react";
+import { useEffect, useRef, useState } from "react";
 import { JobDetailsEditDrawer } from "../JobDetailsEditDrawer";
 import { DecideMode } from "./DecideMode";
 import { EmptyState } from "./EmptyState";
@@ -124,12 +125,23 @@ export const DiscoveredPanel: React.FC<DiscoveredPanelProps> = ({
     return <EmptyState />;
   }
 
+  // Built once and handed to whichever state renders: the two branches below
+  // are presentational, and one construction site is what keeps the spinner's
+  // switcher and DecideMode's from drifting apart.
+  const stageSwitcher = (
+    <JobStageSwitcher
+      job={job}
+      onJobUpdated={onJobUpdated}
+      onJobMoved={onJobMoved}
+    />
+  );
+
   // A clean `processing` row is actively running → spinner. A failed one (a
   // reason is set) falls through to DecideMode, which shows the failure and the
   // Retry (Start Tailoring → move_to_ready) + Skip actions in place, rather than
   // a permanent spinner.
   if (job.status === "processing" && !job.tailoringFailureReason) {
-    return <ProcessingState />;
+    return <ProcessingState stageSwitcher={stageSwitcher} />;
   }
 
   return (
@@ -146,6 +158,7 @@ export const DiscoveredPanel: React.FC<DiscoveredPanelProps> = ({
         onEditDetails={() => setIsEditDetailsOpen(true)}
         onMoveToBacklog={handleMoveToBacklog}
         isMovingStatus={isMovingStatus}
+        stageSwitcher={stageSwitcher}
       />
 
       <JobDetailsEditDrawer
