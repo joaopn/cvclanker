@@ -2,6 +2,7 @@ import { setupWindowVirtualizerTestEnvironment } from "@client/test/virtualizati
 import { createJob } from "@shared/testing/factories.js";
 import type { JobListItem } from "@shared/types.js";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -310,5 +311,214 @@ describe("JobCommandBar", () => {
     expect(
       within(results()).getByText("Untouched Ready Role"),
     ).toBeInTheDocument();
+  });
+});
+
+// The rejection button, offered on the Ever-applied filter's still-open rows.
+// Its own fixture rather than the shared one: it needs an Interviewing row,
+// and the list above is sized so that every row renders inside the virtual
+// window, which is what several of its absence assertions rest on.
+describe("JobCommandBar rejection button", () => {
+  const openApplications: JobListItem[] = [
+    createJob({
+      id: "live",
+      title: "Applied Live Role",
+      employer: "Acme",
+      status: "applied",
+      appliedAt: APPLIED_AT,
+    }),
+    createJob({
+      id: "interviewing",
+      title: "Interviewing Role",
+      employer: "Acme",
+      status: "in_progress",
+      appliedAt: APPLIED_AT,
+    }),
+    createJob({
+      id: "already-closed",
+      title: "Applied Rejected Role",
+      employer: "Acme",
+      status: "closed",
+      outcome: "rejected",
+      appliedAt: APPLIED_AT,
+    }),
+  ];
+
+  // Mounting WITHOUT the prop is a case of its own and renders directly; this
+  // helper is the mounted-with-a-handler shape, whose body a caller can swap
+  // (for one that never settles, say).
+  const renderWithReject = (
+    implementation: (job: JobListItem) => void | Promise<void> = () =>
+      Promise.resolve(),
+  ) => {
+    const onMarkRejected = vi.fn(implementation);
+    const onSelectJob = vi.fn();
+    const onOpenChange = vi.fn();
+    render(
+      <JobCommandBar
+        jobs={openApplications}
+        onSelectJob={onSelectJob}
+        onMarkRejected={onMarkRejected}
+        open
+        onOpenChange={onOpenChange}
+      />,
+    );
+    return {
+      onMarkRejected,
+      onSelectJob,
+      onOpenChange,
+      input: screen.getByRole("combobox"),
+      results: () =>
+        screen.getByRole("listbox", { name: "Job search results" }),
+      rejectButtons: () =>
+        screen.queryAllByRole("button", { name: /^Mark .* rejected$/ }),
+    };
+  };
+
+  const turnOnEverApplied = () => {
+    fireEvent.click(screen.getByRole("button", { name: "Ever applied" }));
+  };
+
+  it("offers the button only once the Ever-applied filter is on", () => {
+    const { rejectButtons } = renderWithReject();
+
+    expect(rejectButtons()).toHaveLength(0);
+
+    turnOnEverApplied();
+
+    // Both still-open applications, and only those: a row that is already
+    // closed has nothing left to reject.
+    expect(
+      rejectButtons()
+        .map((button) => button.getAttribute("aria-label"))
+        .sort(),
+    ).toEqual([
+      "Mark Applied Live Role at Acme rejected",
+      "Mark Interviewing Role at Acme rejected",
+    ]);
+  });
+
+  // The @applied lock lists the same live row. The button is deliberately not
+  // offered there: this is a feature of the Ever-applied sweep, not of every
+  // way a live row can be reached.
+  it("does not ride along on the @applied lock", () => {
+    const { input, results, rejectButtons } = renderWithReject();
+
+    lockTo(input, "@applied");
+
+    expect(
+      within(results()).getByText("Applied Live Role"),
+    ).toBeInTheDocument();
+    expect(rejectButtons()).toHaveLength(0);
+  });
+
+  it("does not render a button a mount cannot service", () => {
+    const onSelectJob = vi.fn();
+    render(
+      <JobCommandBar jobs={openApplications} onSelectJob={onSelectJob} open />,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Ever applied" })[0]);
+
+    expect(
+      screen.queryAllByRole("button", { name: /^Mark .* rejected$/ }),
+    ).toHaveLength(0);
+  });
+
+  // Awaited, here and below, because the press settles its in-flight bookkeeping
+  // when the handler's promise resolves — a state update React would otherwise
+  // report as happening outside `act`.
+  it("closes the application without closing the dialog, and clears the query", async () => {
+    const { input, onMarkRejected, onSelectJob, onOpenChange } =
+      renderWithReject();
+
+    turnOnEverApplied();
+    fireEvent.change(input, { target: { value: "Live" } });
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Mark Applied Live Role at Acme rejected",
+        }),
+      );
+    });
+
+    expect(onMarkRejected).toHaveBeenCalledTimes(1);
+    expect(onMarkRejected.mock.calls[0][0]).toMatchObject({ id: "live" });
+    // The three halves of "streamline the sweep": the dialog stays open, the
+    // lock survives, and the typed company name is gone so the next one can be
+    // typed straight away.
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(onSelectJob).not.toHaveBeenCalled();
+    expect(screen.getByText("@ever-applied")).toBeInTheDocument();
+    expect(input).toHaveValue("");
+  });
+
+  // Without `stopPropagation` the press lands on the row underneath too, which
+  // navigates to the job and closes the dialog — the one thing the feature is
+  // for is not doing that.
+  it("does not select the row it sits on", async () => {
+    const { onSelectJob, onOpenChange } = renderWithReject();
+
+    turnOnEverApplied();
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Mark Interviewing Role at Acme rejected",
+        }),
+      );
+    });
+
+    expect(onSelectJob).not.toHaveBeenCalled();
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it("cancels the press's mousedown, which is what keeps focus in the search box", () => {
+    const { input } = renderWithReject();
+
+    turnOnEverApplied();
+    input.focus();
+    expect(
+      fireEvent.mouseDown(
+        screen.getByRole("button", {
+          name: "Mark Applied Live Role at Acme rejected",
+        }),
+      ),
+    ).toBe(false);
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("acts on Enter, which cmdk's root would otherwise swallow", async () => {
+    const { onMarkRejected } = renderWithReject();
+
+    turnOnEverApplied();
+    await act(async () => {
+      fireEvent.keyDown(
+        screen.getByRole("button", {
+          name: "Mark Applied Live Role at Acme rejected",
+        }),
+        { key: "Enter" },
+      );
+    });
+
+    expect(onMarkRejected).toHaveBeenCalledTimes(1);
+  });
+
+  // The row survives on screen until the parent's refetch lands, so a second
+  // press is reachable — and would send a `mark_closed` the server refuses.
+  it("ignores a second press while the first is still in flight", () => {
+    // A rejection that never settles — the row stays pressable throughout.
+    const { onMarkRejected } = renderWithReject(
+      () => new Promise<void>(() => {}),
+    );
+
+    turnOnEverApplied();
+    const button = screen.getByRole("button", {
+      name: "Mark Applied Live Role at Acme rejected",
+    });
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(button).toBeDisabled();
+    expect(onMarkRejected).toHaveBeenCalledTimes(1);
   });
 });

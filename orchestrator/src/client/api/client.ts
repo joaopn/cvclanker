@@ -944,6 +944,25 @@ export async function skipJob(
   return getSingleJobFromActionResult(result, idOrIds);
 }
 
+/**
+ * Close ONE still-open application with an outcome. Goes through the bulk
+ * action rather than the two PATCHes the detail panel uses, because the action
+ * carries the server's own closable-status guard and stamps `closedAt` in the
+ * same write — a single-row caller that spells it out by hand is a copy of
+ * that rule free to drift from it.
+ */
+export async function markJobClosed(
+  id: string,
+  outcome: JobOutcome,
+): Promise<Job> {
+  const result = await runJobAction({
+    action: "mark_closed",
+    jobIds: [id],
+    options: { outcome },
+  });
+  return getSingleJobFromActionResult(result, id);
+}
+
 export async function runJobAction(
   input: JobActionRequest,
 ): Promise<JobActionResponse> {

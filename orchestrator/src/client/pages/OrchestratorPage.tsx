@@ -9,7 +9,10 @@ import {
   useResizableListPanel,
 } from "@client/hooks/useResizableListPanel";
 import { useSettings } from "@client/hooks/useSettings";
-import { useQuery } from "@tanstack/react-query";
+import { toast } from "@client/lib/toast";
+import { restoreJobStates, snapshotJob } from "@client/lib/undo";
+import type { JobListItem } from "@shared/types.js";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -313,6 +316,47 @@ export const OrchestratorPage: React.FC = () => {
   const commandBarJobs = commandBarData?.jobs ?? jobs;
 
   const undoController = useUndoController(loadJobs);
+  const queryClient = useQueryClient();
+
+  /**
+   * Close one still-open application as rejected from the ctrl+K search, so a
+   * batch of rejection emails can be worked through without opening a row per
+   * employer. The search box keeps the focus and the dialog stays open — see
+   * `JobCommandBar`, which owns that half.
+   *
+   * Undoable like every other triage move, and it invalidates the command
+   * bar's OWN unscoped list as well as reloading the tab's: that query is what
+   * the dialog is reading, and without the invalidation the row it just closed
+   * would sit there still offering the button for up to its 30s staleTime.
+   */
+  const handleCommandMarkRejected = useCallback(
+    async (job: JobListItem) => {
+      const snapshot = snapshotJob(job);
+      try {
+        await api.markJobClosed(job.id, "rejected");
+        undoController.pushUndo({
+          label: "Close application",
+          restore: async () => {
+            await restoreJobStates([snapshot]);
+          },
+        });
+        toast.success(`Rejected: ${job.title}`, {
+          action: { label: "Undo", onClick: () => undoController.undo() },
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to close application";
+        toast.error(message);
+      }
+      await loadJobs();
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.jobs.list({ view: "list" }),
+      });
+    },
+    [loadJobs, queryClient, undoController],
+  );
 
   const [companyPanelEmployer, setCompanyPanelEmployer] = useState<
     string | null
@@ -801,6 +845,7 @@ export const OrchestratorPage: React.FC = () => {
               <JobCommandBar
                 jobs={commandBarJobs}
                 onSelectJob={handleCommandSelectJob}
+                onMarkRejected={handleCommandMarkRejected}
                 open={isCommandBarOpen}
                 onOpenChange={setIsCommandBarOpen}
                 enabled={!isAnyModalOpenExcludingCommandBar}

@@ -31,11 +31,22 @@ import {
 } from "./JobCommandBar.utils";
 import { JobCommandBarLockBadge } from "./JobCommandBarLockBadge";
 import { JobRowContent } from "./JobRowContent";
+import { canMarkClosed } from "./jobActions";
 import { useVirtualizedList } from "./virtualizedList";
 
 interface JobCommandBarProps {
   jobs: JobListItem[];
   onSelectJob: (tab: FilterTab, jobId: string) => void;
+  /**
+   * Close a still-open application as rejected, straight from a result row.
+   * The parent owns the write and the refresh; this component owns only what
+   * the press does to the dialog (nothing — it stays open — and to the query,
+   * which clears).
+   *
+   * Optional, and the button renders only when it is passed: a mount that
+   * cannot service the press must not show one.
+   */
+  onMarkRejected?: (job: JobListItem) => void | Promise<void>;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   enabled?: boolean;
@@ -53,6 +64,11 @@ const FILTER_ROW_HINT_ID = "job-command-bar-filter-hint";
 // Matches the Manage filter bar's chips, which is also what buys the 28px
 // touch target, the focus ring and `cursor-pointer` from the Button primitive.
 const CHIP_CLASS = "h-7 px-2 text-xs font-medium";
+// The per-row Rejected button. Same 28px chip as the filter row's, in the
+// destructive palette the row's own closure-reason badge already wears — the
+// press writes exactly that badge onto the row.
+const REJECT_BUTTON_CLASS =
+  "h-7 shrink-0 px-2 text-xs font-medium text-rose-300 border border-[color:color-mix(in_oklab,var(--badge-base)_60%,var(--badge-bad))] bg-[color-mix(in_oklab,var(--badge-base)_85%,var(--badge-bad))] hover:bg-[color-mix(in_oklab,var(--badge-base)_75%,var(--badge-bad))] hover:text-rose-200";
 
 const lockDialogAccentClass: Record<CommandBarLock, string> = {
   ready:
@@ -125,9 +141,52 @@ const buildFallbackVirtualItems = (
   }));
 };
 
+/**
+ * The per-row "Rejected" press, offered on the still-open applications the
+ * Ever-applied filter turns up. Its own component so the handlers close over a
+ * `JobListItem` the caller has already narrowed, rather than over a row whose
+ * optional `job` TypeScript re-widens inside a callback.
+ */
+const RejectRowButton: React.FC<{
+  job: JobListItem;
+  pending: boolean;
+  onMarkRejected: (job: JobListItem) => void;
+}> = ({ job, pending, onMarkRejected }) => (
+  <Button
+    type="button"
+    size="sm"
+    variant="ghost"
+    className={REJECT_BUTTON_CLASS}
+    disabled={pending}
+    aria-label={`Mark ${job.title} at ${job.employer} rejected`}
+    // Same two guards the Ever-applied chip carries, for the same two reasons:
+    // the cancelled mousedown keeps the caret in the search box, and cmdk's
+    // root swallows every Enter before a button inside it can act on one. The
+    // third — stopping propagation — is this button's own: without it the
+    // press also selects the row it sits on, which navigates away and closes
+    // the dialog the feature exists to keep open.
+    onMouseDown={(event) => event.preventDefault()}
+    onClick={(event) => {
+      event.stopPropagation();
+      onMarkRejected(job);
+    }}
+    onKeyDown={(event) => {
+      // Enter only, like the chip: Space activates on keyup, which cmdk does
+      // not touch, so it arrives as an ordinary click and is already handled.
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      event.stopPropagation();
+      onMarkRejected(job);
+    }}
+  >
+    Rejected
+  </Button>
+);
+
 export const JobCommandBar: React.FC<JobCommandBarProps> = ({
   jobs,
   onSelectJob,
+  onMarkRejected,
   open,
   onOpenChange,
   enabled = true,
@@ -137,6 +196,13 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
   const [activeLock, setActiveLock] = useState<CommandBarLock | null>(null);
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
+  // Rows whose rejection is still in flight. The press clears the query but
+  // leaves the row on screen until the parent's refetch lands, so without this
+  // a second press sends a second `mark_closed` for a row the server will by
+  // then refuse — an error toast for an action that in fact worked.
+  const [rejectingJobIds, setRejectingJobIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const resultsScrollRef = useRef<HTMLDivElement | null>(null);
   const isOpenControlled = typeof open === "boolean";
   const isOpen = isOpenControlled ? open : internalOpen;
@@ -321,6 +387,33 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
     // silently scores every row to zero.
     applyLock("ever_applied");
   }, [activeLock, applyLock]);
+
+  /**
+   * Close one application as rejected without leaving the search.
+   *
+   * The query is cleared BEFORE the write, not after it: the whole point of
+   * keeping the dialog open is that the next company name can be typed
+   * immediately, and a clear that lands when the request resolves would wipe
+   * whatever had been typed in the meantime. The lock survives — the user is
+   * still working through the same list.
+   */
+  const markRejected = useCallback(
+    (job: JobListItem) => {
+      if (!onMarkRejected) return;
+      if (rejectingJobIds.has(job.id)) return;
+      setQuery("");
+      setRejectingJobIds((current) => new Set(current).add(job.id));
+      void Promise.resolve(onMarkRejected(job)).finally(() => {
+        setRejectingJobIds((current) => {
+          if (!current.has(job.id)) return current;
+          const next = new Set(current);
+          next.delete(job.id);
+          return next;
+        });
+      });
+    },
+    [onMarkRejected, rejectingJobIds],
+  );
 
   useEffect(() => {
     if (isOpen) return;
@@ -620,6 +713,15 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
                         job={row.job}
                         isSelected={row.id === activeRowId}
                       />
+                      {onMarkRejected &&
+                        activeLock === "ever_applied" &&
+                        canMarkClosed([row.job]) && (
+                          <RejectRowButton
+                            job={row.job}
+                            pending={rejectingJobIds.has(row.job.id)}
+                            onMarkRejected={markRejected}
+                          />
+                        )}
                     </div>
                   ) : null}
                 </div>

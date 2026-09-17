@@ -51,6 +51,19 @@ skip, done.
 - **Interviews** — jobs you're interviewing for appear in Live; you can generate
   [interview notes](tailoring.md#interview-qa) for them.
 
+## Searching across every tab
+
+**Ctrl/Cmd+K** opens a search over every job, whatever tab it sits on. Type a
+job title or company name; type `@` plus a filter name and Tab to narrow to one
+status. The **Ever applied** button narrows to every job you applied for however
+it ended — open applications, closed ones, and ones you later skipped.
+
+With that filter on, each still-open application (Live or Interviewing) carries
+a **Rejected** button. Pressing it closes that application as rejected without
+leaving the search: the window stays open and the search box empties, so a pile
+of rejection emails can be worked through one company name at a time. It is
+undoable like any other move.
+
 ## Filtering and bulk actions
 
 Facet filters narrow the list (by source, status, fit, and more). Bulk actions
