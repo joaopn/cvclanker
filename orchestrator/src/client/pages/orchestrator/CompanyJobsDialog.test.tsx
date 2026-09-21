@@ -1,6 +1,6 @@
 import type { JobListItem } from "@shared/types";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 const getJobs = vi.fn();
@@ -126,13 +126,35 @@ describe("CompanyJobsDialog", () => {
     expect(screen.getByText("Staff Engineer")).toBeInTheDocument();
   });
 
-  it("offers no tickbox when this company has nothing skipped", async () => {
+  // Gating this control on "there is something to hide" hid it from most of the
+  // companies reachable from the Inbox, and it was reported as missing. It
+  // renders wherever there are jobs now; the COUNT is what disappears.
+  it("offers the tickbox even when this company has nothing skipped", async () => {
     renderDialog([jobItem({ id: "j1", title: "Staff Engineer" })]);
 
     expect(await screen.findByText("Staff Engineer")).toBeInTheDocument();
+    // No count, because there is nothing to hide — "(0)" would read as a figure
+    // about the list rather than as the absence of one. Exact-name match, so a
+    // regression to "Hide skipped (0)" fails here.
+    const tickbox = screen.getByRole("checkbox", { name: "Hide skipped" });
+
+    // Ticking is a no-op rather than a control that empties the dialog. (Both
+    // assertions restate the filter test from the other side; the pin for the
+    // filter itself is the "hides skipped jobs" case.)
+    fireEvent.click(tickbox);
+    expect(screen.getByText("Staff Engineer")).toBeInTheDocument();
+    expect(screen.getByText("\u00b7 1 job")).toBeInTheDocument();
+  });
+
+  it("counts what it would hide in the label", async () => {
+    renderDialog([
+      jobItem({ id: "j1", title: "Staff Engineer" }),
+      jobItem({ id: "j2", title: "Retired Listing", status: "skipped" }),
+    ]);
+
     expect(
-      screen.queryByRole("checkbox", { name: /hide skipped/i }),
-    ).not.toBeInTheDocument();
+      await screen.findByRole("checkbox", { name: "Hide skipped (1)" }),
+    ).toBeInTheDocument();
   });
 
   it("counts the jobs on screen, not the ones it is hiding", async () => {
@@ -213,6 +235,78 @@ describe("CompanyJobsDialog", () => {
       await screen.findByRole("checkbox", { name: /hide skipped/i }),
     ).toBeChecked();
     expect(screen.queryByText("Retired Listing")).not.toBeInTheDocument();
+  });
+
+  it("offers no tickbox while the jobs are still loading", async () => {
+    getJobs.mockReturnValue(new Promise(() => {}));
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <CompanyJobsDialog
+          employer="Acme Corp"
+          onClose={vi.fn()}
+          onSelectJob={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Loading…")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("checkbox", { name: /hide skipped/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers no tickbox for a company with no jobs at all", async () => {
+    renderDialog([]);
+
+    expect(
+      await screen.findByText("No jobs from this company."),
+    ).toBeInTheDocument();
+    // A filter above an empty list would suggest the emptiness was its doing.
+    expect(
+      screen.queryByRole("checkbox", { name: /hide skipped/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  // The `query.isSuccess` term is load-bearing ONLY here: react-query keeps the
+  // previous `data` when a REFETCH fails, so `allJobs.length > 0` is still true
+  // and would put the tickbox above the "Couldn't load jobs" copy with no list.
+  it("offers no tickbox once a refetch has failed", async () => {
+    getJobs.mockResolvedValue({
+      jobs: [
+        jobItem({ id: "j1", title: "Staff Engineer" }),
+        jobItem({ id: "j2", title: "Retired Listing", status: "skipped" }),
+      ],
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <CompanyJobsDialog
+          employer="Acme Corp"
+          onClose={vi.fn()}
+          onSelectJob={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    expect(
+      await screen.findByRole("checkbox", { name: /hide skipped/i }),
+    ).toBeInTheDocument();
+
+    getJobs.mockRejectedValue(new Error("boom"));
+    await act(async () => {
+      await client.refetchQueries();
+    });
+
+    expect(
+      await screen.findByText("Couldn't load jobs for this company."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("checkbox", { name: /hide skipped/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("offers no blacklist action for a blank company name", () => {

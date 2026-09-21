@@ -3,10 +3,22 @@
  * across all statuses, with each job's fit classification, status + closure
  * reason. Clicking a row navigates to that job in Manage and closes the dialog.
  *
- * Skipped jobs can be hidden with a tickbox, offered only when there is at
- * least one to hide — which is exactly the condition under which the filter can
- * remove anything, so rows are never hidden with no control on screen to
- * restore them. The dialog outlives any single company (the `employer` prop is
+ * Skipped jobs can be hidden with a tickbox, rendered for any company that has
+ * jobs — INCLUDING one with nothing skipped, where it is a no-op. It was first
+ * gated on `skippedCount > 0`, which reads well as an invariant ("never hide a
+ * row without the control that hid it") and measured badly: on the dev database
+ * that put the control on a small minority of the companies reachable from the
+ * Inbox, and it was reported as missing. A control in a fixed place that
+ * sometimes does nothing beats one that is sometimes absent. The old invariant
+ * survives this a fortiori, since rows and control now share one gate.
+ *
+ * `allJobs.length > 0` keeps it off an EMPTY dialog, where a filter above "No
+ * jobs from this company." would suggest the emptiness was its doing. That
+ * costs no reachability: a company opened by clicking one of its rows has a job
+ * by construction. (An empty dialog is reachable — `CompanyNameButton` passes a
+ * trimmed name and the server compares untrimmed.)
+ *
+ * The dialog outlives any single company (the `employer` prop is
  * what opens it), so the choice is a working-session preference rather than a
  * per-company one: it survives closing the dialog and switching tabs, but
  * App.tsx unmounts this page on a route change off /jobs, which resets it.
@@ -77,7 +89,7 @@ export const CompanyJobsDialog = ({
               </span>
             )}
           </DialogTitle>
-          {query.isSuccess && skippedCount > 0 && (
+          {query.isSuccess && allJobs.length > 0 && (
             <div className="flex items-center justify-center gap-1.5 sm:justify-start">
               <Checkbox
                 id="company-jobs-hide-skipped"
@@ -88,7 +100,7 @@ export const CompanyJobsDialog = ({
                 htmlFor="company-jobs-hide-skipped"
                 className="cursor-pointer text-xs font-medium text-muted-foreground"
               >
-                Hide skipped ({skippedCount})
+                Hide skipped{skippedCount > 0 ? ` (${skippedCount})` : ""}
               </label>
             </div>
           )}
