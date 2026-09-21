@@ -1,6 +1,6 @@
 import type { JobListItem } from "@shared/types";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 const getJobs = vi.fn();
@@ -110,6 +110,109 @@ describe("CompanyJobsDialog", () => {
     // it would pass on the untrimmed name the keyword must never be stored as.
     const menu = await screen.findByTestId("blacklist-menu");
     expect(menu.textContent).toBe("Acme Corp");
+  });
+
+  it("hides skipped jobs once the tickbox is ticked", async () => {
+    renderDialog([
+      jobItem({ id: "j1", title: "Staff Engineer" }),
+      jobItem({ id: "j2", title: "Retired Listing", status: "skipped" }),
+    ]);
+
+    expect(await screen.findByText("Retired Listing")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /hide skipped/i }));
+
+    expect(screen.queryByText("Retired Listing")).not.toBeInTheDocument();
+    expect(screen.getByText("Staff Engineer")).toBeInTheDocument();
+  });
+
+  it("offers no tickbox when this company has nothing skipped", async () => {
+    renderDialog([jobItem({ id: "j1", title: "Staff Engineer" })]);
+
+    expect(await screen.findByText("Staff Engineer")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("checkbox", { name: /hide skipped/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("counts the jobs on screen, not the ones it is hiding", async () => {
+    renderDialog([
+      jobItem({ id: "j1", title: "Staff Engineer" }),
+      jobItem({ id: "j2", title: "Retired Listing", status: "skipped" }),
+      jobItem({ id: "j3", title: "Also Retired", status: "skipped" }),
+    ]);
+
+    expect(await screen.findByText("\u00b7 3 jobs")).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /hide skipped \(2\)/i }),
+    );
+
+    expect(screen.getByText("\u00b7 1 job")).toBeInTheDocument();
+    // Re-queried by the COUNTED name after the tick: the label keeps naming how
+    // many are hidden, which is the only thing that stops the header's new
+    // figure losing the total. Asserting it before the click would not.
+    expect(
+      screen.getByRole("checkbox", { name: /hide skipped \(2\)/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("says why the list is empty when every job here is skipped", async () => {
+    renderDialog([
+      jobItem({ id: "j1", title: "Retired Listing", status: "skipped" }),
+    ]);
+
+    fireEvent.click(
+      await screen.findByRole("checkbox", { name: /hide skipped/i }),
+    );
+
+    expect(
+      screen.getByText("Every job from this company is skipped."),
+    ).toBeInTheDocument();
+    // Not the never-had-any copy, which would be a lie - and the tickbox has to
+    // stay on screen or there is no way back to the rows it just hid.
+    expect(
+      screen.queryByText("No jobs from this company."),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /hide skipped/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the choice when the dialog moves to another company", async () => {
+    getJobs.mockResolvedValue({
+      jobs: [
+        jobItem({ id: "j1", title: "Staff Engineer" }),
+        jobItem({ id: "j2", title: "Retired Listing", status: "skipped" }),
+      ],
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    // One factory, so the second render varies only the `employer` argument —
+    // which is the whole claim under test.
+    const ui = (employer: string) => (
+      <QueryClientProvider client={client}>
+        <CompanyJobsDialog
+          employer={employer}
+          onClose={vi.fn()}
+          onSelectJob={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(ui("Acme Corp"));
+
+    fireEvent.click(
+      await screen.findByRole("checkbox", { name: /hide skipped/i }),
+    );
+    expect(screen.queryByText("Retired Listing")).not.toBeInTheDocument();
+
+    rerender(ui("Globex"));
+
+    expect(
+      await screen.findByRole("checkbox", { name: /hide skipped/i }),
+    ).toBeChecked();
+    expect(screen.queryByText("Retired Listing")).not.toBeInTheDocument();
   });
 
   it("offers no blacklist action for a blank company name", () => {

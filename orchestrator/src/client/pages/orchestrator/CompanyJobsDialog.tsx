@@ -2,12 +2,22 @@
  * Centered dialog listing every registered job from one company (employer),
  * across all statuses, with each job's fit classification, status + closure
  * reason. Clicking a row navigates to that job in Manage and closes the dialog.
+ *
+ * Skipped jobs can be hidden with a tickbox, offered only when there is at
+ * least one to hide — which is exactly the condition under which the filter can
+ * remove anything, so rows are never hidden with no control on screen to
+ * restore them. The dialog outlives any single company (the `employer` prop is
+ * what opens it), so the choice is a working-session preference rather than a
+ * per-company one: it survives closing the dialog and switching tabs, but
+ * App.tsx unmounts this page on a route change off /jobs, which resets it.
  */
 
 import * as api from "@client/api";
 import { queryKeys } from "@client/lib/queryKeys";
 import { tailoringFailureSummary } from "@shared/tailoring-failure";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +43,8 @@ export const CompanyJobsDialog = ({
   onClose,
   onSelectJob,
 }: CompanyJobsDialogProps) => {
+  const [hideSkipped, setHideSkipped] = useState(false);
+
   const query = useQuery({
     queryKey: employer
       ? queryKeys.jobs.byCompany(employer)
@@ -42,7 +54,11 @@ export const CompanyJobsDialog = ({
     staleTime: 15_000,
   });
 
-  const jobs = query.data?.jobs ?? [];
+  const allJobs = query.data?.jobs ?? [];
+  const skippedCount = allJobs.filter((job) => job.status === "skipped").length;
+  const jobs = hideSkipped
+    ? allJobs.filter((job) => job.status !== "skipped")
+    : allJobs;
 
   return (
     <Dialog
@@ -61,6 +77,21 @@ export const CompanyJobsDialog = ({
               </span>
             )}
           </DialogTitle>
+          {query.isSuccess && skippedCount > 0 && (
+            <div className="flex items-center justify-center gap-1.5 sm:justify-start">
+              <Checkbox
+                id="company-jobs-hide-skipped"
+                checked={hideSkipped}
+                onCheckedChange={(checked) => setHideSkipped(checked === true)}
+              />
+              <label
+                htmlFor="company-jobs-hide-skipped"
+                className="cursor-pointer text-xs font-medium text-muted-foreground"
+              >
+                Hide skipped ({skippedCount})
+              </label>
+            </div>
+          )}
         </DialogHeader>
 
         <div className="-mx-2 max-h-[60vh] overflow-y-auto px-2">
@@ -74,9 +105,14 @@ export const CompanyJobsDialog = ({
               Couldn't load jobs for this company.
             </p>
           )}
-          {query.isSuccess && jobs.length === 0 && (
+          {query.isSuccess && allJobs.length === 0 && (
             <p className="py-6 text-center text-sm text-muted-foreground">
               No jobs from this company.
+            </p>
+          )}
+          {query.isSuccess && allJobs.length > 0 && jobs.length === 0 && (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              Every job from this company is skipped.
             </p>
           )}
           {query.isSuccess && jobs.length > 0 && (
