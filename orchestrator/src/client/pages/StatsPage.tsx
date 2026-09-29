@@ -1,5 +1,5 @@
 /**
- * The Stats surface: four tabs of aggregates over the jobs table.
+ * The Stats surface: five tabs of aggregates over the jobs table.
  *
  * Each tab fetches only its own endpoint, so opening the page costs one
  * request and switching tabs costs one more.
@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { ApplicationsTab } from "./stats/ApplicationsTab";
 import { CompaniesTab } from "./stats/CompaniesTab";
 import { DiscoveryTab } from "./stats/DiscoveryTab";
+import { JobProfileTab } from "./stats/JobProfileTab";
 import { OverviewTab } from "./stats/OverviewTab";
 
 /** null = all time. */
@@ -54,7 +55,12 @@ const PanelState: React.FC<{
   return <>{children}</>;
 };
 
-type StatsTab = "overview" | "discovery" | "applications" | "companies";
+type StatsTab =
+  | "overview"
+  | "discovery"
+  | "jobProfile"
+  | "applications"
+  | "companies";
 
 export const StatsPage: React.FC = () => {
   const [days, setDays] = useState<number | null>(90);
@@ -79,6 +85,12 @@ export const StatsPage: React.FC = () => {
     queryFn: () => api.getStatsDiscovery(filters),
     // Only the visible tab fetches; the others stay cached once opened.
     enabled: tab === "discovery",
+  });
+  const terms = useQuery({
+    queryKey: queryKeys.stats.panel("terms", filters),
+    queryFn: () => api.getStatsSearchTerms(filters),
+    // Only the visible tab fetches; the others stay cached once opened.
+    enabled: tab === "jobProfile",
   });
   const applications = useQuery({
     queryKey: queryKeys.stats.panel("applications", filters),
@@ -166,6 +178,7 @@ export const StatsPage: React.FC = () => {
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="discovery">Discovery</TabsTrigger>
+            <TabsTrigger value="jobProfile">Job profile</TabsTrigger>
             <TabsTrigger value="applications">Applications</TabsTrigger>
             <TabsTrigger value="companies">Companies</TabsTrigger>
           </TabsList>
@@ -179,6 +192,12 @@ export const StatsPage: React.FC = () => {
           <TabsContent value="discovery">
             <PanelState isLoading={discovery.isLoading} error={discovery.error}>
               {discovery.data ? <DiscoveryTab data={discovery.data} /> : null}
+            </PanelState>
+          </TabsContent>
+
+          <TabsContent value="jobProfile">
+            <PanelState isLoading={terms.isLoading} error={terms.error}>
+              {terms.data ? <JobProfileTab data={terms.data} /> : null}
             </PanelState>
           </TabsContent>
 

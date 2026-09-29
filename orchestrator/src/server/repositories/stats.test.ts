@@ -20,6 +20,7 @@ type SeedJob = {
   employer?: string;
   source?: string;
   profileId?: string | null;
+  title?: string;
   repostCount?: number;
   liveClosed?: boolean | null;
   liveStatusCheckedAt?: string | null;
@@ -62,7 +63,7 @@ describe.sequential("stats repository", () => {
     db.insert(schema.jobs).values({
       id: job.id,
       source: job.source ?? "linkedin",
-      title: `Job ${job.id}`,
+      title: job.title ?? `Job ${job.id}`,
       employer: job.employer ?? "Acme",
       jobUrl: `https://example.com/${job.id}`,
       status: job.status ?? "discovered",
@@ -96,7 +97,9 @@ describe.sequential("stats repository", () => {
 
       const discovery = await stats.getDiscoveryStats(ALL_TIME);
       expect(discovery.sources).toEqual([]);
-      expect(discovery.termAttributionAvailable).toBe(false);
+
+      const terms = await stats.getSearchTermStats(ALL_TIME);
+      expect(terms).toEqual({ profiles: [], manualJobs: 0 });
     });
   });
 
@@ -557,6 +560,142 @@ describe.sequential("stats repository", () => {
       });
       expect(scoped.found).toBe(1);
       expect(scoped.goodFit).toBe(1);
+    });
+  });
+
+  describe("search terms", () => {
+    const addProfile = (id: string, name: string, searchTerms: string[]) =>
+      db.insert(schema.profiles).values({
+        id,
+        name,
+        configJson: { searchTerms },
+      });
+    const yieldOf = (jobs: number, scored = 0, goodFit = 0) => ({
+      jobs,
+      scored,
+      goodFit,
+    });
+
+    it("credits each job to every term its title names, from any board", async () => {
+      await addProfile("p1", "Data", ["Data Engineer", "Analytics", "Python"]);
+      await seed({
+        id: "a",
+        source: "linkedin",
+        profileId: "p1",
+        title: "Senior Data Engineer (Python)",
+        suitability: "great_fit",
+      });
+      await seed({
+        id: "b",
+        source: "apify:inst-1",
+        profileId: "p1",
+        title: "Engineer, Data Platform",
+        suitability: "bad_fit",
+      });
+      await seed({
+        id: "c",
+        source: "hiringcafe",
+        profileId: "p1",
+        title: "Office Manager",
+      });
+
+      const result = await stats.getSearchTermStats(ALL_TIME);
+      expect(result.profiles).toHaveLength(1);
+      const [profile] = result.profiles;
+      expect(profile).toMatchObject({
+        profileId: "p1",
+        name: "Data",
+        termsFrom: "profile",
+        ...yieldOf(3, 2, 1),
+      });
+      expect(profile.terms).toEqual([
+        { term: "Data Engineer", ...yieldOf(2, 2, 1) },
+        { term: "Python", ...yieldOf(1, 1, 1) },
+        // A configured term no title names is still listed, at zero.
+        { term: "Analytics", ...yieldOf(0) },
+      ]);
+      expect(profile.unmatched).toEqual(yieldOf(1));
+    });
+
+    it("lists a term once however the profile spells or orders its words", async () => {
+      await addProfile("p1", "Data", [
+        "Data Engineer",
+        "data  engineer ",
+        "Engineer Data",
+      ]);
+      await seed({ id: "a", profileId: "p1", title: "Data Engineer" });
+
+      const result = await stats.getSearchTermStats(ALL_TIME);
+      expect(result.profiles[0].terms).toEqual([
+        { term: "Data Engineer", ...yieldOf(1) },
+      ]);
+    });
+
+    it("matches unattributed and deleted-profile jobs against every profile's terms", async () => {
+      await addProfile("p1", "One", ["Alpha"]);
+      await addProfile("p2", "Two", ["Beta"]);
+      await seed({ id: "a", profileId: null, title: "Alpha Lead" });
+      await seed({ id: "b", profileId: "gone", title: "Beta Lead" });
+
+      const result = await stats.getSearchTermStats(ALL_TIME);
+      expect(result.profiles).toHaveLength(1);
+      expect(result.profiles[0]).toMatchObject({
+        profileId: null,
+        name: "Unattributed",
+        termsFrom: "all_profiles",
+        jobs: 2,
+      });
+      expect(result.profiles[0].terms).toEqual([
+        { term: "Alpha", ...yieldOf(1) },
+        { term: "Beta", ...yieldOf(1) },
+      ]);
+    });
+
+    it("leaves manual imports out and counts them", async () => {
+      await addProfile("p1", "One", ["Alpha"]);
+      await seed({ id: "a", source: "manual", title: "Alpha" });
+
+      const result = await stats.getSearchTermStats(ALL_TIME);
+      expect(result).toEqual({ profiles: [], manualJobs: 1 });
+    });
+
+    it("orders profiles by jobs with Unattributed last", async () => {
+      await addProfile("p1", "Small", ["Alpha"]);
+      await addProfile("p2", "Big", ["Alpha"]);
+      await seed({ id: "a", profileId: "p1" });
+      await seed({ id: "b", profileId: "p2" });
+      await seed({ id: "c", profileId: "p2" });
+      for (const id of ["u1", "u2", "u3"]) await seed({ id, profileId: null });
+
+      const result = await stats.getSearchTermStats(ALL_TIME);
+      expect(result.profiles.map((row) => row.name)).toEqual([
+        "Big",
+        "Small",
+        "Unattributed",
+      ]);
+    });
+
+    it("scopes to the selected profile and the range", async () => {
+      await addProfile("p1", "One", ["Alpha"]);
+      await addProfile("p2", "Two", ["Alpha"]);
+      await seed({ id: "a", profileId: "p1", title: "Alpha" });
+      await seed({ id: "b", profileId: "p2", title: "Alpha" });
+      await seed({ id: "u", profileId: null, title: "Alpha" });
+      await seed({
+        id: "old",
+        profileId: "p1",
+        title: "Alpha",
+        discoveredAt: new Date(Date.now() - 40 * 86_400_000).toISOString(),
+      });
+
+      const result = await stats.getSearchTermStats({
+        sinceDays: 30,
+        profileId: "p1",
+      });
+      expect(result.profiles.map((row) => row.profileId)).toEqual(["p1"]);
+      expect(result.profiles[0].terms).toEqual([
+        { term: "Alpha", ...yieldOf(1) },
+      ]);
     });
   });
 

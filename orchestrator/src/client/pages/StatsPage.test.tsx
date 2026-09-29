@@ -4,6 +4,7 @@ import type {
   StatsCompanies,
   StatsDiscovery,
   StatsOverview,
+  StatsSearchTerms,
 } from "@shared/types";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -13,6 +14,7 @@ vi.mock("@client/api", () => ({
   getProfiles: vi.fn(),
   getStatsOverview: vi.fn(),
   getStatsDiscovery: vi.fn(),
+  getStatsSearchTerms: vi.fn(),
   getStatsApplications: vi.fn(),
   getStatsCompanies: vi.fn(),
   getActiveUserProfile: vi.fn().mockResolvedValue({ name: "Default" }),
@@ -24,6 +26,7 @@ import {
   getStatsCompanies,
   getStatsDiscovery,
   getStatsOverview,
+  getStatsSearchTerms,
 } from "@client/api";
 import { StatsPage } from "./StatsPage";
 
@@ -163,8 +166,36 @@ const discovery: StatsDiscovery = {
       goodFit: 117,
     },
   ],
-  termAttributionAvailable: false,
   perRunYieldAvailable: false,
+};
+
+const terms: StatsSearchTerms = {
+  profiles: [
+    {
+      profileId: "p1",
+      name: "Data",
+      termsFrom: "profile",
+      jobs: 120,
+      scored: 100,
+      goodFit: 30,
+      terms: [
+        { term: "Data Engineer", jobs: 100, scored: 80, goodFit: 30 },
+        { term: "Analytics", jobs: 0, scored: 0, goodFit: 0 },
+      ],
+      unmatched: { jobs: 20, scored: 20, goodFit: 0 },
+    },
+    {
+      profileId: null,
+      name: "Unattributed",
+      termsFrom: "all_profiles",
+      jobs: 5,
+      scored: 0,
+      goodFit: 0,
+      terms: [{ term: "Data Engineer", jobs: 5, scored: 0, goodFit: 0 }],
+      unmatched: { jobs: 0, scored: 0, goodFit: 0 },
+    },
+  ],
+  manualJobs: 5,
 };
 
 const applications: StatsApplications = {
@@ -230,6 +261,7 @@ describe("StatsPage", () => {
     } as Awaited<ReturnType<typeof getProfiles>>);
     vi.mocked(getStatsOverview).mockResolvedValue(overview);
     vi.mocked(getStatsDiscovery).mockResolvedValue(discovery);
+    vi.mocked(getStatsSearchTerms).mockResolvedValue(terms);
     vi.mocked(getStatsApplications).mockResolvedValue(applications);
     vi.mocked(getStatsCompanies).mockResolvedValue(companies);
   });
@@ -275,6 +307,7 @@ describe("StatsPage", () => {
 
     expect(getStatsOverview).toHaveBeenCalledTimes(1);
     expect(getStatsDiscovery).not.toHaveBeenCalled();
+    expect(getStatsSearchTerms).not.toHaveBeenCalled();
     expect(getStatsApplications).not.toHaveBeenCalled();
     expect(getStatsCompanies).not.toHaveBeenCalled();
   });
@@ -317,18 +350,81 @@ describe("StatsPage", () => {
     });
   });
 
-  it("explains why search-term statistics are absent instead of showing an empty table", async () => {
+  it("keeps only the per-run yield note on the Discovery tab", async () => {
     renderPage();
     await screen.findByText("Jobs found");
 
     fireEvent.mouseDown(screen.getByRole("tab", { name: "Discovery" }));
 
     expect(
-      await screen.findByText(
-        /No job records which of a profile's search terms/,
-      ),
+      await screen.findByText(/counters live in memory/),
     ).toBeInTheDocument();
-    expect(screen.getByText(/counters live in memory/)).toBeInTheDocument();
+    expect(screen.queryByText("Search terms")).not.toBeInTheDocument();
+  });
+
+  describe("Job profile tab", () => {
+    async function openTab() {
+      renderPage();
+      await screen.findByText("Jobs found");
+      fireEvent.mouseDown(screen.getByRole("tab", { name: "Job profile" }));
+      await screen.findByText("Data");
+    }
+
+    it("lists each profile's terms with the fit rate over scored jobs", async () => {
+      await openTab();
+      expect(getStatsSearchTerms).toHaveBeenCalledTimes(1);
+      const [row] = screen
+        .getAllByText("Data Engineer")
+        .map((el) => el.closest("tr"));
+      // 30 good of 80 SCORED, not of 100 found.
+      expect(row?.textContent).toContain("37.5%");
+    });
+
+    it("marks a term no title names, with a dash for its rate", async () => {
+      await openTab();
+      const row = screen.getByText("Analytics").closest("tr");
+      expect(row?.textContent).toContain("no title names it");
+      expect(row?.textContent).toContain("—");
+      expect(row?.textContent).not.toContain("0.0%");
+    });
+
+    it("shows what the boards returned that names no term", async () => {
+      await openTab();
+      const [row] = screen
+        .getAllByText("No term in title")
+        .map((el) => el.closest("tr"));
+      expect(row?.querySelector("td")?.textContent).toBe("20");
+      // 0 good of 20 scored is a measured zero, not a dash.
+      expect(row?.textContent).toContain("0.0%");
+    });
+
+    it("says when a profile's terms are borrowed from every profile", async () => {
+      await openTab();
+      expect(
+        screen.getAllByText(/matched against every current profile's terms/),
+      ).toHaveLength(1);
+    });
+
+    it("states the manual imports it leaves out", async () => {
+      await openTab();
+      expect(
+        screen.getByText(/Not shown: 5 manual imports/),
+      ).toBeInTheDocument();
+    });
+
+    it("explains an empty tab instead of rendering nothing", async () => {
+      vi.mocked(getStatsSearchTerms).mockResolvedValue({
+        profiles: [],
+        manualJobs: 0,
+      });
+      renderPage();
+      await screen.findByText("Jobs found");
+      fireEvent.mouseDown(screen.getByRole("tab", { name: "Job profile" }));
+
+      expect(
+        await screen.findByText(/No jobs found by a search in this range/),
+      ).toBeInTheDocument();
+    });
   });
 
   it("shows a dash, not a zero, for a board with nothing scored", async () => {

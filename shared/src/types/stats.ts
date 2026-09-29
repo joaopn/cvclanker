@@ -1,10 +1,10 @@
 /**
  * Statistics surface: aggregates computed from the `jobs` table.
  *
- * Every number here is derived from columns that already exist. Two things the
- * schema cannot express are surfaced as explicit flags rather than guessed at:
- * which search term found a job (no extractor reports it), and per-run scrape
- * yield (the funnel counters live in the in-memory progress store).
+ * Every number here is derived from columns that already exist (the jobs
+ * table, plus profile names and search terms). Per-run scrape
+ * yield cannot be, and is surfaced as an explicit flag rather than guessed at
+ * (the funnel counters live in the in-memory progress store).
  */
 
 import type { SuitabilityCategory } from "./jobs";
@@ -144,12 +144,6 @@ export interface StatsDiscovery {
   sources: StatsSourceRow[];
   profiles: StatsProfileRow[];
   /**
-   * False, and not a TODO: extractors are handed the whole search-terms array
-   * and return a flat job list, and four of them OR every term into a single
-   * query, so no job can currently name the term that found it.
-   */
-  termAttributionAvailable: boolean;
-  /**
    * False: per-source scrape counters (scraped / filtered / unmappable) live
    * in the in-memory progress store and do not survive a restart.
    */
@@ -251,4 +245,48 @@ export interface StatsCompanies {
    */
   liveStatusChecked: number;
   totalJobs: number;
+}
+
+/** Jobs, and how many of them were scored and rated good fit or better. */
+export interface StatsYield {
+  jobs: number;
+  /** The denominator for every fit rate on the page. */
+  scored: number;
+  goodFit: number;
+}
+
+/** One search term's yield inside one Search Profile. */
+export interface StatsTermRow extends StatsYield {
+  term: string;
+}
+
+export interface StatsTermProfile extends StatsYield {
+  /**
+   * null = the Unattributed bucket: jobs with no recorded profile, and jobs
+   * whose recorded profile has since been deleted.
+   */
+  profileId: string | null;
+  name: string;
+  /**
+   * Where the terms came from: the profile's own list, or — for unattributed
+   * rows and rows of a deleted profile, whose terms are unknown — the union of
+   * every current profile's terms.
+   */
+  termsFrom: "profile" | "all_profiles";
+  /**
+   * One row per term. A job whose title names two terms counts under both, so
+   * these rows do not sum to the profile's total.
+   */
+  terms: StatsTermRow[];
+  /** Jobs whose title names none of the terms. */
+  unmatched: StatsYield;
+}
+
+export interface StatsSearchTerms {
+  profiles: StatsTermProfile[];
+  /**
+   * Manual imports in range. Left out of every table — no search found them —
+   * and counted so the omission is stated rather than silent.
+   */
+  manualJobs: number;
 }

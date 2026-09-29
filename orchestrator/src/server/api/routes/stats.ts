@@ -13,6 +13,7 @@ import {
   getCompanyStats,
   getDiscoveryStats,
   getOverviewStats,
+  getSearchTermStats,
 } from "@server/repositories/stats";
 import type { StatsQuery } from "@shared/types";
 import { type Request, type Response, Router } from "express";
@@ -80,5 +81,12 @@ statsRouter.get(
   "/companies",
   asyncRoute(async (req: Request, res: Response) => {
     ok(res, await getCompanyStats(await parseQuery(req)));
+  }),
+);
+
+statsRouter.get(
+  "/terms",
+  asyncRoute(async (req: Request, res: Response) => {
+    ok(res, await getSearchTermStats(await parseQuery(req)));
   }),
 );

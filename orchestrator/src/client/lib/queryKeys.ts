@@ -8,7 +8,7 @@ export const queryKeys = {
      * entry rather than a refetch that briefly renders the previous answer.
      */
     panel: (
-      panel: "overview" | "discovery" | "applications" | "companies",
+      panel: "overview" | "discovery" | "terms" | "applications" | "companies",
       filters: { days: number | null; profileId: string | null },
     ) => [...queryKeys.stats.all, panel, filters] as const,
   },

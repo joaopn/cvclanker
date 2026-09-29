@@ -24,12 +24,13 @@ describe.sequential("GET /api/stats", () => {
     status?: string;
     appliedAt?: string | null;
     employer?: string;
+    title?: string;
   }) {
     const { db, schema } = await import("@server/db/index");
     await db.insert(schema.jobs).values({
       id: job.id,
       source: "linkedin",
-      title: `Job ${job.id}`,
+      title: job.title ?? `Job ${job.id}`,
       employer: job.employer ?? "Acme",
       jobUrl: `https://example.com/${job.id}`,
       status: (job.status ?? "discovered") as "discovered",
@@ -62,18 +63,36 @@ describe.sequential("GET /api/stats", () => {
 
   it("serves each tab's endpoint", async () => {
     await seedJob({ id: "a" });
-    for (const path of ["discovery", "applications", "companies"]) {
+    for (const path of ["discovery", "terms", "applications", "companies"]) {
       const res = await fetch(`${baseUrl}/api/stats/${path}`);
       expect(res.status).toBe(200);
       expect((await res.json()).ok).toBe(true);
     }
   });
 
-  it("reports that term attribution and per-run yield are unavailable", async () => {
+  it("reports that per-run yield is unavailable", async () => {
     const res = await fetch(`${baseUrl}/api/stats/discovery`);
     const body = await res.json();
-    expect(body.data.termAttributionAvailable).toBe(false);
     expect(body.data.perRunYieldAvailable).toBe(false);
+  });
+
+  it("serves per-term yield from any board's titles", async () => {
+    const { db, schema } = await import("@server/db/index");
+    await db.insert(schema.profiles).values({
+      id: "p1",
+      name: "Data",
+      configJson: { searchTerms: ["Data Engineer"] },
+    });
+    await seedJob({ id: "a", profileId: "p1", title: "Data Engineer" });
+    await seedJob({ id: "b", profileId: "p1", title: "Chef" });
+
+    const res = await fetch(`${baseUrl}/api/stats/terms?profileId=p1`);
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.data.profiles[0].terms).toEqual([
+      { term: "Data Engineer", jobs: 1, scored: 0, goodFit: 0 },
+    ]);
+    expect(body.data.profiles[0].unmatched.jobs).toBe(1);
   });
 
   it("applies the profile filter", async () => {

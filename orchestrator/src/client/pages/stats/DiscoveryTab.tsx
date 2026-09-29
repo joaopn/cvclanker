@@ -162,25 +162,6 @@ export const DiscoveryTab: React.FC<{ data: StatsDiscovery }> = ({ data }) => {
         </Panel>
 
         <div className="space-y-3">
-          <Panel title="Search terms">
-            {data.termAttributionAvailable ? (
-              <EmptyNote>
-                Term statistics are available but this panel has not been built
-                yet.
-              </EmptyNote>
-            ) : (
-              <EmptyNote>
-                Not available. No job records which of a profile's search terms
-                found it: extractors are handed the whole list and return a flat
-                set of jobs, and four of them combine every term into a single
-                query, so for those the answer cannot exist even in principle.
-                Reporting it would mean stamping the term at import for the
-                boards that do search one at a time, and showing nothing for the
-                rest.
-              </EmptyNote>
-            )}
-          </Panel>
-
           <Panel title="Yield per run">
             {data.perRunYieldAvailable ? (
               <EmptyNote>

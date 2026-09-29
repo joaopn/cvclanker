@@ -52,6 +52,7 @@ import type {
   StatsCompanies,
   StatsDiscovery,
   StatsOverview,
+  StatsSearchTerms,
   StoredUserProfile,
   SuitabilityCategory,
   UpdateJobNoteInput,
@@ -1166,6 +1167,12 @@ export async function getStatsDiscovery(
   filters?: StatsFilters,
 ): Promise<StatsDiscovery> {
   return fetchApi<StatsDiscovery>(`/stats/discovery${statsQuery(filters)}`);
+}
+
+export async function getStatsSearchTerms(
+  filters?: StatsFilters,
+): Promise<StatsSearchTerms> {
+  return fetchApi<StatsSearchTerms>(`/stats/terms${statsQuery(filters)}`);
 }
 
 export async function getStatsApplications(

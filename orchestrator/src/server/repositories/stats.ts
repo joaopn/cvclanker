@@ -1,7 +1,8 @@
 /**
  * Aggregates for the Stats surface.
  *
- * Every query here reads the `jobs` table only. Three traps govern the SQL and
+ * The aggregates are over the `jobs` table; `profiles` supplies names and search
+ * terms and provider instances supply source labels. Three traps govern the SQL and
  * are load-bearing rather than defensive habit:
  *
  * 1. **Both sides of a date comparison go through `datetime()`.** The date
@@ -17,7 +18,12 @@
  *    duration between them needs `datetime(closed_at, 'unixepoch')`.
  */
 
-import { isExtractorSourceId, sourceLabel } from "@shared/extractors";
+import {
+  EXTRACTOR_SOURCE_METADATA,
+  isExtractorSourceId,
+  sourceLabel,
+} from "@shared/extractors";
+import { titleNamesTerm, titleWords } from "@shared/term-title-match";
 import type {
   StatsActivityDay,
   StatsApplications,
@@ -30,10 +36,17 @@ import type {
   StatsProfileRow,
   StatsQuery,
   StatsReplyTimeBucket,
+  StatsSearchTerms,
   StatsSourceRow,
+  StatsTermProfile,
+  StatsYield,
   SuitabilityCategory,
 } from "@shared/types";
-import { GHOSTED_AFTER_DAYS, REPLY_TIME_BUCKETS } from "@shared/types";
+import {
+  GHOSTED_AFTER_DAYS,
+  parseProfileConfig,
+  REPLY_TIME_BUCKETS,
+} from "@shared/types";
 import { type AnyColumn, and, type SQL, sql } from "drizzle-orm";
 import { db, schema } from "../db/index";
 import {
@@ -66,7 +79,7 @@ function withinRange(column: AnyColumn, sinceDays: number) {
 }
 
 /**
- * Filters shared by the overview, discovery and companies endpoints, which are
+ * Filters shared by the overview, discovery, terms and companies endpoints, which are
  * all about jobs as they were FOUND.
  */
 function discoveryFilters(query: StatsQuery): SQL | undefined {
@@ -265,6 +278,148 @@ async function getActivity(
     .map((row) => ({ date: row.date, count: row.count }));
 }
 
+/**
+ * Per-profile, per-search-term yield, crediting a job to every term its title
+ * names (see `@shared/term-title-match` for the rule and why it is content
+ * matching rather than recorded provenance).
+ *
+ * Reads one narrow row per job and matches in JS: the match is word-set
+ * containment with accent folding, which SQLite cannot express.
+ */
+export async function getSearchTermStats(
+  query: StatsQuery,
+): Promise<StatsSearchTerms> {
+  const where = discoveryFilters(query);
+  const rowQuery = db
+    .select({
+      profileId: jobs.profileId,
+      source: jobs.source,
+      title: jobs.title,
+      scored: sql<number>`case when ${jobs.suitabilityCategory} is not null then 1 else 0 end`,
+      goodFit: sql<number>`case when ${goodFitSql} then 1 else 0 end`,
+    })
+    .from(jobs);
+  const rows = where ? await rowQuery.where(where) : await rowQuery;
+
+  const allProfiles = (
+    await db
+      .select({
+        id: profiles.id,
+        name: profiles.name,
+        configJson: profiles.configJson,
+      })
+      .from(profiles)
+  ).map((row) => ({
+    id: row.id,
+    name: row.name,
+    terms: parseProfileConfig(row.configJson).searchTerms,
+  }));
+  const profileById = new Map(allProfiles.map((row) => [row.id, row]));
+
+  /**
+   * A term list with each term's words resolved once. Terms are deduplicated
+   * on their word SET — the same thing the match compares — so "Data
+   * Engineer", "data  engineer" and "Engineer Data" are one row.
+   */
+  const prepareTerms = (terms: string[]) => {
+    const byKey = new Map<string, { term: string; words: string[] }>();
+    for (const raw of terms) {
+      const term = raw.trim();
+      const words = titleWords(term);
+      const key = [...new Set(words)].sort().join(" ");
+      if (!byKey.has(key)) byKey.set(key, { term, words });
+    }
+    return [...byKey.values()];
+  };
+  const everyTerm = prepareTerms(allProfiles.flatMap((row) => row.terms));
+
+  const isManual = (source: string) =>
+    isExtractorSourceId(source) &&
+    EXTRACTOR_SOURCE_METADATA[source].category === "manual";
+
+  type Bucket = {
+    profileId: string | null;
+    name: string;
+    termsFrom: StatsTermProfile["termsFrom"];
+    terms: Array<{ term: string; words: string[]; tally: StatsYield }>;
+    total: StatsYield;
+    unmatched: StatsYield;
+  };
+  const emptyYield = (): StatsYield => ({ jobs: 0, scored: 0, goodFit: 0 });
+  const add = (
+    target: StatsYield,
+    row: { scored: number; goodFit: number },
+  ) => {
+    target.jobs += 1;
+    target.scored += row.scored;
+    target.goodFit += row.goodFit;
+  };
+
+  // A null profile_id and one naming a deleted profile share one bucket: both
+  // are jobs whose profile's search terms can no longer be read.
+  const UNKNOWN = null;
+  const buckets = new Map<string | null, Bucket>();
+  const bucketFor = (profileId: string | null): Bucket => {
+    const profile = profileId === null ? undefined : profileById.get(profileId);
+    const key = profile ? profile.id : UNKNOWN;
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = {
+        profileId: key,
+        name: profile ? profile.name : "Unattributed",
+        termsFrom: profile ? "profile" : "all_profiles",
+        terms: (profile ? prepareTerms(profile.terms) : everyTerm).map(
+          (term) => ({ ...term, tally: emptyYield() }),
+        ),
+        total: emptyYield(),
+        unmatched: emptyYield(),
+      };
+      buckets.set(key, bucket);
+    }
+    return bucket;
+  };
+
+  let manualJobs = 0;
+  for (const row of rows) {
+    if (isManual(row.source)) {
+      manualJobs += 1;
+      continue;
+    }
+    const bucket = bucketFor(row.profileId);
+    add(bucket.total, row);
+    const words = new Set(titleWords(row.title));
+    let matched = false;
+    for (const term of bucket.terms) {
+      if (titleNamesTerm(words, term.words)) {
+        add(term.tally, row);
+        matched = true;
+      }
+    }
+    if (!matched) add(bucket.unmatched, row);
+  }
+
+  const profileRows: StatsTermProfile[] = [...buckets.values()]
+    .map((bucket) => ({
+      profileId: bucket.profileId,
+      name: bucket.name,
+      termsFrom: bucket.termsFrom,
+      ...bucket.total,
+      terms: bucket.terms
+        .map((term) => ({ term: term.term, ...term.tally }))
+        .sort((a, b) => b.jobs - a.jobs || a.term.localeCompare(b.term)),
+      unmatched: bucket.unmatched,
+    }))
+    // Unattributed last: its terms are borrowed, so it is the least telling.
+    .sort(
+      (a, b) =>
+        Number(a.profileId === null) - Number(b.profileId === null) ||
+        b.jobs - a.jobs ||
+        a.name.localeCompare(b.name),
+    );
+
+  return { profiles: profileRows, manualJobs };
+}
+
 /** Per-source and per-profile yield. */
 export async function getDiscoveryStats(
   query: StatsQuery,
@@ -352,7 +507,6 @@ export async function getDiscoveryStats(
   return {
     sources,
     profiles: profileStats,
-    termAttributionAvailable: false,
     perRunYieldAvailable: false,
   };
 }
