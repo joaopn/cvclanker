@@ -207,6 +207,20 @@ const terms: StatsSearchTerms = {
       unmatched: { jobs: 0, scored: 0, goodFit: 0, applied: 0 },
     },
   ],
+  sources: [
+    {
+      source: "apify:inst-1",
+      label: "LinkedIn (curious_coder)",
+      named: { jobs: 16, scored: 16, goodFit: 4, applied: 1 },
+      notNamed: { jobs: 84, scored: 80, goodFit: 3, applied: 0 },
+    },
+    {
+      source: "hiringcafe",
+      label: "Hiring Cafe",
+      named: { jobs: 5, scored: 0, goodFit: 0, applied: 0 },
+      notNamed: { jobs: 0, scored: 0, goodFit: 0, applied: 0 },
+    },
+  ],
   manualJobs: 5,
 };
 
@@ -395,9 +409,18 @@ describe("StatsPage", () => {
       expect(cells).toEqual(["80", "30", "8", "10.0%", "37.5%"]);
     });
 
-    /** Term order of the first profile's table. */
+    /** The table inside the panel headed `title`. */
+    function tableIn(title: string) {
+      const table = screen
+        .getByRole("heading", { name: title })
+        .parentElement?.parentElement?.querySelector("table");
+      if (!table) throw new Error(`no table under ${title}`);
+      return table;
+    }
+
+    /** Term order of the Data profile's table. */
     function firstTableTerms() {
-      const [table] = screen.getAllByRole("table");
+      const table = tableIn("Data");
       return [...table.querySelectorAll("tbody th")].map(
         (cell) => cell.firstChild?.textContent,
       );
@@ -474,9 +497,27 @@ describe("StatsPage", () => {
       expect(row?.textContent).toContain("0.0%");
     });
 
+    it("shows each board's share of titles naming a term and the fit rate either side", async () => {
+      await openTab();
+      const cells = (label: string) =>
+        [
+          ...(screen.getByText(label).closest("tr")?.querySelectorAll("td") ??
+            []),
+        ].map((cell) => cell.textContent);
+      // 16 of 100 name a term; 4 of 16 scored vs 3 of 80 scored are good.
+      expect(cells("LinkedIn (curious_coder)")).toEqual([
+        "100",
+        "16.0%",
+        "25.0%",
+        "3.8%",
+      ]);
+      // Nothing scored on either side: dashes, not measured zeros.
+      expect(cells("Hiring Cafe")).toEqual(["5", "100.0%", "—", "—"]);
+    });
+
     it("tells a term with unscored matches apart from one with none", async () => {
       await openTab();
-      const unattributed = screen.getAllByRole("table")[1];
+      const unattributed = tableIn("Unattributed");
       expect(unattributed.textContent).toContain("5 jobs, none scored");
       expect(unattributed.textContent).not.toContain("no title names it");
     });
@@ -498,6 +539,7 @@ describe("StatsPage", () => {
     it("explains an empty tab instead of rendering nothing", async () => {
       vi.mocked(getStatsSearchTerms).mockResolvedValue({
         profiles: [],
+        sources: [],
         manualJobs: 0,
       });
       renderPage();
@@ -507,6 +549,7 @@ describe("StatsPage", () => {
       expect(
         await screen.findByText(/No jobs found by a search in this range/),
       ).toBeInTheDocument();
+      expect(screen.queryByText("By source")).not.toBeInTheDocument();
     });
   });
 

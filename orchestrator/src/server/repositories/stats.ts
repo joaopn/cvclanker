@@ -39,6 +39,7 @@ import type {
   StatsSearchTerms,
   StatsSourceRow,
   StatsTermProfile,
+  StatsTermSourceRow,
   StatsYield,
   SuitabilityCategory,
 } from "@shared/types";
@@ -56,6 +57,29 @@ import {
 import { getAllProviderInstances } from "./provider-instances";
 
 const { jobs, profiles } = schema;
+
+/**
+ * Labels `jobs.source` values by BOARD. Extractor ids go through sourceLabel:
+ * resolveSourceDisplayLabel answers "jobspy" for linkedin, indeed AND
+ * glassdoor alike, which is right for a per-row badge and useless in an
+ * aggregate table. Provider instances still go through it, since their label
+ * is the user's own and lives on the instance row.
+ */
+async function labelSources(
+  sources: readonly string[],
+): Promise<Map<string, string>> {
+  const providerInstances = sources.some(isProviderInstanceSource)
+    ? await getAllProviderInstances()
+    : [];
+  return new Map(
+    sources.map((source) => [
+      source,
+      isExtractorSourceId(source)
+        ? sourceLabel(source)
+        : resolveSourceDisplayLabel({ source, providerInstances }),
+    ]),
+  );
+}
 
 /**
  * Row caps for the two list-shaped payloads. Both are display limits on a
@@ -386,6 +410,10 @@ export async function getSearchTermStats(
     return bucket;
   };
 
+  const bySource = new Map<
+    string,
+    { named: StatsYield; notNamed: StatsYield }
+  >();
   let manualJobs = 0;
   for (const row of rows) {
     if (isManual(row.source)) {
@@ -403,7 +431,27 @@ export async function getSearchTermStats(
       }
     }
     if (!matched) add(bucket.unmatched, row);
+
+    let source = bySource.get(row.source);
+    if (!source) {
+      source = { named: emptyYield(), notNamed: emptyYield() };
+      bySource.set(row.source, source);
+    }
+    add(matched ? source.named : source.notNamed, row);
   }
+
+  const labels = await labelSources([...bySource.keys()]);
+  const sourceRows: StatsTermSourceRow[] = [...bySource]
+    .map(([source, split]) => ({
+      source,
+      label: labels.get(source) ?? source,
+      ...split,
+    }))
+    .sort(
+      (a, b) =>
+        b.named.jobs + b.notNamed.jobs - (a.named.jobs + a.notNamed.jobs) ||
+        a.label.localeCompare(b.label),
+    );
 
   const profileRows: StatsTermProfile[] = [...buckets.values()]
     .map((bucket) => ({
@@ -425,7 +473,7 @@ export async function getSearchTermStats(
         a.name.localeCompare(b.name),
     );
 
-  return { profiles: profileRows, manualJobs };
+  return { profiles: profileRows, sources: sourceRows, manualJobs };
 }
 
 /** Per-source and per-profile yield. */
@@ -447,27 +495,11 @@ export async function getDiscoveryStats(
 
   // `jobs.source` is unconstrained free text (no enum, no CHECK), and an Apify
   // row carries the synthetic `apify:<instanceId>`.
-  //
-  // Extractor ids are labelled by BOARD, not by scraper: resolveSourceDisplayLabel
-  // answers "jobspy" for linkedin, indeed AND glassdoor alike, which is right for
-  // a per-row badge and useless in an aggregate table — it would render three
-  // separate rows all called jobspy. Provider instances still go through it, since
-  // their label is the user's own and lives on the instance row.
-  const needsInstances = sourceRows.some((row) =>
-    isProviderInstanceSource(row.source),
-  );
-  const providerInstances = needsInstances
-    ? await getAllProviderInstances()
-    : [];
+  const labels = await labelSources(sourceRows.map((row) => row.source));
   const sources: StatsSourceRow[] = sourceRows
     .map((row) => ({
       source: row.source,
-      label: isExtractorSourceId(row.source)
-        ? sourceLabel(row.source)
-        : resolveSourceDisplayLabel({
-            source: row.source,
-            providerInstances,
-          }),
+      label: labels.get(row.source) ?? row.source,
       jobs: row.jobs,
       scored: row.scored,
       goodFit: row.goodFit,

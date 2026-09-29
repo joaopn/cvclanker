@@ -99,7 +99,7 @@ describe.sequential("stats repository", () => {
       expect(discovery.sources).toEqual([]);
 
       const terms = await stats.getSearchTermStats(ALL_TIME);
-      expect(terms).toEqual({ profiles: [], manualJobs: 0 });
+      expect(terms).toEqual({ profiles: [], sources: [], manualJobs: 0 });
     });
   });
 
@@ -629,6 +629,56 @@ describe.sequential("stats repository", () => {
       expect(profile.unmatched).toEqual(yieldOf(1));
     });
 
+    it("splits each board's jobs by whether the title names a term of the job's profile", async () => {
+      await addProfile("p1", "One", ["Data Engineer"]);
+      await addProfile("p2", "Two", ["Chef"]);
+      await seed({
+        id: "a",
+        source: "linkedin",
+        profileId: "p1",
+        title: "Senior Data Engineer",
+        suitability: "great_fit",
+      });
+      await seed({
+        id: "b",
+        source: "linkedin",
+        profileId: "p1",
+        title: "Platform Engineer",
+        suitability: "bad_fit",
+      });
+      // Names a term, but of ANOTHER profile: not named for p1.
+      await seed({
+        id: "c",
+        source: "linkedin",
+        profileId: "p1",
+        title: "Chef",
+      });
+      // Unattributed: judged against every profile's terms.
+      await seed({
+        id: "d",
+        source: "hiringcafe",
+        profileId: null,
+        title: "Chef",
+      });
+      await seed({ id: "m", source: "manual", title: "Data Engineer" });
+
+      const result = await stats.getSearchTermStats(ALL_TIME);
+      expect(result.sources).toEqual([
+        {
+          source: "linkedin",
+          label: "LinkedIn",
+          named: yieldOf(1, 1, 1),
+          notNamed: yieldOf(2, 1, 0),
+        },
+        {
+          source: "hiringcafe",
+          label: "Hiring Cafe",
+          named: yieldOf(1),
+          notNamed: yieldOf(0),
+        },
+      ]);
+    });
+
     it("lists a term once however the profile spells or orders its words", async () => {
       await addProfile("p1", "Data", [
         "Data Engineer",
@@ -668,7 +718,7 @@ describe.sequential("stats repository", () => {
       await seed({ id: "a", source: "manual", title: "Alpha" });
 
       const result = await stats.getSearchTermStats(ALL_TIME);
-      expect(result).toEqual({ profiles: [], manualJobs: 1 });
+      expect(result).toEqual({ profiles: [], sources: [], manualJobs: 1 });
     });
 
     it("orders profiles by jobs with Unattributed last", async () => {

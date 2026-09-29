@@ -93,6 +93,13 @@ describe.sequential("GET /api/stats", () => {
       { term: "Data Engineer", jobs: 1, scored: 0, goodFit: 0, applied: 0 },
     ]);
     expect(body.data.profiles[0].unmatched.jobs).toBe(1);
+    expect(body.data.sources).toEqual([
+      expect.objectContaining({
+        source: "linkedin",
+        named: expect.objectContaining({ jobs: 1 }),
+        notNamed: expect.objectContaining({ jobs: 1 }),
+      }),
+    ]);
   });
 
   it("applies the profile filter", async () => {

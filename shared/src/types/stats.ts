@@ -292,8 +292,23 @@ export interface StatsTermProfile extends StatsYield {
   unmatched: StatsYield;
 }
 
+/**
+ * One board's jobs split by whether their title names one of the search terms
+ * of the profile that found them (every current profile's terms, for jobs with
+ * no readable profile — the same rule as the term tables).
+ */
+export interface StatsTermSourceRow {
+  source: string;
+  /** Human label resolved server-side; falls back safely for unknown ids. */
+  label: string;
+  named: StatsYield;
+  notNamed: StatsYield;
+}
+
 export interface StatsSearchTerms {
   profiles: StatsTermProfile[];
+  /** Every board with jobs in range except manual imports, most jobs first. */
+  sources: StatsTermSourceRow[];
   /**
    * Manual imports in range. Left out of every table — no search found them —
    * and counted so the omission is stated rather than silent.

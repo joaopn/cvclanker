@@ -8,6 +8,7 @@
 import type {
   StatsSearchTerms,
   StatsTermProfile,
+  StatsTermSourceRow,
   StatsYield,
 } from "@shared/types";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
@@ -88,6 +89,16 @@ const SortHeader: React.FC<{
   );
 };
 
+/** A fit rate as a bar and a figure, centred in its cell. */
+const FitRate: React.FC<{ row: StatsYield }> = ({ row }) => (
+  <div className="mx-auto flex w-36 items-center gap-2">
+    <Bar value={row.goodFit} max={row.scored || 1} />
+    <span className="w-12 shrink-0 text-right text-xs tabular-nums">
+      {percent(row.goodFit, row.scored, 1)}
+    </span>
+  </div>
+);
+
 const YieldCells: React.FC<{ row: StatsYield }> = ({ row }) => (
   <>
     <td className="px-3 py-1.5 text-center tabular-nums">
@@ -104,12 +115,7 @@ const YieldCells: React.FC<{ row: StatsYield }> = ({ row }) => (
     </td>
     {/* The Fit rate heading is centred over this whole cell: bar and figure. */}
     <td className="w-44 px-3 py-1.5">
-      <div className="mx-auto flex w-36 items-center gap-2">
-        <Bar value={row.goodFit} max={row.scored || 1} />
-        <span className="w-12 shrink-0 text-right text-xs tabular-nums">
-          {percent(row.goodFit, row.scored, 1)}
-        </span>
-      </div>
+      <FitRate row={row} />
     </td>
   </>
 );
@@ -172,6 +178,72 @@ const ProfileTerms: React.FC<{
   </Panel>
 );
 
+/**
+ * Which boards return jobs whose titles name the profile's terms, and how the
+ * two halves score — so a board paying for off-target results stands out.
+ */
+const SourcesPanel: React.FC<{ sources: StatsTermSourceRow[] }> = ({
+  sources,
+}) => (
+  <Panel title="By source">
+    <div className="space-y-3">
+      <StatsTable
+        head={
+          <>
+            <th scope="col" className="py-1.5 text-left font-medium">
+              Source
+            </th>
+            <th scope="col" className="px-3 py-1.5 text-center font-medium">
+              Jobs
+            </th>
+            <th scope="col" className="px-3 py-1.5 text-center font-medium">
+              Names a term
+            </th>
+            <th scope="col" className="px-3 py-1.5 text-center font-medium">
+              Fit rate, names a term
+            </th>
+            <th scope="col" className="px-3 py-1.5 text-center font-medium">
+              Fit rate, names none
+            </th>
+          </>
+        }
+      >
+        {sources.map((row) => {
+          const jobs = row.named.jobs + row.notNamed.jobs;
+          return (
+            <tr key={row.source} className="border-border/50 border-b">
+              <th scope="row" className="py-1.5 pr-3 text-left font-normal">
+                {row.label}
+              </th>
+              <td className="px-3 py-1.5 text-center tabular-nums">
+                {count(jobs)}
+              </td>
+              <td className="px-3 py-1.5 text-center tabular-nums">
+                {percent(row.named.jobs, jobs, 1)}
+              </td>
+              <td className="w-44 px-3 py-1.5">
+                <FitRate row={row.named} />
+              </td>
+              <td className="w-44 px-3 py-1.5">
+                <FitRate row={row.notNamed} />
+              </td>
+            </tr>
+          );
+        })}
+      </StatsTable>
+      <Caveat>
+        "Names a term" is the share of ALL a board's jobs (manual imports aside)
+        whose title names one of the search terms of the profile that found it —
+        every profile's terms, for jobs with no profile or a deleted one — by
+        the same rule as the term tables below. A board with a low share returns
+        many titles your terms do not name; compare the two fit rates, which are
+        shares of SCORED jobs, to see whether those are worth scoring. Some of
+        them may be your terms worded differently.
+      </Caveat>
+    </div>
+  </Panel>
+);
+
 export const JobProfileTab: React.FC<{ data: StatsSearchTerms }> = ({
   data,
 }) => {
@@ -183,6 +255,8 @@ export const JobProfileTab: React.FC<{ data: StatsSearchTerms }> = ({
 
   return (
     <div className="space-y-4">
+      {data.sources.length > 0 ? <SourcesPanel sources={data.sources} /> : null}
+
       <Panel title="Search terms">
         <div className="space-y-2">
           {data.profiles.length === 0 ? (
@@ -200,13 +274,13 @@ export const JobProfileTab: React.FC<{ data: StatsSearchTerms }> = ({
             total.
           </Caveat>
           <Caveat>
-            Every column counts SCORED jobs only: Applied is the scored jobs you
-            applied to at any point, so a job applied to but never scored is not
-            in it. Fit rate and applied rate are shares of scored jobs, and show
-            a dash when nothing is scored. Click a column heading to sort every
-            table by it — ascending, then descending, then back to alphabetical
-            (Term just flips between Z–A and A–Z); "No term in title" always
-            stays last.
+            Every column of the term tables counts SCORED jobs only: Applied is
+            the scored jobs you applied to at any point, so a job applied to but
+            never scored is not in it. Fit rate and applied rate are shares of
+            scored jobs, and show a dash when nothing is scored. Click a column
+            heading to sort every term table by it — ascending, then descending,
+            then back to alphabetical (Term just flips between Z–A and A–Z); "No
+            term in title" always stays last.
           </Caveat>
           {data.manualJobs > 0 ? (
             <Caveat>
