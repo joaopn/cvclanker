@@ -392,7 +392,7 @@ describe("StatsPage", () => {
         (cell) => cell.textContent,
       );
       // 30 good and 8 applied of 80 SCORED, not of 100 found.
-      expect(cells).toEqual(["80", "30", "8", "37.5%", "10.0%"]);
+      expect(cells).toEqual(["80", "30", "8", "10.0%", "37.5%"]);
     });
 
     /** Term order of the first profile's table. */

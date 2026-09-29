@@ -28,8 +28,8 @@ const COLUMNS: Array<{ key: TermSortKey; label: string; numeric: boolean }> = [
   { key: "scored", label: "Scored jobs", numeric: true },
   { key: "goodFit", label: "Good+", numeric: true },
   { key: "applied", label: "Applied", numeric: true },
-  { key: "fitRate", label: "Fit rate", numeric: false },
   { key: "appliedRate", label: "Applied rate", numeric: true },
+  { key: "fitRate", label: "Fit rate", numeric: false },
 ];
 
 const SortHeader: React.FC<{
@@ -95,6 +95,9 @@ const YieldCells: React.FC<{ row: StatsYield }> = ({ row }) => (
     <td className="py-1.5 pr-3 text-right tabular-nums">
       {count(row.applied)}
     </td>
+    <td className="py-1.5 pr-3 text-right text-xs tabular-nums">
+      {percent(row.applied, row.scored, 1)}
+    </td>
     <td className="w-40 py-1.5">
       <div className="flex items-center gap-2">
         <Bar value={row.goodFit} max={row.scored || 1} />
@@ -102,9 +105,6 @@ const YieldCells: React.FC<{ row: StatsYield }> = ({ row }) => (
           {percent(row.goodFit, row.scored, 1)}
         </span>
       </div>
-    </td>
-    <td className="py-1.5 pr-3 text-right text-xs tabular-nums">
-      {percent(row.applied, row.scored, 1)}
     </td>
   </>
 );
