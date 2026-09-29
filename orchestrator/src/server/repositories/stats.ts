@@ -297,6 +297,7 @@ export async function getSearchTermStats(
       title: jobs.title,
       scored: sql<number>`case when ${jobs.suitabilityCategory} is not null then 1 else 0 end`,
       goodFit: sql<number>`case when ${goodFitSql} then 1 else 0 end`,
+      applied: sql<number>`case when ${jobs.suitabilityCategory} is not null and ${jobs.appliedAt} is not null then 1 else 0 end`,
     })
     .from(jobs);
   const rows = where ? await rowQuery.where(where) : await rowQuery;
@@ -345,14 +346,20 @@ export async function getSearchTermStats(
     total: StatsYield;
     unmatched: StatsYield;
   };
-  const emptyYield = (): StatsYield => ({ jobs: 0, scored: 0, goodFit: 0 });
+  const emptyYield = (): StatsYield => ({
+    jobs: 0,
+    scored: 0,
+    goodFit: 0,
+    applied: 0,
+  });
   const add = (
     target: StatsYield,
-    row: { scored: number; goodFit: number },
+    row: { scored: number; goodFit: number; applied: number },
   ) => {
     target.jobs += 1;
     target.scored += row.scored;
     target.goodFit += row.goodFit;
+    target.applied += row.applied;
   };
 
   // A null profile_id and one naming a deleted profile share one bucket: both
@@ -406,7 +413,8 @@ export async function getSearchTermStats(
       ...bucket.total,
       terms: bucket.terms
         .map((term) => ({ term: term.term, ...term.tally }))
-        .sort((a, b) => b.jobs - a.jobs || a.term.localeCompare(b.term)),
+        // Alphabetical, the tab's default order (the client always re-sorts).
+        .sort((a, b) => a.term.localeCompare(b.term)),
       unmatched: bucket.unmatched,
     }))
     // Unattributed last: its terms are borrowed, so it is the least telling.

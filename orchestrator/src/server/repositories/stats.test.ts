@@ -570,10 +570,11 @@ describe.sequential("stats repository", () => {
         name,
         configJson: { searchTerms },
       });
-    const yieldOf = (jobs: number, scored = 0, goodFit = 0) => ({
+    const yieldOf = (jobs: number, scored = 0, goodFit = 0, applied = 0) => ({
       jobs,
       scored,
       goodFit,
+      applied,
     });
 
     it("credits each job to every term its title names, from any board", async () => {
@@ -584,6 +585,16 @@ describe.sequential("stats repository", () => {
         profileId: "p1",
         title: "Senior Data Engineer (Python)",
         suitability: "great_fit",
+        appliedAt: new Date().toISOString(),
+      });
+      // Applied but never scored: counts as a job, and not as applied, since
+      // the applied rate is a share of scored jobs.
+      await seed({
+        id: "d",
+        source: "hiringcafe",
+        profileId: "p1",
+        title: "Data Engineer",
+        appliedAt: new Date().toISOString(),
       });
       await seed({
         id: "b",
@@ -606,13 +617,14 @@ describe.sequential("stats repository", () => {
         profileId: "p1",
         name: "Data",
         termsFrom: "profile",
-        ...yieldOf(3, 2, 1),
+        ...yieldOf(4, 2, 1, 1),
       });
+      // Alphabetical: the tab's default order.
       expect(profile.terms).toEqual([
-        { term: "Data Engineer", ...yieldOf(2, 2, 1) },
-        { term: "Python", ...yieldOf(1, 1, 1) },
         // A configured term no title names is still listed, at zero.
         { term: "Analytics", ...yieldOf(0) },
+        { term: "Data Engineer", ...yieldOf(3, 2, 1, 1) },
+        { term: "Python", ...yieldOf(1, 1, 1, 1) },
       ]);
       expect(profile.unmatched).toEqual(yieldOf(1));
     });

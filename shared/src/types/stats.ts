@@ -247,12 +247,22 @@ export interface StatsCompanies {
   totalJobs: number;
 }
 
-/** Jobs, and how many of them were scored and rated good fit or better. */
+/**
+ * Jobs, and how many of them were scored, rated good fit or better, and
+ * applied to.
+ */
 export interface StatsYield {
   jobs: number;
-  /** The denominator for every fit rate on the page. */
+  /** The denominator for every rate on the Job profile tab. */
   scored: number;
   goodFit: number;
+  /**
+   * SCORED jobs that were ever applied to (`applied_at` is set, whatever the
+   * job's stage now). Counted among scored jobs only so the applied rate is a
+   * share of a total that contains it. The Overview tile and the Companies
+   * table count every applied job, scored or not, so theirs can be larger.
+   */
+  applied: number;
 }
 
 /** One search term's yield inside one Search Profile. */

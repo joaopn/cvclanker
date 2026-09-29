@@ -175,14 +175,23 @@ const terms: StatsSearchTerms = {
       profileId: "p1",
       name: "Data",
       termsFrom: "profile",
-      jobs: 120,
-      scored: 100,
-      goodFit: 30,
+      jobs: 140,
+      scored: 120,
+      goodFit: 36,
+      applied: 12,
       terms: [
-        { term: "Data Engineer", jobs: 100, scored: 80, goodFit: 30 },
-        { term: "Analytics", jobs: 0, scored: 0, goodFit: 0 },
+        // Alphabetical, as the server sends them.
+        { term: "Analytics", jobs: 0, scored: 0, goodFit: 0, applied: 0 },
+        {
+          term: "Data Engineer",
+          jobs: 100,
+          scored: 80,
+          goodFit: 30,
+          applied: 8,
+        },
+        { term: "ML Engineer", jobs: 20, scored: 20, goodFit: 6, applied: 4 },
       ],
-      unmatched: { jobs: 20, scored: 20, goodFit: 0 },
+      unmatched: { jobs: 20, scored: 20, goodFit: 0, applied: 0 },
     },
     {
       profileId: null,
@@ -191,8 +200,11 @@ const terms: StatsSearchTerms = {
       jobs: 5,
       scored: 0,
       goodFit: 0,
-      terms: [{ term: "Data Engineer", jobs: 5, scored: 0, goodFit: 0 }],
-      unmatched: { jobs: 0, scored: 0, goodFit: 0 },
+      applied: 0,
+      terms: [
+        { term: "Data Engineer", jobs: 5, scored: 0, goodFit: 0, applied: 0 },
+      ],
+      unmatched: { jobs: 0, scored: 0, goodFit: 0, applied: 0 },
     },
   ],
   manualJobs: 5,
@@ -370,14 +382,78 @@ describe("StatsPage", () => {
       await screen.findByText("Data");
     }
 
-    it("lists each profile's terms with the fit rate over scored jobs", async () => {
+    it("shows scored, good+, applied and both rates over scored jobs", async () => {
       await openTab();
       expect(getStatsSearchTerms).toHaveBeenCalledTimes(1);
       const [row] = screen
         .getAllByText("Data Engineer")
         .map((el) => el.closest("tr"));
-      // 30 good of 80 SCORED, not of 100 found.
-      expect(row?.textContent).toContain("37.5%");
+      const cells = [...(row?.querySelectorAll("td") ?? [])].map(
+        (cell) => cell.textContent,
+      );
+      // 30 good and 8 applied of 80 SCORED, not of 100 found.
+      expect(cells).toEqual(["80", "30", "8", "37.5%", "10.0%"]);
+    });
+
+    /** Term order of the first profile's table. */
+    function firstTableTerms() {
+      const [table] = screen.getAllByRole("table");
+      return [...table.querySelectorAll("tbody th")].map(
+        (cell) => cell.firstChild?.textContent,
+      );
+    }
+
+    it("sorts every table by a clicked column: ascending, descending, then alphabetical", async () => {
+      await openTab();
+      expect(firstTableTerms()).toEqual([
+        "Analytics",
+        "Data Engineer",
+        "ML Engineer",
+        // Pinned last whatever the sort.
+        "No term in title",
+      ]);
+
+      const [header] = screen.getAllByRole("button", { name: /Applied rate/ });
+      fireEvent.click(header);
+      // 10% < 20%, and the unscored term's dash sorts last.
+      expect(firstTableTerms()).toEqual([
+        "Data Engineer",
+        "ML Engineer",
+        "Analytics",
+        "No term in title",
+      ]);
+      expect(header.closest("th")).toHaveAttribute("aria-sort", "ascending");
+
+      fireEvent.click(header);
+      expect(firstTableTerms()).toEqual([
+        "ML Engineer",
+        "Data Engineer",
+        "Analytics",
+        "No term in title",
+      ]);
+      expect(header.closest("th")).toHaveAttribute("aria-sort", "descending");
+
+      fireEvent.click(header);
+      expect(firstTableTerms()[0]).toBe("Analytics");
+      expect(header.closest("th")).not.toHaveAttribute("aria-sort");
+      // The default order is Term ascending, and the header says so.
+      const [termHeader] = screen.getAllByRole("button", { name: "Term" });
+      expect(termHeader.closest("th")).toHaveAttribute(
+        "aria-sort",
+        "ascending",
+      );
+
+      fireEvent.click(termHeader);
+      expect(firstTableTerms()).toEqual([
+        "ML Engineer",
+        "Data Engineer",
+        "Analytics",
+        "No term in title",
+      ]);
+      expect(termHeader.closest("th")).toHaveAttribute(
+        "aria-sort",
+        "descending",
+      );
     });
 
     it("marks a term no title names, with a dash for its rate", async () => {
@@ -396,6 +472,13 @@ describe("StatsPage", () => {
       expect(row?.querySelector("td")?.textContent).toBe("20");
       // 0 good of 20 scored is a measured zero, not a dash.
       expect(row?.textContent).toContain("0.0%");
+    });
+
+    it("tells a term with unscored matches apart from one with none", async () => {
+      await openTab();
+      const unattributed = screen.getAllByRole("table")[1];
+      expect(unattributed.textContent).toContain("5 jobs, none scored");
+      expect(unattributed.textContent).not.toContain("no title names it");
     });
 
     it("says when a profile's terms are borrowed from every profile", async () => {

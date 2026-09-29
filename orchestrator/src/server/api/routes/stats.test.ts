@@ -90,7 +90,7 @@ describe.sequential("GET /api/stats", () => {
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.data.profiles[0].terms).toEqual([
-      { term: "Data Engineer", jobs: 1, scored: 0, goodFit: 0 },
+      { term: "Data Engineer", jobs: 1, scored: 0, goodFit: 0, applied: 0 },
     ]);
     expect(body.data.profiles[0].unmatched.jobs).toBe(1);
   });
