@@ -86,6 +86,10 @@ export interface UpdateProfileInput {
   config?: Partial<ProfileConfig>;
 }
 
+/** How many search terms one profile may hold, and how long each may be. */
+export const MAX_SEARCH_TERMS = 200;
+export const MAX_SEARCH_TERM_LENGTH = 200;
+
 /**
  * Zod schema for a full `ProfileConfig`. Each field is validated
  * independently by `parseProfileConfig` so a partially-corrupt blob falls
@@ -93,7 +97,9 @@ export interface UpdateProfileInput {
  * `.partial()`) to validate config patches at the API boundary.
  */
 export const profileConfigSchema = z.object({
-  searchTerms: z.array(z.string().trim().min(1).max(200)).max(200),
+  searchTerms: z
+    .array(z.string().trim().min(1).max(MAX_SEARCH_TERM_LENGTH))
+    .max(MAX_SEARCH_TERMS),
   searchCountry: z.string().trim().max(100),
   searchCities: z.string().trim().max(1000),
   workplaceTypes: z.array(z.enum(LOCATION_WORKPLACE_TYPE_VALUES)).max(3),

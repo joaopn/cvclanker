@@ -59,9 +59,9 @@ function makeProfile(overrides: Partial<Profile> = {}): Profile {
 const profileA = makeProfile({ id: "p1", name: "Remote ML" });
 const profileB = makeProfile({ id: "p2", name: "Berlin backend" });
 
-function renderPage() {
+function renderPage(entry = "/profiles") {
   return renderWithQueryClient(
-    <MemoryRouter initialEntries={["/profiles"]}>
+    <MemoryRouter initialEntries={[entry]}>
       <Routes>
         <Route path="/profiles" element={<ProfilesPage />} />
         <Route path="/profiles/new" element={<div>editor-new</div>} />
@@ -93,6 +93,41 @@ describe("ProfilesPage", () => {
     expect(
       screen.getAllByRole("button", { name: "Set as default" }),
     ).toHaveLength(1);
+  });
+
+  it("opens the term matrix from ?view=terms", async () => {
+    renderPage("/profiles?view=terms");
+    expect(
+      await screen.findByRole("checkbox", { name: "ml engineer on Remote ML" }),
+    ).toHaveAttribute("data-state", "checked");
+    expect(screen.getByRole("tab", { name: "Term matrix" })).toHaveAttribute(
+      "data-state",
+      "active",
+    );
+    expect(
+      screen.queryByDisplayValue("Berlin backend"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("switches to the term matrix and keeps unsaved edits across tabs", async () => {
+    renderPage();
+    await screen.findByDisplayValue("Berlin backend");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Term matrix" }));
+    const box = await screen.findByRole("checkbox", {
+      name: "ml engineer on Berlin backend",
+    });
+    fireEvent.click(box);
+    expect(box).toHaveAttribute("data-state", "unchecked");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Profiles" }));
+    expect(screen.getByDisplayValue("Berlin backend")).toBeVisible();
+    // jsdom applies no CSS, so pin the class that hides the kept-mounted panel.
+    const matrixPanel = box.closest('[role="tabpanel"]');
+    expect(matrixPanel).toHaveAttribute("data-state", "inactive");
+    expect(matrixPanel).toHaveClass("data-[state=inactive]:hidden");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Term matrix" }));
+    expect(
+      screen.getByRole("checkbox", { name: "ml engineer on Berlin backend" }),
+    ).toHaveAttribute("data-state", "unchecked");
   });
 
   it("navigates to the new-profile editor when Add profile is clicked", async () => {
