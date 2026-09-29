@@ -23,13 +23,13 @@ import {
   type TermSortKey,
 } from "./termSort";
 
-const COLUMNS: Array<{ key: TermSortKey; label: string; numeric: boolean }> = [
-  { key: "term", label: "Term", numeric: false },
-  { key: "scored", label: "Scored jobs", numeric: true },
-  { key: "goodFit", label: "Good+", numeric: true },
-  { key: "applied", label: "Applied", numeric: true },
-  { key: "appliedRate", label: "Applied rate", numeric: true },
-  { key: "fitRate", label: "Fit rate", numeric: false },
+const COLUMNS: Array<{ key: TermSortKey; label: string }> = [
+  { key: "term", label: "Term" },
+  { key: "scored", label: "Scored jobs" },
+  { key: "goodFit", label: "Good+" },
+  { key: "applied", label: "Applied" },
+  { key: "appliedRate", label: "Applied rate" },
+  { key: "fitRate", label: "Fit rate" },
 ];
 
 const SortHeader: React.FC<{
@@ -65,7 +65,7 @@ const SortHeader: React.FC<{
       }
       className={cn(
         "py-1.5 font-medium",
-        column.numeric ? "pr-3 text-right" : "text-left",
+        column.key === "term" ? "text-left" : "px-3 text-center",
       )}
     >
       <button
@@ -76,11 +76,13 @@ const SortHeader: React.FC<{
           direction ? "text-foreground" : undefined,
         )}
       >
-        {/* Right-aligned columns carry the icon on the left, so the label
-            lines up with the numbers under it. */}
-        {column.numeric ? icon : null}
+        {/* A centred label is balanced by a spacer the icon's width, so the
+            label itself sits over the centre of its data. */}
+        {column.key === "term" ? null : (
+          <span className="w-3" aria-hidden="true" />
+        )}
         {column.label}
-        {column.numeric ? null : icon}
+        {icon}
       </button>
     </th>
   );
@@ -88,18 +90,21 @@ const SortHeader: React.FC<{
 
 const YieldCells: React.FC<{ row: StatsYield }> = ({ row }) => (
   <>
-    <td className="py-1.5 pr-3 text-right tabular-nums">{count(row.scored)}</td>
-    <td className="py-1.5 pr-3 text-right tabular-nums">
+    <td className="px-3 py-1.5 text-center tabular-nums">
+      {count(row.scored)}
+    </td>
+    <td className="px-3 py-1.5 text-center tabular-nums">
       {count(row.goodFit)}
     </td>
-    <td className="py-1.5 pr-3 text-right tabular-nums">
+    <td className="px-3 py-1.5 text-center tabular-nums">
       {count(row.applied)}
     </td>
-    <td className="py-1.5 pr-3 text-right text-xs tabular-nums">
+    <td className="px-3 py-1.5 text-center text-xs tabular-nums">
       {percent(row.applied, row.scored, 1)}
     </td>
-    <td className="w-40 py-1.5">
-      <div className="flex items-center gap-2">
+    {/* The Fit rate heading is centred over this whole cell: bar and figure. */}
+    <td className="w-44 px-3 py-1.5">
+      <div className="mx-auto flex w-36 items-center gap-2">
         <Bar value={row.goodFit} max={row.scored || 1} />
         <span className="w-12 shrink-0 text-right text-xs tabular-nums">
           {percent(row.goodFit, row.scored, 1)}
