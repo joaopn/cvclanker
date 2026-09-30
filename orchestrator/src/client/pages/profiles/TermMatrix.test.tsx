@@ -84,9 +84,7 @@ describe("TermMatrix", () => {
       config: { searchTerms: ["ml engineer", "backend"] },
     });
     await waitFor(() =>
-      expect(toast.success).toHaveBeenCalledWith(
-        "Saved search terms on 1 profile",
-      ),
+      expect(toast.success).toHaveBeenCalledWith("Saved changes on 1 profile"),
     );
   });
 
@@ -179,9 +177,7 @@ describe("TermMatrix", () => {
         '"Alpha" was not saved: too many terms',
       ),
     );
-    expect(toast.success).toHaveBeenCalledWith(
-      "Saved search terms on 1 profile",
-    );
+    expect(toast.success).toHaveBeenCalledWith("Saved changes on 1 profile");
     // Beta's edit was written; the props still carry the pre-save Beta, so
     // only Alpha is asserted: its unsaved edit is still on screen.
     expect(cell("ML engineer", "Alpha")).toHaveAttribute(
@@ -255,11 +251,190 @@ describe("TermMatrix", () => {
     fireEvent.click(saveButton());
     await waitFor(() =>
       expect(toast.success).toHaveBeenCalledWith(
-        "Saved search terms on 1 profile",
+        "Saved changes on 1 profile",
         expect.objectContaining({
           description: expect.stringContaining("Gamma"),
         }),
       ),
     );
+  });
+
+  describe("jobs per search term", () => {
+    const budgets = (
+      base: Profile,
+      termJobBudgets: Record<string, number>,
+    ): Profile => ({ ...base, config: { ...base.config, termJobBudgets } });
+
+    function jobs(term: string) {
+      return screen.getByRole("spinbutton", {
+        name: `Jobs per search for ${term}`,
+      });
+    }
+
+    it("shows the override every ticked profile shares", () => {
+      renderWithQueryClient(
+        <TermMatrix
+          profiles={[
+            budgets(alpha, { "ml engineer": 40, backend: 60 }),
+            budgets(beta, { "ml engineer": 40 }),
+          ]}
+          defaultProfileId={null}
+        />,
+      );
+      expect(jobs("ML engineer")).toHaveValue(40);
+      expect(jobs("backend")).toHaveValue(60);
+    });
+
+    it("says mixed, with no number, where the ticked profiles disagree", () => {
+      renderWithQueryClient(
+        <TermMatrix
+          profiles={[budgets(alpha, { "ml engineer": 40 }), beta]}
+          defaultProfileId={null}
+        />,
+      );
+      expect(jobs("ML engineer")).toHaveValue(null);
+      expect(jobs("ML engineer")).toHaveAttribute("placeholder", "mixed");
+      expect(jobs("backend")).toHaveAttribute("placeholder", "default");
+    });
+
+    it("reads default, not mixed, once a mixed cell is emptied", () => {
+      renderWithQueryClient(
+        <TermMatrix
+          profiles={[budgets(alpha, { "ml engineer": 40 }), beta]}
+          defaultProfileId={null}
+        />,
+      );
+      // Typed into, then emptied: an unchanged value fires no change event.
+      fireEvent.change(jobs("ML engineer"), { target: { value: "5" } });
+      fireEvent.change(jobs("ML engineer"), { target: { value: "" } });
+      expect(jobs("ML engineer")).toHaveAttribute("placeholder", "default");
+    });
+
+    it("blocks Save on text the browser could not read as a number", () => {
+      renderWithQueryClient(
+        <TermMatrix
+          profiles={[budgets(alpha, { backend: 60 }), beta]}
+          defaultProfileId={null}
+        />,
+      );
+      const input = jobs("backend");
+      // A number input reports half-typed text like "1e" as an empty value;
+      // only `badInput` tells that apart from a cell the user cleared.
+      Object.defineProperty(input, "validity", {
+        value: { badInput: true },
+      });
+      fireEvent.change(input, { target: { value: "" } });
+      expect(saveButton()).toBeDisabled();
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        'Jobs for "backend" must be a whole number',
+      );
+    });
+
+    it("catches half-typed text entered into a cell the user had emptied", () => {
+      renderWithQueryClient(
+        <TermMatrix
+          profiles={[budgets(alpha, { backend: 60 }), beta]}
+          defaultProfileId={null}
+        />,
+      );
+      const input = jobs("backend");
+      fireEvent.change(input, { target: { value: "" } });
+      expect(saveButton()).toBeEnabled();
+      // Typing "-" into the empty cell leaves its value "" (no onChange), so
+      // only the input event can say the text is unreadable.
+      Object.defineProperty(input, "validity", {
+        value: { badInput: true },
+      });
+      fireEvent.input(input);
+      expect(saveButton()).toBeDisabled();
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        'Jobs for "backend" must be a whole number',
+      );
+    });
+
+    it("ignores a Jobs cell on a row no profile has ticked", () => {
+      renderWithQueryClient(
+        <TermMatrix profiles={[alpha, beta]} defaultProfileId={null} />,
+      );
+      fireEvent.click(cell("backend", "Alpha"));
+      fireEvent.change(jobs("backend"), { target: { value: "5" } });
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(saveButton()).toBeEnabled();
+    });
+
+    it("discards Jobs edits", () => {
+      renderWithQueryClient(
+        <TermMatrix profiles={[alpha, beta]} defaultProfileId={null} />,
+      );
+      fireEvent.change(jobs("backend"), { target: { value: "5" } });
+      fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+      expect(jobs("backend")).toHaveValue(null);
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("sets a budget on every profile the term is ticked on, and only those", async () => {
+      renderWithQueryClient(
+        <TermMatrix profiles={[alpha, beta]} defaultProfileId={null} />,
+      );
+      fireEvent.change(jobs("backend"), { target: { value: "250" } });
+      expect(screen.getByText("1 profile changed")).toBeInTheDocument();
+
+      fireEvent.click(saveButton());
+      await waitFor(() => expect(updateProfile).toHaveBeenCalledTimes(1));
+      // The map is sent whole and the unchanged terms are not.
+      expect(updateProfile).toHaveBeenCalledWith("p1", {
+        config: { termJobBudgets: { backend: 250 } },
+      });
+    });
+
+    it("applies a row's budget to a profile the term is being ticked into", async () => {
+      renderWithQueryClient(
+        <TermMatrix profiles={[alpha, beta]} defaultProfileId={null} />,
+      );
+      fireEvent.click(cell("backend", "Beta"));
+      fireEvent.change(jobs("backend"), { target: { value: "70" } });
+
+      fireEvent.click(saveButton());
+      await waitFor(() => expect(updateProfile).toHaveBeenCalledTimes(2));
+      expect(updateProfile).toHaveBeenCalledWith("p2", {
+        config: {
+          searchTerms: ["ml engineer", "backend"],
+          termJobBudgets: { backend: 70 },
+        },
+      });
+    });
+
+    it("clears the overrides when the cell is emptied", async () => {
+      renderWithQueryClient(
+        <TermMatrix
+          profiles={[
+            budgets(alpha, { "ml engineer": 40, backend: 60 }),
+            budgets(beta, { "ml engineer": 40 }),
+          ]}
+          defaultProfileId={null}
+        />,
+      );
+      fireEvent.change(jobs("ML engineer"), { target: { value: "" } });
+
+      fireEvent.click(saveButton());
+      await waitFor(() => expect(updateProfile).toHaveBeenCalledTimes(2));
+      expect(updateProfile).toHaveBeenCalledWith("p1", {
+        config: { termJobBudgets: { backend: 60 } },
+      });
+      expect(updateProfile).toHaveBeenCalledWith("p2", {
+        config: { termJobBudgets: {} },
+      });
+    });
+
+    it("blocks Save on a budget below the actor's minimum", () => {
+      renderWithQueryClient(
+        <TermMatrix profiles={[alpha, beta]} defaultProfileId={null} />,
+      );
+      fireEvent.change(jobs("backend"), { target: { value: "5" } });
+      expect(saveButton()).toBeDisabled();
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        'Jobs for "backend" must be a whole number from 10 to 5000',
+      );
+    });
   });
 });

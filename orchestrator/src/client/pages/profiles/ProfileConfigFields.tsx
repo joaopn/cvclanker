@@ -5,6 +5,12 @@ import type {
   LocationSearchScope,
 } from "@shared/location-preferences.js";
 import {
+  DEFAULT_TERM_JOB_BUDGET,
+  MAX_TERM_JOB_BUDGET,
+  MIN_TERM_JOB_BUDGET,
+  termKey,
+} from "@shared/term-budgets.js";
+import {
   defaultProfileConfig,
   type ProfileConfig,
   type ProviderInstanceRow,
@@ -13,6 +19,8 @@ import {
 import type React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import {
   normalizeWorkplaceTypes,
@@ -57,6 +65,9 @@ export interface EditorForm {
   blockedKeywords: string[];
   blockedDraft: string;
   runBudget: string;
+  termJobBudget: string;
+  /** Per-term override drafts keyed by `termKey`; blank means the default. */
+  termJobBudgets: Record<string, string>;
   topN: string;
   minSuitabilityCategory: SuitabilityCategory;
   enabledSourceIds: string[];
@@ -101,6 +112,13 @@ export function formFromConfig(
     blockedKeywords: config.blockedCompanyKeywords,
     blockedDraft: "",
     runBudget: String(config.runBudget),
+    termJobBudget: String(config.termJobBudget),
+    termJobBudgets: Object.fromEntries(
+      Object.entries(config.termJobBudgets).map(([key, value]) => [
+        key,
+        String(value),
+      ]),
+    ),
     topN: String(config.topN),
     minSuitabilityCategory: config.minSuitabilityCategory,
     enabledSourceIds: config.enabledSourceIds,
@@ -135,6 +153,30 @@ export function nextPinSet(
     : current.filter((item) => item !== value);
 }
 
+/**
+ * The override drafts worth saving: one per term the form searches, blank
+ * drafts dropped, the rest clamped into range like the other number fields so
+ * a typo cannot make the whole save fail.
+ */
+function buildTermJobBudgets(form: EditorForm): Record<string, number> {
+  const out: Record<string, number> = Object.create(null);
+  for (const term of form.searchTerms) {
+    const key = termKey(term);
+    if (!key || key in out || !Object.hasOwn(form.termJobBudgets, key)) {
+      continue;
+    }
+    const draft = form.termJobBudgets[key].trim();
+    if (draft === "" || Number.isNaN(Number.parseInt(draft, 10))) continue;
+    out[key] = clampInt(
+      draft,
+      MIN_TERM_JOB_BUDGET,
+      MAX_TERM_JOB_BUDGET,
+      DEFAULT_TERM_JOB_BUDGET,
+    );
+  }
+  return out;
+}
+
 /** `base` is the profile's stored config (or defaults for a new one), so keys
  *  this form does not edit are carried forward rather than dropped. */
 export function buildConfig(
@@ -155,6 +197,13 @@ export function buildConfig(
     scrapeSinceLastRun: form.scrapeSinceLastRun,
     blockedCompanyKeywords: form.blockedKeywords,
     runBudget: clampInt(form.runBudget, 50, 1000, 500),
+    termJobBudget: clampInt(
+      form.termJobBudget,
+      MIN_TERM_JOB_BUDGET,
+      MAX_TERM_JOB_BUDGET,
+      DEFAULT_TERM_JOB_BUDGET,
+    ),
+    termJobBudgets: buildTermJobBudgets(form),
     topN: clampInt(form.topN, 1, 50, 10),
     minSuitabilityCategory: form.minSuitabilityCategory,
     enabledSourceIds: form.enabledSourceIds,
@@ -196,6 +245,96 @@ export function hasEffectiveSourceSelection(
   return (
     form.enabledSourceIds.some((id) => enabledExtractors.includes(id)) ||
     form.providerInstanceIds.some((id) => enabledInstances.includes(id))
+  );
+}
+
+/**
+ * The LinkedIn (curious_coder) job budget: a default, and a box per term in
+ * the order the terms are searched. A term's blank box uses the default.
+ */
+function TermJobBudgetFields({
+  form,
+  onChange,
+}: {
+  form: EditorForm;
+  onChange: (patch: Partial<EditorForm>) => void;
+}) {
+  const seen = new Set<string>();
+  const terms = form.searchTerms.filter((term) => {
+    const key = termKey(term);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const setOverride = (key: string, value: string) =>
+    onChange({ termJobBudgets: { ...form.termJobBudgets, [key]: value } });
+  // What a blank box will save as: the default, clamped as it is on save.
+  const effectiveDefault = String(
+    clampInt(
+      form.termJobBudget,
+      MIN_TERM_JOB_BUDGET,
+      MAX_TERM_JOB_BUDGET,
+      DEFAULT_TERM_JOB_BUDGET,
+    ),
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="max-w-xs">
+        <NumberField
+          id="profile-term-job-budget"
+          label="LinkedIn jobs per search term"
+          min={MIN_TERM_JOB_BUDGET}
+          max={MAX_TERM_JOB_BUDGET}
+          value={form.termJobBudget}
+          onChange={(value) => onChange({ termJobBudget: value })}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        The LinkedIn Jobs Scraper (curious_coder) searches each search term on
+        its own, one after another in the terms' order, and stops each search at
+        this number, shared across your cities. The minimum is{" "}
+        {MIN_TERM_JOB_BUDGET}, the actor's own. A run that hits a term's number
+        says so on its results. Other sources ignore these numbers.
+        {terms.length > 0
+          ? " Give a term below its own number, or leave it blank to use this one. Changing only a term's capitals keeps its number."
+          : " Once the profile has search terms, each can have its own number here."}
+      </p>
+      {terms.length > 0 ? (
+        <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
+          {terms.map((term, index) => {
+            const key = termKey(term);
+            const id = `profile-term-job-budget-${index}`;
+            return (
+              <div key={key} className="flex items-center gap-2">
+                <Label
+                  htmlFor={id}
+                  className="min-w-0 flex-1 truncate text-sm font-normal"
+                  title={term}
+                >
+                  {term}
+                </Label>
+                <Input
+                  id={id}
+                  type="number"
+                  inputMode="numeric"
+                  min={MIN_TERM_JOB_BUDGET}
+                  max={MAX_TERM_JOB_BUDGET}
+                  className="h-8 w-24"
+                  placeholder={effectiveDefault}
+                  value={
+                    Object.hasOwn(form.termJobBudgets, key)
+                      ? form.termJobBudgets[key]
+                      : ""
+                  }
+                  onChange={(event) => setOverride(key, event.target.value)}
+                />
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -436,6 +575,7 @@ export const ProfileConfigFields: React.FC<ProfileConfigFieldsProps> = ({
                 still gets the full window.
               </p>
             </div>
+            <TermJobBudgetFields form={form} onChange={onChange} />
             <MinFitField
               value={form.minSuitabilityCategory}
               onChange={(value) => onChange({ minSuitabilityCategory: value })}

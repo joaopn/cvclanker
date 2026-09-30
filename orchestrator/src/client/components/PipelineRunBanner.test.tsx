@@ -74,7 +74,11 @@ vi.mock("@client/api", () => ({
   ) => getRunJobs(source, bucket, profileId, trigger),
 }));
 
-import { computePercentage, PipelineRunBanner } from "./PipelineRunBanner";
+import {
+  computePercentage,
+  PipelineRunBanner,
+  TermBudgetNotice,
+} from "./PipelineRunBanner";
 
 const baseEvent: PipelineProgressEvent = {
   step: "crawling",
@@ -241,6 +245,65 @@ describe("PipelineRunBanner", () => {
     expect(screen.getByText("LinkedIn")).toBeInTheDocument();
     expect(screen.getByText("Indeed")).toBeInTheDocument();
     expect(screen.getByText("Pipeline")).toBeInTheDocument();
+  });
+
+  it("names above the table the terms that hit their budget or were not searched", () => {
+    render(<PipelineRunBanner trigger="manual" isRunning />);
+    act(() => {
+      lastHandlers.current?.onMessage({
+        ...baseEvent,
+        sourceStats: [
+          sourceRow("apify:inst-1", "LinkedIn (curious_coder)", {
+            status: "failed",
+            jobsScraped: 140,
+            termBudgets: [
+              {
+                term: "AI Engineer",
+                budget: 100,
+                scraped: 100,
+                status: "capped",
+              },
+              { term: "NLP", budget: 50, scraped: 40, status: "under" },
+              {
+                term: "Data Scientist",
+                budget: 50,
+                scraped: 0,
+                status: "failed",
+              },
+              { term: "MLOps", budget: 50, scraped: 0, status: "not_run" },
+            ],
+          }),
+          sourceRow("indeed", "Indeed", { status: "completed" }),
+        ],
+      });
+    });
+
+    expect(
+      screen.getByText(
+        /LinkedIn \(curious_coder\): budget reached for 1 search term: "AI Engineer" \(100\)/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/search failed or was stopped for "Data Scientist"/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/not searched: "MLOps"/)).toBeInTheDocument();
+    expect(screen.queryByText(/NLP/)).not.toBeInTheDocument();
+  });
+
+  it("says nothing about budgets when every term came in under", () => {
+    const { container } = render(
+      <TermBudgetNotice
+        sourceStats={[
+          sourceRow("apify:inst-1", "LinkedIn", {
+            termBudgets: [
+              { term: "NLP", budget: 50, scraped: 40, status: "under" },
+            ],
+          }),
+          sourceRow("indeed", "Indeed", {}),
+        ]}
+      />,
+    );
+    expect(container.firstChild).toBeNull();
   });
 
   it("surfaces a source's unreadable-item count, including when it mapped none", () => {

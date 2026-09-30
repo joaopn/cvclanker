@@ -61,4 +61,9 @@ export interface ProviderActorTemplateSummary {
    * rounded up — and the difference costs money on a pay-per-result actor.
    */
   maxAgeNote?: string;
+  /**
+   * The actor runs once per search term, capped at each term's job budget
+   * from the Search Profile, so the instance's own max jobs does not apply.
+   */
+  perTermRuns?: boolean;
 }

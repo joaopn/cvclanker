@@ -3,6 +3,11 @@ import { queryKeys } from "@client/lib/queryKeys";
 import { toast } from "@client/lib/toast";
 import { changesScrapeCoverage } from "@shared/scrape-window.js";
 import {
+  isValidTermJobBudget,
+  MAX_TERM_JOB_BUDGET,
+  MIN_TERM_JOB_BUDGET,
+} from "@shared/term-budgets.js";
+import {
   MAX_SEARCH_TERM_LENGTH,
   MAX_SEARCH_TERMS,
   type Profile,
@@ -14,8 +19,12 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
+  type BudgetEdit,
   collectTermRows,
   nextSearchTerms,
+  nextTermJobBudgets,
+  rowBudgetState,
+  sameBudgets,
   sameKeys,
   type TermRow,
   termKey,
@@ -27,14 +36,23 @@ interface TermMatrixProps {
   defaultProfileId: string | null;
 }
 
+interface PendingChange {
+  searchTerms: string[];
+  termsChanged: boolean;
+  termJobBudgets: Record<string, number>;
+  budgetsChanged: boolean;
+}
+
 interface SaveOutcome {
   saved: Array<{ profile: Profile; searchTerms: string[] }>;
   failed: Array<{ profile: Profile; message: string }>;
 }
 
 /**
- * Bulk editor for search terms: terms as rows, Search Profiles as columns.
- * Nothing is written until Save; only profiles whose term set changed are.
+ * Bulk editor for search terms: terms as rows, Search Profiles as columns,
+ * plus a Jobs column that sets a term's job budget on every profile the term
+ * is ticked on. Nothing is written until Save; only profiles whose terms or
+ * budgets changed are.
  */
 export function TermMatrix({ profiles, defaultProfileId }: TermMatrixProps) {
   const queryClient = useQueryClient();
@@ -43,6 +61,13 @@ export function TermMatrix({ profiles, defaultProfileId }: TermMatrixProps) {
   const [edits, setEdits] = useState<Map<string, Set<string>>>(new Map());
   const [addedRows, setAddedRows] = useState<TermRow[]>([]);
   const [newTerm, setNewTerm] = useState("");
+  // The Jobs cell per row, only for rows the user typed in; a row without an
+  // entry leaves every profile's override as it is. `bad` is the browser's
+  // own verdict: a number input reports half-typed text ("1e", "-") as an
+  // empty value, which would otherwise read as "clear".
+  const [budgetDrafts, setBudgetDrafts] = useState<
+    Map<string, { value: string; bad: boolean }>
+  >(new Map());
 
   const rows = useMemo(
     () => collectTermRows(profiles, addedRows),
@@ -51,24 +76,65 @@ export function TermMatrix({ profiles, defaultProfileId }: TermMatrixProps) {
 
   const selectionOf = (profile: Profile): Set<string> =>
     edits.get(profile.id) ?? termKeysOf(profile);
+  // The profiles a row is ticked on, as edited.
+  const tickedOn = (key: string) =>
+    profiles.filter((profile) => selectionOf(profile).has(key));
 
-  const dirtyProfiles = profiles.filter((profile) => {
-    const edited = edits.get(profile.id);
-    return edited !== undefined && !sameKeys(edited, termKeysOf(profile));
-  });
+  // A blank cell clears the overrides (each profile falls back to its
+  // default); anything else must be a valid budget or Save is blocked. A row
+  // ticked on no profile changes nothing, so its cell is not checked.
+  const budgetEdits = new Map<string, BudgetEdit>();
+  const invalidBudgetRows: TermRow[] = [];
+  for (const row of rows) {
+    const draft = budgetDrafts.get(row.key);
+    if (draft === undefined || tickedOn(row.key).length === 0) continue;
+    if (draft.bad) {
+      invalidBudgetRows.push(row);
+      continue;
+    }
+    const trimmed = draft.value.trim();
+    if (trimmed === "") {
+      budgetEdits.set(row.key, null);
+      continue;
+    }
+    const value = Number(trimmed);
+    if (isValidTermJobBudget(value)) budgetEdits.set(row.key, value);
+    else invalidBudgetRows.push(row);
+  }
 
-  const pendingTerms = new Map(
-    dirtyProfiles.map((profile) => [
-      profile.id,
-      nextSearchTerms(profile, selectionOf(profile), rows),
-    ]),
+  const pendingChanges = new Map<string, PendingChange>();
+  for (const profile of profiles) {
+    const selected = selectionOf(profile);
+    const termsChanged = !sameKeys(selected, termKeysOf(profile));
+    const termJobBudgets = nextTermJobBudgets(profile, selected, budgetEdits);
+    const budgetsChanged = !sameBudgets(
+      termJobBudgets,
+      profile.config.termJobBudgets,
+    );
+    if (!termsChanged && !budgetsChanged) continue;
+    pendingChanges.set(profile.id, {
+      searchTerms: nextSearchTerms(profile, selected, rows),
+      termsChanged,
+      termJobBudgets,
+      budgetsChanged,
+    });
+  }
+  const dirtyProfiles = profiles.filter((profile) =>
+    pendingChanges.has(profile.id),
   );
 
   // Saves the server would refuse, or that would break the app, are blocked
   // up front rather than half-applied across profiles.
   const blockers: string[] = [];
+  for (const row of invalidBudgetRows) {
+    blockers.push(
+      `Jobs for "${row.label}" must be a whole number from ${MIN_TERM_JOB_BUDGET} to ${MAX_TERM_JOB_BUDGET}, or blank for each profile's default.`,
+    );
+  }
   for (const profile of dirtyProfiles) {
-    const terms = pendingTerms.get(profile.id) ?? [];
+    const change = pendingChanges.get(profile.id);
+    if (!change?.termsChanged) continue;
+    const terms = change.searchTerms;
     // Onboarding counts as done only while the default profile has a term, so
     // emptying it would send every page back to the setup wizard.
     if (profile.id === defaultProfileId && terms.length === 0) {
@@ -131,18 +197,34 @@ export function TermMatrix({ profiles, defaultProfileId }: TermMatrixProps) {
     setNewTerm("");
   };
 
+  const setBudgetDraft = (key: string, value: string, bad: boolean) => {
+    setBudgetDrafts((prev) => new Map(prev).set(key, { value, bad }));
+  };
+
   const discard = () => {
     setEdits(new Map());
     setAddedRows([]);
+    setBudgetDrafts(new Map());
   };
 
   const saveMutation = useMutation({
     mutationFn: async (): Promise<SaveOutcome> => {
       const outcome: SaveOutcome = { saved: [], failed: [] };
       for (const profile of dirtyProfiles) {
-        const searchTerms = pendingTerms.get(profile.id) ?? [];
+        const change = pendingChanges.get(profile.id);
+        if (!change) continue;
+        const { searchTerms } = change;
         try {
-          await api.updateProfile(profile.id, { config: { searchTerms } });
+          // The override map is sent whole: the server replaces it rather
+          // than merging into it.
+          await api.updateProfile(profile.id, {
+            config: {
+              ...(change.termsChanged ? { searchTerms } : {}),
+              ...(change.budgetsChanged
+                ? { termJobBudgets: change.termJobBudgets }
+                : {}),
+            },
+          });
           outcome.saved.push({ profile, searchTerms });
         } catch (error) {
           outcome.failed.push({
@@ -163,15 +245,19 @@ export function TermMatrix({ profiles, defaultProfileId }: TermMatrixProps) {
         for (const { profile } of saved) next.delete(profile.id);
         return next;
       });
-      if (failed.length === 0) setAddedRows([]);
+      if (failed.length === 0) {
+        setAddedRows([]);
+        setBudgetDrafts(new Map());
+      }
 
       if (saved.length > 0) {
-        const message = `Saved search terms on ${saved.length} profile${saved.length === 1 ? "" : "s"}`;
+        const message = `Saved changes on ${saved.length} profile${saved.length === 1 ? "" : "s"}`;
         // Changing terms drops the profile's scrape watermarks server-side;
         // say so where it costs something, as the profile editor does.
         const resets = saved.filter(
           ({ profile, searchTerms }) =>
             profile.config.scrapeSinceLastRun &&
+            pendingChanges.get(profile.id)?.termsChanged === true &&
             changesScrapeCoverage(profile.config, { searchTerms }),
         );
         if (resets.length > 0) {
@@ -197,6 +283,20 @@ export function TermMatrix({ profiles, defaultProfileId }: TermMatrixProps) {
   }
 
   const saving = saveMutation.isPending;
+  // What an untouched Jobs cell shows, across the profiles the row is ticked
+  // on (as edited, so ticking a term into a profile counts it). A cell the
+  // user emptied reads "default", which is what Save will then do.
+  const budgetShown = (key: string): string => {
+    const draft = budgetDrafts.get(key);
+    if (draft) return draft.value;
+    const state = rowBudgetState(tickedOn(key), key);
+    return state.kind === "same" ? String(state.value) : "";
+  };
+  const budgetPlaceholder = (key: string): string =>
+    !budgetDrafts.has(key) &&
+    rowBudgetState(tickedOn(key), key).kind === "mixed"
+      ? "mixed"
+      : "default";
   const dirtyIds = new Set(dirtyProfiles.map((profile) => profile.id));
 
   return (
@@ -216,6 +316,13 @@ export function TermMatrix({ profiles, defaultProfileId }: TermMatrixProps) {
                 className="sticky left-0 z-10 bg-muted px-3 py-2 text-left font-medium"
               >
                 Term
+              </th>
+              <th
+                scope="col"
+                className="px-2 py-2 text-center font-medium"
+                title="LinkedIn (curious_coder) jobs per search, on every profile the term is ticked on"
+              >
+                Jobs
               </th>
               {profiles.map((profile) => (
                 <th
@@ -249,7 +356,7 @@ export function TermMatrix({ profiles, defaultProfileId }: TermMatrixProps) {
             {rows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={profiles.length + 1}
+                  colSpan={profiles.length + 2}
                   className="px-3 py-4 text-muted-foreground"
                 >
                   No search terms on any profile yet. Add one below.
@@ -272,6 +379,37 @@ export function TermMatrix({ profiles, defaultProfileId }: TermMatrixProps) {
                     {row.label}
                   </button>
                 </th>
+                <td className="px-2 py-1.5">
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={MIN_TERM_JOB_BUDGET}
+                    max={MAX_TERM_JOB_BUDGET}
+                    className="h-8 w-20"
+                    aria-label={`Jobs per search for ${row.label}`}
+                    value={budgetShown(row.key)}
+                    placeholder={budgetPlaceholder(row.key)}
+                    disabled={saving}
+                    onChange={(event) =>
+                      setBudgetDraft(
+                        row.key,
+                        event.target.value,
+                        event.target.validity.badInput,
+                      )
+                    }
+                    // A number input reports both "" and half-typed text as
+                    // an empty value, and React fires onChange only when that
+                    // value moves, so going from one to the other raises no
+                    // onChange. onInput fires on every keystroke.
+                    onInput={(event) =>
+                      setBudgetDraft(
+                        row.key,
+                        event.currentTarget.value,
+                        event.currentTarget.validity.badInput,
+                      )
+                    }
+                  />
+                </td>
                 {profiles.map((profile) => (
                   <td key={profile.id} className="px-2 py-1.5 text-center">
                     <Checkbox
@@ -322,7 +460,12 @@ export function TermMatrix({ profiles, defaultProfileId }: TermMatrixProps) {
           type="button"
           variant="ghost"
           onClick={discard}
-          disabled={saving || (edits.size === 0 && addedRows.length === 0)}
+          disabled={
+            saving ||
+            (edits.size === 0 &&
+              addedRows.length === 0 &&
+              budgetDrafts.size === 0)
+          }
         >
           Discard changes
         </Button>
@@ -342,6 +485,12 @@ export function TermMatrix({ profiles, defaultProfileId }: TermMatrixProps) {
       <p className="text-xs text-muted-foreground">
         A row unticked on every profile disappears once saved. New terms are
         added at the end of each profile's list.
+      </p>
+      <p className="text-xs text-muted-foreground">
+        Jobs is how many results the LinkedIn (curious_coder) actor may take for
+        a term, on every profile the term is ticked on. It searches each term on
+        its own and stops there. Blank means each profile's own default; "mixed"
+        means the profiles disagree, and typing a number sets them all.
       </p>
     </div>
   );

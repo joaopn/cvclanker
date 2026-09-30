@@ -265,33 +265,39 @@ export function AddActorDialog({
             </p>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="add-actor-max-jobs">
-              Max jobs per search (optional)
-            </Label>
-            <Input
-              id="add-actor-max-jobs"
-              type="number"
-              min={1}
-              value={maxJobs ?? ""}
-              onChange={(event) => {
-                const raw = event.target.value.trim();
-                const parsed = Number.parseInt(raw, 10);
-                setMaxJobs(
-                  raw === "" || !Number.isFinite(parsed) ? undefined : parsed,
-                );
-              }}
-              placeholder="Run-budget default"
-              className="max-w-[12rem]"
-            />
+          {mode === "template" && selectedTemplate?.perTermRuns ? (
             <p className="text-xs text-muted-foreground">
-              Caps jobs scraped per search — one per configured city, else one
-              for the country — overriding the run-budget calculation (also
-              available as <code>{"{{maxJobs}}"}</code>). The run total is this
-              number times the number of cities. Blank = derive from the run
-              budget.
+              This actor runs once per search term, and each run stops at that
+              term's number of jobs, set on each Search Profile (a default plus
+              per-term overrides) rather than here.
             </p>
-          </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="add-actor-max-jobs">Max jobs (optional)</Label>
+              <Input
+                id="add-actor-max-jobs"
+                type="number"
+                min={1}
+                value={maxJobs ?? ""}
+                onChange={(event) => {
+                  const raw = event.target.value.trim();
+                  const parsed = Number.parseInt(raw, 10);
+                  setMaxJobs(
+                    raw === "" || !Number.isFinite(parsed) ? undefined : parsed,
+                  );
+                }}
+                placeholder="Run-budget default"
+                className="max-w-[12rem]"
+              />
+              <p className="text-xs text-muted-foreground">
+                Caps the jobs the actor scrapes, overriding the run-budget
+                calculation (also available as <code>{"{{maxJobs}}"}</code>).
+                The LinkedIn Jobs Scraper (cheap_scraper) takes it as the whole
+                run's total, never under 150 (that actor's minimum). Blank =
+                derive from the run budget.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="add-actor-max-age">

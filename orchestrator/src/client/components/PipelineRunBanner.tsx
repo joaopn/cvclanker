@@ -8,6 +8,7 @@ import type {
   PipelineSourceStats,
   RunJobBucket,
   RunTrigger,
+  TermBudgetOutcome,
 } from "@shared/types";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -172,6 +173,65 @@ export function computePercentage(progress: PipelineProgressEvent): number {
     default:
       return 0;
   }
+}
+
+const quoteTerms = (outcomes: TermBudgetOutcome[], withBudget = false) =>
+  outcomes
+    .map(({ term, budget }) =>
+      withBudget ? `"${term}" (${budget})` : `"${term}"`,
+    )
+    .join(", ");
+
+/**
+ * Which search terms a source that searches term by term could not finish
+ * within its budget, or never reached, on the page in view. Renders nothing
+ * when every term came in under budget.
+ */
+export function TermBudgetNotice({
+  sourceStats,
+}: {
+  sourceStats: PipelineSourceStats[];
+}) {
+  const rows = sourceStats.filter(
+    (row) =>
+      row.termBudgets?.some((outcome) => outcome.status !== "under") === true,
+  );
+  if (rows.length === 0) return null;
+  return (
+    <div className="space-y-1 rounded-md border bg-muted/40 p-3 text-sm">
+      {rows.map((row) => {
+        const outcomes = row.termBudgets ?? [];
+        const of = (status: TermBudgetOutcome["status"]) =>
+          outcomes.filter((outcome) => outcome.status === status);
+        const capped = of("capped");
+        const failed = of("failed");
+        const notRun = of("not_run");
+        const prefix = `${row.label}: `;
+        return (
+          <div key={row.id} className="space-y-0.5">
+            {capped.length > 0 && (
+              <p>
+                {prefix}budget reached for {capped.length} search term
+                {capped.length === 1 ? "" : "s"}: {quoteTerms(capped, true)}.
+                LinkedIn likely had more; raise the term's budget on the Search
+                Profile to take more.
+              </p>
+            )}
+            {failed.length > 0 && (
+              <p>
+                {prefix}search failed or was stopped for {quoteTerms(failed)}.
+              </p>
+            )}
+            {notRun.length > 0 && (
+              <p>
+                {prefix}not searched: {quoteTerms(notRun)}.
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function formatDuration(ms?: number): string {
@@ -574,6 +634,7 @@ export const PipelineRunBanner: React.FC<PipelineRunBannerProps> = ({
               {sourceStats.length > 0 && (
                 <>
                   <Separator />
+                  <TermBudgetNotice sourceStats={sourceStats} />
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>

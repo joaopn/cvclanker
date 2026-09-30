@@ -264,34 +264,45 @@ export function ProviderInstanceCard({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor={`max-jobs-${instance.id}`}>
-              Max jobs per search (optional)
-            </Label>
-            <Input
-              id={`max-jobs-${instance.id}`}
-              type="number"
-              min={1}
-              value={maxJobs ?? ""}
-              onChange={(event) => {
-                const raw = event.target.value.trim();
-                const parsed = Number.parseInt(raw, 10);
-                setMaxJobs(
-                  raw === "" || !Number.isFinite(parsed) ? undefined : parsed,
-                );
-              }}
-              placeholder="Run-budget default"
-              className="max-w-[12rem]"
-            />
-            <p className="text-xs text-muted-foreground">
-              Caps jobs scraped per search — one search per configured city,
-              else one for the country — overriding the run-budget calculation.
-              The run total is this number times the number of cities, so on a
-              pay-per-result actor the city list multiplies the bill. Blank =
-              derive from the run budget. Floored at 10 (the actor's minimum).
-              Available to the input template as <code>{"{{maxJobs}}"}</code>.
-            </p>
-          </div>
+          {template?.perTermRuns ? (
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Jobs per search term</p>
+              <p className="text-xs text-muted-foreground">
+                Set on each Search Profile, not here: this actor runs once per
+                search term, and each run stops at that term's number (a profile
+                default plus per-term overrides, also editable for many profiles
+                at once in the Profiles page's term matrix).
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor={`max-jobs-${instance.id}`}>
+                Max jobs (optional)
+              </Label>
+              <Input
+                id={`max-jobs-${instance.id}`}
+                type="number"
+                min={1}
+                value={maxJobs ?? ""}
+                onChange={(event) => {
+                  const raw = event.target.value.trim();
+                  const parsed = Number.parseInt(raw, 10);
+                  setMaxJobs(
+                    raw === "" || !Number.isFinite(parsed) ? undefined : parsed,
+                  );
+                }}
+                placeholder="Run-budget default"
+                className="max-w-[12rem]"
+              />
+              <p className="text-xs text-muted-foreground">
+                Caps the jobs the actor scrapes, overriding the run-budget
+                calculation. The LinkedIn Jobs Scraper (cheap_scraper) takes it
+                as the whole run's total, never under 150 (that actor's
+                minimum). Blank = derive from the run budget. Available to the
+                input template as <code>{"{{maxJobs}}"}</code>.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor={`max-age-${instance.id}`}>

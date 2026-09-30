@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   collectTermRows,
   nextSearchTerms,
+  nextTermJobBudgets,
+  rowBudgetState,
+  sameBudgets,
   sameKeys,
   termKeysOf,
 } from "./termMatrix";
@@ -71,5 +74,52 @@ describe("sameKeys / termKeysOf", () => {
     ).toBe(true);
     expect(sameKeys(new Set(["a"]), new Set(["a", "b"]))).toBe(false);
     expect(sameKeys(new Set(["a", "c"]), new Set(["a", "b"]))).toBe(false);
+  });
+});
+
+describe("term job budgets", () => {
+  const withBudgets = (
+    id: string,
+    searchTerms: string[],
+    termJobBudgets: Record<string, number>,
+  ): Profile => {
+    const base = profile(id, searchTerms);
+    return { ...base, config: { ...base.config, termJobBudgets } };
+  };
+
+  it("reports a row's common override, none, or mixed", () => {
+    const a = withBudgets("a", ["x"], { x: 40 });
+    const b = withBudgets("b", ["x"], { x: 40 });
+    const c = profile("c", ["x"]);
+    expect(rowBudgetState([a, b], "x")).toEqual({ kind: "same", value: 40 });
+    expect(rowBudgetState([c], "x")).toEqual({ kind: "none" });
+    expect(rowBudgetState([a, c], "x")).toEqual({ kind: "mixed" });
+    expect(rowBudgetState([], "x")).toEqual({ kind: "none" });
+  });
+
+  it("applies edits to ticked terms only and drops unticked ones", () => {
+    const a = withBudgets("a", ["x", "y"], { x: 40, y: 50 });
+    const next = nextTermJobBudgets(
+      a,
+      new Set(["x", "z"]),
+      new Map([
+        ["z", 70],
+        ["w", 90],
+      ]),
+    );
+    expect(next).toEqual({ x: 40, z: 70 });
+  });
+
+  it("clears an override with a null edit", () => {
+    const a = withBudgets("a", ["x"], { x: 40 });
+    expect(
+      nextTermJobBudgets(a, new Set(["x"]), new Map([["x", null]])),
+    ).toEqual({});
+  });
+
+  it("compares override maps by entries", () => {
+    expect(sameBudgets({ a: 1, b: 2 }, { b: 2, a: 1 })).toBe(true);
+    expect(sameBudgets({ a: 1 }, { a: 2 })).toBe(false);
+    expect(sameBudgets({ a: 1 }, { a: 1, b: 2 })).toBe(false);
   });
 });
