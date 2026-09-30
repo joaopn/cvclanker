@@ -13,6 +13,7 @@ import {
   type PipelineSourceStatus,
   RUN_TRIGGERS,
   type RunTrigger,
+  type TermBudgetOutcome,
 } from "@shared/types";
 import {
   resetAllRunJobCaptures,
@@ -83,6 +84,7 @@ type SourceStatsInternal = {
   jobsUnmappable: number;
   jobsFiltered: number;
   jobsRejected: number;
+  termBudgets?: TermBudgetOutcome[];
   startedAt?: string;
   completedAt?: string;
   durationMs?: number;
@@ -275,6 +277,7 @@ function buildSourceStats(): PipelineSourceStats[] {
       jobsUnmappable: row.jobsUnmappable,
       jobsFiltered: row.jobsFiltered,
       jobsRejected: row.jobsRejected,
+      termBudgets: row.termBudgets,
       startedAt: row.startedAt,
       completedAt: row.completedAt,
       durationMs: row.durationMs,
@@ -707,6 +710,9 @@ export const progressHelpers = {
       row.jobsUnmappable = 0;
       row.jobsFiltered = 0;
       row.jobsRejected = 0;
+      // A re-run's row comes back off its page still carrying the last run's
+      // outcomes; they describe a search that is about to be redone.
+      row.termBudgets = undefined;
       resetRunJobCaptureForSource(platform);
     }
 
@@ -747,12 +753,17 @@ export const progressHelpers = {
 
   recordSourceJobsCounts: (
     platform: string,
-    counts: { scraped?: number; unmappable?: number },
+    counts: {
+      scraped?: number;
+      unmappable?: number;
+      termBudgets?: TermBudgetOutcome[];
+    },
   ) => {
     const row = slot().sourceStats.get(platform);
     if (!row) return;
     if (counts.scraped !== undefined) row.jobsScraped = counts.scraped;
     if (counts.unmappable !== undefined) row.jobsUnmappable = counts.unmappable;
+    if (counts.termBudgets !== undefined) row.termBudgets = counts.termBudgets;
     updateProgress({});
   },
 

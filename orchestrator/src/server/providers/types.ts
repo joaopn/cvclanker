@@ -11,6 +11,17 @@ export interface ProviderRunContext {
   runGlobals: SourceConfigRunGlobals;
   apiToken: string | null;
   searchTerms: string[];
+  /**
+   * Each term's result budget, keyed by `termKey`, for a template with
+   * `perTermRuns`. A term missing here falls back to the run's
+   * `maxJobsPerTerm`.
+   */
+  termBudgets?: Readonly<Record<string, number>>;
+  /**
+   * Set only on the context a `perTermRuns` template's `buildInput` receives:
+   * the budget of the one term in `searchTerms`.
+   */
+  termBudget?: number;
   shouldCancel?: () => boolean;
   onProgress?: (event: ExtractorProgressEvent) => void;
 }
@@ -52,6 +63,14 @@ export interface ProviderActorTemplate {
    * knobs (scrapeCompany, count, …) and override only the fields it computes.
    */
   buildInput?(context: ProviderRunContext, base: unknown): unknown;
+  /**
+   * Run the actor once per search term, one after another, instead of once
+   * for all of them. `buildInput` then receives a context holding that single
+   * term in `searchTerms` and its budget in `termBudget`, and must cap the
+   * run's total results at that budget: a term is reported `capped` when its
+   * run returns that many items.
+   */
+  perTermRuns?: true;
   mapItem(
     item: unknown,
     context: { sourceId: string },

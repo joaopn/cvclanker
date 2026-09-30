@@ -38,6 +38,7 @@ import type {
   SourceConfigRow,
   SourceConfigRunGlobals,
   SourceConfigSchema,
+  TermBudgetOutcome,
 } from "@shared/types";
 import { type CrawlSource, progressHelpers, updateProgress } from "../progress";
 import { captureRunJobs, toCapturedRunJob } from "../run-job-capture";
@@ -51,6 +52,8 @@ type DiscoveryTaskResult = {
    * entirely (location-intent mismatch / blocked employer).
    */
   unmappableCount: number;
+  /** Per-term budget outcomes, from a source that searches term by term. */
+  termBudgets?: TermBudgetOutcome[];
 };
 
 type DiscoverySourceTask = {
@@ -479,6 +482,7 @@ export async function discoverJobsStep(args: {
             runGlobals: instanceRunGlobals,
             apiToken: apiToken || null,
             searchTerms,
+            termBudgets: args.mergedConfig.termJobBudgets,
             shouldCancel: args.shouldCancel,
             onProgress: (event) => {
               progressHelpers.crawlingUpdate({
@@ -509,12 +513,14 @@ export async function discoverJobsStep(args: {
                 `${instance.label}: ${result.error ?? "unknown error"}`,
               ],
               unmappableCount: result.droppedCount ?? 0,
+              termBudgets: result.termBudgets,
             };
           }
           return {
             discoveredJobs: result.jobs,
             sourceErrors: [],
             unmappableCount: result.droppedCount ?? 0,
+            termBudgets: result.termBudgets,
           };
         },
       });
@@ -670,13 +676,18 @@ export async function discoverJobsStep(args: {
             (job) => job.source === platform,
           );
           // Unconditional, like the success branch: a dying run that scraped
-          // items it could not map still shows its unmappable count.
+          // items it could not map still shows its unmappable count. Its term
+          // outcomes too — the failed and never-searched terms exist only here.
           progressHelpers.recordSourceJobsCounts(platform, {
             scraped: platformJobs.length,
             unmappable:
               platform === sourceTask.platforms[0]
                 ? taskResult.unmappableCount
                 : 0,
+            termBudgets:
+              platform === sourceTask.platforms[0]
+                ? taskResult.termBudgets
+                : undefined,
           });
           captureRunJobs(
             platform,
@@ -715,6 +726,10 @@ export async function discoverJobsStep(args: {
             platform === sourceTask.platforms[0]
               ? taskResult.unmappableCount
               : 0,
+          termBudgets:
+            platform === sourceTask.platforms[0]
+              ? taskResult.termBudgets
+              : undefined,
         });
         captureRunJobs(
           platform,

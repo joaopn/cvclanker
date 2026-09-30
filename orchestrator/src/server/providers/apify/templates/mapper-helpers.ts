@@ -75,6 +75,9 @@ export function resolveMaxAgeDays(
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : undefined;
 }
 
+/** The per-term cap a run falls back to when it carries none. */
+export const FALLBACK_MAX_JOBS_PER_TERM = 20;
+
 // Resolve a jobs cap: the per-instance `maxJobs` verbatim when set (the exposed
 // override), else the budget-derived value. `maxJobsPerTerm` is a per-(term ×
 // source) budget; these actors take a single joined query per run, so the
@@ -89,7 +92,8 @@ export function resolveDerivedMaxJobs(
     return Math.floor(instanceMaxJobs);
   }
   const parsed = Number(runGlobals.maxJobsPerTerm);
-  const perTerm = Number.isFinite(parsed) && parsed > 0 ? parsed : 20;
+  const perTerm =
+    Number.isFinite(parsed) && parsed > 0 ? parsed : FALLBACK_MAX_JOBS_PER_TERM;
   return perTerm * Math.max(1, termCount);
 }
 

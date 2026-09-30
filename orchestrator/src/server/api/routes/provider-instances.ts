@@ -4,6 +4,7 @@ import { getProvider, listProviders } from "@server/providers";
 import * as providersRepo from "@server/repositories/provider-instances";
 import * as settingsRepo from "@server/repositories/settings";
 import { getDefaultProfile } from "@server/services/profiles";
+import { resolveTermJobBudgets } from "@shared/term-budgets.js";
 import {
   defaultProfileConfig,
   SOURCE_CONFIG_GLOBAL_FIELDS,
@@ -146,7 +147,23 @@ providerInstancesRouter.post(
           ? { maxAgeDays: String(profileConfig.scrapeMaxAgeDays) }
           : {}),
       };
-      const searchTerms = profileConfig.searchTerms;
+      // A template that runs once per term would spend the preview's
+      // deadline on the first few terms and report the rest unsearched, so
+      // the preview searches the first term alone, at that term's budget.
+      const perTermRuns =
+        provider.templates.find(
+          (template) => template.id === instance.templateId,
+        )?.perTermRuns === true;
+      const searchTerms = perTermRuns
+        ? profileConfig.searchTerms.slice(0, 1)
+        : profileConfig.searchTerms;
+      const termBudgets = perTermRuns
+        ? resolveTermJobBudgets(
+            searchTerms,
+            profileConfig.termJobBudget,
+            profileConfig.termJobBudgets,
+          )
+        : undefined;
 
       const apiToken =
         instance.providerId === "apify"
@@ -163,6 +180,7 @@ providerInstancesRouter.post(
         runGlobals,
         apiToken: apiToken || null,
         searchTerms,
+        termBudgets,
         shouldCancel: () =>
           Date.now() - startedAtMs > PROVIDER_TEST_DEADLINE_MS,
       });

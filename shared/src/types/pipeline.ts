@@ -3,6 +3,7 @@ import type {
   LocationMatchStrictness,
   LocationSearchScope,
 } from "../location-preferences";
+import type { TermBudgetOutcome } from "./extractors";
 import type { Job, JobOutcome, JobStatus, SuitabilityCategory } from "./jobs";
 import type { LocationIntent } from "./location";
 
@@ -187,6 +188,8 @@ export interface PipelineSourceStats {
   jobsUnmappable: number; // items the source returned that never became jobs (mapper could not read them)
   jobsFiltered: number; // dropped before import (location-intent mismatch / blocked company)
   jobsRejected: number; // rows dropped at import (e.g. unparseable date_posted)
+  /** Per-term budget outcomes, for a source that searches each term on its own. */
+  termBudgets?: TermBudgetOutcome[];
   startedAt?: string;
   completedAt?: string;
   durationMs?: number;

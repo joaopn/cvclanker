@@ -26,11 +26,13 @@ const context = (args: {
   runGlobals: SourceConfigRunGlobals;
   searchTerms?: string[];
   instance?: Partial<ProviderInstanceRow>;
+  termBudget?: number;
 }): ProviderRunContext => ({
   instance: instance(args.instance),
   runGlobals: args.runGlobals,
   apiToken: "token",
   searchTerms: args.searchTerms ?? ["Machine Learning Engineer"],
+  termBudget: args.termBudget,
 });
 
 function buildInput(
@@ -68,47 +70,61 @@ describe("linkedinJobsScraperTemplate.buildInput", () => {
     expect(input.urls).toEqual([expect.stringContaining("location=Canada")]);
   });
 
-  it("caps each search at maxJobs and scales the run total by city count", () => {
+  it("caps the run at the term's budget and shares it across the cities", () => {
     const input = buildInput({
       runGlobals: {
         city: "London|Cambridge|Exeter",
         country: "united kingdom",
+        maxJobsPerTerm: "5",
       },
       instance: { maxJobs: 900 },
+      termBudget: 100,
     });
 
-    // `limitPerSource` is the actor's per-URL cap; `count` its global run max,
-    // which therefore has to carry the total the per-search cap implies.
-    expect(input.limitPerSource).toBe(900);
-    expect(input.count).toBe(2700);
+    // `count` is the actor's global run max, `limitPerSource` its per-URL cap.
+    expect(input.count).toBe(100);
+    expect(input.limitPerSource).toBe(34);
   });
 
-  it("costs one search's worth when no cities are configured", () => {
+  it("ignores the instance's own max jobs", () => {
     const input = buildInput({
-      runGlobals: { city: "", country: "ireland" },
+      runGlobals: { city: "", country: "ireland", maxJobsPerTerm: "20" },
       instance: { maxJobs: 900 },
     });
 
-    expect(input.urls).toHaveLength(1);
-    expect(input.limitPerSource).toBe(900);
-    expect(input.count).toBe(900);
+    expect(input.count).toBe(20);
+    expect(input.limitPerSource).toBe(20);
   });
 
-  it("derives the per-search cap from the run budget and term count when unset", () => {
+  it("gives each city at least the actor's minimum of 10", () => {
+    const input = buildInput({
+      runGlobals: { city: "London|Oxford|Leeds", country: "united kingdom" },
+      termBudget: 12,
+    });
+
+    expect(input.count).toBe(12);
+    expect(input.limitPerSource).toBe(10);
+  });
+
+  it("falls back to the per-term cap times the terms without a term budget", () => {
     const input = buildInput({
       runGlobals: { city: "Dublin", country: "ireland", maxJobsPerTerm: "11" },
       searchTerms: ["a", "b", "c"],
     });
 
-    expect(input.limitPerSource).toBe(33);
     expect(input.count).toBe(33);
+    expect(input.limitPerSource).toBe(33);
+  });
+
+  it("runs once per term", () => {
+    expect(linkedinJobsScraperTemplate.perTermRuns).toBe(true);
   });
 
   it("overrides a stale location-pinned url and count from the stored input", () => {
     const input = buildInput(
       {
         runGlobals: { city: "Madrid", country: "spain", maxJobsPerTerm: "20" },
-        instance: { maxJobs: 100 },
+        termBudget: 100,
       },
       {
         urls: [
@@ -122,7 +138,7 @@ describe("linkedinJobsScraperTemplate.buildInput", () => {
     expect(input.urls).toEqual([
       expect.stringContaining("location=Madrid%2C%20Spain"),
     ]);
-    expect(input.limitPerSource).toBe(100);
+    expect(input.count).toBe(100);
     // Per-instance knobs from the stored input survive.
     expect(input.scrapeCompany).toBe(false);
   });

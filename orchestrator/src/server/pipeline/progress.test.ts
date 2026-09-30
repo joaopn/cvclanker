@@ -72,6 +72,30 @@ describe("pipeline progress source-stats tracking", () => {
     expect(row?.durationMs).toBeGreaterThanOrEqual(0);
   });
 
+  it("carries term outcomes on the row until the source starts again", () => {
+    progressHelpers.startCrawling(1);
+    progressHelpers.startSource("apify:inst-1", 0, 1, {
+      platforms: ["apify:inst-1"],
+    });
+    const outcomes = [
+      { term: "a", budget: 10, scraped: 10, status: "capped" as const },
+    ];
+    progressHelpers.recordSourceJobsCounts("apify:inst-1", {
+      scraped: 10,
+      termBudgets: outcomes,
+    });
+    progressHelpers.markSourceCompleted("apify:inst-1");
+    const row = () =>
+      getProgress().sourceStats.find((r) => r.id === "apify:inst-1");
+    expect(row()?.termBudgets).toEqual(outcomes);
+
+    // A per-source re-run restarts the same row in place.
+    progressHelpers.startSource("apify:inst-1", 0, 1, {
+      platforms: ["apify:inst-1"],
+    });
+    expect(row()?.termBudgets).toBeUndefined();
+  });
+
   it("marks failed sources with the error message", () => {
     progressHelpers.startCrawling(1);
     progressHelpers.startSource("workingnomads", 0, 1, {

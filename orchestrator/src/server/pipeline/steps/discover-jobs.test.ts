@@ -145,6 +145,56 @@ describe("discoverJobsStep", () => {
     );
   });
 
+  it("hands an instance the run's term budgets and records its term outcomes", async () => {
+    const providerInstances = await import(
+      "@server/repositories/provider-instances"
+    );
+    const providersModule = await import("@server/providers");
+    vi.mocked(
+      providerInstances.getEnabledProviderInstances,
+    ).mockResolvedValueOnce([
+      {
+        id: "inst-1",
+        providerId: "apify",
+        actorRef: "acme/actor",
+        label: "Acme actor",
+        maxJobs: null,
+        maxAgeDays: null,
+      },
+    ] as never);
+    const outcomes = [
+      { term: "engineer", budget: 40, scraped: 40, status: "capped" },
+    ];
+    const run = vi.fn().mockResolvedValue({
+      success: true,
+      jobs: [],
+      termBudgets: outcomes,
+    });
+    vi.mocked(providersModule.getProvider).mockReturnValueOnce({
+      id: "apify",
+      displayName: "Apify",
+      templates: [],
+      run,
+    } as never);
+
+    await discoverJobsStep({
+      mergedConfig: {
+        ...baseConfig,
+        sources: [],
+        termJobBudgets: { engineer: 40 },
+      },
+    });
+
+    expect(run).toHaveBeenCalledWith(
+      expect.objectContaining({ termBudgets: { engineer: 40 } }),
+    );
+    const row = getProgress().sourceStats.find(
+      (candidate) => candidate.id === "apify:inst-1",
+    );
+    expect(row?.status).toBe("completed");
+    expect(row?.termBudgets).toEqual(outcomes);
+  });
+
   it("imports a failed instance's salvaged rows, marks the row failed, and holds its watermark", async () => {
     const providerInstances = await import(
       "@server/repositories/provider-instances"
@@ -187,6 +237,10 @@ describe("discoverJobsStep", () => {
         error:
           "Actor run timed out after scraping 3 item(s); kept the 1 job(s) mapped from them",
         droppedCount: 2,
+        termBudgets: [
+          { term: "a", budget: 10, scraped: 3, status: "failed" },
+          { term: "b", budget: 10, scraped: 0, status: "not_run" },
+        ],
       }),
     } as never);
 
@@ -213,6 +267,11 @@ describe("discoverJobsStep", () => {
     expect(row?.status).toBe("failed");
     expect(row?.jobsScraped).toBe(1);
     expect(row?.jobsUnmappable).toBe(2);
+    // The failed and never-searched terms exist only on a failed result.
+    expect(row?.termBudgets?.map((outcome) => outcome.status)).toEqual([
+      "failed",
+      "not_run",
+    ]);
     expect(row?.error).toMatch(/timed out/);
     expect(
       getRunJobs("apify:inst-1", "scraped").map((job) => job.jobUrl),

@@ -64,6 +64,29 @@ export interface ExtractorRunResult {
    * "unknown".
    */
   droppedCount?: number;
+  /**
+   * One entry per search term, in the order searched, from a source that runs
+   * every term as its own search against a job budget (the curious_coder
+   * LinkedIn actor). Absent for every other source.
+   */
+  termBudgets?: TermBudgetOutcome[];
+}
+
+/**
+ * How one term's budgeted search went:
+ * - `capped`: it returned as many results as its budget allowed, so the
+ *   board likely had more.
+ * - `under`: it returned fewer than its budget. Where the budget is shared
+ *   across cities, one city may still have hit its share.
+ * - `failed`: the search died. A run that timed out keeps what it scraped;
+ *   one that crashed or was cancelled keeps nothing.
+ * - `not_run`: the run stopped (a failure or a cancel) before reaching it.
+ */
+export interface TermBudgetOutcome {
+  term: string;
+  budget: number;
+  scraped: number;
+  status: "capped" | "under" | "failed" | "not_run";
 }
 
 /** A mapping pass: what it produced, and how much it could not map. */
