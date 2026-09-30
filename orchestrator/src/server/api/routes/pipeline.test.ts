@@ -1085,6 +1085,69 @@ describe.sequential("Pipeline API routes", () => {
     );
   });
 
+  it("refuses a profile save carrying a budget below the actor's minimum", async () => {
+    const res = await fetch(`${baseUrl}/api/profiles`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Too small",
+        config: { searchTerms: ["a"], termJobBudgets: { a: 9 } },
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("resolves each run term's job budget from the profile", async () => {
+    const { runPipeline } = await import("@server/pipeline/index");
+    const profileId = await createProfile(baseUrl, {
+      searchTerms: ["ML Engineer", "Data Scientist"],
+      searchCountry: "germany",
+      enabledSourceIds: ["test-linkedin"],
+      termJobBudget: 40,
+      termJobBudgets: { "ml engineer": 250 },
+    });
+
+    const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId }),
+    });
+    expect((await res.json()).ok).toBe(true);
+    expect(runPipeline).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        termJobBudgets: { "ml engineer": 250, "data scientist": 40 },
+      }),
+      { trigger: "manual" },
+    );
+  });
+
+  it("resolves budgets over a request's own terms, defaulting the new ones", async () => {
+    const { runPipeline } = await import("@server/pipeline/index");
+    const profileId = await createProfile(baseUrl, {
+      searchTerms: ["ML Engineer", "Data Scientist"],
+      searchCountry: "germany",
+      enabledSourceIds: ["test-linkedin"],
+      termJobBudget: 40,
+      termJobBudgets: { "ml engineer": 250 },
+    });
+
+    const res = await fetch(`${baseUrl}/api/pipeline/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        profileId,
+        searchTerms: ["Data Scientist", "NLP"],
+      }),
+    });
+    expect((await res.json()).ok).toBe(true);
+    expect(runPipeline).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        termJobBudgets: { "data scientist": 40, nlp: 40 },
+      }),
+      { trigger: "manual" },
+    );
+  });
+
   it("rejects a run whose only pinned source is disabled on the Sources page", async () => {
     // The silent-zero regression. The pin list is NON-empty, so a guard that
     // only asked "did you select something?" would let this run start — and

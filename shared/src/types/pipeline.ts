@@ -41,6 +41,13 @@ export interface PipelineConfig {
    * `scrapeMaxAgeDays` — the run route refuses the request instead.
    */
   scrapeWindowDays?: number;
+  /**
+   * Each search term's result budget, keyed by `termKey`, for a source that
+   * searches every term on its own (the curious_coder LinkedIn actor). Resolved
+   * from the Search Profile over the run's own terms; absent on a run with no
+   * profile, where each term falls back to `maxJobsPerTerm`.
+   */
+  termJobBudgets?: Record<string, number>;
   // The Search Profile backing this run. Identifies the scrape watermarks the
   // "since last run" window is measured against; absent for body-only runs
   // (no profile), where the feature is inert.

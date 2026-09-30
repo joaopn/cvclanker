@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { changesScrapeCoverage } from "@shared/scrape-window.js";
+import { normalizeTermJobBudgets } from "@shared/term-budgets.js";
 import {
   type CreateProfileInput,
   defaultProfileConfig,
@@ -83,9 +84,16 @@ export async function createProfile(
 ): Promise<Profile> {
   const id = randomUUID();
   const now = new Date().toISOString();
-  const config: ProfileConfig = {
+  const merged: ProfileConfig = {
     ...defaultProfileConfig(),
     ...(input.config ?? {}),
+  };
+  const config: ProfileConfig = {
+    ...merged,
+    termJobBudgets: normalizeTermJobBudgets(
+      merged.termJobBudgets,
+      merged.searchTerms,
+    ),
   };
 
   // A new Search Profile starts with every source the User Profile has
@@ -130,7 +138,17 @@ export async function updateProfile(
   if (patch.config !== undefined) {
     // Field-level merge over the existing blob; an explicit `null` inside the
     // patch (e.g. scrapeMaxAgeDays) sets null, an omitted key is preserved.
-    next.configJson = { ...existing.config, ...patch.config };
+    const merged = { ...existing.config, ...patch.config };
+    // Overrides follow the term list whichever of the two the patch carried:
+    // the term matrix sends `searchTerms` alone, so a removed term's budget is
+    // dropped here or nowhere.
+    next.configJson = {
+      ...merged,
+      termJobBudgets: normalizeTermJobBudgets(
+        merged.termJobBudgets,
+        merged.searchTerms,
+      ),
+    };
   }
 
   await db.update(profiles).set(next).where(eq(profiles.id, id));

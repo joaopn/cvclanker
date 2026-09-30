@@ -45,6 +45,8 @@ function makeProfile(overrides: Partial<Profile> = {}): Profile {
       scrapeSinceLastRun: false,
       blockedCompanyKeywords: [],
       runBudget: 500,
+      termJobBudget: 100,
+      termJobBudgets: {},
       topN: 10,
       minSuitabilityCategory: "good_fit",
       enabledSourceIds: ["jobspy"],

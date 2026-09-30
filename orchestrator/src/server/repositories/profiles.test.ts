@@ -143,6 +143,66 @@ describe.sequential("profiles repository CRUD", () => {
     expect(updated?.config.scrapeMaxAgeDays).toBe(30);
   });
 
+  describe("per-term job budgets", () => {
+    // The raw stored blob: reads normalise too, so only this shows what the
+    // repository itself wrote.
+    const storedTermJobBudgets = async (id: string) => {
+      const { eq } = await import("drizzle-orm");
+      const [row] = await db
+        .select({ configJson: schema.profiles.configJson })
+        .from(schema.profiles)
+        .where(eq(schema.profiles.id, id));
+      return (row.configJson as { termJobBudgets: unknown }).termJobBudgets;
+    };
+
+    it("normalises override keys and drops terms the profile lacks on create", async () => {
+      const created = await profilesRepo.createProfile({
+        name: "Budgets",
+        config: {
+          searchTerms: ["AI Engineer", "NLP"],
+          termJobBudgets: { "AI Engineer": 250, gone: 40 },
+        },
+      });
+      expect(created.config.termJobBudgets).toEqual({ "ai engineer": 250 });
+      expect(created.config.termJobBudget).toBe(100);
+      // In storage, not only on read (which normalises too): a stored "gone"
+      // would come back the day a term of that name is added.
+      expect(await storedTermJobBudgets(created.id)).toEqual({
+        "ai engineer": 250,
+      });
+    });
+
+    it("drops a removed term's override when a patch sends only the terms", async () => {
+      const created = await profilesRepo.createProfile({
+        name: "Budgets",
+        config: {
+          searchTerms: ["a", "b"],
+          termJobBudgets: { a: 30, b: 40 },
+        },
+      });
+      const updated = await profilesRepo.updateProfile(created.id, {
+        config: { searchTerms: ["B", "c"] },
+      });
+      // A case-only rename keeps its override: the key is the same term.
+      expect(updated?.config.termJobBudgets).toEqual({ b: 40 });
+      // Pruned in storage too, not only on read: re-adding "a" later must not
+      // bring back the budget it had before it was removed.
+      expect(await storedTermJobBudgets(created.id)).toEqual({ b: 40 });
+    });
+
+    it("prunes a patch that sends only overrides against the stored terms", async () => {
+      const created = await profilesRepo.createProfile({
+        name: "Budgets",
+        config: { searchTerms: ["a"] },
+      });
+      const updated = await profilesRepo.updateProfile(created.id, {
+        config: { termJobBudgets: { A: 70, other: 20 } },
+      });
+      expect(updated?.config.termJobBudgets).toEqual({ a: 70 });
+      expect(await storedTermJobBudgets(created.id)).toEqual({ a: 70 });
+    });
+  });
+
   it("clears scrapeMaxAgeDays when the patch sets it to null", async () => {
     const created = await profilesRepo.createProfile({
       name: "Cap",

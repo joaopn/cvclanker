@@ -7,15 +7,14 @@
  * first spelling met, and a profile that gains a term through the matrix gets
  * that spelling appended.
  */
+import { termKey } from "@shared/term-budgets.js";
 import type { Profile } from "@shared/types";
+
+export { termKey };
 
 export interface TermRow {
   key: string;
   label: string;
-}
-
-export function termKey(term: string): string {
-  return term.trim().toLowerCase();
 }
 
 /** Every term any profile searches, sorted case-insensitively. */

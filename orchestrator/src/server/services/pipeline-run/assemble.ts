@@ -44,6 +44,7 @@ import { deriveMaxJobsPerTerm } from "@shared/run-budget.js";
 import { SCRAPE_WINDOW_MAX_DAYS } from "@shared/scrape-window.js";
 import { parseSearchCitiesSetting } from "@shared/search-cities.js";
 import { MAX_POOL_CONCURRENCY } from "@shared/settings-registry";
+import { resolveTermJobBudgets } from "@shared/term-budgets.js";
 import {
   type PipelineConfig,
   type Profile,
@@ -466,6 +467,15 @@ async function resolveProfileRunConfig(
       providerInstanceIds: resolvedProviderInstanceIds,
       maxJobsPerTerm: resolvedMaxJobsPerTerm,
       searchTerms: resolvedSearchTerms,
+      // Over the terms this run searches, which a request may set apart from
+      // the profile's own; a term with no override takes the default.
+      termJobBudgets: profileConfig
+        ? resolveTermJobBudgets(
+            resolvedSearchTerms ?? [],
+            profileConfig.termJobBudget,
+            profileConfig.termJobBudgets,
+          )
+        : undefined,
       scrapeMaxAgeDays: profileConfig?.scrapeMaxAgeDays,
       scrapeWindowDays: body.scrapeWindowDays,
       // The scrape watermarks the "since last run" window reads and advances

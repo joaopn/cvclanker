@@ -11,6 +11,12 @@ import {
   type LocationSearchScope,
   type LocationWorkplaceType,
 } from "../location-preferences";
+import {
+  DEFAULT_TERM_JOB_BUDGET,
+  MAX_TERM_JOB_BUDGET,
+  MIN_TERM_JOB_BUDGET,
+  normalizeTermJobBudgets,
+} from "../term-budgets";
 import { SUITABILITY_CATEGORIES, type SuitabilityCategory } from "./jobs";
 
 /**
@@ -55,6 +61,18 @@ export interface ProfileConfig {
   blockedCompanyKeywords: string[];
   /** Run budget; `maxJobsPerTerm` is derived from this at run time. */
   runBudget: number;
+  /**
+   * How many results each search term may buy from a source that searches
+   * every term on its own (the curious_coder LinkedIn actor), unless the term
+   * has its own entry in `termJobBudgets`.
+   */
+  termJobBudget: number;
+  /**
+   * Per-term overrides of `termJobBudget`, keyed by `termKey` (trimmed,
+   * lowercased). Kept to keys of `searchTerms` on every repository write and
+   * every read.
+   */
+  termJobBudgets: Record<string, number>;
   topN: number;
   minSuitabilityCategory: SuitabilityCategory;
   /** Extractor ids to run (e.g. jobspy / hiringcafe / ...). */
@@ -113,6 +131,19 @@ export const profileConfigSchema = z.object({
     .array(z.string().trim().min(1).max(MAX_BLOCKED_COMPANY_KEYWORD_LENGTH))
     .max(MAX_BLOCKED_COMPANY_KEYWORDS),
   runBudget: z.number().int().min(1).max(100_000),
+  termJobBudget: z
+    .number()
+    .int()
+    .min(MIN_TERM_JOB_BUDGET)
+    .max(MAX_TERM_JOB_BUDGET),
+  termJobBudgets: z
+    .record(
+      z.string().trim().min(1).max(MAX_SEARCH_TERM_LENGTH),
+      z.number().int().min(MIN_TERM_JOB_BUDGET).max(MAX_TERM_JOB_BUDGET),
+    )
+    .refine((value) => Object.keys(value).length <= MAX_SEARCH_TERMS, {
+      message: `At most ${MAX_SEARCH_TERMS} per-term budgets`,
+    }),
   topN: z.number().int().min(1).max(10_000),
   minSuitabilityCategory: z.enum(SUITABILITY_CATEGORIES),
   enabledSourceIds: z.array(z.string().min(1).max(100)).max(100),
@@ -144,6 +175,8 @@ export function defaultProfileConfig(): ProfileConfig {
     scrapeSinceLastRun: false,
     blockedCompanyKeywords: [],
     runBudget: 500,
+    termJobBudget: DEFAULT_TERM_JOB_BUDGET,
+    termJobBudgets: {},
     topN: 10,
     minSuitabilityCategory: "good_fit",
     enabledSourceIds: [],
@@ -180,5 +213,12 @@ export function parseProfileConfig(raw: unknown): ProfileConfig {
       out[key] = result.data;
     }
   }
-  return out as unknown as ProfileConfig;
+  const config = out as unknown as ProfileConfig;
+  // Re-read entry by entry, whatever the loop made of it: one bad override
+  // must not take the whole map down to the default `{}` with it.
+  config.termJobBudgets = normalizeTermJobBudgets(
+    obj.termJobBudgets,
+    config.searchTerms,
+  );
+  return config;
 }
