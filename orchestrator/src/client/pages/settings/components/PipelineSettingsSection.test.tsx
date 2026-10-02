@@ -103,6 +103,7 @@ const PipelineSettingsHarness = ({
             liveStatusRefreshEnabled: { effective: false, default: false },
             liveStatusRefreshLimit: { effective: 100, default: 100 },
             liveStatusRefreshMinAgeHours: { effective: 24, default: 24 },
+            linkedinTermStopMinMatches: { effective: 2, default: 2 },
             autoSkipCategory: { effective: null, default: null },
             scoringInstructions: {
               effective: "Calibration: ties go to the more generous tier.",

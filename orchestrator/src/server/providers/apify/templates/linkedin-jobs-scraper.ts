@@ -94,6 +94,24 @@ function resolveRunBudget(context: ProviderRunContext, termCount: number) {
   return Math.floor(perTerm) * Math.max(1, termCount);
 }
 
+/**
+ * An item's rank within its search, from the `position` and `pageNum`
+ * LinkedIn writes into each result link. Measured on the actor's output
+ * (2026-10-02): the first request returns ranks 1-60 as page 0, positions
+ * 1-60; every later page holds 10 and is numbered from 6, positions 1-10, so
+ * `pageNum * 10 + position` is the rank on both.
+ */
+function rankInSearch(item: unknown): { search: string; rank: number } | null {
+  if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+  const obj = item as Record<string, unknown>;
+  const search = pickString(obj, ["inputUrl"]);
+  const link = pickString(obj, ["link"]);
+  if (!search || !link) return null;
+  const match = /[?&]position=(\d+)&pageNum=(\d+)/.exec(link);
+  if (!match) return null;
+  return { search, rank: Number(match[2]) * 10 + Number(match[1]) };
+}
+
 function pickString(
   obj: Record<string, unknown>,
   keys: readonly string[],
@@ -156,6 +174,25 @@ export const linkedinJobsScraperTemplate: ProviderActorTemplate = {
     maxAgeDays: true,
   },
   perTermRuns: true,
+  termEarlyStop: {
+    rankOf: rankInSearch,
+    searchesOf(input) {
+      const obj =
+        input && typeof input === "object" && !Array.isArray(input)
+          ? (input as Record<string, unknown>)
+          : {};
+      // The actor reports each result's `inputUrl` exactly as sent
+      // (measured on a three-city run).
+      const urls = Array.isArray(obj.urls)
+        ? obj.urls.filter((url): url is string => typeof url === "string")
+        : [];
+      const cap = obj.limitPerSource;
+      return {
+        searches: urls,
+        cap: typeof cap === "number" && cap > 0 ? cap : undefined,
+      };
+    },
+  },
   buildInput(context, base) {
     // Honor the configured location/terms by computing the search URLs and
     // count here; preserve per-instance knobs (scrapeCompany) from the

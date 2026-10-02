@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  DEFAULT_TERM_STOP_MIN_MATCHES,
+  MAX_TERM_STOP_MIN_MATCHES,
+} from "./term-stop";
 import { SUITABILITY_CATEGORIES, type SuitabilityCategory } from "./types/jobs";
 import {
   CHAT_STYLE_LANGUAGE_MODE_VALUES,
@@ -602,6 +606,25 @@ export const settingsRegistry = {
       return Number.isNaN(parsed)
         ? null
         : Math.min(MAX_LIVE_STATUS_REFRESH_MIN_AGE_HOURS, Math.max(0, parsed));
+    },
+    serialize: serializeNullableNumber,
+  },
+  // Stops a search term's LinkedIn actor run once fewer than this many of each
+  // city search's last TERM_STOP_WINDOW results name the term (a city that
+  // ran out or reached its cap counts as done; one with no results never
+  // does), so the tail LinkedIn pads a search with is not bought. 2 is the
+  // measured default (see `@shared/term-stop`); 0 never stops early, which is
+  // the behaviour before the setting existed. Only actors that report where
+  // each result ranked can stop early (curious_coder today).
+  linkedinTermStopMinMatches: {
+    kind: "typed" as const,
+    schema: z.number().int().min(0).max(MAX_TERM_STOP_MIN_MATCHES),
+    default: (): number => DEFAULT_TERM_STOP_MIN_MATCHES,
+    parse: (raw: string | undefined): number | null => {
+      const parsed = raw ? parseInt(raw, 10) : NaN;
+      return Number.isNaN(parsed)
+        ? null
+        : Math.min(MAX_TERM_STOP_MIN_MATCHES, Math.max(0, parsed));
     },
     serialize: serializeNullableNumber,
   },

@@ -22,6 +22,12 @@ export interface ProviderRunContext {
    * the budget of the one term in `searchTerms`.
    */
   termBudget?: number;
+  /**
+   * For a template with `termEarlyStop`: stop a term's run once fewer than
+   * this many of each search's last `TERM_STOP_WINDOW` results name the term.
+   * 0 or absent never stops early.
+   */
+  termStopMinMatches?: number;
   shouldCancel?: () => boolean;
   onProgress?: (event: ExtractorProgressEvent) => void;
 }
@@ -79,6 +85,23 @@ export interface ProviderActorTemplate {
    * number nobody asked the actor for.
    */
   minTermBudget?: number;
+  /**
+   * For a `perTermRuns` template whose items say where they ranked: lets a
+   * term's run stop once its results stop naming the term (see
+   * `@shared/term-stop`). Without it a term's run always goes to its budget.
+   */
+  termEarlyStop?: {
+    /** Which search an item came from, and its rank there (1 first). */
+    rankOf(item: unknown): { search: string; rank: number } | null;
+    /**
+     * The searches the built input runs, keyed as `rankOf` names them, and
+     * each one's own result cap.
+     */
+    searchesOf(input: unknown): {
+      searches: string[];
+      cap: number | undefined;
+    };
+  };
   mapItem(
     item: unknown,
     context: { sourceId: string },

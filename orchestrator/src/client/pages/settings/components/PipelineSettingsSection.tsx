@@ -10,6 +10,7 @@ import {
   MIN_LLM_REQUEST_TIMEOUT_MS,
 } from "@shared/settings-registry";
 import type { UpdateSettingsInput } from "@shared/settings-schema.js";
+import { MAX_TERM_STOP_MIN_MATCHES, TERM_STOP_WINDOW } from "@shared/term-stop";
 import {
   SUITABILITY_CATEGORIES,
   SUITABILITY_CATEGORY_LABELS,
@@ -149,6 +150,7 @@ export const PipelineSettingsSection: React.FC<
     liveStatusRefreshEnabled,
     liveStatusRefreshLimit,
     liveStatusRefreshMinAgeHours,
+    linkedinTermStopMinMatches,
     autoSkipCategory,
     scoringInstructions,
     inboxStaleThresholdDays,
@@ -587,6 +589,53 @@ export const PipelineSettingsSection: React.FC<
             Current:{" "}
             <span className="font-mono">
               {liveStatusRefreshMinAgeHours.effective}
+            </span>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label
+            htmlFor="linkedinTermStopMinMatches"
+            className="text-sm font-medium"
+          >
+            Stop a LinkedIn search term early
+          </label>
+          <Controller
+            name="linkedinTermStopMinMatches"
+            control={control}
+            render={({ field }) => (
+              <Input
+                id="linkedinTermStopMinMatches"
+                type="number"
+                min={0}
+                max={MAX_TERM_STOP_MIN_MATCHES}
+                step={1}
+                placeholder={String(linkedinTermStopMinMatches.default)}
+                disabled={isLoading || isSaving}
+                value={field.value ?? ""}
+                onChange={(e) => {
+                  const value = e.target.valueAsNumber;
+                  field.onChange(Number.isFinite(value) ? value : null);
+                }}
+              />
+            )}
+          />
+          <div className="text-xs text-muted-foreground">
+            LinkedIn ranks a search by relevance and keeps returning postings
+            long after the ones that match. The LinkedIn Jobs Scraper
+            (curious_coder) stops a term's run, short of its job budget, once
+            fewer than this many of each city search's last {TERM_STOP_WINDOW}{" "}
+            results have the term in their title; a city that has run out of
+            results or reached its share of the budget counts as done, but one
+            that has returned nothing yet does not, so a city with no results at
+            all keeps the term going to its budget. It only saves anything when
+            a term's share per city is well above {TERM_STOP_WINDOW}. 0 never
+            stops early. The cheap_scraper actor never stops early.
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Current:{" "}
+            <span className="font-mono">
+              {linkedinTermStopMinMatches.effective}
             </span>
           </div>
         </div>

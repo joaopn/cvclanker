@@ -440,6 +440,8 @@ export async function discoverJobsStep(args: {
   if (enabledProviderInstances.length > 0) {
     const apifyApiToken =
       (await settingsRepo.getSetting("apifyApiToken")) ?? "";
+    const termStopMinMatches = (await getEffectiveSettings())
+      .linkedinTermStopMinMatches.value;
     for (const instance of enabledProviderInstances) {
       const provider = getProvider(instance.providerId);
       if (!provider) {
@@ -483,6 +485,7 @@ export async function discoverJobsStep(args: {
             apiToken: apiToken || null,
             searchTerms,
             termBudgets: args.mergedConfig.termJobBudgets,
+            termStopMinMatches,
             shouldCancel: args.shouldCancel,
             onProgress: (event) => {
               progressHelpers.crawlingUpdate({

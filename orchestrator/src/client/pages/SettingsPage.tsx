@@ -25,6 +25,7 @@ import {
   type UpdateSettingsInput,
   updateSettingsSchema,
 } from "@shared/settings-schema.js";
+import { DEFAULT_TERM_STOP_MIN_MATCHES } from "@shared/term-stop";
 import {
   type AppSettings,
   type JobStatus,
@@ -97,6 +98,7 @@ const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
   liveStatusRefreshEnabled: null,
   liveStatusRefreshLimit: null,
   liveStatusRefreshMinAgeHours: null,
+  linkedinTermStopMinMatches: null,
   scoringInstructions: "",
   inboxStaleThresholdDays: null,
   maxBulkActionJobs: null,
@@ -379,6 +381,7 @@ export const SECTION_FIELD_MAP: Record<
     "liveStatusRefreshEnabled",
     "liveStatusRefreshLimit",
     "liveStatusRefreshMinAgeHours",
+    "linkedinTermStopMinMatches",
     "scoringInstructions",
     "autoSkipCategory",
     "inboxStaleThresholdDays",
@@ -464,6 +467,7 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   liveStatusRefreshEnabled: null,
   liveStatusRefreshLimit: null,
   liveStatusRefreshMinAgeHours: null,
+  linkedinTermStopMinMatches: null,
   scoringInstructions: null,
   inboxStaleThresholdDays: null,
   maxBulkActionJobs: null,
@@ -572,6 +576,7 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   liveStatusRefreshEnabled: data.liveStatusRefreshEnabled.override,
   liveStatusRefreshLimit: data.liveStatusRefreshLimit.override,
   liveStatusRefreshMinAgeHours: data.liveStatusRefreshMinAgeHours.override,
+  linkedinTermStopMinMatches: data.linkedinTermStopMinMatches.override,
   scoringInstructions:
     data.scoringInstructions.override ?? data.scoringInstructions.default,
   inboxStaleThresholdDays: data.inboxStaleThresholdDays.override,
@@ -724,6 +729,14 @@ const getDerivedSettings = (settings: AppSettings | null) => {
       liveStatusRefreshMinAgeHours: {
         effective: settings?.liveStatusRefreshMinAgeHours?.value ?? 24,
         default: settings?.liveStatusRefreshMinAgeHours?.default ?? 24,
+      },
+      linkedinTermStopMinMatches: {
+        effective:
+          settings?.linkedinTermStopMinMatches?.value ??
+          DEFAULT_TERM_STOP_MIN_MATCHES,
+        default:
+          settings?.linkedinTermStopMinMatches?.default ??
+          DEFAULT_TERM_STOP_MIN_MATCHES,
       },
       autoSkipCategory: {
         effective: settings?.autoSkipCategory?.value ?? null,
@@ -1044,6 +1057,10 @@ export const SettingsPage: React.FC = () => {
         liveStatusRefreshMinAgeHours: nullIfSame(
           data.liveStatusRefreshMinAgeHours,
           pipeline.liveStatusRefreshMinAgeHours.default,
+        ),
+        linkedinTermStopMinMatches: nullIfSame(
+          data.linkedinTermStopMinMatches,
+          pipeline.linkedinTermStopMinMatches.default,
         ),
         scoringInstructions: nullIfSame(
           normalizeString(data.scoringInstructions),

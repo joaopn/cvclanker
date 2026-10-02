@@ -7,6 +7,17 @@ export interface RunActorArgs {
   /** Polled between waits; when it turns true the run is aborted server-side
    * and whatever the dataset already holds is returned. */
   shouldCancel?: () => boolean;
+  /**
+   * Watch the dataset while the run is going: the run is polled every
+   * `pollSecs` rather than the long-poll maximum, each poll reads the items
+   * written since the last, and when `shouldStop` says so (given every item
+   * so far) the run is aborted, polled to its real end, and, if it did end
+   * ABORTED, the outcome carries `stoppedEarly`.
+   */
+  watch?: {
+    pollSecs: number;
+    shouldStop: (items: readonly unknown[]) => boolean;
+  };
 }
 
 /** Statuses the Apify run API reports as terminal. */
@@ -25,6 +36,8 @@ export interface ApifyRunOutcome {
    * returns what it scraped before it died. */
   items: unknown[];
   status: ApifyRunStatus;
+  /** The run was aborted because `watch.shouldStop` asked for it. */
+  stoppedEarly?: true;
 }
 
 export class ApifyApiError extends Error {
@@ -182,10 +195,12 @@ async function fetchDatasetItems(args: {
   token: string;
   actorRef: string;
   datasetId: string;
+  /** Skip the items already read. */
+  offset?: number;
 }): Promise<unknown[]> {
   const { token, actorRef, datasetId } = args;
   const items: unknown[] = [];
-  let offset = 0;
+  let offset = args.offset ?? 0;
   for (;;) {
     const url = new URL(`${APIFY_BASE}/datasets/${datasetId}/items`);
     url.searchParams.set("token", token);
@@ -265,7 +280,7 @@ async function abortRun(args: {
 export async function runApifyActor(
   args: RunActorArgs,
 ): Promise<ApifyRunOutcome> {
-  const { token, actorRef, input, shouldCancel } = args;
+  const { token, actorRef, input, shouldCancel, watch } = args;
   if (!token) {
     throw new ApifyApiError("Apify API token not configured", 401, false);
   }
@@ -294,6 +309,11 @@ export async function runApifyActor(
   const startedAtMs = Date.now();
 
   let run = started;
+  // Set once the watch asked for an abort; polling carries on to the run's
+  // real end, so rows written while it winds down are read too, and a run
+  // that finished by itself first is not reported as stopped.
+  let stopping = false;
+  const watched: unknown[] = [];
   while (!TERMINAL_STATUSES.has(run.status)) {
     if (shouldCancel?.()) {
       await abortRun({ token, actorRef, runId: started.id });
@@ -313,7 +333,10 @@ export async function runApifyActor(
     }
     const pollUrl = new URL(`${APIFY_BASE}/actor-runs/${started.id}`);
     pollUrl.searchParams.set("token", token);
-    pollUrl.searchParams.set("waitForFinish", String(WAIT_FOR_FINISH_SECS));
+    pollUrl.searchParams.set(
+      "waitForFinish",
+      String(watch ? watch.pollSecs : WAIT_FOR_FINISH_SECS),
+    );
     try {
       run = parseRunSnapshot(
         await apifyFetch({ url: pollUrl.toString(), actorRef }),
@@ -334,6 +357,31 @@ export async function runApifyActor(
         error: error instanceof Error ? error.message : String(error),
       });
       await sleep(RETRY_DELAY_MS);
+      continue;
+    }
+    if (watch && !stopping && !TERMINAL_STATUSES.has(run.status)) {
+      // Only ever a reason to stop sooner: a failed read leaves the run
+      // going, bounded as before by its own cap and timeout.
+      try {
+        watched.push(
+          ...(await fetchDatasetItems({
+            token,
+            actorRef,
+            datasetId: started.defaultDatasetId,
+            offset: watched.length,
+          })),
+        );
+        if (watch.shouldStop(watched)) {
+          await abortRun({ token, actorRef, runId: started.id });
+          stopping = true;
+        }
+      } catch (error) {
+        logger.warn("Apify dataset watch failed; the run continues", {
+          actorRef,
+          runId: started.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
   }
 
@@ -355,5 +403,9 @@ export async function runApifyActor(
     actorRef,
     datasetId: started.defaultDatasetId,
   });
-  return { items, status: finalStatus };
+  // Only a run that reached ABORTED by itself after the watch's abort was
+  // stopped by it; a cancel or timeout during the wind-down was not.
+  return stopping && run.status === "ABORTED"
+    ? { items, status: finalStatus, stoppedEarly: true }
+    : { items, status: finalStatus };
 }

@@ -57,6 +57,7 @@ export type PipelineSettingsValues = {
   liveStatusRefreshEnabled: EffectiveDefault<boolean>;
   liveStatusRefreshLimit: EffectiveDefault<number>;
   liveStatusRefreshMinAgeHours: EffectiveDefault<number>;
+  linkedinTermStopMinMatches: EffectiveDefault<number>;
   autoSkipCategory: EffectiveDefault<SuitabilityCategory | null>;
   scoringInstructions: EffectiveDefault<string>;
   inboxStaleThresholdDays: EffectiveDefault<number>;

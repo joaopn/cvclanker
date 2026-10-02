@@ -80,6 +80,7 @@ export interface AppSettings {
   liveStatusRefreshEnabled: Resolved<boolean>;
   liveStatusRefreshLimit: Resolved<number>;
   liveStatusRefreshMinAgeHours: Resolved<number>;
+  linkedinTermStopMinMatches: Resolved<number>;
   jwtExpirySeconds: Resolved<number | null>;
   inboxStaleThresholdDays: Resolved<number>;
   maxBulkActionJobs: Resolved<number>;

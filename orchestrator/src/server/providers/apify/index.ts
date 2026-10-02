@@ -1,6 +1,11 @@
 import { logger } from "@infra/logger";
 import { sanitizeUnknown } from "@infra/sanitize";
 import { MIN_TERM_JOB_BUDGET, termKey } from "@shared/term-budgets.js";
+import {
+  TERM_STOP_WINDOW,
+  type TermStopResult,
+  TermStopTracker,
+} from "@shared/term-stop.js";
 import type {
   CreateJobInput,
   ExtractorRunResult,
@@ -12,7 +17,12 @@ import type {
   ProviderRunContext,
   ProviderRunner,
 } from "../types";
-import { ApifyApiError, type ApifyRunOutcome, runApifyActor } from "./client";
+import {
+  ApifyApiError,
+  type ApifyRunOutcome,
+  type RunActorArgs,
+  runApifyActor,
+} from "./client";
 import {
   applyFreeformMapping,
   FreeformMappingError,
@@ -212,6 +222,69 @@ function distinctTerms(searchTerms: readonly string[]): string[] {
   return out;
 }
 
+// How often a run that may stop early is checked. Measured rows arrive at
+// about 1.4 a second (200 in about 140s), so a stop overshoots by a poll's
+// worth, about 15 paid rows, plus what lands while the run winds down, at the
+// cost of one status and one dataset request per check.
+const TERM_STOP_POLL_SECS = 10;
+
+/**
+ * The watch that stops a term's run once its results stop naming the term,
+ * or undefined when the template cannot rank its items or the setting is off.
+ */
+function termStopWatch(
+  context: ProviderRunContext,
+  template: ProviderActorTemplate,
+  term: string,
+  input: unknown,
+): RunActorArgs["watch"] {
+  const early = template.termEarlyStop;
+  const minMatches = context.termStopMinMatches ?? 0;
+  if (!early || minMatches <= 0) return undefined;
+  const sourceId = providerSourceId(context.instance.id);
+  const { searches, cap } = early.searchesOf(input);
+  const tracker = new TermStopTracker({
+    term,
+    searches,
+    searchCap: cap,
+    minMatches,
+  });
+  let seen = 0;
+  let rankedAny = false;
+  let warned = false;
+  return {
+    pollSecs: TERM_STOP_POLL_SECS,
+    // `items` only ever grows, so each item is read once.
+    shouldStop: (items) => {
+      // `rankOf` gives an item's search and rank together, so an item it
+      // cannot rank is left out; a search such items filled to its cap still
+      // goes quiet and counts as finished once it holds a rankable result,
+      // and one that holds none keeps the run going.
+      const fresh: TermStopResult[] = [];
+      for (const item of items.slice(seen)) {
+        const ranked = early.rankOf(item);
+        if (!ranked) continue;
+        rankedAny = true;
+        fresh.push({
+          ...ranked,
+          title: template.mapItem(item, { sourceId })?.title ?? null,
+        });
+      }
+      seen = items.length;
+      if (!rankedAny && !warned && seen >= TERM_STOP_WINDOW * 3) {
+        // The run still goes to its budget; this says why it never stops.
+        warned = true;
+        logger.warn("Apify term run cannot rank its results; no early stop", {
+          actorRef: context.instance.actorRef,
+          term,
+          items: seen,
+        });
+      }
+      return tracker.observe(fresh, Date.now());
+    },
+  };
+}
+
 // A run with no profile carries no budgets, so each term gets the run's own
 // per-term cap.
 function termBudgetFor(
@@ -309,6 +382,7 @@ async function runPerTerm(
         actorRef: context.instance.actorRef,
         input: input.value,
         shouldCancel,
+        watch: termStopWatch(context, template, term, input.value),
       });
     } catch (error) {
       fail(errorMessage(error, String(error)), 0);
@@ -326,7 +400,9 @@ async function runPerTerm(
     droppedCount += mapping.value.droppedCount;
     const scraped = runOutcome.items.length;
 
-    if (runOutcome.status === "SUCCEEDED") {
+    if (runOutcome.stoppedEarly) {
+      outcomes.push({ term, budget, scraped, status: "stopped" });
+    } else if (runOutcome.status === "SUCCEEDED") {
       outcomes.push({
         term,
         budget,

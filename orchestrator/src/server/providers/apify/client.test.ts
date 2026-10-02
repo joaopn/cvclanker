@@ -33,7 +33,8 @@ function runData(overrides: Record<string, unknown> = {}) {
  */
 function stubApify(args: {
   polls: Array<Response>;
-  pages?: Array<unknown[]>;
+  /** A page, or a whole response to answer that dataset request with. */
+  pages?: Array<unknown[] | Response>;
   start?: Response;
 }) {
   const pages = args.pages ?? [[{ row: 1 }]];
@@ -61,7 +62,7 @@ function stubApify(args: {
       if (url.pathname.includes("/datasets/")) {
         const page = pages[pageIndex] ?? [];
         pageIndex += 1;
-        return jsonResponse(page);
+        return Array.isArray(page) ? jsonResponse(page) : page;
       }
       throw new Error(`Unexpected URL: ${url}`);
     },
@@ -158,6 +159,115 @@ describe("runApifyActor (async run + poll)", () => {
         (c) => c.method === "POST" && c.url.pathname.endsWith("/abort"),
       ),
     ).toBe(true);
+  });
+
+  it("watches the dataset while running and aborts when told to stop", async () => {
+    stubApify({
+      polls: [
+        jsonResponse(runData()),
+        jsonResponse(runData()),
+        // Still winding down after the abort: no more watching.
+        jsonResponse(runData({ status: "ABORTING" })),
+        jsonResponse(runData({ status: "ABORTED" })),
+      ],
+      // Two watch reads (each from where the last stopped), then the final
+      // read of the whole dataset once the aborted run has ended.
+      pages: [[{ n: 1 }], [{ n: 2 }], [{ n: 1 }, { n: 2 }, { n: 3 }]],
+    });
+    const seen: number[] = [];
+    const shouldStop = vi.fn((items: readonly unknown[]) => {
+      seen.push(items.length);
+      return items.length >= 2;
+    });
+
+    const outcome = await runApifyActor({
+      ...baseArgs,
+      watch: { pollSecs: 10, shouldStop },
+    });
+
+    expect(outcome).toEqual({
+      items: [{ n: 1 }, { n: 2 }, { n: 3 }],
+      status: "ABORTED",
+      stoppedEarly: true,
+    });
+    expect(seen).toEqual([1, 2]);
+    expect(calls.filter((c) => c.url.pathname.endsWith("/abort"))).toHaveLength(
+      1,
+    );
+    const polls = calls.filter((c) => c.url.pathname.includes("/actor-runs/"));
+    expect(polls[0].url.searchParams.get("waitForFinish")).toBe("10");
+    const reads = calls.filter((c) => c.url.pathname.includes("/datasets/"));
+    expect(reads.map((c) => c.url.searchParams.get("offset"))).toEqual([
+      "0",
+      "1",
+      "0",
+    ]);
+    expect(
+      calls.some(
+        (c) => c.method === "POST" && c.url.pathname.endsWith("/abort"),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not call a run stopped when it finished before the abort landed", async () => {
+    stubApify({
+      polls: [
+        jsonResponse(runData()),
+        jsonResponse(runData({ status: "SUCCEEDED" })),
+      ],
+      pages: [[{ n: 1 }], [{ n: 1 }, { n: 2 }]],
+    });
+
+    const outcome = await runApifyActor({
+      ...baseArgs,
+      watch: { pollSecs: 10, shouldStop: () => true },
+    });
+
+    expect(outcome).toEqual({
+      items: [{ n: 1 }, { n: 2 }],
+      status: "SUCCEEDED",
+    });
+  });
+
+  it("does not call a run stopped when a cancel cut its wind-down short", async () => {
+    stubApify({
+      polls: [jsonResponse(runData())],
+      pages: [[{ n: 1 }], [{ n: 1 }]],
+    });
+    let checks = 0;
+    // Clear for the first poll, then the user cancels while the run winds down.
+    const shouldCancel = () => {
+      checks += 1;
+      return checks > 1;
+    };
+
+    const outcome = await runApifyActor({
+      ...baseArgs,
+      shouldCancel,
+      watch: { pollSecs: 10, shouldStop: () => true },
+    });
+
+    expect(outcome).toEqual({ items: [{ n: 1 }], status: "ABORTED" });
+  });
+
+  it("lets a run whose watch read failed carry on to the end", async () => {
+    stubApify({
+      polls: [
+        jsonResponse(runData()),
+        jsonResponse(runData({ status: "SUCCEEDED" })),
+      ],
+      pages: [jsonResponse({ error: "gone" }, 404), [{ n: 1 }]],
+    });
+    const shouldStop = vi.fn(() => true);
+
+    const outcome = await runApifyActor({
+      ...baseArgs,
+      watch: { pollSecs: 10, shouldStop },
+    });
+
+    expect(outcome).toEqual({ items: [{ n: 1 }], status: "SUCCEEDED" });
+    expect(shouldStop).not.toHaveBeenCalled();
+    expect(calls.some((c) => c.url.pathname.endsWith("/abort"))).toBe(false);
   });
 
   it("throws the actor's own message when the run FAILED", async () => {

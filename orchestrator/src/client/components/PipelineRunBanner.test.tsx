@@ -290,6 +290,28 @@ describe("PipelineRunBanner", () => {
     expect(screen.queryByText(/NLP/)).not.toBeInTheDocument();
   });
 
+  it("names the terms stopped early with what they took of their budget", () => {
+    render(
+      <TermBudgetNotice
+        sourceStats={[
+          sourceRow("apify:inst-1", "LinkedIn", {
+            termBudgets: [
+              { term: "NLP", budget: 50, scraped: 40, status: "under" },
+              { term: "MLOps", budget: 400, scraped: 70, status: "stopped" },
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        /LinkedIn: stopped early once results stopped naming the term: "MLOps" \(70 of 400\)/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/NLP/)).not.toBeInTheDocument();
+  });
+
   it("says nothing about budgets when every term came in under", () => {
     const { container } = render(
       <TermBudgetNotice

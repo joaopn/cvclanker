@@ -184,8 +184,9 @@ const quoteTerms = (outcomes: TermBudgetOutcome[], withBudget = false) =>
 
 /**
  * Which search terms a source that searches term by term could not finish
- * within its budget, or never reached, on the page in view. Renders nothing
- * when every term came in under budget.
+ * within its budget, never reached, or stopped early once their results ran
+ * dry, on the page in view. Renders nothing when every term came in under
+ * budget.
  */
 export function TermBudgetNotice({
   sourceStats,
@@ -206,6 +207,7 @@ export function TermBudgetNotice({
         const capped = of("capped");
         const failed = of("failed");
         const notRun = of("not_run");
+        const stopped = of("stopped");
         const prefix = `${row.label}: `;
         return (
           <div key={row.id} className="space-y-0.5">
@@ -225,6 +227,18 @@ export function TermBudgetNotice({
             {notRun.length > 0 && (
               <p>
                 {prefix}not searched: {quoteTerms(notRun)}.
+              </p>
+            )}
+            {stopped.length > 0 && (
+              <p>
+                {prefix}stopped early once results stopped naming the term:{" "}
+                {stopped
+                  .map(
+                    ({ term, budget, scraped }) =>
+                      `"${term}" (${scraped} of ${budget})`,
+                  )
+                  .join(", ")}
+                .
               </p>
             )}
           </div>

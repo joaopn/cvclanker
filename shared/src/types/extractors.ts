@@ -81,12 +81,15 @@ export interface ExtractorRunResult {
  * - `failed`: the search died. A run that timed out keeps what it scraped;
  *   one that crashed or was cancelled keeps nothing.
  * - `not_run`: the run stopped (a failure or a cancel) before reaching it.
+ * - `stopped`: it was stopped short of its budget because its results had
+ *   stopped naming the term (see `@shared/term-stop`). What it returned is
+ *   kept, and it counts as a success.
  */
 export interface TermBudgetOutcome {
   term: string;
   budget: number;
   scraped: number;
-  status: "capped" | "under" | "failed" | "not_run";
+  status: "capped" | "under" | "failed" | "not_run" | "stopped";
 }
 
 /** A mapping pass: what it produced, and how much it could not map. */

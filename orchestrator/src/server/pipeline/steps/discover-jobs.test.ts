@@ -145,7 +145,7 @@ describe("discoverJobsStep", () => {
     );
   });
 
-  it("hands an instance the run's term budgets and records its term outcomes", async () => {
+  it("hands an instance the run's term budgets and stop rule, and records its term outcomes", async () => {
     const providerInstances = await import(
       "@server/repositories/provider-instances"
     );
@@ -185,8 +185,12 @@ describe("discoverJobsStep", () => {
       },
     });
 
+    // The stop rule is the setting, at its default with nothing stored.
     expect(run).toHaveBeenCalledWith(
-      expect.objectContaining({ termBudgets: { engineer: 40 } }),
+      expect.objectContaining({
+        termBudgets: { engineer: 40 },
+        termStopMinMatches: 2,
+      }),
     );
     const row = getProgress().sourceStats.find(
       (candidate) => candidate.id === "apify:inst-1",

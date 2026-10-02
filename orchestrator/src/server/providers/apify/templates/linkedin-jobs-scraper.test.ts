@@ -154,3 +154,60 @@ describe("linkedinJobsScraperTemplate.buildInput", () => {
     expect(linkedinJobsScraperTemplate.maxAgeNote).toMatch(/f_TPR/);
   });
 });
+
+describe("linkedinJobsScraperTemplate.termEarlyStop", () => {
+  const early = linkedinJobsScraperTemplate.termEarlyStop;
+  if (!early) throw new Error("template has no termEarlyStop");
+  const item = (
+    link: string,
+    inputUrl = "https://www.linkedin.com/jobs/a",
+  ) => ({
+    link,
+    inputUrl,
+    title: "Data Scientist",
+  });
+
+  it("ranks the first response's page 0 by its own position", () => {
+    expect(
+      early.rankOf(
+        item("https://uk.linkedin.com/jobs/view/x-1?position=40&pageNum=0"),
+      ),
+    ).toEqual({ search: "https://www.linkedin.com/jobs/a", rank: 40 });
+  });
+
+  it("ranks a later page of 10 after the first 60", () => {
+    // Later pages are numbered from 6, so page 6 position 1 is rank 61.
+    expect(
+      early.rankOf(item("https://x/jobs/view/1?position=1&pageNum=6"))?.rank,
+    ).toBe(61);
+    expect(
+      early.rankOf(item("https://x/jobs/view/1?position=10&pageNum=9"))?.rank,
+    ).toBe(100);
+  });
+
+  it("cannot rank an item without a position or its search", () => {
+    expect(early.rankOf(item("https://x/jobs/view/1"))).toBeNull();
+    expect(
+      early.rankOf({ link: "https://x/jobs/view/1?position=1&pageNum=0" }),
+    ).toBeNull();
+    expect(early.rankOf(null)).toBeNull();
+  });
+
+  it("reads the built input's searches and their per-city cap", () => {
+    const input = linkedinJobsScraperTemplate.buildInput?.(
+      {
+        instance: {} as ProviderRunContext["instance"],
+        runGlobals: { city: "London|Oxford", country: "united kingdom" },
+        apiToken: "t",
+        searchTerms: ["Data Scientist"],
+        termBudget: 100,
+      },
+      {},
+    );
+    const { searches, cap } = early.searchesOf(input);
+    expect(searches).toEqual((input as { urls: string[] }).urls);
+    expect(searches).toHaveLength(2);
+    expect(cap).toBe(50);
+    expect(early.searchesOf({})).toEqual({ searches: [], cap: undefined });
+  });
+});
