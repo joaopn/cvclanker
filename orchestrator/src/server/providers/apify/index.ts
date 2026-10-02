@@ -214,7 +214,11 @@ function distinctTerms(searchTerms: readonly string[]): string[] {
 
 // A run with no profile carries no budgets, so each term gets the run's own
 // per-term cap.
-function termBudgetFor(context: ProviderRunContext, term: string): number {
+function termBudgetFor(
+  context: ProviderRunContext,
+  template: ProviderActorTemplate,
+  term: string,
+): number {
   const budgets = context.termBudgets;
   const key = termKey(term);
   let budget: number;
@@ -227,7 +231,11 @@ function termBudgetFor(context: ProviderRunContext, term: string): number {
         ? Math.floor(perTerm)
         : FALLBACK_MAX_JOBS_PER_TERM;
   }
-  return Math.max(MIN_TERM_JOB_BUDGET, Math.floor(budget));
+  return Math.max(
+    MIN_TERM_JOB_BUDGET,
+    template.minTermBudget ?? 0,
+    Math.floor(budget),
+  );
 }
 
 /**
@@ -270,7 +278,7 @@ async function runPerTerm(
   report(0, `${context.instance.label}: 0/${terms.length} search terms`);
 
   for (const [index, term] of terms.entries()) {
-    const budget = termBudgetFor(context, term);
+    const budget = termBudgetFor(context, template, term);
     if (stopped || shouldCancel?.()) {
       stopped = true;
       outcomes.push({ term, budget, scraped: 0, status: "not_run" });

@@ -44,7 +44,7 @@ export interface PipelineConfig {
   scrapeWindowDays?: number;
   /**
    * Each search term's result budget, keyed by `termKey`, for a source that
-   * searches every term on its own (the curious_coder LinkedIn actor). Resolved
+   * searches every term on its own (the LinkedIn actors). Resolved
    * from the Search Profile over the run's own terms; absent on a run with no
    * profile, where each term falls back to `maxJobsPerTerm`.
    */

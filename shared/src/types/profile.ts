@@ -63,7 +63,7 @@ export interface ProfileConfig {
   runBudget: number;
   /**
    * How many results each search term may buy from a source that searches
-   * every term on its own (the curious_coder LinkedIn actor), unless the term
+   * every term on its own (the LinkedIn actors), unless the term
    * has its own entry in `termJobBudgets`.
    */
   termJobBudget: number;

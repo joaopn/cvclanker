@@ -66,8 +66,8 @@ export interface ExtractorRunResult {
   droppedCount?: number;
   /**
    * One entry per search term, in the order searched, from a source that runs
-   * every term as its own search against a job budget (the curious_coder
-   * LinkedIn actor). Absent for every other source.
+   * every term as its own search against a job budget (the curious_coder and
+   * cheap_scraper LinkedIn actors). Absent for every other source.
    */
   termBudgets?: TermBudgetOutcome[];
 }

@@ -296,10 +296,8 @@ export function ProviderInstanceCard({
               />
               <p className="text-xs text-muted-foreground">
                 Caps the jobs the actor scrapes, overriding the run-budget
-                calculation. The LinkedIn Jobs Scraper (cheap_scraper) takes it
-                as the whole run's total, never under 150 (that actor's
-                minimum). Blank = derive from the run budget. Available to the
-                input template as <code>{"{{maxJobs}}"}</code>.
+                calculation. Blank = derive from the run budget. Available to
+                the input template as <code>{"{{maxJobs}}"}</code>.
               </p>
             </div>
           )}

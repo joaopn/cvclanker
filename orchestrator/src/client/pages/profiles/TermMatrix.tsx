@@ -320,7 +320,7 @@ export function TermMatrix({ profiles, defaultProfileId }: TermMatrixProps) {
               <th
                 scope="col"
                 className="px-2 py-2 text-center font-medium"
-                title="LinkedIn (curious_coder) jobs per search, on every profile the term is ticked on"
+                title="LinkedIn jobs per search, on every profile the term is ticked on"
               >
                 Jobs
               </th>
@@ -487,10 +487,12 @@ export function TermMatrix({ profiles, defaultProfileId }: TermMatrixProps) {
         added at the end of each profile's list.
       </p>
       <p className="text-xs text-muted-foreground">
-        Jobs is how many results the LinkedIn (curious_coder) actor may take for
-        a term, on every profile the term is ticked on. It searches each term on
-        its own and stops there. Blank means each profile's own default; "mixed"
-        means the profiles disagree, and typing a number sets them all.
+        Jobs is how many results each LinkedIn actor (curious_coder and
+        cheap_scraper) may take for a term, on every profile the term is ticked
+        on. They search each term on its own and stop there; cheap_scraper will
+        not stop below 150, so it may take up to 150 even when the number is
+        lower. Blank means each profile's own default; "mixed" means the
+        profiles disagree, and typing a number sets them all.
       </p>
     </div>
   );

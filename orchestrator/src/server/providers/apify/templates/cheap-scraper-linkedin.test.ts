@@ -26,6 +26,7 @@ function buildInput(args: {
   runGlobals: SourceConfigRunGlobals;
   searchTerms?: string[];
   instance?: Partial<ProviderInstanceRow>;
+  termBudget?: number;
 }): Record<string, unknown> {
   const build = cheapScraperLinkedinTemplate.buildInput;
   if (!build) throw new Error("template has no buildInput");
@@ -34,6 +35,7 @@ function buildInput(args: {
     runGlobals: args.runGlobals,
     apiToken: "token",
     searchTerms: args.searchTerms ?? ["Machine Learning Engineer"],
+    termBudget: args.termBudget,
   };
   return build(context, { saveOnlyUniqueItems: true }) as Record<
     string,
@@ -70,6 +72,32 @@ describe("cheapScraperLinkedinTemplate.buildInput", () => {
     const input = buildInput({
       runGlobals: { city: "Dublin", country: "ireland" },
       instance: { maxJobs: 10 },
+    });
+
+    expect(input.maxItems).toBe(150);
+  });
+
+  it("runs once per search term, never under the actor's minimum", () => {
+    expect(cheapScraperLinkedinTemplate.perTermRuns).toBe(true);
+    expect(cheapScraperLinkedinTemplate.minTermBudget).toBe(150);
+  });
+
+  it("caps a per-term run at the term's budget, not the instance's max jobs", () => {
+    const input = buildInput({
+      runGlobals: { city: "Dublin", country: "ireland", maxJobsPerTerm: "50" },
+      searchTerms: ["Data Scientist"],
+      instance: { maxJobs: 900 },
+      termBudget: 400,
+    });
+
+    expect(input.keyword).toEqual(["Data Scientist"]);
+    expect(input.maxItems).toBe(400);
+  });
+
+  it("lifts a term budget under the actor's floor to 150", () => {
+    const input = buildInput({
+      runGlobals: { city: "Dublin", country: "ireland" },
+      termBudget: 100,
     });
 
     expect(input.maxItems).toBe(150);

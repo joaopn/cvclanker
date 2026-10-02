@@ -92,6 +92,60 @@ describe("apifyProvider per-term runs", () => {
     ]);
   });
 
+  it("runs cheap_scraper once per term, at max(150, its budget)", async () => {
+    // A term's job budget, never the instance's own max-jobs, sets the cap,
+    // so the instance carries a value that would otherwise win.
+    const cheapInstance = {
+      ...instance,
+      actorRef: "cheap_scraper/linkedin-job-scraper",
+      templateId: "cheap-scraper-linkedin",
+      maxJobs: 900,
+    } as ProviderInstanceRow;
+    const cheapItem = (term: string, n: number) => ({
+      jobUrl: `https://www.linkedin.com/jobs/view/${term.length}00${n}`,
+      jobTitle: `${term} ${n}`,
+      companyName: "ACME",
+    });
+    vi.mocked(runApifyActor)
+      .mockResolvedValueOnce({
+        items: Array.from({ length: 400 }, (_, n) => cheapItem("AI", n)),
+        status: "SUCCEEDED",
+      })
+      .mockResolvedValueOnce({
+        items: Array.from({ length: 20 }, (_, n) => cheapItem("DS", n)),
+        status: "SUCCEEDED",
+      });
+
+    const result = await apifyProvider.run({
+      instance: cheapInstance,
+      runGlobals,
+      apiToken: "tok",
+      searchTerms: ["AI Engineer", "Data Scientist"],
+      termBudgets: { "ai engineer": 400 },
+    });
+
+    const inputs = vi
+      .mocked(runApifyActor)
+      .mock.calls.map(
+        ([args]) => args.input as { keyword: string[]; maxItems: number },
+      );
+    expect(inputs.map((input) => input.keyword)).toEqual([
+      ["AI Engineer"],
+      ["Data Scientist"],
+    ]);
+    // No entry for "Data Scientist": its budget is the run's per-term cap of
+    // 15, which the actor's minimum lifts to 150.
+    expect(inputs.map((input) => input.maxItems)).toEqual([400, 150]);
+    // Reported against the 150 the actor was asked for, so a term LinkedIn
+    // ran short of reads as under its budget, not as one worth raising.
+    expect(result.success).toBe(true);
+    expect(result.jobs).toHaveLength(420);
+    expect(result.termBudgets).toEqual([
+      { term: "AI Engineer", budget: 400, scraped: 400, status: "capped" },
+      { term: "Data Scientist", budget: 150, scraped: 20, status: "under" },
+    ]);
+  });
+
   it("never asks for fewer than the actor's minimum of 10", async () => {
     vi.mocked(runApifyActor).mockResolvedValueOnce({
       items: [],

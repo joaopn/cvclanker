@@ -13,7 +13,8 @@ import {
 
 // The actor caps `maxItems` at "leave empty for unlimited" but enforces a
 // minimum of 150 when the field is set. We always set it (uncapped runs bill
-// unpredictably under pay-per-result) and clamp up to the floor.
+// unpredictably under pay-per-result) and clamp up to the floor, so a term
+// budget under 150 may still take up to 150.
 const ACTOR_MIN_MAX_ITEMS = 150;
 
 /**
@@ -40,7 +41,7 @@ export const cheapScraperLinkedinTemplate: ProviderActorTemplate = {
   actorRef: "cheap_scraper/linkedin-job-scraper",
   displayName: "LinkedIn Jobs Scraper (cheap_scraper)",
   description:
-    "cheap_scraper/linkedin-job-scraper. Keyword-and-location search built automatically from your configured search terms + location — no LinkedIn URLs to paste. Each city is sent qualified with your selected country, because LinkedIn resolves a bare city name to whichever one it ranks highest (a plain `Cambridge` returns Toronto-area jobs). The max job age is bucketed into the LinkedIn date filter (24h / 7d / 30d, rounded up), and 30 days is the furthest back it can look at all — a run asking for more is refused rather than silently scraping 30. Pay-per-result: the actor enforces a minimum of 150 results per run, so the effective cap is max(150, your run budget). Duplicate postings are skipped by job id.",
+    "cheap_scraper/linkedin-job-scraper. Keyword-and-location search built automatically from your configured search terms + location — no LinkedIn URLs to paste. Each city is sent qualified with your selected country, because LinkedIn resolves a bare city name to whichever one it ranks highest (a plain `Cambridge` returns Toronto-area jobs). The max job age is bucketed into the LinkedIn date filter (24h / 7d / 30d, rounded up), and 30 days is the furthest back it can look at all — a run asking for more is refused rather than silently scraping 30. Each search term is its own actor run, one after another in the profile's term order, capped at that term's job budget from the Search Profile (a default plus per-term overrides); the instance's own max-jobs value is not used. Pay-per-result, and the actor will not cap a run below 150 results, so a term's cap is max(150, its budget) and a budget under 150 is reported as 150. The cap covers the whole run rather than each city, so with several cities the ones the actor crawls first can use up a term's budget. A posting that matches two terms is returned, and billed, by both runs. With the default input, duplicate postings within a run are skipped by job id.",
   defaultInputTemplate: JSON.stringify(
     {
       saveOnlyUniqueItems: true,
@@ -56,6 +57,8 @@ export const cheapScraperLinkedinTemplate: ProviderActorTemplate = {
     maxJobsPerTerm: true,
     maxAgeDays: true,
   },
+  perTermRuns: true,
+  minTermBudget: ACTOR_MIN_MAX_ITEMS,
   buildInput(context, base) {
     const baseObj =
       base && typeof base === "object" && !Array.isArray(base)
@@ -74,11 +77,13 @@ export const cheapScraperLinkedinTemplate: ProviderActorTemplate = {
       keyword: terms,
       maxItems: Math.max(
         ACTOR_MIN_MAX_ITEMS,
-        resolveDerivedMaxJobs(
-          context.runGlobals,
-          terms.length,
-          context.instance.maxJobs,
-        ),
+        typeof context.termBudget === "number" && context.termBudget > 0
+          ? Math.floor(context.termBudget)
+          : resolveDerivedMaxJobs(
+              context.runGlobals,
+              terms.length,
+              context.instance.maxJobs,
+            ),
       ),
     };
     if (locations.length > 0) input.locations = locations;

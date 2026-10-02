@@ -71,6 +71,14 @@ export interface ProviderActorTemplate {
    * run returns that many items.
    */
   perTermRuns?: true;
+  /**
+   * For a `perTermRuns` template: the smallest run the actor accepts, which
+   * lifts every term's budget to it. The lifted number is the term's budget
+   * from then on, in the run's cap and in its reported outcome, so a term the
+   * actor ran short of is `under` rather than `capped` against a smaller
+   * number nobody asked the actor for.
+   */
+  minTermBudget?: number;
   mapItem(
     item: unknown,
     context: { sourceId: string },

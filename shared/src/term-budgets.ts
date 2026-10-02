@@ -1,7 +1,7 @@
 /**
  * Per-search-term job budgets: how many results one term's search may buy
- * from a source that searches each term on its own (today only the
- * curious_coder LinkedIn actor).
+ * from a source that searches each term on its own (today the curious_coder
+ * and cheap_scraper LinkedIn actors).
  *
  * A Search Profile holds a default (`termJobBudget`) and per-term overrides
  * (`termJobBudgets`) keyed by `termKey`, so "ML Engineer" and "ml engineer"

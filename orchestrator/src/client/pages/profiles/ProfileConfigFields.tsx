@@ -249,8 +249,8 @@ export function hasEffectiveSourceSelection(
 }
 
 /**
- * The LinkedIn (curious_coder) job budget: a default, and a box per term in
- * the order the terms are searched. A term's blank box uses the default.
+ * The LinkedIn actors' job budget: a default, and a box per term in the order
+ * the terms are searched. A term's blank box uses the default.
  */
 function TermJobBudgetFields({
   form,
@@ -291,11 +291,13 @@ function TermJobBudgetFields({
         />
       </div>
       <p className="text-xs text-muted-foreground">
-        The LinkedIn Jobs Scraper (curious_coder) searches each search term on
-        its own, one after another in the terms' order, and stops each search at
-        this number, shared across your cities. The minimum is{" "}
-        {MIN_TERM_JOB_BUDGET}, the actor's own. A run that hits a term's number
-        says so on its results. Other sources ignore these numbers.
+        Both LinkedIn Jobs Scrapers (curious_coder and cheap_scraper) search
+        each search term on its own, one after another in the terms' order, and
+        stop each search at this number, shared across your cities. The minimum
+        is {MIN_TERM_JOB_BUDGET}, curious_coder's own; cheap_scraper will not
+        stop a search below 150, so it may take up to 150 per term even when the
+        number is lower. A run that hits a term's number says so on its results.
+        Other sources ignore these numbers.
         {terms.length > 0
           ? " Give a term below its own number, or leave it blank to use this one. Changing only a term's capitals keeps its number."
           : " Once the profile has search terms, each can have its own number here."}
