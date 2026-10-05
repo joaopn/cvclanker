@@ -1801,11 +1801,30 @@ export async function blockCompanyOnProfiles(input: {
   });
 }
 
+/**
+ * For an actor that runs once per search term: the terms the preview tried,
+ * in order, until one returned postings, and the place it searched.
+ */
+export type ProviderInstanceTestSearched = {
+  terms: Array<{
+    term: string;
+    mapped: number;
+    /** Items the actor returned that the mapper could not read. */
+    unmapped: number;
+    /** The preview's time limit stopped it before it returned anything. */
+    unfinished?: true;
+  }>;
+  /** Terms the preview's time limit left unsearched. */
+  untried: number;
+  place: string;
+};
+
 export type ProviderInstanceTestResponse =
   | {
       outcome: "ok";
       samples: Array<Record<string, unknown>>;
       totalMapped: number;
+      searched?: ProviderInstanceTestSearched;
     }
   | {
       outcome: "error";
@@ -1814,6 +1833,7 @@ export type ProviderInstanceTestResponse =
       // that timed out mid-crawl).
       samples: Array<Record<string, unknown>>;
       totalMapped: number;
+      searched?: ProviderInstanceTestSearched;
     };
 
 export async function testProviderInstance(

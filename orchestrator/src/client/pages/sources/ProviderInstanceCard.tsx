@@ -468,7 +468,28 @@ function TestResultDialog({
             / url fields look right before enabling.
           </DialogDescription>
         </DialogHeader>
-        {result?.outcome === "error" ? (
+        {result?.searched && result.searched.terms.length > 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {`Searched in ${result.searched.place}: ${result.searched.terms
+              .map(({ term, mapped, unmapped, unfinished }) =>
+                unfinished
+                  ? `"${term}" (not finished in time)`
+                  : unmapped > 0
+                    ? `"${term}" (${mapped} found, ${unmapped} unreadable)`
+                    : `"${term}" (${mapped} found)`,
+              )
+              .join(", ")}.`}
+            {result.searched.untried > 0
+              ? ` ${result.searched.untried} more term(s) not tried within the time limit.`
+              : ""}
+          </p>
+        ) : null}
+        {result?.searched && result.searched.terms.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            The Search Profile used for previews has no search terms, so nothing
+            was searched.
+          </p>
+        ) : result?.outcome === "error" ? (
           <p className="text-sm text-destructive">{result.error}</p>
         ) : result?.outcome === "ok" ? (
           <div className="space-y-3">
@@ -478,7 +499,11 @@ function TestResultDialog({
             </p>
             {result.samples.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No items returned by the actor.
+                {!result.searched
+                  ? "No items returned by the actor."
+                  : result.searched.terms.some(({ unmapped }) => unmapped > 0)
+                    ? "The actor returned items, but the mapping could read none of them."
+                    : "The actor ran, and no posting came back for the terms tried in that place and date window."}
               </p>
             ) : (
               <pre className="max-h-[60vh] overflow-auto rounded-md border border-border/60 bg-muted/40 p-2 font-mono text-xs whitespace-pre-wrap">
