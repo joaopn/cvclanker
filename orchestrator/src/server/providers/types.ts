@@ -33,7 +33,17 @@ export interface ProviderRunContext {
    * going at once. Absent means one at a time.
    */
   termRunConcurrency?: number;
+  /**
+   * A user cancel: actor runs in flight are aborted, none start, and what
+   * they scraped is dropped (a cancelled pipeline imports nothing).
+   */
   shouldCancel?: () => boolean;
+  /**
+   * A time limit, e.g. the source preview's: once true, actor runs in flight
+   * are aborted and none start, as for a cancel, but what they scraped is
+   * kept and mapped, since it was paid for and is what the caller wants.
+   */
+  deadline?: () => boolean;
   onProgress?: (event: ExtractorProgressEvent) => void;
 }
 

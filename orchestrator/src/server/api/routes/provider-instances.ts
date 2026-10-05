@@ -182,7 +182,8 @@ providerInstancesRouter.post(
       // Bounds this interactive preview the way the old sync client's ~300s
       // platform ceiling did, but deliberately: at the deadline the actor run
       // is aborted server-side (it stops billing) and whatever it scraped
-      // still comes back as samples below.
+      // still comes back as samples below. A deadline, not a cancel: a cancel
+      // drops what the run scraped.
       const startedAtMs = Date.now();
       const result = await provider.run({
         instance,
@@ -190,8 +191,7 @@ providerInstancesRouter.post(
         apiToken: apiToken || null,
         searchTerms,
         termBudgets,
-        shouldCancel: () =>
-          Date.now() - startedAtMs > PROVIDER_TEST_DEADLINE_MS,
+        deadline: () => Date.now() - startedAtMs > PROVIDER_TEST_DEADLINE_MS,
       });
 
       const samples = result.jobs.slice(0, MAX_SAMPLES);

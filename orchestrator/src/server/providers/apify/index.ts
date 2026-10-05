@@ -184,7 +184,7 @@ async function runOnce(
       token: context.apiToken ?? "",
       actorRef: context.instance.actorRef,
       input: input.value,
-      shouldCancel: context.shouldCancel,
+      shouldCancel: stopsRuns(context),
     });
   } catch (error) {
     return {
@@ -217,6 +217,13 @@ async function runOnce(
     };
   }
   return { success: true, jobs: mapped, droppedCount };
+}
+
+// What aborts an actor run and starts no new one: a cancel or the deadline.
+// Mapping reads `shouldCancel` alone, so a deadline keeps the scraped rows.
+function stopsRuns(context: ProviderRunContext): () => boolean {
+  const { shouldCancel, deadline } = context;
+  return () => shouldCancel?.() === true || deadline?.() === true;
 }
 
 /** The run's terms, trimmed, blanks dropped, case-insensitive repeats dropped. */
@@ -390,8 +397,10 @@ type TermPlan =
  *   is `failed`, and the other runs carry on.
  * - A cancel starts nothing further. Mapping stops at a cancel, as it does
  *   for a single run, so a run mapped after one keeps no rows, including a
- *   run that finished: a cancelled pipeline imports nothing anyway, and the
- *   source preview's deadline aborts the runs still going when it cancels.
+ *   run that finished: a cancelled pipeline imports nothing anyway.
+ * - A deadline also starts nothing further and aborts the runs going, but
+ *   keeps and maps what they scraped; their terms read `failed` and the ones
+ *   never started `not_run`.
  * - Every term's input is built before any run starts, so a term whose input
  *   cannot be built is reported `failed` even if an earlier run then throws.
  * - A term whose input cannot be built is `failed` and nothing after it in
@@ -404,7 +413,8 @@ async function runPerTerm(
   context: ProviderRunContext,
   template: ProviderActorTemplate,
 ): Promise<ExtractorRunResult> {
-  const { shouldCancel, onProgress } = context;
+  const { onProgress } = context;
+  const stopRuns = stopsRuns(context);
   const terms = distinctTerms(context.searchTerms);
 
   const plans: TermPlan[] = [];
@@ -489,7 +499,7 @@ async function runPerTerm(
     concurrency: template.parallelTermRuns
       ? (context.termRunConcurrency ?? 1)
       : 1,
-    shouldStop: () => stopped || shouldCancel?.() === true,
+    shouldStop: () => stopped || stopRuns(),
     task: async (run, runIndex) => {
       const plan = plans[run.planIndex];
       if (plan.state !== "planned") return;
@@ -499,7 +509,7 @@ async function runPerTerm(
           token: context.apiToken ?? "",
           actorRef: context.instance.actorRef,
           input: run.input,
-          shouldCancel,
+          shouldCancel: stopRuns,
           watch: termStopWatch(context, template, run.term, run.input),
           timeoutSecs: template.runTimeoutSecs,
         });

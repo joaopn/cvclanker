@@ -114,4 +114,52 @@ describe.sequential("provider instance test route", () => {
       }),
     ).toEqual([["AI Engineer", "Vienna, Austria"]]);
   });
+  it("shows what a run scraped before the preview's deadline aborted it", async () => {
+    const { runApifyActor } = await import("@server/providers/apify/client");
+    const realNow = Date.now();
+    vi.mocked(runApifyActor).mockImplementation(async (args) => {
+      // Over five minutes later: the preview's deadline has passed.
+      vi.spyOn(Date, "now").mockReturnValue(realNow + 301_000);
+      expect(args.shouldCancel?.()).toBe(true);
+      return {
+        items: [1, 2].map((n) => ({
+          jobUrl: `https://www.linkedin.com/jobs/view/40000000${n}`,
+          jobTitle: `Data Scientist ${n}`,
+          companyName: "ACME",
+        })),
+        status: "ABORTED",
+      };
+    });
+    const { setSetting } = await import("@server/repositories/settings");
+    await setSetting("apifyApiToken", "tok");
+    const profile = await post("/api/profiles", {
+      name: "Deadline",
+      config: { searchTerms: ["Data Scientist"], searchCountry: "austria" },
+    });
+    await post(`/api/profiles/${profile.body.data.id}/set-default`, {});
+    const instance = await post("/api/provider-instances", {
+      providerId: "apify",
+      actorRef: "cheap_scraper/linkedin-job-scraper",
+      label: "LinkedIn (cheap_scraper)",
+      templateId: "cheap-scraper-linkedin",
+      inputTemplateJson: "{}",
+    });
+
+    let result: Awaited<ReturnType<typeof post>>;
+    try {
+      result = await post(
+        `/api/provider-instances/${instance.body.data.id}/test`,
+        {},
+      );
+    } finally {
+      // The clock spy must not outlive this test.
+      vi.restoreAllMocks();
+    }
+
+    expect(result.body.data.outcome).toBe("error");
+    expect(result.body.data.totalMapped).toBe(2);
+    expect(
+      result.body.data.samples.map((job: { title: string }) => job.title),
+    ).toEqual(["Data Scientist 1", "Data Scientist 2"]);
+  });
 });

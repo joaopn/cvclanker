@@ -386,6 +386,38 @@ describe("apifyProvider parallel per-term runs (valig)", () => {
     ]);
   });
 
+  it("keeps what the runs scraped when a deadline stops them, starting nothing more", async () => {
+    holdRuns();
+    let expired = false;
+    const resultPromise = apifyProvider.run({
+      instance: valigInstance,
+      runGlobals: oneCity,
+      apiToken: "tok",
+      searchTerms: ["A one", "B two", "C three"],
+      termRunConcurrency: 2,
+      deadline: () => expired,
+    });
+    await flush();
+
+    expired = true;
+    // The client sees the deadline as its stop signal and aborts.
+    expect(runFor("A one").args.shouldCancel?.()).toBe(true);
+    runFor("A one").resolve({
+      items: [valigItem("a", 0), valigItem("a", 1)],
+      status: "ABORTED",
+    });
+    succeed(runFor("B two"), 1);
+
+    const result = await resultPromise;
+    expect(pending).toHaveLength(2);
+    expect(result.jobs).toHaveLength(3);
+    expect(result.termBudgets).toEqual([
+      { term: "A one", budget: 50, scraped: 2, status: "failed" },
+      { term: "B two", budget: 50, scraped: 1, status: "under" },
+      { term: "C three", budget: 50, scraped: 0, status: "not_run" },
+    ]);
+  });
+
   it("keeps a template without parallelTermRuns sequential whatever the setting", async () => {
     holdRuns();
     const curious = {

@@ -59,6 +59,40 @@ describe("apifyProvider salvage", () => {
     expect(result.error).toMatch(/kept the 2 job\(s\)/);
   });
 
+  it("keeps an ABORTED run's rows when a deadline stopped it, and hands the client the deadline", async () => {
+    let expired = false;
+    vi.mocked(runApifyActor).mockImplementation(async (args) => {
+      expired = true;
+      // The client aborts once this reads true.
+      expect(args.shouldCancel?.()).toBe(true);
+      return { items: [item(1), item(2)], status: "ABORTED" };
+    });
+
+    const result = await apifyProvider.run({
+      ...context,
+      deadline: () => expired,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.jobs.map((job) => job.title)).toEqual(["Job 1", "Job 2"]);
+    expect(result.error).toMatch(/was aborted after scraping 2 item\(s\)/);
+  });
+
+  it("drops an ABORTED run's rows when a cancel stopped it", async () => {
+    let cancelled = false;
+    vi.mocked(runApifyActor).mockImplementation(async () => {
+      cancelled = true;
+      return { items: [item(1), item(2)], status: "ABORTED" };
+    });
+
+    const result = await apifyProvider.run({
+      ...context,
+      shouldCancel: () => cancelled,
+    });
+
+    expect(result.jobs).toEqual([]);
+  });
+
   it("stays a plain success when the run SUCCEEDED", async () => {
     vi.mocked(runApifyActor).mockResolvedValue({
       items: [item(1)],
