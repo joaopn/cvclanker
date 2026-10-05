@@ -1,5 +1,6 @@
 import { logger } from "@infra/logger";
 import { sanitizeUnknown } from "@infra/sanitize";
+import { asyncPool } from "@server/utils/async-pool";
 import { MIN_TERM_JOB_BUDGET, termKey } from "@shared/term-budgets.js";
 import {
   TERM_STOP_WINDOW,
@@ -46,16 +47,14 @@ function errorMessage(error: unknown, fallback: string): string {
 
 type Built<T> = { ok: true; value: T } | { ok: false; error: string };
 
-// The stored template substituted from the live run context, then handed to
-// the template's `buildInput` hook when it has one.
-function buildActorInput(
+// The stored template substituted from the live run context.
+function substituteStoredInput(
   context: ProviderRunContext,
   template: ProviderActorTemplate | undefined,
 ): Built<unknown> {
   const { instance, runGlobals, searchTerms } = context;
-  let resolvedInput: unknown;
   try {
-    resolvedInput = substituteInputTemplate({
+    const value = substituteInputTemplate({
       templateJson: instance.inputTemplateJson,
       runGlobals,
       searchTerms,
@@ -63,6 +62,7 @@ function buildActorInput(
       maxJobs: instance.maxJobs,
       maxAgeDays: instance.maxAgeDays,
     });
+    return { ok: true, value };
   } catch (error) {
     return {
       ok: false,
@@ -72,6 +72,17 @@ function buildActorInput(
           : errorMessage(error, "Failed to substitute input template"),
     };
   }
+}
+
+// The stored template substituted from the live run context, then handed to
+// the template's `buildInput` hook when it has one.
+function buildActorInput(
+  context: ProviderRunContext,
+  template: ProviderActorTemplate | undefined,
+): Built<unknown> {
+  const substituted = substituteStoredInput(context, template);
+  if (!substituted.ok) return substituted;
+  let resolvedInput = substituted.value;
 
   // URL-driven actors (LinkedIn) compute their search URLs from the live run
   // context (search terms + location) so the configured location is honored
@@ -311,16 +322,80 @@ function termBudgetFor(
   );
 }
 
+type TermRunInput = { input: unknown; cap: number };
+
+// One term's actor runs: `termRunInputs` when the template splits a term into
+// several, else the single `buildInput` result, capped at the term's budget.
+function buildTermInputs(
+  termContext: ProviderRunContext,
+  template: ProviderActorTemplate,
+  budget: number,
+): Built<TermRunInput[]> {
+  if (!template.termRunInputs) {
+    const input = buildActorInput(termContext, template);
+    return input.ok
+      ? { ok: true, value: [{ input: input.value, cap: budget }] }
+      : input;
+  }
+  const substituted = substituteStoredInput(termContext, template);
+  if (!substituted.ok) return substituted;
+  try {
+    const inputs = template.termRunInputs(termContext, substituted.value);
+    if (inputs.length === 0) {
+      return { ok: false, error: "No search to run for this term" };
+    }
+    return { ok: true, value: inputs };
+  } catch (error) {
+    return {
+      ok: false,
+      error: errorMessage(error, "Failed to build actor input"),
+    };
+  }
+}
+
+/** What one actor run of a term came back with. */
+type TermRunResult =
+  | { kind: "error"; error: string }
+  | {
+      kind: "done";
+      outcome: ApifyRunOutcome;
+      mapped: CreateJobInput[];
+      droppedCount: number;
+    };
+
+/** One term's place in a per-term run, before and after its runs. */
+type TermPlan =
+  | { term: string; budget: number; state: "not_run" }
+  | { term: string; budget: number; state: "build_failed"; error: string }
+  | {
+      term: string;
+      budget: number;
+      state: "planned";
+      context: ProviderRunContext;
+      /** Indexes into the run list, one per actor run of this term. */
+      runs: number[];
+    };
+
 /**
- * One actor run per search term, one after another in the run's term order,
- * each capped at that term's budget.
+ * One actor run per search term (or several, for a template that searches one
+ * location per run), each term capped at its budget. Terms run one after
+ * another in the run's term order, or as a pool of `termRunConcurrency` for a
+ * template with `parallelTermRuns`; either way the outcomes, rows and errors
+ * come back in term order.
  *
- * - A run that throws (a FAILED run, an API error) stops the sequence: those
- *   are usually account-wide and would fail every later term the same way.
+ * - A run that throws (a FAILED run, an API error) starts nothing further:
+ *   those are usually account-wide and would fail every later run the same
+ *   way. Runs already going finish.
  * - A run that times out is about its own term: its rows are kept, the term
- *   is `failed`, and the next term runs.
- * - A cancel stops the sequence after the term in flight. Mapping stops at a
- *   cancel, as it does for a single run, so that term keeps no rows.
+ *   is `failed`, and the other runs carry on.
+ * - A cancel starts nothing further. Mapping stops at a cancel, as it does
+ *   for a single run, so a run mapped after one keeps no rows, including a
+ *   run that finished: a cancelled pipeline imports nothing anyway, and the
+ *   source preview's deadline aborts the runs still going when it cancels.
+ * - Every term's input is built before any run starts, so a term whose input
+ *   cannot be built is reported `failed` even if an earlier run then throws.
+ * - A term whose input cannot be built is `failed` and nothing after it in
+ *   the term order is searched.
  *
  * Any failed or unsearched term makes the result a failure, which holds the
  * source's scrape watermark back so the next window re-covers the gap.
@@ -331,101 +406,192 @@ async function runPerTerm(
 ): Promise<ExtractorRunResult> {
   const { shouldCancel, onProgress } = context;
   const terms = distinctTerms(context.searchTerms);
-  const outcomes: TermBudgetOutcome[] = [];
-  const jobs: CreateJobInput[] = [];
-  const errors: string[] = [];
-  let droppedCount = 0;
-  let stopped = false;
 
-  const report = (termsProcessed: number, detail: string) =>
-    onProgress?.({
-      termsProcessed,
-      termsTotal: terms.length,
-      // Sent as a pair: the live line reads "processed/enqueued", and there
-      // is no separate count of pages queued for an actor run.
-      jobPagesEnqueued: jobs.length,
-      jobPagesProcessed: jobs.length,
-      detail,
-    });
-
-  report(0, `${context.instance.label}: 0/${terms.length} search terms`);
-
-  for (const [index, term] of terms.entries()) {
+  const plans: TermPlan[] = [];
+  const runs: Array<{
+    planIndex: number;
+    term: string;
+    input: unknown;
+    cap: number;
+  }> = [];
+  let buildFailed = false;
+  for (const term of terms) {
     const budget = termBudgetFor(context, template, term);
-    if (stopped || shouldCancel?.()) {
-      stopped = true;
-      outcomes.push({ term, budget, scraped: 0, status: "not_run" });
+    if (buildFailed) {
+      plans.push({ term, budget, state: "not_run" });
       continue;
     }
-
     const termContext: ProviderRunContext = {
       ...context,
       searchTerms: [term],
       termBudget: budget,
     };
-    const fail = (error: string, scraped: number) => {
-      errors.push(`"${term}": ${error}`);
+    const inputs = buildTermInputs(termContext, template, budget);
+    if (!inputs.ok) {
+      plans.push({ term, budget, state: "build_failed", error: inputs.error });
+      buildFailed = true;
+      continue;
+    }
+    const planIndex = plans.length;
+    const runIndexes = inputs.value.map(({ input, cap }) => {
+      runs.push({ planIndex, term, input, cap });
+      return runs.length - 1;
+    });
+    plans.push({
+      term,
+      budget,
+      state: "planned",
+      context: termContext,
+      runs: runIndexes,
+    });
+  }
+
+  const results: Array<TermRunResult | undefined> = runs.map(() => undefined);
+  const jobsSoFar = () =>
+    results.reduce(
+      (sum, result) =>
+        sum + (result?.kind === "done" ? result.mapped.length : 0),
+      0,
+    );
+  // A term counts as processed once every one of its runs has settled, so
+  // the count only ever grows however the pool interleaves them.
+  const termsProcessed = () =>
+    plans.filter(
+      (plan) =>
+        plan.state !== "planned" ||
+        plan.runs.every((runIndex) => results[runIndex] !== undefined),
+    ).length;
+  const report = () => {
+    const processed = termsProcessed();
+    const jobCount = jobsSoFar();
+    onProgress?.({
+      termsProcessed: processed,
+      termsTotal: terms.length,
+      // Sent as a pair: the live line reads "processed/enqueued", and there
+      // is no separate count of pages queued for an actor run.
+      jobPagesEnqueued: jobCount,
+      jobPagesProcessed: jobCount,
+      detail: `${context.instance.label}: ${processed}/${terms.length} search terms`,
+    });
+  };
+
+  onProgress?.({
+    termsProcessed: 0,
+    termsTotal: terms.length,
+    jobPagesEnqueued: 0,
+    jobPagesProcessed: 0,
+    detail: `${context.instance.label}: 0/${terms.length} search terms`,
+  });
+
+  let stopped = false;
+  await asyncPool({
+    items: runs,
+    concurrency: template.parallelTermRuns
+      ? (context.termRunConcurrency ?? 1)
+      : 1,
+    shouldStop: () => stopped || shouldCancel?.() === true,
+    task: async (run, runIndex) => {
+      const plan = plans[run.planIndex];
+      if (plan.state !== "planned") return;
+      let result: TermRunResult;
+      try {
+        const outcome = await runApifyActor({
+          token: context.apiToken ?? "",
+          actorRef: context.instance.actorRef,
+          input: run.input,
+          shouldCancel,
+          watch: termStopWatch(context, template, run.term, run.input),
+          timeoutSecs: template.runTimeoutSecs,
+        });
+        const mapping = mapDatasetItems(plan.context, template, outcome.items);
+        result = mapping.ok
+          ? {
+              kind: "done",
+              outcome,
+              mapped: mapping.value.mapped,
+              droppedCount: mapping.value.droppedCount,
+            }
+          : { kind: "error", error: mapping.error };
+      } catch (error) {
+        result = {
+          kind: "error",
+          error: errorMessage(error, String(error)),
+        };
+      }
+      if (result.kind === "error") stopped = true;
+      results[runIndex] = result;
+      report();
+    },
+  });
+
+  const outcomes: TermBudgetOutcome[] = [];
+  const jobs: CreateJobInput[] = [];
+  const errors: string[] = [];
+  let droppedCount = 0;
+  for (const plan of plans) {
+    const { term, budget } = plan;
+    if (plan.state === "not_run") {
+      outcomes.push({ term, budget, scraped: 0, status: "not_run" });
+      continue;
+    }
+    if (plan.state === "build_failed") {
+      errors.push(`"${term}": ${plan.error}`);
+      outcomes.push({ term, budget, scraped: 0, status: "failed" });
+      continue;
+    }
+    const termResults = plan.runs.map((runIndex) => ({
+      result: results[runIndex],
+      cap: runs[runIndex].cap,
+    }));
+    if (termResults.every(({ result }) => result === undefined)) {
+      outcomes.push({ term, budget, scraped: 0, status: "not_run" });
+      continue;
+    }
+    const termErrors: string[] = [];
+    let scraped = 0;
+    let stoppedEarly = false;
+    let reachedCap = false;
+    let unsearched = 0;
+    for (const { result, cap } of termResults) {
+      if (result === undefined) {
+        unsearched += 1;
+      } else if (result.kind === "error") {
+        termErrors.push(result.error);
+      } else {
+        jobs.push(...result.mapped);
+        droppedCount += result.droppedCount;
+        scraped += result.outcome.items.length;
+        if (result.outcome.items.length >= cap) reachedCap = true;
+        if (result.outcome.stoppedEarly) stoppedEarly = true;
+        else if (result.outcome.status !== "SUCCEEDED") {
+          termErrors.push(
+            describeUnfinishedRun(
+              result.outcome.status,
+              result.outcome.items.length,
+              result.mapped.length,
+            ),
+          );
+        }
+      }
+    }
+    if (unsearched > 0) {
+      termErrors.push(
+        `${unsearched} of its ${termResults.length} searches were not run`,
+      );
+    }
+    if (termErrors.length > 0) {
+      errors.push(`"${term}": ${termErrors.join("; ")}`);
       outcomes.push({ term, budget, scraped, status: "failed" });
-    };
-
-    const input = buildActorInput(termContext, template);
-    if (!input.ok) {
-      fail(input.error, 0);
-      stopped = true;
-      continue;
-    }
-
-    let runOutcome: ApifyRunOutcome;
-    try {
-      runOutcome = await runApifyActor({
-        token: context.apiToken ?? "",
-        actorRef: context.instance.actorRef,
-        input: input.value,
-        shouldCancel,
-        watch: termStopWatch(context, template, term, input.value),
-      });
-    } catch (error) {
-      fail(errorMessage(error, String(error)), 0);
-      stopped = true;
-      continue;
-    }
-
-    const mapping = mapDatasetItems(termContext, template, runOutcome.items);
-    if (!mapping.ok) {
-      fail(mapping.error, 0);
-      stopped = true;
-      continue;
-    }
-    jobs.push(...mapping.value.mapped);
-    droppedCount += mapping.value.droppedCount;
-    const scraped = runOutcome.items.length;
-
-    if (runOutcome.stoppedEarly) {
+    } else if (stoppedEarly) {
       outcomes.push({ term, budget, scraped, status: "stopped" });
-    } else if (runOutcome.status === "SUCCEEDED") {
+    } else {
       outcomes.push({
         term,
         budget,
         scraped,
-        status: scraped >= budget ? "capped" : "under",
+        status: reachedCap ? "capped" : "under",
       });
-    } else {
-      fail(
-        describeUnfinishedRun(
-          runOutcome.status,
-          scraped,
-          mapping.value.mapped.length,
-        ),
-        scraped,
-      );
-      // No stop here: a cancel behind this abort is caught at the top of the
-      // next turn, and an abort the client made because this run overran its
-      // own timeout is about this term alone.
     }
-    report(
-      index + 1,
-      `${context.instance.label}: ${index + 1}/${terms.length} search terms`,
-    );
   }
 
   const notRun = outcomes.filter((outcome) => outcome.status === "not_run");

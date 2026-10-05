@@ -269,9 +269,10 @@ export function ProviderInstanceCard({
               <p className="text-sm font-medium">Jobs per search term</p>
               <p className="text-xs text-muted-foreground">
                 Set on each Search Profile, not here: this actor runs once per
-                search term, and each run stops at that term's number (a profile
-                default plus per-term overrides, also editable for many profiles
-                at once in the Profiles page's term matrix).
+                search term (some actors once per term and city, sharing the
+                number between the cities), and stops at that term's number (a
+                profile default plus per-term overrides, also editable for many
+                profiles at once in the Profiles page's term matrix).
               </p>
             </div>
           ) : (

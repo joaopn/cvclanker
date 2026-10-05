@@ -92,6 +92,7 @@ export interface AppSettings {
   tailoringConcurrency: Resolved<number>;
   bulkActionConcurrency: Resolved<number>;
   batchUrlImportConcurrency: Resolved<number>;
+  apifyTermRunConcurrency: Resolved<number>;
   maxBriefChars: Resolved<number>;
   maxJobDescriptionChars: Resolved<number>;
   maxTailoredContentChars: Resolved<number>;

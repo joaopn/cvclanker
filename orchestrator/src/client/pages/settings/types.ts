@@ -70,6 +70,7 @@ export type PipelineSettingsValues = {
   tailoringConcurrency: EffectiveDefault<number>;
   bulkActionConcurrency: EffectiveDefault<number>;
   batchUrlImportConcurrency: EffectiveDefault<number>;
+  apifyTermRunConcurrency: EffectiveDefault<number>;
   manualJobFetchTimeoutMs: EffectiveDefault<number>;
   manualJobFetchMinExtractedChars: EffectiveDefault<number>;
   manualJobFetchBrowserSettleMs: EffectiveDefault<number>;

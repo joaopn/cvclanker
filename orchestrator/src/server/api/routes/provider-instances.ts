@@ -4,6 +4,7 @@ import { getProvider, listProviders } from "@server/providers";
 import * as providersRepo from "@server/repositories/provider-instances";
 import * as settingsRepo from "@server/repositories/settings";
 import { getDefaultProfile } from "@server/services/profiles";
+import { parseSearchCitiesSetting } from "@shared/search-cities.js";
 import { resolveTermJobBudgets } from "@shared/term-budgets.js";
 import {
   defaultProfileConfig,
@@ -151,10 +152,17 @@ providerInstancesRouter.post(
       // A template that runs once per term would spend the preview's
       // deadline on the first few terms and report the rest unsearched, so
       // the preview searches the first term alone, at that term's budget.
-      const perTermRuns =
-        provider.templates.find(
-          (template) => template.id === instance.templateId,
-        )?.perTermRuns === true;
+      const template = provider.templates.find(
+        (candidate) => candidate.id === instance.templateId,
+      );
+      const perTermRuns = template?.perTermRuns === true;
+      // Likewise a template that searches each city in its own run searches
+      // the first city alone: a profile can list dozens, each a run of up to
+      // a few minutes, and a preview needs only one.
+      if (template?.termRunInputs) {
+        const [firstCity] = parseSearchCitiesSetting(runGlobals.city);
+        runGlobals.city = firstCity ?? "";
+      }
       const searchTerms = perTermRuns
         ? profileConfig.searchTerms.slice(0, 1)
         : profileConfig.searchTerms;

@@ -736,6 +736,23 @@ export const settingsRegistry = {
     parse: parseConcurrencyOrNull,
     serialize: serializeNullableNumber,
   },
+  // How many actor runs an Apify source that runs per search term may have
+  // going at once; only templates with `parallelTermRuns` (valig today) use
+  // it. Each run holds its actor's memory on the user's Apify account until it
+  // ends. Apify does not refuse a run past the account's memory limit, it
+  // queues it (measured 2026-10-05: three 32 GB runs against a 64 GB account
+  // were all accepted), so a value too high for the plan waits there, though
+  // a run queued long enough still hits the client's run ceiling, which
+  // counts from the start request, and fails its term. 8 runs
+  // of valig's default 1 GB is 8 GB, the free plan's limit when this was
+  // written; other Apify sources running at the same time share it.
+  apifyTermRunConcurrency: {
+    kind: "typed" as const,
+    schema: z.number().int().min(1).max(MAX_POOL_CONCURRENCY),
+    default: (): number => 8,
+    parse: parseConcurrencyOrNull,
+    serialize: serializeNullableNumber,
+  },
   // --- Context limits (LLM-bound character caps) ---
   // Enforced at the write boundary; exceeding a cap returns 422 with the
   // observed length rather than silently truncating into the prompt.

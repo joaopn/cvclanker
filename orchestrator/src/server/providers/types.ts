@@ -28,6 +28,11 @@ export interface ProviderRunContext {
    * 0 or absent never stops early.
    */
   termStopMinMatches?: number;
+  /**
+   * For a template with `parallelTermRuns`: how many of its actor runs may be
+   * going at once. Absent means one at a time.
+   */
+  termRunConcurrency?: number;
   shouldCancel?: () => boolean;
   onProgress?: (event: ExtractorProgressEvent) => void;
 }
@@ -70,8 +75,9 @@ export interface ProviderActorTemplate {
    */
   buildInput?(context: ProviderRunContext, base: unknown): unknown;
   /**
-   * Run the actor once per search term, one after another, instead of once
-   * for all of them. `buildInput` then receives a context holding that single
+   * Run the actor once per search term instead of once for all of them, one
+   * after another unless `parallelTermRuns` is set. `buildInput` (or
+   * `termRunInputs`) then receives a context holding that single
    * term in `searchTerms` and its budget in `termBudget`, and must cap the
    * run's total results at that budget: a term is reported `capped` when its
    * run returns that many items.
@@ -85,6 +91,30 @@ export interface ProviderActorTemplate {
    * number nobody asked the actor for.
    */
   minTermBudget?: number;
+  /**
+   * For a `perTermRuns` template: start its runs as a pool of
+   * `termRunConcurrency` instead of one after another. The results are the
+   * same, but more of the actor runs at once on the user's Apify account, and
+   * a run that throws stops only the runs not yet started: the ones already
+   * going finish, and bill.
+   */
+  parallelTermRuns?: true;
+  /**
+   * For a `perTermRuns` template whose actor takes one search per run: the
+   * actor runs for one term, in place of `buildInput`, each with the input
+   * it is started with and the number of results that input caps it at. The
+   * term's rows and count sum its runs, and the term reads `capped` when any
+   * of them returned its cap (that search may have had more to give).
+   */
+  termRunInputs?(
+    context: ProviderRunContext,
+    base: unknown,
+  ): Array<{ input: unknown; cap: number }>;
+  /**
+   * The server-side timeout each run of this actor is started with, when the
+   * actor's own default is too short for the searches it is sent.
+   */
+  runTimeoutSecs?: number;
   /**
    * For a `perTermRuns` template whose items say where they ranked: lets a
    * term's run stop once its results stop naming the term (see

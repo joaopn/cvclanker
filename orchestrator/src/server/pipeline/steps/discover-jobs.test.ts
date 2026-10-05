@@ -185,11 +185,13 @@ describe("discoverJobsStep", () => {
       },
     });
 
-    // The stop rule is the setting, at its default with nothing stored.
+    // The stop rule and the run concurrency are the settings, at their
+    // defaults with nothing stored.
     expect(run).toHaveBeenCalledWith(
       expect.objectContaining({
         termBudgets: { engineer: 40 },
         termStopMinMatches: 2,
+        termRunConcurrency: 8,
       }),
     );
     const row = getProgress().sourceStats.find(

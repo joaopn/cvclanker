@@ -110,6 +110,7 @@ const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
   tailoringConcurrency: null,
   bulkActionConcurrency: null,
   batchUrlImportConcurrency: null,
+  apifyTermRunConcurrency: null,
   maxBriefChars: null,
   maxJobDescriptionChars: null,
   maxTailoredContentChars: null,
@@ -394,6 +395,7 @@ export const SECTION_FIELD_MAP: Record<
     "tailoringConcurrency",
     "bulkActionConcurrency",
     "batchUrlImportConcurrency",
+    "apifyTermRunConcurrency",
     "manualJobFetchTimeoutMs",
     "manualJobFetchMinExtractedChars",
     "manualJobFetchBrowserSettleMs",
@@ -479,6 +481,7 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   tailoringConcurrency: null,
   bulkActionConcurrency: null,
   batchUrlImportConcurrency: null,
+  apifyTermRunConcurrency: null,
   maxBriefChars: null,
   maxJobDescriptionChars: null,
   maxTailoredContentChars: null,
@@ -589,6 +592,7 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   tailoringConcurrency: data.tailoringConcurrency.override,
   bulkActionConcurrency: data.bulkActionConcurrency.override,
   batchUrlImportConcurrency: data.batchUrlImportConcurrency.override,
+  apifyTermRunConcurrency: data.apifyTermRunConcurrency.override,
   maxBriefChars: data.maxBriefChars.override,
   maxJobDescriptionChars: data.maxJobDescriptionChars.override,
   maxTailoredContentChars: data.maxTailoredContentChars.override,
@@ -785,6 +789,10 @@ const getDerivedSettings = (settings: AppSettings | null) => {
       batchUrlImportConcurrency: {
         effective: settings?.batchUrlImportConcurrency?.value ?? 3,
         default: settings?.batchUrlImportConcurrency?.default ?? 3,
+      },
+      apifyTermRunConcurrency: {
+        effective: settings?.apifyTermRunConcurrency?.value ?? 8,
+        default: settings?.apifyTermRunConcurrency?.default ?? 8,
       },
       manualJobFetchTimeoutMs: {
         effective: settings?.manualJobFetchTimeoutMs?.value ?? 15_000,
@@ -1105,6 +1113,10 @@ export const SettingsPage: React.FC = () => {
         batchUrlImportConcurrency: nullIfSame(
           data.batchUrlImportConcurrency,
           pipeline.batchUrlImportConcurrency.default,
+        ),
+        apifyTermRunConcurrency: nullIfSame(
+          data.apifyTermRunConcurrency,
+          pipeline.apifyTermRunConcurrency.default,
         ),
         manualJobFetchTimeoutMs: nullIfSame(
           data.manualJobFetchTimeoutMs,

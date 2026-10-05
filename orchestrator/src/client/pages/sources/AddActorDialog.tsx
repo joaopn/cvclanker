@@ -267,9 +267,10 @@ export function AddActorDialog({
 
           {mode === "template" && selectedTemplate?.perTermRuns ? (
             <p className="text-xs text-muted-foreground">
-              This actor runs once per search term, and each run stops at that
-              term's number of jobs, set on each Search Profile (a default plus
-              per-term overrides) rather than here.
+              This actor runs once per search term (some actors once per term
+              and city, sharing the number between the cities), and stops at
+              that term's number of jobs, set on each Search Profile (a default
+              plus per-term overrides) rather than here.
             </p>
           ) : (
             <div className="space-y-2">

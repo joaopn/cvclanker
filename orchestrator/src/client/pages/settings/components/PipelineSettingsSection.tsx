@@ -100,7 +100,8 @@ type ConcurrencyFieldKey =
   | "scoringConcurrency"
   | "tailoringConcurrency"
   | "bulkActionConcurrency"
-  | "batchUrlImportConcurrency";
+  | "batchUrlImportConcurrency"
+  | "apifyTermRunConcurrency";
 
 type ConcurrencyField = {
   key: ConcurrencyFieldKey;
@@ -139,6 +140,12 @@ const CONCURRENCY_FIELDS: ConcurrencyField[] = [
     description:
       "How many pasted URLs the batch import fetches and infers in parallel.",
   },
+  {
+    key: "apifyTermRunConcurrency",
+    label: "Apify term-run concurrency",
+    description:
+      "How many actor runs an Apify source that searches each term separately may have going at once (currently the valig LinkedIn actor, one run per search term and city, 1 GB each). Runs beyond your Apify plan's memory limit wait in Apify's queue, and a run that waits there too long is cut off and its search term reported as failed.",
+  },
 ];
 
 export const PipelineSettingsSection: React.FC<
@@ -163,6 +170,7 @@ export const PipelineSettingsSection: React.FC<
     tailoringConcurrency,
     bulkActionConcurrency,
     batchUrlImportConcurrency,
+    apifyTermRunConcurrency,
     manualJobFetchTimeoutMs,
     manualJobFetchMinExtractedChars,
     manualJobFetchBrowserSettleMs,
@@ -187,6 +195,7 @@ export const PipelineSettingsSection: React.FC<
     tailoringConcurrency,
     bulkActionConcurrency,
     batchUrlImportConcurrency,
+    apifyTermRunConcurrency,
   };
   const {
     control,

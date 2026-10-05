@@ -440,8 +440,10 @@ export async function discoverJobsStep(args: {
   if (enabledProviderInstances.length > 0) {
     const apifyApiToken =
       (await settingsRepo.getSetting("apifyApiToken")) ?? "";
-    const termStopMinMatches = (await getEffectiveSettings())
-      .linkedinTermStopMinMatches.value;
+    const effectiveSettings = await getEffectiveSettings();
+    const termStopMinMatches =
+      effectiveSettings.linkedinTermStopMinMatches.value;
+    const termRunConcurrency = effectiveSettings.apifyTermRunConcurrency.value;
     for (const instance of enabledProviderInstances) {
       const provider = getProvider(instance.providerId);
       if (!provider) {
@@ -486,6 +488,7 @@ export async function discoverJobsStep(args: {
             searchTerms,
             termBudgets: args.mergedConfig.termJobBudgets,
             termStopMinMatches,
+            termRunConcurrency,
             shouldCancel: args.shouldCancel,
             onProgress: (event) => {
               progressHelpers.crawlingUpdate({

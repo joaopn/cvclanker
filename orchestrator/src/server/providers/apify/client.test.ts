@@ -111,6 +111,16 @@ describe("runApifyActor (async run + poll)", () => {
     expect(poll.url.searchParams.get("waitForFinish")).toBe("60");
   });
 
+  it("sends a caller's run timeout with the start request", async () => {
+    stubApify({
+      polls: [jsonResponse(runData({ status: "SUCCEEDED" }))],
+    });
+
+    await runApifyActor({ ...baseArgs, timeoutSecs: 1200 });
+
+    expect(calls[0].url.searchParams.get("timeout")).toBe("1200");
+  });
+
   it("pages through the dataset until a short page", async () => {
     const full = Array.from({ length: 1000 }, (_, i) => ({ i }));
     stubApify({

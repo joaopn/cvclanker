@@ -261,6 +261,7 @@ export const createAppSettings = (
   tailoringConcurrency: { value: 3, default: 3, override: null },
   bulkActionConcurrency: { value: 4, default: 4, override: null },
   batchUrlImportConcurrency: { value: 3, default: 3, override: null },
+  apifyTermRunConcurrency: { value: 8, default: 8, override: null },
   maxBriefChars: { value: 200_000, default: 200_000, override: null },
   maxJobDescriptionChars: { value: 100_000, default: 100_000, override: null },
   maxTailoredContentChars: {

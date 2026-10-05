@@ -74,4 +74,44 @@ describe.sequential("provider instance test route", () => {
     ).toEqual(['"AI Engineer"']);
     expect(input.count).toBe(35);
   });
+
+  it("previews a per-city template on the first city alone", async () => {
+    const { runApifyActor } = await import("@server/providers/apify/client");
+    vi.mocked(runApifyActor).mockResolvedValue({
+      items: [],
+      status: "SUCCEEDED",
+    });
+    const { setSetting } = await import("@server/repositories/settings");
+    await setSetting("apifyApiToken", "tok");
+
+    const profile = await post("/api/profiles", {
+      name: "Cities",
+      config: {
+        searchTerms: ["AI Engineer", "Data Scientist"],
+        searchCountry: "austria",
+        searchCities: "Vienna|Graz|Linz",
+      },
+    });
+    await post(`/api/profiles/${profile.body.data.id}/set-default`, {});
+    const instance = await post("/api/provider-instances", {
+      providerId: "apify",
+      actorRef: "valig/linkedin-jobs-scraper",
+      label: "LinkedIn (valig)",
+      templateId: "valig-linkedin",
+      inputTemplateJson: "{}",
+    });
+
+    const result = await post(
+      `/api/provider-instances/${instance.body.data.id}/test`,
+      {},
+    );
+
+    expect(result.status).toBe(200);
+    expect(
+      vi.mocked(runApifyActor).mock.calls.map(([args]) => {
+        const input = args.input as { keywords: string; location: string };
+        return [input.keywords, input.location];
+      }),
+    ).toEqual([["AI Engineer", "Vienna, Austria"]]);
+  });
 });

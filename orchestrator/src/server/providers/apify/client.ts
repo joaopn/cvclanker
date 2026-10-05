@@ -18,6 +18,8 @@ export interface RunActorArgs {
     pollSecs: number;
     shouldStop: (items: readonly unknown[]) => boolean;
   };
+  /** The run's server-side timeout; omitted, the actor's own configured one. */
+  timeoutSecs?: number;
 }
 
 /** Statuses the Apify run API reports as terminal. */
@@ -280,7 +282,7 @@ async function abortRun(args: {
 export async function runApifyActor(
   args: RunActorArgs,
 ): Promise<ApifyRunOutcome> {
-  const { token, actorRef, input, shouldCancel, watch } = args;
+  const { token, actorRef, input, shouldCancel, watch, timeoutSecs } = args;
   if (!token) {
     throw new ApifyApiError("Apify API token not configured", 401, false);
   }
@@ -288,9 +290,13 @@ export async function runApifyActor(
   const actorPath = normalizeActorPath(actorRef);
   const startUrl = new URL(`${APIFY_BASE}/acts/${actorPath}/runs`);
   startUrl.searchParams.set("token", token);
-  // No `timeout` override: the run uses the timeout configured on the actor
+  // Without `timeoutSecs` the run uses the timeout configured on the actor
   // (instance-tunable on Apify's side). The old hardcoded 290s exists only in
-  // the sync endpoint's world; here it would just reintroduce B42.
+  // the sync endpoint's world; a blanket value here would reintroduce B42, so
+  // only a template that knows its actor's default is too short sets one.
+  if (timeoutSecs !== undefined) {
+    startUrl.searchParams.set("timeout", String(timeoutSecs));
+  }
   const started = parseRunSnapshot(
     await apifyFetch({
       url: startUrl.toString(),

@@ -53,6 +53,7 @@ describe("settingsRegistry helpers", () => {
       "tailoringConcurrency",
       "bulkActionConcurrency",
       "batchUrlImportConcurrency",
+      "apifyTermRunConcurrency",
     ] as const;
 
     it("carries the pre-settings hardcoded values as defaults", () => {
@@ -61,6 +62,7 @@ describe("settingsRegistry helpers", () => {
       expect(settingsRegistry.tailoringConcurrency.default()).toBe(3);
       expect(settingsRegistry.bulkActionConcurrency.default()).toBe(4);
       expect(settingsRegistry.batchUrlImportConcurrency.default()).toBe(3);
+      expect(settingsRegistry.apifyTermRunConcurrency.default()).toBe(8);
     });
 
     // The max mirrors asyncPool's hard clamp (MAX_POOL_CONCURRENCY) — a
