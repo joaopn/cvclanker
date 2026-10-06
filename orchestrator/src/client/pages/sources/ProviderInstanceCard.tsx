@@ -37,6 +37,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { AllProfilesPinControl } from "./AllProfilesPinControl";
 
 const GLOBAL_FIELD_LABELS: Record<SourceConfigGlobalField, string> = {
   searchTerms: "Search terms",
@@ -191,6 +192,12 @@ export function ProviderInstanceCard({
                 </span>
               )}
             </CardDescription>
+            <AllProfilesPinControl
+              kind="provider_instance"
+              sourceId={instance.id}
+              displayName={instance.label}
+              enabledHere={instance.enabled}
+            />
           </div>
           <div className="flex gap-1">
             {template ? (

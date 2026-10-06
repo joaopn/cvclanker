@@ -1801,6 +1801,29 @@ export async function blockCompanyOnProfiles(input: {
   });
 }
 
+export interface SourcePinResponse {
+  /** Profiles whose pin list was written. */
+  changed: Array<{ id: string; name: string }>;
+  /** Profiles already in the requested state. */
+  unchanged: Array<{ id: string; name: string }>;
+  /** Non-remote profiles a remote-only board was not pinned into. */
+  skipped: Array<{ id: string; name: string }>;
+  /** Profiles left with no source a run can use, so their runs will fail. */
+  empty: Array<{ id: string; name: string }>;
+}
+
+/** Pin a source into, or unpin it from, every Search Profile. */
+export async function setSourcePinOnAllProfiles(input: {
+  kind: "extractor" | "provider_instance";
+  sourceId: string;
+  pinned: boolean;
+}): Promise<SourcePinResponse> {
+  return fetchApi<SourcePinResponse>("/profiles/source-pins", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 /**
  * For an actor that runs once per search term: the terms the preview tried,
  * in order, until one returned postings, and the place it searched.

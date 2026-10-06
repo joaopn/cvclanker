@@ -7,7 +7,13 @@ import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 const testProviderInstance = vi.hoisted(() => vi.fn());
-vi.mock("@client/api", () => ({ testProviderInstance }));
+vi.mock("@client/api", () => ({
+  testProviderInstance,
+  getProfiles: vi.fn().mockResolvedValue({
+    profiles: [],
+    defaultProfileId: null,
+  }),
+}));
 vi.mock("@client/lib/toast", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));

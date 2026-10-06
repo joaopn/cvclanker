@@ -31,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { AllProfilesPinControl } from "./sources/AllProfilesPinControl";
 import { ApifyTab } from "./sources/ApifyTab";
 
 const GLOBAL_FIELD_LABELS: Record<SourceConfigGlobalField, string> = {
@@ -168,6 +169,12 @@ function ExtractorCard({ entry }: ExtractorCardProps) {
             <span>{displayName}</span>
           </CardTitle>
           {subline ? <CardDescription>{subline}</CardDescription> : null}
+          <AllProfilesPinControl
+            kind="extractor"
+            sourceId={entry.extractorId}
+            displayName={displayName}
+            enabledHere={row.enabled}
+          />
         </div>
         <Button
           type="button"

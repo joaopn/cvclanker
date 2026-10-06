@@ -6,7 +6,7 @@ import {
   MAX_BLOCKED_COMPANY_KEYWORD_LENGTH,
   MAX_BLOCKED_COMPANY_KEYWORDS,
 } from "@shared/blocked-companies.js";
-import { profileConfigSchema } from "@shared/types";
+import { MAX_PROFILE_SOURCE_PINS, profileConfigSchema } from "@shared/types";
 import type { Request, Response } from "express";
 import { Router } from "express";
 import { z } from "zod";
@@ -28,6 +28,12 @@ const updateSchema = z.object({
 const blockCompanySchema = z.object({
   employer: z.string().trim().min(1).max(MAX_BLOCKED_COMPANY_KEYWORD_LENGTH),
   profileIds: z.array(z.string().min(1)).min(1),
+});
+
+const sourcePinSchema = z.object({
+  kind: z.enum(["extractor", "provider_instance"]),
+  sourceId: z.string().trim().min(1).max(100),
+  pinned: z.boolean(),
 });
 
 profilesRouter.get("/", async (_req: Request, res: Response) => {
@@ -71,6 +77,36 @@ profilesRouter.post("/block-company", async (req: Request, res: Response) => {
       );
     }
     ok(res, { blocked: result.blocked, alreadyBlocked: result.alreadyBlocked });
+  } catch (error) {
+    fail(res, toAppError(error));
+  }
+});
+
+/**
+ * Pin a source into, or unpin it from, every Search Profile at once — the
+ * Sources page's "enable/disable in all profiles" buttons.
+ */
+profilesRouter.post("/source-pins", async (req: Request, res: Response) => {
+  try {
+    const input = sourcePinSchema.parse(req.body ?? {});
+    const result = await profilesService.setSourcePinOnAllProfiles(input);
+    if (!result.ok) {
+      if (result.reason === "unknown_source") {
+        return fail(res, notFound(`Source not found: ${input.sourceId}`));
+      }
+      return fail(
+        res,
+        conflict(
+          `"${result.profileName}" already pins the maximum of ${MAX_PROFILE_SOURCE_PINS} sources of this kind. Unpin one before adding another.`,
+        ),
+      );
+    }
+    ok(res, {
+      changed: result.changed,
+      unchanged: result.unchanged,
+      skipped: result.skipped,
+      empty: result.empty,
+    });
   } catch (error) {
     fail(res, toAppError(error));
   }

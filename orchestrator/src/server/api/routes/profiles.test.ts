@@ -206,4 +206,81 @@ describe.sequential("Search profiles API routes", () => {
       expect((await blockCompany("Acme Corp", [])).status).toBe(400);
     });
   });
+  describe("POST /source-pins", () => {
+    async function createWithSources(
+      name: string,
+      enabledSourceIds: string[],
+    ): Promise<Profile> {
+      const res = await fetch(`${baseUrl}/api/profiles`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name, config: { enabledSourceIds } }),
+      });
+      expect(res.status).toBe(200);
+      return (await res.json()).data as Profile;
+    }
+
+    function setPin(body: unknown) {
+      return fetch(`${baseUrl}/api/profiles/source-pins`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    }
+
+    async function readSources(id: string): Promise<string[]> {
+      const res = await fetch(`${baseUrl}/api/profiles`);
+      const body = await res.json();
+      const profile = (body.data.profiles as Profile[]).find(
+        (entry) => entry.id === id,
+      );
+      if (!profile) throw new Error(`profile ${id} vanished`);
+      return profile.config.enabledSourceIds;
+    }
+
+    it("pins and unpins an extractor on every profile", async () => {
+      const berlin = await createWithSources("Berlin", ["hiringcafe"]);
+      const vienna = await createWithSources("Vienna", ["jobspy"]);
+
+      const pinRes = await setPin({
+        kind: "extractor",
+        sourceId: "jobspy",
+        pinned: true,
+      });
+      const pinBody = await pinRes.json();
+      expect(pinRes.status).toBe(200);
+      expect(pinBody.data.changed).toEqual([{ id: berlin.id, name: "Berlin" }]);
+      expect(await readSources(berlin.id)).toEqual(["hiringcafe", "jobspy"]);
+      expect(await readSources(vienna.id)).toEqual(["jobspy"]);
+
+      const unpinRes = await setPin({
+        kind: "extractor",
+        sourceId: "jobspy",
+        pinned: false,
+      });
+      const unpinBody = await unpinRes.json();
+      expect(unpinRes.status).toBe(200);
+      expect(unpinBody.data.empty).toEqual([{ id: vienna.id, name: "Vienna" }]);
+      expect(await readSources(berlin.id)).toEqual(["hiringcafe"]);
+      expect(await readSources(vienna.id)).toEqual([]);
+    });
+
+    it("answers 404 for an unknown source", async () => {
+      const res = await setPin({
+        kind: "extractor",
+        sourceId: "ghost",
+        pinned: true,
+      });
+      expect(res.status).toBe(404);
+    });
+
+    it("answers 400 for an unknown kind", async () => {
+      const res = await setPin({
+        kind: "board",
+        sourceId: "jobspy",
+        pinned: true,
+      });
+      expect(res.status).toBe(400);
+    });
+  });
 });

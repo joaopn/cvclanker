@@ -104,6 +104,9 @@ export interface UpdateProfileInput {
   config?: Partial<ProfileConfig>;
 }
 
+/** How many built-in sources, and separately Apify actors, one profile may pin. */
+export const MAX_PROFILE_SOURCE_PINS = 100;
+
 /** How many search terms one profile may hold, and how long each may be. */
 export const MAX_SEARCH_TERMS = 200;
 export const MAX_SEARCH_TERM_LENGTH = 200;
@@ -146,8 +149,12 @@ export const profileConfigSchema = z.object({
     }),
   topN: z.number().int().min(1).max(10_000),
   minSuitabilityCategory: z.enum(SUITABILITY_CATEGORIES),
-  enabledSourceIds: z.array(z.string().min(1).max(100)).max(100),
-  providerInstanceIds: z.array(z.string().min(1).max(100)).max(100),
+  enabledSourceIds: z
+    .array(z.string().min(1).max(100))
+    .max(MAX_PROFILE_SOURCE_PINS),
+  providerInstanceIds: z
+    .array(z.string().min(1).max(100))
+    .max(MAX_PROFILE_SOURCE_PINS),
 });
 
 export function defaultProfileConfig(): ProfileConfig {
