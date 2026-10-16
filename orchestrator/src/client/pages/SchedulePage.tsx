@@ -368,6 +368,7 @@ export const SchedulePage: React.FC = () => {
           timeZone={timeZone}
           profiles={profilesQuery.data?.profiles ?? []}
           runOptionSources={runOptionsQuery.data?.sources ?? []}
+          autoSkipSetting={runOptionsQuery.data?.autoSkipCategory ?? null}
           saving={saveMutation.isPending}
           onChange={(draft) => setEditing({ ...editing, draft })}
           onSave={() => saveMutation.mutate(editing)}

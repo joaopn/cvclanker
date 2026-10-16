@@ -106,6 +106,7 @@ describe.sequential("scheduler pass", () => {
     scrapeWindowDays: null,
     scrapeSinceLastRun: null,
     enableAutoTailoring: null,
+    autoSkipBadMatches: null,
     autoResolveDuplicates: false,
     nextFireAt: "2026-08-30T06:00:00.000Z",
     ...overrides,
@@ -378,7 +379,11 @@ describe.sequential("scheduler pass", () => {
 
   it("omits a tri-state flag that is null rather than sending false", async () => {
     await repo.createRunSchedule(
-      dueSchedule({ enableAutoTailoring: null, scrapeSinceLastRun: null }),
+      dueSchedule({
+        enableAutoTailoring: null,
+        scrapeSinceLastRun: null,
+        autoSkipBadMatches: null,
+      }),
     );
     await scheduler.runSchedulerPass(now);
 
@@ -386,6 +391,17 @@ describe.sequential("scheduler pass", () => {
     // Null means "follow the profile/setting"; sending false would override it.
     expect("enableAutoTailoring" in body).toBe(false);
     expect("scrapeSinceLastRun" in body).toBe(false);
+    expect("autoSkipBadMatches" in body).toBe(false);
+  });
+
+  it.each([
+    true,
+    false,
+  ])("sends an explicit auto-skip choice (%s) to the run", async (value) => {
+    await repo.createRunSchedule(dueSchedule({ autoSkipBadMatches: value }));
+    await scheduler.runSchedulerPass(now);
+
+    expect(assembleRun.mock.calls[0][0].autoSkipBadMatches).toBe(value);
   });
 
   it("sweeps duplicates after a completed chain when the schedule asks", async () => {

@@ -126,6 +126,9 @@ function buildRunBody(
     ...(schedule.enableAutoTailoring !== null
       ? { enableAutoTailoring: schedule.enableAutoTailoring }
       : {}),
+    ...(schedule.autoSkipBadMatches !== null
+      ? { autoSkipBadMatches: schedule.autoSkipBadMatches }
+      : {}),
   };
 }
 

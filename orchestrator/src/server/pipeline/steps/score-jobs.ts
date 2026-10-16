@@ -12,24 +12,16 @@ import { getEffectiveSettings } from "@server/services/settings";
 import { asyncPool } from "@server/utils/async-pool";
 import {
   type Job,
-  SUITABILITY_CATEGORIES,
   SUITABILITY_CATEGORY_RANK,
   type SuitabilityCategory,
 } from "@shared/types";
 import { progressHelpers, updateProgress } from "../progress";
 import type { ScoredJob } from "./types";
 
-function parseCategoryOrNull(
-  raw: string | null | undefined,
-): SuitabilityCategory | null {
-  if (!raw) return null;
-  return (SUITABILITY_CATEGORIES as readonly string[]).includes(raw)
-    ? (raw as SuitabilityCategory)
-    : null;
-}
-
 export async function scoreJobsStep(args: {
   brief: string;
+  /** The run's resolved auto-skip tier; null skips nothing. */
+  autoSkipCategory: SuitabilityCategory | null;
   shouldCancel?: () => boolean;
 }): Promise<{ unprocessedJobs: Job[]; scoredJobs: ScoredJob[] }> {
   const enableJobScoringRaw = await settingsRepo.getSetting("enableJobScoring");
@@ -46,9 +38,7 @@ export async function scoreJobsStep(args: {
   logger.info("Running scoring step");
   const unprocessedJobs = await jobsRepo.getUnscoredDiscoveredJobs();
 
-  const autoSkipCategory = parseCategoryOrNull(
-    await settingsRepo.getSetting("autoSkipCategory"),
-  );
+  const { autoSkipCategory } = args;
   const scoringConcurrency = (await getEffectiveSettings()).scoringConcurrency
     .value;
 

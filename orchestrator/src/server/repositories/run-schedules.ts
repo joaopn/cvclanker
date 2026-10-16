@@ -81,6 +81,7 @@ function mapRow(row: Row): RunSchedule {
     scrapeWindowDays: row.scrapeWindowDays,
     scrapeSinceLastRun: row.scrapeSinceLastRun,
     enableAutoTailoring: row.enableAutoTailoring,
+    autoSkipBadMatches: row.autoSkipBadMatches,
     autoResolveDuplicates: row.autoResolveDuplicates,
     nextFireAt: row.nextFireAt,
     lastFiredAt: row.lastFiredAt,
@@ -166,6 +167,7 @@ export async function createRunSchedule(
     scrapeWindowDays: input.scrapeWindowDays,
     scrapeSinceLastRun: input.scrapeSinceLastRun,
     enableAutoTailoring: input.enableAutoTailoring,
+    autoSkipBadMatches: input.autoSkipBadMatches,
     autoResolveDuplicates: input.autoResolveDuplicates,
     nextFireAt: normalizeInstant(input.nextFireAt),
   });

@@ -50,6 +50,8 @@ export interface RunSchedule {
   scrapeSinceLastRun: boolean | null;
   /** Null means "follow the app setting" — the run config's `?? setting`. */
   enableAutoTailoring: boolean | null;
+  /** Null means "follow the app setting", as for `enableAutoTailoring`. */
+  autoSkipBadMatches: boolean | null;
   autoResolveDuplicates: boolean;
   /**
    * When this schedule should next fire, ISO-8601 in UTC.

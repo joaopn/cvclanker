@@ -17,6 +17,7 @@ export type RunPipelineOverrides = {
   scrapeWindowDays?: number;
   scrapeSinceLastRun?: boolean;
   refreshLiveStatus?: boolean;
+  autoSkipBadMatches?: boolean;
 };
 
 export type UsePipelineControlsResult = {
@@ -77,6 +78,7 @@ export function usePipelineControls(
       scrapeWindowDays?: number;
       scrapeSinceLastRun?: boolean;
       refreshLiveStatus?: boolean;
+      autoSkipBadMatches?: boolean;
       scopeLabel?: string;
     }) => {
       try {
@@ -95,6 +97,7 @@ export function usePipelineControls(
           // above and not here is accepted and silently dropped — excess
           // properties arriving through a spread are invisible to tsc.
           refreshLiveStatus: config.refreshLiveStatus,
+          autoSkipBadMatches: config.autoSkipBadMatches,
         });
         const sources = config.sources ?? [];
         const scopeCount =

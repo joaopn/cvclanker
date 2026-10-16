@@ -63,6 +63,7 @@ const options = (
   defaultRefreshLiveStatus: false,
   liveStatusRefreshLimit: 100,
   liveStatusRefreshMinAgeHours: 24,
+  autoSkipCategory: null,
   ...overrides,
 });
 
@@ -99,6 +100,7 @@ describe("RunPipelineMenu", () => {
     expect(onRun).toHaveBeenCalledWith({
       scrapeSinceLastRun: true,
       refreshLiveStatus: false,
+      autoSkipBadMatches: false,
     });
   });
 
@@ -117,6 +119,7 @@ describe("RunPipelineMenu", () => {
       scrapeWindowDays: 14,
       scrapeSinceLastRun: false,
       refreshLiveStatus: false,
+      autoSkipBadMatches: false,
     });
   });
 
@@ -142,6 +145,7 @@ describe("RunPipelineMenu", () => {
       providerInstanceIds: [],
       scrapeSinceLastRun: true,
       refreshLiveStatus: false,
+      autoSkipBadMatches: false,
     });
   });
 
@@ -155,6 +159,7 @@ describe("RunPipelineMenu", () => {
       scrapeWindowDays: 1,
       scrapeSinceLastRun: false,
       refreshLiveStatus: false,
+      autoSkipBadMatches: false,
     });
   });
 
@@ -265,6 +270,7 @@ describe("RunPipelineMenu", () => {
       providerInstanceIds: [],
       scrapeSinceLastRun: true,
       refreshLiveStatus: false,
+      autoSkipBadMatches: false,
     });
   });
 
@@ -288,6 +294,36 @@ describe("RunPipelineMenu", () => {
     expect(ticked).toHaveBeenLastCalledWith(
       expect.objectContaining({ refreshLiveStatus: false }),
     );
+  });
+
+  it("opens the auto-skip box ticked when Settings sets a tier, and sends it both ways", async () => {
+    const onRun = await renderMenu(options({ autoSkipCategory: "good_fit" }));
+    fireEvent.click(runButton());
+    expect(onRun.mock.calls.at(-1)?.[0].autoSkipBadMatches).toBe(true);
+
+    fireEvent.click(
+      screen.getByLabelText(/Auto-skip bad matches/, { selector: "button" }),
+    );
+    fireEvent.click(runButton());
+    expect(onRun.mock.calls.at(-1)?.[0].autoSkipBadMatches).toBe(false);
+  });
+
+  it("lets a run tick auto-skip with Settings off", async () => {
+    const onRun = await renderMenu(options());
+    fireEvent.click(
+      screen.getByLabelText(/Auto-skip bad matches/, { selector: "button" }),
+    );
+    fireEvent.click(runButton());
+    expect(onRun.mock.calls.at(-1)?.[0].autoSkipBadMatches).toBe(true);
+  });
+
+  it("names the tier a ticked auto-skip box skips at", async () => {
+    await renderMenu(options({ autoSkipCategory: "good_fit" }));
+    expect(screen.getByText(/Good fit or lower go straight/)).toBeTruthy();
+    cleanup();
+
+    await renderMenu(options());
+    expect(screen.getByText(/Bad fit go straight/)).toBeTruthy();
   });
 
   it("prices the live-status option with the number of postings", async () => {
@@ -383,6 +419,7 @@ describe("RunPipelineMenu", () => {
       scrapeWindowDays: 14,
       scrapeSinceLastRun: false,
       refreshLiveStatus: false,
+      autoSkipBadMatches: false,
     });
   });
 });

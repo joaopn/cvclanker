@@ -1110,6 +1110,11 @@ export async function runPipeline(config?: {
   scrapeSinceLastRun?: boolean;
   /** Per-run override of the standing "refresh LinkedIn live status" setting. */
   refreshLiveStatus?: boolean;
+  /**
+   * Per-run override of the auto-skip setting: true skips at its tier (or
+   * `bad_fit` when it is off), false skips nothing. Absent follows it.
+   */
+  autoSkipBadMatches?: boolean;
 }): Promise<{
   message: string;
   skippedDisabledSources?: string[];

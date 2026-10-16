@@ -60,6 +60,17 @@ export interface PipelineConfig {
    * Absent falls through to the setting.
    */
   refreshLiveStatus?: boolean;
+  /**
+   * Per-run override of auto-skip. `true` skips at the `autoSkipCategory`
+   * setting's tier, or at `bad_fit` when that setting is off; `false` skips
+   * nothing. Absent follows the setting.
+   */
+  autoSkipBadMatches?: boolean;
+  /**
+   * The tier this run auto-skips at, resolved by `runPipeline` from
+   * `autoSkipBadMatches` and the setting. Not a request field.
+   */
+  autoSkipCategory?: SuitabilityCategory | null;
   blockedCompanyKeywords?: string[];
   enableCrawling?: boolean;
   enableScoring?: boolean;
@@ -722,4 +733,9 @@ export interface RunOptionsResponse {
    * decides how much of that cap a repeat run actually spends. 0 = no floor.
    */
   liveStatusRefreshMinAgeHours: number;
+  /**
+   * The `autoSkipCategory` setting. The auto-skip tickbox opens ticked when it
+   * is set, and names the tier a ticked box skips at (`bad_fit` when null).
+   */
+  autoSkipCategory: SuitabilityCategory | null;
 }

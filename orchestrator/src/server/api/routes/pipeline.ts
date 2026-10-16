@@ -468,6 +468,7 @@ pipelineRouter.get(
       defaultRefreshLiveStatus: settings.liveStatusRefreshEnabled.value,
       liveStatusRefreshLimit: settings.liveStatusRefreshLimit.value,
       liveStatusRefreshMinAgeHours: settings.liveStatusRefreshMinAgeHours.value,
+      autoSkipCategory: settings.autoSkipCategory.value,
     } satisfies RunOptionsResponse);
   }),
 );

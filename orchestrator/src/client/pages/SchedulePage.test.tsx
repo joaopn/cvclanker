@@ -1,5 +1,6 @@
+import * as api from "@client/api";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -57,5 +58,29 @@ describe("SchedulePage header", () => {
     expect(
       screen.getByRole("button", { name: "Schedule" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("SchedulePage auto-skip default", () => {
+  /**
+   * A new schedule stores null ("follow Settings"), so the box can only show
+   * what the run will do if the page hands the editor the setting. Radix
+   * renders an undefined/false `checked` as unticked, so only a setting that
+   * is ON pins it.
+   */
+  it("opens a new schedule's auto-skip box ticked when Settings sets a tier", async () => {
+    vi.mocked(api.getRunOptions).mockResolvedValue({
+      sources: [],
+      autoSkipCategory: "good_fit",
+    } as unknown as Awaited<ReturnType<typeof api.getRunOptions>>);
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: /New schedule/ }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("checkbox", { name: "Auto-skip bad matches" }),
+      ).toBeChecked(),
+    );
   });
 });

@@ -2,6 +2,7 @@ import type { RunOptionSource } from "@shared/types";
 import { describe, expect, it } from "vitest";
 import {
   buildRunSelection,
+  describeAutoSkip,
   describeLastScraped,
   findWindowIssues,
   runnableSources,
@@ -204,5 +205,16 @@ describe("describeLastScraped", () => {
     expect(describeLastScraped("2026-08-28T06:00:00.000Z", now)).toBe("today");
     expect(describeLastScraped("2026-08-27T06:00:00.000Z", now)).toBe("1d ago");
     expect(describeLastScraped("2026-08-20T12:00:00.000Z", now)).toBe("8d ago");
+  });
+});
+
+describe("describeAutoSkip", () => {
+  it("names bad matches when Settings is off, the server's fallback", () => {
+    expect(describeAutoSkip(null)).toBe("Bad fit");
+  });
+
+  it("names Settings' wider tier and everything below it", () => {
+    expect(describeAutoSkip("bad_fit")).toBe("Bad fit");
+    expect(describeAutoSkip("good_fit")).toBe("Good fit or lower");
   });
 });

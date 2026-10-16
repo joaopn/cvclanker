@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/popover";
 import {
   buildRunSelection,
+  describeAutoSkip,
   describeLastScraped,
   findWindowIssues,
   runnableSources,
@@ -31,6 +32,7 @@ export interface RunPipelineMenuProps {
     scrapeWindowDays?: number;
     scrapeSinceLastRun?: boolean;
     refreshLiveStatus?: boolean;
+    autoSkipBadMatches?: boolean;
   }) => void;
 }
 
@@ -76,6 +78,7 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
   const [manualWindow, setManualWindow] = useState(false);
   const [windowInput, setWindowInput] = useState("1");
   const [refreshLiveStatus, setRefreshLiveStatus] = useState(false);
+  const [autoSkipBadMatches, setAutoSkipBadMatches] = useState(false);
   const [seededFor, setSeededFor] = useState<string | null>(null);
 
   /**
@@ -98,6 +101,7 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
     setManualWindow(!optionsQuery.data.defaultSinceLastRun);
     setWindowInput(String(optionsQuery.data.capDays ?? 1));
     setRefreshLiveStatus(optionsQuery.data.defaultRefreshLiveStatus);
+    setAutoSkipBadMatches(optionsQuery.data.autoSkipCategory !== null);
   }, [open, optionsQuery.data, runnable, profileKey, seededFor]);
 
   const windowDays = useMemo(() => {
@@ -123,6 +127,7 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
     optionsQuery.data?.liveStatusRefreshLimit ?? null;
   const liveStatusMinAgeHours =
     optionsQuery.data?.liveStatusRefreshMinAgeHours ?? 0;
+  const autoSkipSetting = optionsQuery.data?.autoSkipCategory ?? null;
   const windowInvalid = manualWindow && windowDays === null;
   const canRun =
     !optionsQuery.isLoading &&
@@ -156,6 +161,8 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
       // through to the standing setting, so unticking a box that opened ticked
       // would do nothing.
       refreshLiveStatus,
+      // Always sent, for the same reason.
+      autoSkipBadMatches,
     });
   };
 
@@ -355,6 +362,32 @@ export const RunPipelineMenu: React.FC<RunPipelineMenuProps> = ({
                         ? " That budget is per profile, and later profiles carry on past what the ones before them managed to check."
                         : " That budget is per profile, and with no freshness floor set a profile can re-check what the one before it just did."
                       : ""}
+                  </span>
+                </label>
+              </div>
+            </section>
+
+            <section className="flex flex-col gap-2">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Matching
+              </Label>
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="run-auto-skip-bad-matches"
+                  checked={autoSkipBadMatches}
+                  onCheckedChange={(checked) =>
+                    setAutoSkipBadMatches(checked === true)
+                  }
+                  className="mt-0.5"
+                />
+                <label
+                  htmlFor="run-auto-skip-bad-matches"
+                  className="cursor-pointer text-sm leading-tight"
+                >
+                  Auto-skip bad matches
+                  <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                    New Inbox jobs this run scores{" "}
+                    {describeAutoSkip(autoSkipSetting)} go straight to Skipped.
                   </span>
                 </label>
               </div>

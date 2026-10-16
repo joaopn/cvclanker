@@ -497,6 +497,7 @@ export const runSchedules = sqliteTable("run_schedules", {
   scrapeWindowDays: integer("scrape_window_days"),
   scrapeSinceLastRun: integer("scrape_since_last_run", { mode: "boolean" }),
   enableAutoTailoring: integer("enable_auto_tailoring", { mode: "boolean" }),
+  autoSkipBadMatches: integer("auto_skip_bad_matches", { mode: "boolean" }),
   autoResolveDuplicates: integer("auto_resolve_duplicates", {
     mode: "boolean",
   })

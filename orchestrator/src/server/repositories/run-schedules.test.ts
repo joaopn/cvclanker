@@ -44,6 +44,7 @@ describe.sequential("run schedules repository", () => {
     scrapeWindowDays: null,
     scrapeSinceLastRun: true,
     enableAutoTailoring: null,
+    autoSkipBadMatches: null,
     autoResolveDuplicates: false,
     ...overrides,
   });
@@ -57,6 +58,7 @@ describe.sequential("run schedules repository", () => {
         providerInstanceIds: ["instance-1"],
         scrapeWindowDays: 14,
         enableAutoTailoring: true,
+        autoSkipBadMatches: false,
         autoResolveDuplicates: true,
         nextFireAt: "2026-08-31T06:00:00.000Z",
       }),
@@ -67,6 +69,7 @@ describe.sequential("run schedules repository", () => {
     // SQLite has no boolean, so these are 0/1 columns — the three that are
     // NULLABLE are the ones a naive mapper turns into `false`.
     expect(read?.enableAutoTailoring).toBe(true);
+    expect(read?.autoSkipBadMatches).toBe(false);
     expect(read?.scrapeSinceLastRun).toBe(true);
     expect(read?.autoResolveDuplicates).toBe(true);
     expect(read?.daysOfWeek).toEqual([1, 3, 5]);
@@ -75,7 +78,11 @@ describe.sequential("run schedules repository", () => {
 
   it("keeps a null tri-state flag null rather than collapsing it to false", async () => {
     const created = await repo.createRunSchedule(
-      daily({ enableAutoTailoring: null, scrapeSinceLastRun: null }),
+      daily({
+        enableAutoTailoring: null,
+        scrapeSinceLastRun: null,
+        autoSkipBadMatches: null,
+      }),
     );
     const read = await repo.getRunSchedule(created.id);
 
@@ -83,6 +90,7 @@ describe.sequential("run schedules repository", () => {
     // mapper that conflates them silently changes what a run does.
     expect(read?.enableAutoTailoring).toBeNull();
     expect(read?.scrapeSinceLastRun).toBeNull();
+    expect(read?.autoSkipBadMatches).toBeNull();
   });
 
   it("does not throw when a stored JSON column is corrupt", async () => {

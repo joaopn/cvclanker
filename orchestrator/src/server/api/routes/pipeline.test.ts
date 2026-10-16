@@ -572,6 +572,18 @@ describe.sequential("Pipeline API routes", () => {
       expect(updated.liveStatusRefreshMinAgeHours).toBe(6);
     });
 
+    it("answers with the auto-skip setting the menu seeds from", async () => {
+      expect((await optionsFor()).autoSkipCategory).toBeNull();
+
+      await fetch(`${baseUrl}/api/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ autoSkipCategory: "good_fit" }),
+      });
+
+      expect((await optionsFor()).autoSkipCategory).toBe("good_fit");
+    });
+
     /**
      * An explicit `sources` list is gated on location compatibility, so a task
      * whose platforms include an incompatible one would 400 the run the moment

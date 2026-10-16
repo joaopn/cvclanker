@@ -1,6 +1,10 @@
 import type { ExtractorSourceId } from "@shared/extractors";
 import { bucketWindowDays } from "@shared/scrape-window.js";
-import type { RunOptionSource } from "@shared/types";
+import {
+  type RunOptionSource,
+  SUITABILITY_CATEGORY_LABELS,
+  type SuitabilityCategory,
+} from "@shared/types";
 
 /** What the menu will send, derived from the user's ticks. */
 export interface RunMenuSelection {
@@ -125,4 +129,14 @@ export function describeLastScraped(
   if (days <= 0) return "today";
   if (days === 1) return "1d ago";
   return `${days}d ago`;
+}
+
+/**
+ * What a ticked auto-skip box skips, given the `autoSkipCategory` setting: its
+ * tier when set, `bad_fit` when off — the same fallback the server applies.
+ */
+export function describeAutoSkip(setting: SuitabilityCategory | null): string {
+  const tier = setting ?? "bad_fit";
+  const label = SUITABILITY_CATEGORY_LABELS[tier];
+  return tier === "bad_fit" ? label : `${label} or lower`;
 }

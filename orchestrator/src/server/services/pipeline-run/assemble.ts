@@ -117,6 +117,9 @@ export const runPipelineSchema = z.object({
   // Per-run override of the `liveStatusRefreshEnabled` setting. Absent falls
   // through to the setting; a `partial` run ignores both (see runPipeline).
   refreshLiveStatus: z.boolean().optional(),
+  // Per-run override of the `autoSkipCategory` setting: true skips at its tier
+  // (or `bad_fit` when it is off), false skips nothing. Absent follows it.
+  autoSkipBadMatches: z.boolean().optional(),
   // Resolve the run's scrape config from this Profile. Body fields still win
   // per-field (one-off overrides); absent → the default Profile.
   profileId: z.string().min(1).optional(),
@@ -495,6 +498,7 @@ async function resolveProfileRunConfig(
       // this Profile's slice of it, so there is nothing per-Profile to fall
       // back to. Absent here means "use the standing setting".
       refreshLiveStatus: body.refreshLiveStatus,
+      autoSkipBadMatches: body.autoSkipBadMatches,
       partial: body.partial,
       discoveryConcurrency: body.discoveryConcurrency,
     },

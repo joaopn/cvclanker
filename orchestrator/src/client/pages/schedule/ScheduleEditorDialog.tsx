@@ -6,7 +6,11 @@
  * than something a user backs into.
  */
 
-import type { RunOptionSource, RunSchedule } from "@shared/types";
+import type {
+  RunOptionSource,
+  RunSchedule,
+  SuitabilityCategory,
+} from "@shared/types";
 import type React from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -27,6 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { describeAutoSkip } from "../orchestrator/runMenu";
 
 const WEEKDAYS = [
   { value: 0, label: "Sun" },
@@ -51,6 +56,7 @@ export interface ScheduleDraft {
   providerInstanceIds: string[];
   autoResolveDuplicates: boolean;
   enableAutoTailoring: boolean | null;
+  autoSkipBadMatches: boolean | null;
 }
 
 export const emptyDraft = (): ScheduleDraft => ({
@@ -66,6 +72,7 @@ export const emptyDraft = (): ScheduleDraft => ({
   providerInstanceIds: [],
   autoResolveDuplicates: false,
   enableAutoTailoring: null,
+  autoSkipBadMatches: null,
 });
 
 export const draftFrom = (schedule: RunSchedule): ScheduleDraft => ({
@@ -81,6 +88,7 @@ export const draftFrom = (schedule: RunSchedule): ScheduleDraft => ({
   providerInstanceIds: schedule.providerInstanceIds ?? [],
   autoResolveDuplicates: schedule.autoResolveDuplicates,
   enableAutoTailoring: schedule.enableAutoTailoring,
+  autoSkipBadMatches: schedule.autoSkipBadMatches,
 });
 
 interface Props {
@@ -89,6 +97,8 @@ interface Props {
   timeZone: string;
   profiles: Array<{ id: string; name: string }>;
   runOptionSources: RunOptionSource[];
+  /** The `autoSkipCategory` setting, which a null draft value follows. */
+  autoSkipSetting: SuitabilityCategory | null;
   saving: boolean;
   onChange: (draft: ScheduleDraft) => void;
   onSave: () => void;
@@ -101,6 +111,7 @@ export const ScheduleEditorDialog: React.FC<Props> = ({
   timeZone,
   profiles,
   runOptionSources,
+  autoSkipSetting,
   saving,
   onChange,
   onSave,
@@ -417,6 +428,30 @@ export const ScheduleEditorDialog: React.FC<Props> = ({
                 Tailor top matches automatically
               </Label>
             </div>
+            <div className="flex items-center gap-2">
+              {/* Null follows the setting, so once run-options has loaded the
+                  box shows what the run would do; touching it pins an explicit
+                  choice either way. */}
+              <Checkbox
+                id="auto-skip-bad-matches"
+                checked={draft.autoSkipBadMatches ?? autoSkipSetting !== null}
+                onCheckedChange={(checked) =>
+                  set("autoSkipBadMatches", checked === true)
+                }
+              />
+              <Label
+                htmlFor="auto-skip-bad-matches"
+                className="text-sm font-normal"
+              >
+                Auto-skip bad matches
+              </Label>
+            </div>
+            {(draft.autoSkipBadMatches ?? autoSkipSetting !== null) && (
+              <p className="pl-6 text-xs text-muted-foreground">
+                New Inbox jobs each run scores{" "}
+                {describeAutoSkip(autoSkipSetting)} go straight to Skipped.
+              </p>
+            )}
           </div>
 
           {usesPaid && (

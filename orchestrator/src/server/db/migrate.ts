@@ -696,6 +696,7 @@ const migrations: string[] = [
      scrape_window_days INTEGER,
      scrape_since_last_run INTEGER,
      enable_auto_tailoring INTEGER,
+     auto_skip_bad_matches INTEGER,
      auto_resolve_duplicates INTEGER NOT NULL DEFAULT 0,
      next_fire_at TEXT,
      last_fired_at TEXT,
@@ -710,6 +711,9 @@ const migrations: string[] = [
        (cadence_kind = 'daily_at' AND time_of_day IS NOT NULL)
      )
    )`,
+  // Additive: existing DBs predate it (skipped on dup-column). Null follows
+  // the auto-skip setting, which is what every schedule did before.
+  `ALTER TABLE run_schedules ADD COLUMN auto_skip_bad_matches INTEGER`,
 ];
 
 console.log("🔧 Running database migrations...");

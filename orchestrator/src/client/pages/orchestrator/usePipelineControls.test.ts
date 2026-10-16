@@ -90,6 +90,24 @@ describe("usePipelineControls", () => {
     expect(body?.refreshLiveStatus).toBe(true);
   });
 
+  it.each<[string, string[]]>([
+    ["single profile", ["p1"]],
+    ["chain", ["p1", "p2"]],
+  ])("carries the auto-skip choice into a run (%s)", async (_name, ids) => {
+    const { result } = renderControls();
+
+    for (const value of [true, false]) {
+      await act(async () => {
+        await result.current.runPipelineNow(ids, {
+          autoSkipBadMatches: value,
+        });
+      });
+      const body = vi.mocked(api.runPipeline).mock.calls.at(-1)?.[0];
+      expect(body).toBeDefined();
+      expect(body?.autoSkipBadMatches).toBe(value);
+    }
+  });
+
   it("reports the legs the server actually queued, not the ones asked for", async () => {
     vi.mocked(api.runPipeline).mockResolvedValue({
       message: "Pipeline started",

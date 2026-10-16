@@ -22,6 +22,7 @@ import type {
   PipelineConfig,
   PipelineRunSavedDetails,
   RunTrigger,
+  SuitabilityCategory,
 } from "@shared/types";
 import { getDataDir } from "../config/dataDir";
 import * as jobsRepo from "../repositories/jobs";
@@ -124,6 +125,20 @@ async function resolveLiveStatusRefresh(
   return (await getEffectiveSettings()).liveStatusRefreshEnabled.value;
 }
 
+/**
+ * The tier this run auto-skips at. A ticked per-run box with the setting off
+ * still means something — "bad matches" — so it falls back to `bad_fit`
+ * rather than to the setting's null.
+ */
+async function resolveAutoSkipCategory(
+  configValue: boolean | undefined,
+): Promise<SuitabilityCategory | null> {
+  if (configValue === false) return null;
+  const setting = (await getEffectiveSettings()).autoSkipCategory.value;
+  if (configValue === true) return setting ?? "bad_fit";
+  return setting;
+}
+
 async function resolveAutoTailoring(
   configValue: boolean | undefined,
 ): Promise<boolean> {
@@ -203,11 +218,15 @@ export async function runPipeline(
     config.refreshLiveStatus,
     { partial },
   );
+  const autoSkipCategory = await resolveAutoSkipCategory(
+    config.autoSkipBadMatches,
+  );
   const mergedConfig = {
     ...DEFAULT_CONFIG,
     ...config,
     enableAutoTailoring,
     refreshLiveStatus,
+    autoSkipCategory,
     locationIntent,
   };
   const configSnapshot = {
@@ -300,6 +319,7 @@ export async function runPipeline(
       await persistResultSummary({ stage: "scoring" });
       const { scoredJobs } = await scoreJobsStep({
         brief,
+        autoSkipCategory: mergedConfig.autoSkipCategory,
         shouldCancel: () => cancelRequestedAt !== null,
       });
       await persistResultSummary({

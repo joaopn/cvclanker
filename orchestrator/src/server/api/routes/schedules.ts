@@ -65,6 +65,7 @@ const scheduleSchema = z.object({
   scrapeWindowDays: z.number().int().min(1).max(365).nullable().default(null),
   scrapeSinceLastRun: z.boolean().nullable().default(null),
   enableAutoTailoring: z.boolean().nullable().default(null),
+  autoSkipBadMatches: z.boolean().nullable().default(null),
   autoResolveDuplicates: z.boolean().default(false),
 });
 

@@ -81,7 +81,12 @@ function buildEffectiveConfigSnapshot(args: {
         args.config.scrapeWindowDays ?? args.config.scrapeMaxAgeDays ?? null,
       scrapeSinceLastRun: args.config.scrapeSinceLastRun === true,
     },
-    autoSkipCategory: args.settings.autoSkipCategory.value,
+    // What this run used, which a per-run override can make differ from the
+    // setting.
+    autoSkipCategory:
+      args.config.autoSkipCategory === undefined
+        ? args.settings.autoSkipCategory.value
+        : args.config.autoSkipCategory,
     models: {
       scorer: args.settings.modelScorer.value,
       tailoring: args.settings.modelTailoring.value,
