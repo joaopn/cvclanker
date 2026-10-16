@@ -60,6 +60,22 @@ describe("scoreJobsStep auto-skip", () => {
     expect(updateJob.mock.calls[0][1].status).toBe("skipped");
   });
 
+  it("never skips a job carrying the applied mark (reopened after applying)", async () => {
+    getUnscoredDiscoveredJobs.mockResolvedValue([
+      createJob({
+        id: "job-1",
+        status: "discovered",
+        suitabilityCategory: null,
+        appliedAt: "2026-09-01T10:00:00.000Z",
+      }),
+    ]);
+
+    await scoreJobsStep({ brief: "", autoSkipCategory: "bad_fit" });
+
+    expect(updateJob.mock.calls[0][1].suitabilityCategory).toBe("bad_fit");
+    expect(updateJob.mock.calls[0][1]).not.toHaveProperty("status");
+  });
+
   it("leaves the job in the Inbox when the run skips nothing", async () => {
     await scoreJobsStep({ brief: "", autoSkipCategory: null });
 

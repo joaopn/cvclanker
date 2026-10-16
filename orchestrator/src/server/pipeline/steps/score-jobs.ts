@@ -132,8 +132,10 @@ export async function scoreJobsStep(args: {
       if (args.shouldCancel?.()) return;
 
       const { category, reason } = scored;
+      // The permanent applied mark, not the status: every row here is
+      // `discovered`, and a reopened job you applied for keeps the mark.
       const shouldAutoSkip =
-        job.status !== "applied" &&
+        job.appliedAt === null &&
         autoSkipCategory !== null &&
         SUITABILITY_CATEGORY_RANK[category] <=
           SUITABILITY_CATEGORY_RANK[autoSkipCategory];
