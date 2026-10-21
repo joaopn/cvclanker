@@ -1,6 +1,7 @@
 import {
   AppError,
   badRequest,
+  conflict,
   notFound,
   toAppError,
   unprocessableEntity,
@@ -26,10 +27,13 @@ import {
 import {
   FlattenInputError,
   flattenInput,
+  isInLatexComment,
 } from "@server/services/cv/flatten-input";
 import { CvExtractError, extractCv } from "@server/services/cv/llm-extract-cv";
 import { RenderCvError, renderCv } from "@server/services/cv/render";
 import {
+  extractMarkerIds,
+  markerFor,
   RenderTemplateError,
   renderTemplate,
 } from "@server/services/cv/render-template";
@@ -57,6 +61,56 @@ const updateCvSchema = z.object({
   personalBrief: z.string().optional(),
   extractionPrompt: z.string().optional(),
 });
+
+const updateTemplateSchema = z.object({
+  templatedTex: z.string().min(1),
+});
+
+/**
+ * Field ids whose every occurrence sits in a `%` comment, so the field
+ * would vanish from the PDF while the marker-set check still passes.
+ */
+function commentedOutMarkers(tex: string, ids: Iterable<string>): string[] {
+  const hidden: string[] = [];
+  for (const id of ids) {
+    const marker = markerFor(id);
+    let visible = false;
+    for (
+      let at = tex.indexOf(marker);
+      at !== -1 && !visible;
+      at = tex.indexOf(marker, at + marker.length)
+    ) {
+      visible = !isInLatexComment(tex, at);
+    }
+    if (!visible) hidden.push(id);
+  }
+  return hidden;
+}
+
+/**
+ * Tectonic runs with `-Z continue-on-errors`, so it exits 0 on errors it
+ * can step over. Its stderr carries one `error: <file>:<line>: <message>`
+ * line per error; the messages are counted with the location stripped so
+ * an edit that only moves an existing error is not blamed for it.
+ */
+function countTexErrors(log: string): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const line of log.split("\n")) {
+    const match = /^error: (?:.*?:\d+: )?(.*)$/.exec(line.trim());
+    if (!match) continue;
+    counts.set(match[1], (counts.get(match[1]) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function newTexErrors(baseline: string, edited: string): string[] {
+  const before = countTexErrors(baseline);
+  const added: string[] = [];
+  for (const [message, count] of countTexErrors(edited)) {
+    if (count > (before.get(message) ?? 0)) added.push(message);
+  }
+  return added;
+}
 
 function exceedsCharCap(
   field: string,
@@ -461,6 +515,150 @@ cvRouter.get("/:id/render-preview", async (req: Request, res: Response) => {
       `inline; filename="${document.name}.pdf"`,
     );
     res.send(Buffer.from(pdf));
+  } catch (error) {
+    handleCvError(res, error);
+  }
+});
+
+/**
+ * Hand edit of the templated `.tex` (layout tweaks such as a line break)
+ * without a re-upload. The marker set must stay exactly as extracted and
+ * each marker must appear outside a `%` comment. The default render must
+ * compile without any TeX error the stored template did not already
+ * have; there is no content-equivalence check, since changing the output
+ * is the point.
+ */
+cvRouter.put("/:id/template", async (req: Request, res: Response) => {
+  try {
+    const { templatedTex } = updateTemplateSchema.parse(req.body ?? {});
+    const settings = await getEffectiveSettings();
+    if (resolveCvSourceFormat(settings) === "docx") {
+      return fail(
+        res,
+        unprocessableEntity(
+          "This profile uses Word CVs; only LaTeX templates can be edited.",
+        ),
+      );
+    }
+
+    const max = settings.maxExpandedLatexBytes.value;
+    const bytes = Buffer.byteLength(templatedTex, "utf8");
+    if (bytes > max) {
+      return fail(res, exceedsByteCap("templatedTex", bytes, max));
+    }
+
+    const archive = await cvRepo.getCvDocumentArchive(req.params.id);
+    const existing = await cvRepo.getCvDocumentById(req.params.id);
+    if (!existing || !archive) {
+      return fail(res, notFound("CV document not found."));
+    }
+    if (!existing.templatedTex) {
+      return fail(
+        res,
+        unprocessableEntity(
+          "This CV has no template yet — re-extract it before editing.",
+        ),
+      );
+    }
+
+    const expected = extractMarkerIds(existing.templatedTex);
+    const actual = extractMarkerIds(templatedTex);
+    const missing = [...expected].filter((id) => !actual.has(id));
+    const unknown = [...actual].filter((id) => !expected.has(id));
+    if (missing.length > 0 || unknown.length > 0) {
+      return fail(
+        res,
+        unprocessableEntity(
+          "The template must keep every «field» marker exactly as extracted.",
+          { missing, unknown },
+        ),
+      );
+    }
+    const alreadyHidden = new Set(
+      commentedOutMarkers(existing.templatedTex, expected),
+    );
+    const commented = commentedOutMarkers(templatedTex, expected).filter(
+      (id) => !alreadyHidden.has(id),
+    );
+    if (commented.length > 0) {
+      return fail(
+        res,
+        unprocessableEntity(
+          "Every «field» marker must appear outside a % comment.",
+          { commented },
+        ),
+      );
+    }
+
+    const rendered = renderTemplate(
+      templatedTex,
+      existing.defaultFieldValues,
+    );
+    const baselineRendered = renderTemplate(
+      existing.templatedTex,
+      existing.defaultFieldValues,
+    );
+    // The baseline is the stored template compiled the same way as the
+    // edit, so both logs name the same file and resolve assets from the
+    // same directory. A baseline that exits non-zero is judged by its
+    // stderr rather than failing the edit; a timed-out one has a
+    // truncated log, so it fails the request.
+    const [compiled, baselineLog] = await Promise.all([
+      runTectonic({
+        renderedTex: rendered,
+        archive: new Uint8Array(archive),
+      }),
+      runTectonic({
+        renderedTex: baselineRendered,
+        archive: new Uint8Array(archive),
+      }).then(
+        (result) => result.log,
+        (error: unknown) => {
+          if (!(error instanceof RunTectonicError)) throw error;
+          if (error.code === "NON_ZERO_EXIT") return error.stderr;
+          throw unprocessableEntity(
+            `Could not compile the current template to compare the edit against: ${error.message}`,
+            { code: error.code },
+          );
+        },
+      ),
+    ]);
+    const texErrors = newTexErrors(baselineLog, compiled.log);
+    if (texErrors.length > 0) {
+      return fail(
+        res,
+        unprocessableEntity(
+          "The edited template compiles with LaTeX errors the current one does not have.",
+          { texErrors, stderr: compiled.log.slice(-2000) },
+        ),
+      );
+    }
+
+    // A re-extract may have replaced the template while this compiled;
+    // writing over it would pair this edit's markers with the new
+    // defaultFieldValues.
+    const current = await cvRepo.getCvDocumentById(req.params.id);
+    if (!current) return fail(res, notFound("CV document not found."));
+    if (current.templatedTex !== existing.templatedTex) {
+      return fail(
+        res,
+        conflict(
+          "The CV's template changed while this edit was compiling; reload and edit again.",
+        ),
+      );
+    }
+
+    const updated = await cvRepo.updateCvDocument(req.params.id, {
+      templatedTex,
+      lastCompileStderr: compiled.log,
+    });
+    if (!updated) return fail(res, notFound("CV document not found."));
+
+    logger.info("CV template edited", {
+      cvDocumentId: req.params.id,
+      bytes,
+    });
+    ok(res, updated);
   } catch (error) {
     handleCvError(res, error);
   }

@@ -4,6 +4,7 @@ import {
   CompileLogViewer,
   AttemptLogViewer,
 } from "@client/components/cv/CompileLogViewer";
+import { CvTemplateEditor } from "@client/components/cv/CvTemplateEditor";
 import { PageHeader } from "@client/components/layout";
 import { ActivityLogButton } from "@client/components/ActivityLogButton";
 import { LlmStatusButton } from "@client/components/LlmStatusButton";
@@ -132,7 +133,7 @@ export function CvPage() {
         ) : detailQuery.isLoading || !detailQuery.data ? (
           <LoadingShell />
         ) : (
-          <CvEditor cv={detailQuery.data} />
+          <CvEditor key={detailQuery.data.id} cv={detailQuery.data} />
         )}
       </main>
     </>
@@ -399,7 +400,7 @@ function UploadCard({ onUploaded }: { onUploaded: () => Promise<void> }) {
 
 function CvEditor({ cv }: { cv: CvDocument }) {
   const queryClient = useQueryClient();
-  const { cvSourceFormat } = useSettings();
+  const { cvSourceFormat, isLoading: settingsLoading } = useSettings();
   const copy = getCvFormatCopy(cvSourceFormat);
   const [name, setName] = useState(cv.name);
   const [personalBrief, setPersonalBrief] = useState(cv.personalBrief);
@@ -424,7 +425,7 @@ function CvEditor({ cv }: { cv: CvDocument }) {
   useEffect(() => {
     setName(cv.name);
     setPersonalBrief(cv.personalBrief);
-  }, [cv.id, cv.updatedAt, cv.name, cv.personalBrief]);
+  }, [cv.id, cv.name, cv.personalBrief]);
 
   // Update the textarea when (a) the persisted CV changes (e.g. after a
   // successful re-extract) or (b) the server default lands and the CV has
@@ -432,7 +433,7 @@ function CvEditor({ cv }: { cv: CvDocument }) {
   useEffect(() => {
     const next = cv.extractionPrompt || defaultPromptQuery.data || "";
     setExtractionPrompt(next);
-  }, [cv.id, cv.updatedAt, cv.extractionPrompt, defaultPromptQuery.data]);
+  }, [cv.id, cv.extractionPrompt, defaultPromptQuery.data]);
 
   const isDirty = name !== cv.name || personalBrief !== cv.personalBrief;
   // Dirty when the textarea differs from what's persisted (or from the
@@ -452,7 +453,9 @@ function CvEditor({ cv }: { cv: CvDocument }) {
   const saveMutation = useMutation({
     mutationFn: async (input: { name: string; personalBrief: string }) =>
       api.updateCvDocument(cv.id, input),
-    onSuccess: async () => {
+    onSuccess: async (updated) => {
+      setName(updated.name);
+      setPersonalBrief(updated.personalBrief);
       toast.success("CV saved");
       await invalidateAll();
     },
@@ -838,6 +841,10 @@ function CvEditor({ cv }: { cv: CvDocument }) {
           />
         </CardContent>
       </Card>
+
+      {!settingsLoading && cvSourceFormat === "latex" && !isLegacyCv ? (
+        <CvTemplateEditor cv={cv} />
+      ) : null}
 
       <Card>
         <CardHeader>

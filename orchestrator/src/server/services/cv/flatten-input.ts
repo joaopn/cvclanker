@@ -251,7 +251,7 @@ function collectAssets(source: string): string[] {
  * on the same line — i.e. inside a LaTeX line comment. A `%` is unescaped
  * when preceded by an even number of consecutive backslashes (zero counts).
  */
-function isInLatexComment(source: string, index: number): boolean {
+export function isInLatexComment(source: string, index: number): boolean {
   let lineStart = index;
   while (lineStart > 0 && source[lineStart - 1] !== "\n") lineStart--;
   let backslashes = 0;

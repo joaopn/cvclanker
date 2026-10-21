@@ -1392,6 +1392,16 @@ export async function updateCvDocument(
   });
 }
 
+export async function updateCvTemplate(
+  id: string,
+  templatedTex: string,
+): Promise<CvDocument> {
+  return fetchApi<CvDocument>(`/cv/${id}/template`, {
+    method: "PUT",
+    body: JSON.stringify({ templatedTex }),
+  });
+}
+
 export async function deleteCvDocument(
   id: string,
 ): Promise<{ deleted: number }> {
