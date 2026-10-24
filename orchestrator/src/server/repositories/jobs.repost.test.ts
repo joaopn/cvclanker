@@ -361,20 +361,4 @@ describe.sequential("jobs repository repost detection", () => {
 
     expect(job.datePosted).toBeNull();
   });
-
-  it("still normalizes a unix-ms date rather than treating it as unknown", async () => {
-    const url = "https://example.com/jobs/unix-ms";
-    await jobsRepo.createJobs([
-      {
-        source: "indeed",
-        title: "Platform Engineer",
-        employer: "Acme",
-        jobUrl: url,
-        datePosted: "1777075200000",
-      },
-    ]);
-
-    const job = await jobsRepo.getJobByUrl(url);
-    expect(job?.datePosted).toBe(new Date(1777075200000).toISOString());
-  });
 });

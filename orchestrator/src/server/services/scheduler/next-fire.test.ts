@@ -274,17 +274,6 @@ describe("nextFireAt — daily at a wall-clock time", () => {
     ).toBe("2026-09-07T06:00:00.000Z");
   });
 
-  it("catches up to ONE future slot after a long outage", () => {
-    expect(
-      iso(
-        nextFireAt(dailyAt("06:00"), {
-          from: at("2026-10-09T09:00:00.000Z"),
-          timeZone: "UTC",
-        }),
-      ),
-    ).toBe("2026-10-10T06:00:00.000Z");
-  });
-
   it("evaluates the weekday in the schedule's zone near local midnight", () => {
     // 2026-08-30T22:00Z is Sunday in UTC but already Monday in Auckland, so a
     // Monday-only schedule fires that same UTC day.

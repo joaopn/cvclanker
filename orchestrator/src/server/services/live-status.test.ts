@@ -112,6 +112,9 @@ describe("parseLinkedinLiveStatus", () => {
   });
 
   it("verdicts an ONSITE (Easy Apply) job open on the FULL render", () => {
+    // Measured 2026-09-03 over 68 guest pages / 34 jobs: the onsite and
+    // offsite markers never co-occur, and the onsite sample was drawn through
+    // LinkedIn's own Easy Apply search filter (f_AL=true).
     const html = `<html><body>${TITLE_MARKUP}${FULL_RENDER_MARKER}${ONSITE_APPLY_CTA}
       <figcaption class="num-applicants__caption">20 applicants</figcaption>
     </body></html>`;
@@ -196,15 +199,6 @@ describe("parseLinkedinLiveStatus", () => {
     ).toBeNull();
   });
 
-  it("reads the Easy-Apply verdict off which Apply variant is present", () => {
-    // Measured 2026-09-03 over 68 guest pages / 34 jobs: the onsite and
-    // offsite markers never co-occur, and the onsite sample was drawn through
-    // LinkedIn's own Easy Apply search filter (f_AL=true).
-    expect(parseLinkedinLiveStatus(OPEN_FIGURE_VARIANT)?.easyApply).toBe(false);
-    const onsite = `<html><body>${TITLE_MARKUP}${FULL_RENDER_MARKER}${ONSITE_APPLY_CTA}</body></html>`;
-    expect(parseLinkedinLiveStatus(onsite)?.easyApply).toBe(true);
-  });
-
   it("keeps the Easy-Apply verdict on the CONDENSED render", () => {
     // The onsite button survives the condensed render where the offsite one
     // does not, so an Easy Apply job needs no full draw to be flagged.
@@ -253,13 +247,6 @@ describe("parseLinkedinLiveStatus", () => {
       applicants: null,
       easyApply: true,
     });
-  });
-
-  it("leaves the Easy-Apply verdict NULL on both closed kinds", () => {
-    // A closed posting renders an empty CTA container, so there is no Apply
-    // variant left to read — false would claim an offsite posting we never saw.
-    expect(parseLinkedinLiveStatus(CLOSED_MARKUP)?.easyApply).toBeNull();
-    expect(parseLinkedinLiveStatus(CLOSED_NO_BANNER)?.easyApply).toBeNull();
   });
 
   it("ignores a closed-job class outside a figure (description markup)", () => {

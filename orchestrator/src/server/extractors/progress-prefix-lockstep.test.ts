@@ -74,14 +74,6 @@ describe("progress-prefix wire-protocol lockstep", () => {
     value: extractPrefix(repoRoot, site),
   }));
 
-  it("all four emitter/parser sites share the same literal", () => {
-    const distinct = new Set(prefixes.map((p) => p.value));
-    expect(
-      distinct.size,
-      `progress prefixes diverge: ${JSON.stringify(prefixes)}`,
-    ).toBe(1);
-  });
-
   it("the shared literal is the expected brand value with its trailing separator space", () => {
     for (const { site, value } of prefixes) {
       expect(value, `${site} progress prefix`).toBe(EXPECTED_PROGRESS_PREFIX);

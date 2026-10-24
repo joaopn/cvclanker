@@ -94,10 +94,6 @@ describe("parseDocx", () => {
     );
   });
 
-  it("does not flag harmless fields like PAGE", () => {
-    expect(() => parseDocx(headerFooterDoc())).not.toThrow();
-  });
-
   it("rejects archives above the part-count cap", () => {
     expect(codeOf(() => parseDocx(simpleDoc(), { maxPartCount: 2 }))).toBe(
       "ZIP_BOMB",

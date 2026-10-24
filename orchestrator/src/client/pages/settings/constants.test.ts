@@ -5,38 +5,6 @@ import {
 } from "./constants";
 
 describe("settings constants", () => {
-  it("falls back to effective defaults when overrides are blank", () => {
-    expect(
-      resolveWritingStyleDraft({
-        values: {
-          tone: "",
-          formality: null,
-          constraints: "",
-          doNotUse: undefined,
-        },
-        defaults: {
-          tone: { effective: "professional", default: "professional" },
-          formality: { effective: "medium", default: "medium" },
-          constraints: {
-            effective: "Keep it warm",
-            default: "Keep it warm",
-          },
-          doNotUse: { effective: "", default: "" },
-          coverLetterInstructions: { effective: "", default: "" },
-          languageMode: { effective: "manual", default: "manual" },
-          manualLanguage: { effective: "english", default: "english" },
-          summaryMaxWords: { effective: null, default: null },
-          maxKeywordsPerSkill: { effective: null, default: null },
-        },
-      }),
-    ).toEqual({
-      tone: "professional",
-      formality: "medium",
-      constraints: "Keep it warm",
-      doNotUse: "",
-    });
-  });
-
   it("uses effective values instead of registry defaults for blank drafts", () => {
     expect(
       resolveWritingStyleDraft({

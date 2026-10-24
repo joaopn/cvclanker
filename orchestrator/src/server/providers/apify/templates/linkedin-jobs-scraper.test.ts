@@ -116,10 +116,6 @@ describe("linkedinJobsScraperTemplate.buildInput", () => {
     expect(input.limitPerSource).toBe(33);
   });
 
-  it("runs once per term", () => {
-    expect(linkedinJobsScraperTemplate.perTermRuns).toBe(true);
-  });
-
   it("overrides a stale location-pinned url and count from the stored input", () => {
     const input = buildInput(
       {

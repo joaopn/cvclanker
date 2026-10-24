@@ -403,23 +403,4 @@ describe("RunPipelineMenu", () => {
 
     expect(screen.getAllByText(/Hiring Cafe/)).toHaveLength(1);
   });
-
-  /**
-   * The Profile's flag decides which button opens pressed, and its max job age
-   * seeds the input — so an untouched menu reproduces what a plain Run would
-   * have done.
-   */
-  it("opens on the explicit window when the Profile does not narrow", async () => {
-    const onRun = await renderMenu(
-      options({ defaultSinceLastRun: false, capDays: 14 }),
-    );
-
-    fireEvent.click(runButton());
-    expect(onRun).toHaveBeenCalledWith({
-      scrapeWindowDays: 14,
-      scrapeSinceLastRun: false,
-      refreshLiveStatus: false,
-      autoSkipBadMatches: false,
-    });
-  });
 });

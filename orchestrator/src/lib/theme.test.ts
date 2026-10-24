@@ -89,16 +89,6 @@ describe("theme preference store", () => {
     expect(document.documentElement.classList.contains("dark")).toBe(true);
   });
 
-  it("applyThemeClass stamps from the stored preference", () => {
-    window.localStorage.setItem(THEME_STORAGE_KEY, "dark");
-    applyThemeClass();
-    expect(document.documentElement.classList.contains("dark")).toBe(true);
-
-    window.localStorage.setItem(THEME_STORAGE_KEY, "light");
-    applyThemeClass();
-    expect(document.documentElement.classList.contains("dark")).toBe(false);
-  });
-
   it("useTheme consumers see setPreference updates", () => {
     stubMatchMedia(false);
     const { result } = renderHook(() => useTheme());

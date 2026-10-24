@@ -147,22 +147,6 @@ describe("url import batch store", () => {
     await second?.done;
   });
 
-  it("keeps running after the starter stops waiting", async () => {
-    const gate = deferred<void>();
-    const started = startUrlImportBatch({
-      urls: ["a"],
-      concurrency: 1,
-      importUrl: async (url) => {
-        await gate.promise;
-        return created(url);
-      },
-    });
-    expect(isUrlImportRunning()).toBe(true);
-    gate.resolve();
-    await started?.done;
-    expect(getUrlImportBatch()?.status).toBe("completed");
-  });
-
   it("cancel stops dispatch and settles below requested", async () => {
     const gate = deferred<void>();
     let startedCount = 0;

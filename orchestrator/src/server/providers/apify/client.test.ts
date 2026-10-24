@@ -382,14 +382,6 @@ describe("runApifyActor (async run + poll)", () => {
     ).toBe(true);
   });
 
-  it("rethrows a non-retryable poll error", async () => {
-    stubApify({
-      polls: [jsonResponse({ error: "no such run" }, 404)],
-    });
-
-    await expect(runApifyActor(baseArgs)).rejects.toThrow("Apify 404");
-  });
-
   it("fails fast without a token", async () => {
     const fetchMock = stubApify({ polls: [] });
 

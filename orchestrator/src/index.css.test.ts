@@ -101,17 +101,11 @@ const EXPLICIT_THEMES = [...LIGHT_THEMES, ...DARK_THEMES]
   .filter((id) => id !== DEFAULT_LIGHT_ID);
 
 describe("index.css palettes", () => {
-  it("declares a block for every selectable palette except the :root default", () => {
-    for (const id of EXPLICIT_THEMES) {
-      expect(css).toContain(`:root[data-theme="${id}"]`);
-    }
-    expect(css).not.toContain(`:root[data-theme="${DEFAULT_LIGHT_ID}"]`);
-  });
-
-  it("has no palette block that theme.ts does not offer", () => {
-    // The reverse direction. Without it, renaming an id in theme.ts (or a typo
-    // in a selector) leaves an orphan block that matches nothing — the id then
-    // resolves to :root sandstone, under a .dark class on the dark slots.
+  it("declares a block for exactly the palettes theme.ts offers", () => {
+    // Both directions: a missing block, or an orphan one — renaming an id in
+    // theme.ts (or a typo in a selector) leaves a block that matches nothing,
+    // and the id then resolves to :root sandstone, under a .dark class on the
+    // dark slots.
     const declared = [
       ...css.matchAll(/:root\[data-theme="([a-z0-9-]+)"\]/g),
     ].map((match) => match[1]);

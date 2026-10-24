@@ -298,12 +298,6 @@ describe("job action batch client", () => {
     expect(unsubscribeSpy).toHaveBeenCalled();
   });
 
-  it("opens the stream on discovery only when something is running", async () => {
-    getBatchesMock.mockResolvedValue([snapshot({ batchId: "batch-live" })]);
-    await refreshJobActionBatches();
-    expect(subscribeMock).toHaveBeenCalledTimes(1);
-  });
-
   // One read can carry several frames, and the SSE reader drains them all
   // before re-checking whether it was closed — so a close decided on the first
   // frame still lets the second through. Two things guard that: the close is

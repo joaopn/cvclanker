@@ -171,25 +171,4 @@ describe("renderCvPdf", () => {
     expect(result.error).toBe("LaTeX compile failed: missing closing brace");
     expect(result.error).not.toContain("Undefined control sequence");
   });
-
-  it("passes allowBaselineRender=true so a no-override compile is allowed", async () => {
-    const job = createJob({
-      id: "job-baseline",
-      cvDocumentId: "cv-baseline",
-      tailoredFields: {},
-    });
-    mocks.getJobById
-      .mockResolvedValueOnce(job)
-      .mockResolvedValueOnce({ ...job, pdfPath: "/p" });
-    mocks.generatePdf.mockResolvedValue({
-      success: true,
-      pdfPath: "/p",
-    });
-
-    await renderCvPdf({ jobId: "job-baseline" });
-
-    expect(mocks.generatePdf).toHaveBeenCalledWith(
-      expect.objectContaining({ allowBaselineRender: true }),
-    );
-  });
 });

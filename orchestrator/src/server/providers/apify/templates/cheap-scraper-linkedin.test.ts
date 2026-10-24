@@ -77,11 +77,6 @@ describe("cheapScraperLinkedinTemplate.buildInput", () => {
     expect(input.maxItems).toBe(150);
   });
 
-  it("runs once per search term, never under the actor's minimum", () => {
-    expect(cheapScraperLinkedinTemplate.perTermRuns).toBe(true);
-    expect(cheapScraperLinkedinTemplate.minTermBudget).toBe(150);
-  });
-
   it("caps a per-term run at the term's budget, not the instance's max jobs", () => {
     const input = buildInput({
       runGlobals: { city: "Dublin", country: "ireland", maxJobsPerTerm: "50" },

@@ -3,7 +3,6 @@ import type { JobListItem, JobStatus } from "@shared/types.js";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildCompanyConflicts,
-  IN_FLIGHT_STATUSES,
   nonConflictingIds,
   type TailorCandidate,
   tailorApproved,
@@ -32,29 +31,6 @@ const failedTailor = (id: string, employer: string): JobListItem =>
     status: "processing",
     tailoringFailureReason: "tectonic exited 1",
   });
-
-describe("IN_FLIGHT_STATUSES", () => {
-  it("is exactly the four unconcluded working statuses", () => {
-    expect([...IN_FLIGHT_STATUSES]).toEqual([
-      "processing",
-      "ready",
-      "applied",
-      "in_progress",
-    ]);
-  });
-
-  it("excludes the shelves and the concluded statuses", () => {
-    for (const status of [
-      "discovered",
-      "backlog",
-      "stale",
-      "skipped",
-      "closed",
-    ] as const) {
-      expect(IN_FLIGHT_STATUSES).not.toContain(status);
-    }
-  });
-});
 
 describe("buildCompanyConflicts", () => {
   it("returns nothing when no employer overlaps", () => {

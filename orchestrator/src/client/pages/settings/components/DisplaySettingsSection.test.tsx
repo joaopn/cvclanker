@@ -229,12 +229,7 @@ describe("DisplaySettingsSection palette dropdowns", () => {
 describe("DisplaySettingsSection company in-flight check", () => {
   const LABEL = /Warn before tailoring a company you have work in flight at/;
 
-  it("renders unchecked on the shipped default", () => {
-    renderSection();
-    expect(screen.getByRole("checkbox", { name: LABEL })).not.toBeChecked();
-  });
-
-  it("is a real checkbox, not an indeterminate one, on that default", () => {
+  it("is a real checkbox, not an indeterminate one, on the shipped default", () => {
     // Radix resolves an undefined `checked` to false, so this does NOT catch a
     // dropped `?? default` fallback — the default:true case below is what pins
     // that. What this pins is that the control is a settled checkbox rather

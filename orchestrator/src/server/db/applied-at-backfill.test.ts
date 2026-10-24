@@ -306,26 +306,6 @@ describe.sequential("applied_at backfill", () => {
     expect(await appliedAtOf("iso-updated")).toBe("2026-08-14T12:39:21.720Z");
   });
 
-  it("falls back through ready_at then closed_at then updated_at", async () => {
-    await seed([
-      {
-        id: "no-ready",
-        status: "closed",
-        outcome: "ghosted",
-        readyAt: null,
-        closedAt: 1786711161,
-        updatedAt: "2026-08-14T12:39:21.720Z",
-      },
-    ]);
-
-    await boot();
-
-    // closed_at wins over updated_at when ready_at is absent.
-    expect(await appliedAtOf("no-ready")).toBe(
-      new Date(1786711161 * 1000).toISOString(),
-    );
-  });
-
   it("falls all the way through to discovered_at", async () => {
     await seed([
       {

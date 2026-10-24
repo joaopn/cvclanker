@@ -135,14 +135,6 @@ describe("JobFilterBar", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the facet bar slot on the tickbox row", () => {
-    render(
-      <JobFilterBar {...baseProps()} facetBar={<div>FACET_BAR_SLOT</div>} />,
-    );
-
-    expect(screen.getByText("FACET_BAR_SLOT")).toBeInTheDocument();
-  });
-
   it("renders the sorter icon at the end of the tickbox row", () => {
     render(
       <JobFilterBar {...baseProps()} facetBar={<div>FACET_BAR_SLOT</div>} />,

@@ -7,6 +7,7 @@ import {
 } from "@shared/types";
 import { describe, expect, it } from "vitest";
 import type { SortDirection, SortKey } from "./constants";
+import { orderedSources } from "./constants";
 import {
   applicantsSortRank,
   collectProfileSearchTitles,
@@ -42,12 +43,12 @@ describe("collectProfileSearchTitles", () => {
 });
 
 describe("orchestrator utils", () => {
-  it("enables startupjobs without credentials", () => {
-    expect(getEnabledSources(createAppSettings())).toContain("startupjobs");
-  });
-
-  it("enables workingnomads without credentials", () => {
-    expect(getEnabledSources(createAppSettings())).toContain("workingnomads");
+  it("returns every pipeline source, whatever the settings", () => {
+    expect(getEnabledSources(createAppSettings())).toEqual(orderedSources);
+    expect(getEnabledSources(null)).toEqual(orderedSources);
+    expect(orderedSources).toEqual(
+      expect.arrayContaining(["startupjobs", "workingnomads"]),
+    );
   });
 
   it("maps by-status stats to tab counts including the `discovered` alias", () => {

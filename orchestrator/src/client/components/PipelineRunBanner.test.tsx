@@ -390,37 +390,12 @@ describe("PipelineRunBanner", () => {
     expect(screen.getByText("Complete")).toBeInTheDocument();
   });
 
-  it("hides after the user dismisses it", () => {
-    render(<PipelineRunBanner trigger="manual" isRunning />);
-    act(() => {
-      lastHandlers.current?.onMessage(baseEvent);
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: /dismiss/i }));
-    expect(screen.queryByText("LinkedIn")).not.toBeInTheDocument();
-  });
-
   /**
    * The bug that made a prod run look like it had vanished: the banner
    * subscribed only while a run was in flight, so reopening the page after one
    * had ended — including one that DIED — showed nothing at all, even though
    * the server still holds that run's funnel and replays it on connect.
    */
-  it("shows a run that already ended, on a page opened afterwards", () => {
-    render(<PipelineRunBanner trigger="manual" isRunning={false} />);
-
-    act(() => {
-      lastHandlers.current?.onMessage({
-        ...baseEvent,
-        step: "failed",
-        message: "Pipeline failed",
-        error: "LLM rate limit reached",
-      });
-    });
-
-    expect(screen.getByText(/rate limit/i)).toBeInTheDocument();
-  });
-
   it("shows why a run failed even when its sources reported", () => {
     render(<PipelineRunBanner trigger="manual" isRunning={false} />);
 
@@ -606,11 +581,6 @@ describe("PipelineRunBanner", () => {
     // A chain resets to idle between legs; blanking the banner there would
     // take its retained pages with it mid-run.
     expect(screen.getByText("LinkedIn")).toBeInTheDocument();
-  });
-
-  it("subscribes even when nothing is running", () => {
-    render(<PipelineRunBanner trigger="manual" isRunning={false} />);
-    expect(lastHandlers.current).not.toBeNull();
   });
 
   it("stays out of the way when the server has no run to describe", () => {

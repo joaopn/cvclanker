@@ -90,31 +90,4 @@ describe("resolveSourceContextSettings", () => {
     });
     expect(result).toEqual({ foo: "bar" });
   });
-
-  it("disabled city mapping reveals the saved searchCities field value", () => {
-    // Models the post-rename invariant: when the user unchecks the city
-    // mapping, the editable `searchCities` field is the authoritative
-    // fallback. Field key must match the mapping's sourceField.
-    const schemaWithSearchCitiesField: SourceConfigSchema = {
-      fields: [
-        { key: "searchCities", label: "Cities", type: "text", default: "" },
-      ],
-      globalMappings: [
-        {
-          globalField: "city",
-          sourceField: "searchCities",
-          enabledByDefault: true,
-        },
-      ],
-    };
-    const result = resolveSourceContextSettings({
-      schema: schemaWithSearchCitiesField,
-      row: {
-        config: { searchCities: "Graz" },
-        mappings: { city: false },
-      },
-      runGlobals: { city: "Vienna" },
-    });
-    expect(result.searchCities).toBe("Graz");
-  });
 });

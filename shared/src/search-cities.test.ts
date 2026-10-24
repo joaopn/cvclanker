@@ -70,6 +70,7 @@ describe("search-cities", () => {
     expect(shouldApplyStrictCityFilter("Leeds", "united kingdom")).toBe(true);
     expect(shouldApplyStrictCityFilter("UK", "united kingdom")).toBe(false);
     expect(shouldApplyStrictCityFilter("usa", "united states")).toBe(false);
+    expect(shouldApplyStrictCityFilter("United States", "us")).toBe(false);
   });
 
   it("matches by whole location tokens and avoids substring false positives", () => {

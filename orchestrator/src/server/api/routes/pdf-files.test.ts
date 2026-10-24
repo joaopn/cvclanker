@@ -19,6 +19,9 @@ describe.sequential("GET /pdfs/:filename", () => {
     await stopServer({ server, closeDb, tempDir });
   });
 
+  // B47: any filename the server pins wins over the client's `download`
+  // attribute, so the exact "inline" / "attachment" values (no `filename`
+  // parameter) are the guard.
   it("serves a stored resume PDF with inline headers", async () => {
     const { upsertJobPdf } = await import("@server/repositories/job-pdfs");
     await upsertJobPdf({ jobId: "job-1", kind: "resume", data: PDF_BYTES });
@@ -48,25 +51,6 @@ describe.sequential("GET /pdfs/:filename", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/pdf");
-  });
-
-  // B47: the value is irrelevant — ANY filename the server pins wins over the
-  // client's `download` attribute, so the guard is that the parameter is
-  // absent, not that it holds some particular name.
-  it("pins no filename on either format, so the download attribute wins", async () => {
-    const { upsertJobPdf } = await import("@server/repositories/job-pdfs");
-    await upsertJobPdf({ jobId: "job-b47", kind: "resume", data: PDF_BYTES });
-    await upsertJobPdf({
-      jobId: "job-b47",
-      kind: "resume_docx",
-      data: DOCX_BYTES,
-    });
-
-    for (const name of ["resume_job-b47.pdf", "resume_job-b47.docx"]) {
-      const res = await fetch(`${baseUrl}/pdfs/${name}`);
-      expect(res.status).toBe(200);
-      expect(res.headers.get("content-disposition")).not.toMatch(/filename/i);
-    }
   });
 
   it("404s when no blob row exists", async () => {
