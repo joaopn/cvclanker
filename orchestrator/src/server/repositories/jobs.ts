@@ -205,10 +205,12 @@ export async function getJobListItems(
 }
 
 // Statuses the user is actively triaging — duplicate detection is scoped here
-// so aged/terminal rows don't pollute the review surface.
+// so aged/terminal rows don't pollute the review surface. The retired
+// `selected` status is left out on purpose: the boot reconcile turns any such
+// row into `discovered` before anything reads this (barring a failed
+// reconcile, which only warns).
 const DUPLICATE_SCOPE_STATUSES: JobStatus[] = [
   "discovered",
-  "selected",
   "processing",
   "ready",
 ];
@@ -595,7 +597,7 @@ async function tryInsertJob(input: CreateJobInput): Promise<Job | null> {
  * `repostCount`, set `repostedAt = now`, advance `datePosted`, and re-promote
  * the row to `discovered` if it had been shelved (either auto-aged into
  * `backlog` or manually swept into `stale`). Other user-driven statuses
- * (`selected`, `skipped`, `closed`, etc.) keep their position — those reflect
+ * (`skipped`, `closed`, etc.) keep their position — those reflect
  * active work or a final decision and shouldn't be undone by a repost.
  */
 /**
@@ -928,7 +930,6 @@ export async function getUnscoredDiscoveredJobs(
  */
 export const LIVE_STATUS_REFRESH_STATUSES: readonly JobStatus[] = [
   "discovered",
-  "selected",
   "backlog",
   "ready",
 ];
@@ -1183,7 +1184,7 @@ export async function deleteJobsByStatus(status: JobStatus): Promise<number> {
 
 /**
  * Statuses each sweep scope is allowed to pull aged rows from.
- *  - `shelf`     — the passive holding tiers (Inbox / Selected / Backlog).
+ *  - `shelf`     — the passive holding tiers (Inbox / Backlog).
  *  - `tailoring` — the Tailoring tab's finished rows (Ready), swept on
  *    explicit request only. Deliberately excludes the tab's other status,
  *    `processing`: with a null failure reason it is a tailor running right
@@ -1194,7 +1195,7 @@ export async function deleteJobsByStatus(status: JobStatus): Promise<number> {
  * the default sweep never touches a user's tailored rows by surprise.
  */
 const STALE_SWEEP_SCOPE_STATUSES = {
-  shelf: ["discovered", "selected", "backlog"],
+  shelf: ["discovered", "backlog"],
   tailoring: ["ready"],
 } satisfies Record<string, JobStatus[]>;
 
@@ -1267,7 +1268,7 @@ export async function sweepStaleJobs(
 }
 
 /**
- * Move every shelf row (Inbox/Selected/Backlog) whose live LinkedIn check
+ * Move every shelf row (Inbox/Backlog) whose live LinkedIn check
  * found the posting no longer accepting applications into `stale`. Deliberately
  * shelf-only: an applied/interviewing job whose posting closed is the user's
  * call to mark closed, and a tailored `ready` row is work they may still want

@@ -121,8 +121,8 @@ describe("the applied mark's two surfaces", () => {
    * annotation of `JobStatus[]` constrains the members and never the
    * cardinality, so a status added to the union and forgotten here would
    * type-check and go silently untested. (`pages/settings/constants.ts` keeps
-   * its own `ALL_JOB_STATUSES` — the same ten strings in the same order, but
-   * annotated `JobStatus[]` and therefore NOT exhaustiveness-checked. Not
+   * its own `ALL_JOB_STATUSES` — the same strings minus the retired
+   * `selected`, annotated `JobStatus[]` and therefore NOT exhaustiveness-checked. Not
    * imported here because it belongs to another page directory; the
    * `satisfies` protects this copy only.)
    */

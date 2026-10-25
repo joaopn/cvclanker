@@ -37,7 +37,6 @@ import type { JobStatus } from "@shared/types";
  */
 const CLOSEABLE_STATUSES: ReadonlySet<JobStatus> = new Set<JobStatus>([
   "discovered",
-  "selected",
   "processing",
   "ready",
 ]);

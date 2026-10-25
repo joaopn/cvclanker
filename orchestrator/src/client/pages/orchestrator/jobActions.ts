@@ -1,23 +1,13 @@
 import { extractExternalId } from "@shared/duplicate-identity";
 import type { JobListItem } from "@shared/types";
 
-const SKIPPABLE_STATUSES = new Set([
-  "discovered",
-  "selected",
-  "ready",
-  "backlog",
-  "stale",
-]);
+const SKIPPABLE_STATUSES = new Set(["discovered", "ready", "backlog", "stale"]);
 const MOVE_TO_READY_STATUSES = new Set(["discovered", "backlog", "stale"]);
 const MOVE_TO_BACKLOG_STATUSES = new Set([
   "discovered",
   "stale",
 ]);
-const MOVE_TO_STALE_STATUSES = new Set([
-  "discovered",
-  "selected",
-  "backlog",
-]);
+const MOVE_TO_STALE_STATUSES = new Set(["discovered", "backlog"]);
 const MOVE_TO_INBOX_STATUSES = new Set(["stale"]);
 const CLOSABLE_STATUSES = new Set(["applied", "in_progress"]);
 const REOPENABLE_STATUSES = new Set(["skipped", "closed"]);

@@ -408,9 +408,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
     ? ["discovered", "ready"].includes(selectedJob.status)
     : false;
   const canSkip = selectedJob
-    ? ["discovered", "ready", "selected", "backlog"].includes(
-        selectedJob.status,
-      )
+    ? ["discovered", "ready", "backlog"].includes(selectedJob.status)
     : false;
   const canRowSkip = selectedJob?.status === "backlog";
   const showReadyPdf = activeTab === "tailoring";

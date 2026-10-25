@@ -65,9 +65,9 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     return { status: res.status, body: await res.json() };
   }
 
-  it("move_to_backlog accepts discovered + selected", async () => {
+  it("move_to_backlog accepts discovered + stale", async () => {
     await seedJob({ id: "job-5a", status: "discovered" });
-    await seedJob({ id: "job-5b", status: "selected" });
+    await seedJob({ id: "job-5b", status: "stale" });
 
     const { body } = await postAction({
       action: "move_to_backlog",
@@ -122,7 +122,7 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
 
   it("mark_duplicated closes active rows with the duplicated outcome", async () => {
     await seedJob({ id: "job-dup-1", status: "discovered" });
-    await seedJob({ id: "job-dup-2", status: "selected" });
+    await seedJob({ id: "job-dup-2", status: "ready" });
 
     const { body } = await postAction({
       action: "mark_duplicated",
@@ -171,8 +171,8 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     }
   });
 
-  it("skip is now allowed from selected and backlog (not just discovered/ready)", async () => {
-    await seedJob({ id: "job-10a", status: "selected" });
+  it("skip is allowed from stale and backlog (not just discovered/ready)", async () => {
+    await seedJob({ id: "job-10a", status: "stale" });
     await seedJob({ id: "job-10b", status: "backlog" });
 
     const { body } = await postAction({
@@ -186,17 +186,16 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     }
   });
 
-  it("move_to_stale accepts discovered + selected + backlog", async () => {
+  it("move_to_stale accepts discovered + backlog", async () => {
     await seedJob({ id: "stale-1", status: "discovered" });
-    await seedJob({ id: "stale-2", status: "selected" });
     await seedJob({ id: "stale-3", status: "backlog" });
 
     const { body } = await postAction({
       action: "move_to_stale",
-      jobIds: ["stale-1", "stale-2", "stale-3"],
+      jobIds: ["stale-1", "stale-3"],
     });
 
-    expect(body.data.succeeded).toBe(3);
+    expect(body.data.succeeded).toBe(2);
     for (const result of body.data.results) {
       expect(result.job.status).toBe("stale");
     }
@@ -256,7 +255,6 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     const { sql } = await import("drizzle-orm");
     // Old rows that should be swept.
     await seedJob({ id: "sweep-old-discovered", status: "discovered" });
-    await seedJob({ id: "sweep-old-selected", status: "selected" });
     await seedJob({ id: "sweep-old-backlog", status: "backlog" });
     // Fresh row that should NOT be swept.
     await seedJob({ id: "sweep-fresh", status: "discovered" });
@@ -267,7 +265,7 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
       .update(schema.jobs)
       .set({ discoveredAt: sql`datetime('now', '-30 days')` })
       .where(
-        sql`${schema.jobs.id} IN ('sweep-old-discovered', 'sweep-old-selected', 'sweep-old-backlog', 'sweep-ready-old')`,
+        sql`${schema.jobs.id} IN ('sweep-old-discovered', 'sweep-old-backlog', 'sweep-ready-old')`,
       );
 
     const res = await fetch(`${baseUrl}/api/jobs/sweep-stale`, {
@@ -280,14 +278,13 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
       ok: boolean;
       data: {
         moved: number;
-        breakdown: { discovered: number; selected: number; backlog: number };
+        breakdown: { discovered: number; backlog: number };
       };
     };
     expect(payload.ok).toBe(true);
-    expect(payload.data.moved).toBe(3);
+    expect(payload.data.moved).toBe(2);
     expect(payload.data.breakdown).toEqual({
       discovered: 1,
-      selected: 1,
       backlog: 1,
     });
 
@@ -297,7 +294,6 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
       .from(schema.jobs);
     const byId = Object.fromEntries(rows.map((r) => [r.id, r.status]));
     expect(byId["sweep-old-discovered"]).toBe("stale");
-    expect(byId["sweep-old-selected"]).toBe("stale");
     expect(byId["sweep-old-backlog"]).toBe("stale");
     expect(byId["sweep-fresh"]).toBe("discovered");
     expect(byId["sweep-ready-old"]).toBe("ready");
@@ -562,7 +558,7 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     });
     await seedJob({
       id: "dups-b",
-      status: "selected",
+      status: "ready",
       jobUrl: "https://uk.linkedin.com/jobs/view/data-engineer-4383993915",
     });
     // A terminal row with the same identity must NOT join the group.

@@ -621,7 +621,7 @@ export async function generateFinalPdf(
       }
 
       // Status mutation only applies to the initial tailoring funnel
-      // (discovered / selected → processing → ready). Re-tailoring a job
+      // (discovered → processing → ready). Re-tailoring a job
       // that's already past tailoring (ready / applied / in_progress /
       // closed / backlog / skipped) must preserve status: the user is
       // refreshing the PDF, not re-promoting the job. The previous
@@ -642,12 +642,10 @@ export async function generateFinalPdf(
       // The initial tailoring funnel. The pipeline/auto path enters as
       // `discovered` and flips itself to `processing` here; the manual Tailor
       // button pre-sets `processing` at the route before calling in, so that
-      // counts as in-funnel too. `selected` is retained for any legacy rows.
+      // counts as in-funnel too.
       const isInitialTailoringFunnel =
         !movedSinceEntry &&
-        (originalStatus === "discovered" ||
-          originalStatus === "selected" ||
-          originalStatus === "processing");
+        (originalStatus === "discovered" || originalStatus === "processing");
       if (isInitialTailoringFunnel && originalStatus !== "processing") {
         await jobsRepo.updateJob(job.id, { status: "processing" });
       }

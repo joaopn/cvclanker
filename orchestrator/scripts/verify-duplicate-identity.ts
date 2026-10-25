@@ -35,6 +35,8 @@ type Row = {
   job_description: string | null;
 };
 
+// Reads a raw profile DB that may not have been booted since `selected` was
+// retired, so the legacy status is still counted as active triage here.
 const ACTIVE_TRIAGE = ["discovered", "selected", "processing", "ready"];
 const db = new Database(dbPath, { readonly: true, fileMustExist: true });
 const rows = db

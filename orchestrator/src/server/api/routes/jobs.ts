@@ -90,7 +90,6 @@ const updateJobSchema = z.object({
   status: z
     .enum([
       "discovered",
-      "selected",
       "processing",
       "ready",
       "applied",
@@ -212,7 +211,6 @@ const jobsRevisionQuerySchema = z.object({
 
 const SKIPPABLE_STATUSES: ReadonlySet<JobStatus> = new Set([
   "discovered",
-  "selected",
   "ready",
   "backlog",
   "stale",
@@ -226,13 +224,11 @@ const MOVE_TO_READY_FROM_STATUSES: ReadonlySet<JobStatus> = new Set([
 
 const BACKLOG_FROM_STATUSES: ReadonlySet<JobStatus> = new Set([
   "discovered",
-  "selected",
   "stale",
 ]);
 
 const STALE_FROM_STATUSES: ReadonlySet<JobStatus> = new Set([
   "discovered",
-  "selected",
   "backlog",
 ]);
 
@@ -249,7 +245,6 @@ const CLOSABLE_STATUSES: ReadonlySet<JobStatus> = new Set([
 ]);
 const DUPLICATE_FROM_STATUSES: ReadonlySet<JobStatus> = new Set([
   "discovered",
-  "selected",
   "processing",
   "ready",
 ]);
@@ -1583,8 +1578,8 @@ jobsRouter.post("/sweep-live-closed", async (_req: Request, res: Response) => {
 
 /**
  * POST /api/jobs/sweep-stale - Bulk-move aged rows into `stale`. The `scope`
- * bounds the source statuses: `shelf` (default) covers {discovered, selected,
- * backlog}; `tailoring` covers {ready}. Returns the row count plus a
+ * bounds the source statuses: `shelf` (default) covers {discovered, backlog};
+ * `tailoring` covers {ready}. Returns the row count plus a
  * per-source-status breakdown so the UI can render a meaningful toast.
  */
 jobsRouter.post("/sweep-stale", async (req: Request, res: Response) => {

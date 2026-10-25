@@ -22,9 +22,7 @@ const clampDays = (value: number): number =>
 
 // Friendly tab labels for the toast breakdown, covering every status the bar's
 // three sweeps can report: shelf and liveClosed both draw from {discovered,
-// selected, backlog}, tailoring from {ready}. `selected` is a retired status
-// with no tab of its own, so it falls through to describeBreakdown's
-// raw-status fallback.
+// backlog}, tailoring from {ready}.
 const STATUS_LABELS: Partial<Record<JobStatus, string>> = {
   discovered: "Inbox",
   backlog: "Backlog",

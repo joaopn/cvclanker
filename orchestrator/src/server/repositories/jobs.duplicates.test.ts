@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type JobStatusLiteral =
   | "discovered"
-  | "selected"
   | "processing"
   | "ready"
   | "backlog"
@@ -71,7 +70,7 @@ describe.sequential("jobs repository duplicate groups", () => {
     await insert({
       id: "a2",
       title: "Senior Data Architect",
-      status: "selected",
+      status: "ready",
       source: "apify:17217e9c",
       jobUrl:
         "https://at.linkedin.com/jobs/view/senior-data-architect-at-nagarro-4383993915",
@@ -172,7 +171,7 @@ describe.sequential("jobs repository duplicate groups", () => {
     await insert({
       id: "e3",
       title: "Platform Engineer",
-      status: "selected",
+      status: "ready",
       jobUrl: "https://www.linkedin.com/jobs/view/4400000002",
     });
 
@@ -189,7 +188,7 @@ describe.sequential("jobs repository duplicate groups", () => {
     await insert({
       id: "f2",
       title: "QA Engineer",
-      status: "selected",
+      status: "ready",
       jobUrl: "https://uk.linkedin.com/jobs/view/qa-engineer-4400000010",
     });
     await insert({
@@ -245,8 +244,8 @@ describe.sequential("jobs repository duplicate groups", () => {
     // Both sides null — e.g. if the two were unified behind one shared
     // constant, which is the fix this test argues for — would compare equal
     // and pass while guaranteeing nothing. Assert they were actually found.
-    expect(scope).toHaveLength(4);
-    expect(guard).toHaveLength(4);
+    expect(scope).toHaveLength(3);
+    expect(guard).toHaveLength(3);
     expect(scope).toEqual(guard);
   });
 

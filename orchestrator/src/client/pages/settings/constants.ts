@@ -8,7 +8,6 @@ import type { JobStatus } from "@shared/types";
 /** All available job statuses for clearing */
 export const ALL_JOB_STATUSES: JobStatus[] = [
   "discovered",
-  "selected",
   "processing",
   "ready",
   "applied",

@@ -105,12 +105,7 @@ describe.sequential("getJobsForLiveStatusRefresh", () => {
   });
 
   it("covers only the statuses a live verdict still changes something for", async () => {
-    const included: JobStatus[] = [
-      "discovered",
-      "selected",
-      "backlog",
-      "ready",
-    ];
+    const included: JobStatus[] = ["discovered", "backlog", "ready"];
     const excluded: JobStatus[] = [
       "processing",
       "applied",
