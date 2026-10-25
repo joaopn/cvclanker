@@ -1,5 +1,3 @@
-import type { JobSource } from "./types";
-
 const COUNTRY_ALIASES: Record<string, string> = {
   uk: "united kingdom",
   us: "united states",
@@ -113,11 +111,10 @@ export function foldDiacritics(value: string): string {
 // The alias keys are matched against folded input, so they are folded too —
 // otherwise the accented "türkiye" key could never be hit again.
 //
-// Must stay ABOVE GLASSDOOR_SUPPORTED_COUNTRIES and SUPPORTED_COUNTRY_KEYS: both
-// call normalizeCountryKey during module evaluation, and this is a const, so
-// moving it below them throws a ReferenceError at import time — which takes out
-// the server boot and the client bundle (any importing test fails too, so the
-// suite does catch it).
+// Must stay ABOVE SUPPORTED_COUNTRY_KEYS: that calls normalizeCountryKey during
+// module evaluation, and this is a const, so moving it below throws a
+// ReferenceError at import time — which takes out the server boot and the
+// client bundle (any importing test fails too, so the suite does catch it).
 //
 // Object.fromEntries keeps the LAST entry on a key collision. None collide
 // today; a future accented alias that folds onto an existing key would vanish
@@ -220,30 +217,6 @@ export const SUPPORTED_COUNTRY_INPUTS = [
   "worldwide",
 ] as const;
 
-const GLASSDOOR_SUPPORTED_COUNTRIES = new Set(
-  [
-    "australia",
-    "austria",
-    "belgium",
-    "brazil",
-    "canada",
-    "france",
-    "germany",
-    "hong kong",
-    "india",
-    "ireland",
-    "italy",
-    "mexico",
-    "netherlands",
-    "new zealand",
-    "singapore",
-    "spain",
-    "switzerland",
-    "united kingdom",
-    "united states",
-    "vietnam",
-  ].map((country) => normalizeCountryKey(country)),
-);
 export function normalizeCountryKey(value: string | null | undefined): string {
   const normalized = foldDiacritics(value?.trim().toLowerCase() ?? "");
   return FOLDED_COUNTRY_ALIASES[normalized] ?? normalized;
@@ -263,35 +236,3 @@ export const SUPPORTED_COUNTRY_KEYS = Array.from(
     SUPPORTED_COUNTRY_INPUTS.map((country) => normalizeCountryKey(country)),
   ),
 ).filter(Boolean);
-
-export function isUkCountry(country: string | null | undefined): boolean {
-  return normalizeCountryKey(country) === "united kingdom";
-}
-
-/**
- * Glassdoor is RETIRED (B70) and this is UNREACHABLE in production: its only
- * route is `isSourceAllowedForCountry`, whose two callers
- * (`getCompatibleSourcesForCountry` here, `isSourceCompatibleWithLocationIntent`
- * in location-domain) have no callers of their own. Kept because
- * `location-support.test.ts` pins it; removing that dead trio is its own cleanup.
- */
-export function isGlassdoorCountry(
-  country: string | null | undefined,
-): boolean {
-  return GLASSDOOR_SUPPORTED_COUNTRIES.has(normalizeCountryKey(country));
-}
-
-export function isSourceAllowedForCountry(
-  source: JobSource,
-  country: string | null | undefined,
-): boolean {
-  if (source === "glassdoor") return isGlassdoorCountry(country);
-  return true;
-}
-
-export function getCompatibleSourcesForCountry(
-  sources: JobSource[],
-  country: string | null | undefined,
-): JobSource[] {
-  return sources.filter((source) => isSourceAllowedForCountry(source, country));
-}

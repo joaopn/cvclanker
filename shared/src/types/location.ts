@@ -8,16 +8,11 @@ import type {
 
 export {
   buildLocationEvidence,
-  buildLocationPreferencesSummary,
   createLocationIntent,
   createLocationIntentFromLegacyInputs,
-  describeLocationIntent,
-  getCompatibleSourcesForLocationIntent,
   getDefaultLocationSourceCapabilities,
   getLegacyLocationSelection,
   getPrimaryLocationLabel,
-  getSourceLocationPlan,
-  isLocationSourceCompatible,
   LOCATION_GEO_SCOPE_VALUES,
   LOCATION_GEO_SCOPE_VALUES as GEO_SCOPE_VALUES,
   LOCATION_MATCH_STRICTNESS_VALUES,
@@ -36,7 +31,6 @@ export {
   type LocationPlanResult,
   type LocationSearchScope,
   type LocationSourceCapabilities,
-  type LocationSourceCapabilitiesInput,
   type LocationSourcePlan,
   type LocationWorkplaceType,
   normalizeLocationCountryKey,
@@ -45,12 +39,10 @@ export {
   normalizeLocationIntent,
   normalizeLocationMatchStrictness,
   normalizeLocationSearchScope,
-  normalizeLocationSourceCapabilities,
   normalizeLocationWorkplaceType,
   normalizeLocationWorkplaceTypes,
   planLocationSource,
   planLocationSources,
-  summarizeLocationIntent,
 } from "../location-domain.js";
 
 export type GeoScope = LocationGeoScope;

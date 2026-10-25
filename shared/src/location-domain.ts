@@ -2,11 +2,7 @@ import {
   EXTRACTOR_SOURCE_METADATA,
   isExtractorSourceId,
 } from "./extractors/index.js";
-import {
-  formatCountryLabel,
-  isSourceAllowedForCountry,
-  normalizeCountryKey,
-} from "./location-support.js";
+import { formatCountryLabel, normalizeCountryKey } from "./location-support.js";
 import { normalizeStringArray } from "./normalize-string-array.js";
 import { parseSearchCitiesSetting } from "./search-cities.js";
 import type { JobSource } from "./types/jobs.js";
@@ -128,18 +124,8 @@ export interface LocationEvidence {
   [index: number]: unknown;
 }
 
-export interface LocationSourceCapabilitiesInput {
-  source: JobSource | string;
-  supportedCountryKeys?: readonly string[] | null;
-  requiresCityLocations?: boolean | null;
-  requiresRemoteProfile?: boolean | null;
-  requiresCountry?: boolean | null;
-}
-
 export interface LocationSourceCapabilities {
   source: JobSource | string;
-  supportedCountryKeys: string[] | null;
-  requiresCityLocations: boolean;
   /** Remote-only boards: runnable only when the profile is remote-type. */
   requiresRemoteProfile: boolean;
   /**
@@ -216,22 +202,6 @@ function normalizeWorkplaceTypes(
 
   for (const value of values ?? []) {
     const normalized = normalizeWorkplaceType(value);
-    if (!normalized || seen.has(normalized)) continue;
-    seen.add(normalized);
-    out.push(normalized);
-  }
-
-  return out;
-}
-
-function normalizeCountryKeys(
-  values: readonly string[] | null | undefined,
-): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-
-  for (const value of values ?? []) {
-    const normalized = normalizeCountryKey(value);
     if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
     out.push(normalized);
@@ -318,44 +288,6 @@ function inferWorkplaceTypeFromEvidence(
   return null;
 }
 
-function createDefaultSupportedCountryKeys(
-  source: JobSource | string,
-): string[] | null {
-  switch (source) {
-    // Glassdoor is RETIRED (B70) and no manifest provides it any more, so no
-    // live run reaches this arm: every planLocationSources call site takes its
-    // sources from the registry or the zod-gated request body, and a saved
-    // pipeline_runs row is never re-planned (its skippedSources are frozen at
-    // run start from the LIVE config). Kept only because location-domain.test.ts
-    // pins it; deleting it is a separate cleanup.
-    case "glassdoor":
-      return [
-        "australia",
-        "austria",
-        "belgium",
-        "brazil",
-        "canada",
-        "france",
-        "germany",
-        "hong kong",
-        "india",
-        "ireland",
-        "italy",
-        "mexico",
-        "netherlands",
-        "new zealand",
-        "singapore",
-        "spain",
-        "switzerland",
-        "united kingdom",
-        "united states",
-        "vietnam",
-      ];
-    default:
-      return null;
-  }
-}
-
 function describeSelectedGeography(
   selectedCountry: string | null,
   cityLocations: string[],
@@ -388,23 +320,6 @@ function describeSelectedGeography(
   }
 
   return `${filteredCities.length} selected cities in ${countryLabel}`;
-}
-
-function joinList(values: string[]): string {
-  if (values.length === 0) return "";
-  if (values.length === 1) return values[0] ?? "";
-  if (values.length === 2) return `${values[0]} and ${values[1]}`;
-  return `${values.slice(0, -1).join(", ")}, and ${values.at(-1)}`;
-}
-
-function describeNonRemoteWorkplaceTypes(
-  workplaceTypes: LocationWorkplaceType[],
-): string {
-  const nonRemote = workplaceTypes.filter((type) => type !== "remote");
-  const labels = nonRemote.map((type) =>
-    type === "onsite" ? "onsite" : "hybrid",
-  );
-  return joinList(labels);
 }
 
 function normalizeGeoScope(value: string | null | undefined): LocationGeoScope {
@@ -567,10 +482,6 @@ export function getDefaultLocationSourceCapabilities(
 ): LocationSourceCapabilities {
   return {
     source,
-    supportedCountryKeys: createDefaultSupportedCountryKeys(source),
-    // Retired source, unreachable in production; see
-    // createDefaultSupportedCountryKeys above.
-    requiresCityLocations: source === "glassdoor",
     // Guarded: `source` also carries synthetic provider ids ("apify:<uuid>")
     // that must not index the metadata Record.
     requiresRemoteProfile:
@@ -580,50 +491,12 @@ export function getDefaultLocationSourceCapabilities(
   };
 }
 
-export function normalizeLocationSourceCapabilities(
-  value: LocationSourceCapabilitiesInput | LocationSourceCapabilities,
-): LocationSourceCapabilities {
-  const defaults = getDefaultLocationSourceCapabilities(value.source);
-  return {
-    source: value.source,
-    supportedCountryKeys:
-      "supportedCountryKeys" in value
-        ? value.supportedCountryKeys === null
-          ? null
-          : normalizeCountryKeys(value.supportedCountryKeys)
-        : defaults.supportedCountryKeys,
-    requiresCityLocations:
-      "requiresCityLocations" in value
-        ? (value.requiresCityLocations ?? defaults.requiresCityLocations)
-        : defaults.requiresCityLocations,
-    requiresRemoteProfile:
-      "requiresRemoteProfile" in value
-        ? (value.requiresRemoteProfile ?? defaults.requiresRemoteProfile)
-        : defaults.requiresRemoteProfile,
-    requiresCountry:
-      "requiresCountry" in value
-        ? (value.requiresCountry ?? defaults.requiresCountry)
-        : defaults.requiresCountry,
-  };
-}
-
-export function isLocationSourceCompatible(
-  intent: LocationIntentInput | LocationIntent,
-  source: JobSource | string,
-  capabilities?: LocationSourceCapabilitiesInput | LocationSourceCapabilities,
-): boolean {
-  return planLocationSource({ intent, source, capabilities }).isCompatible;
-}
-
 export function planLocationSource(args: {
   intent: LocationIntentInput | LocationIntent;
   source: JobSource | string;
-  capabilities?: LocationSourceCapabilitiesInput | LocationSourceCapabilities;
 }): LocationSourcePlan {
   const intent = normalizeLocationIntent(args.intent);
-  const capabilities = normalizeLocationSourceCapabilities(
-    args.capabilities ?? { source: args.source },
-  );
+  const capabilities = getDefaultLocationSourceCapabilities(args.source);
   const requestedCountry = intent.selectedCountry;
   const requestedCities = intent.cityLocations;
   const allowRemoteWorldwide =
@@ -636,29 +509,16 @@ export function planLocationSource(args: {
   const reasons: string[] = [];
 
   if (requestedCountry) {
-    const supportedCountryKeys = capabilities.supportedCountryKeys;
-    isCompatible =
-      supportedCountryKeys === null ||
-      supportedCountryKeys.includes(requestedCountry);
     reasons.push(
-      isCompatible
-        ? `Selected country ${formatCountryLabel(requestedCountry)} is supported.`
-        : `Selected country ${formatCountryLabel(requestedCountry)} is not supported.`,
+      `Selected country ${formatCountryLabel(requestedCountry)} is supported.`,
     );
+  } else if (capabilities.requiresCountry && requestedCities.length === 0) {
+    isCompatible = false;
+    reasons.push("A selected country or city is required for this source.");
   } else {
-    if (capabilities.supportedCountryKeys !== null) {
-      isCompatible = false;
-      reasons.push("A selected country is required for this source.");
-    } else if (capabilities.requiresCountry && requestedCities.length === 0) {
-      isCompatible = false;
-      reasons.push("A selected country or city is required for this source.");
-    } else {
-      reasons.push("No selected country was provided.");
-    }
+    reasons.push("No selected country was provided.");
   }
 
-  // After the country arm: that arm ASSIGNS isCompatible rather than
-  // narrowing it, so a gate placed before it would be silently overwritten.
   if (capabilities.requiresRemoteProfile && !intent.remoteProfile) {
     isCompatible = false;
     reasons.push("Only runs on a remote-type profile.");
@@ -670,15 +530,6 @@ export function planLocationSource(args: {
 
   if (prioritizeSelectedLocation) {
     reasons.push("Selected geography is prioritized for ties.");
-  }
-
-  if (capabilities.requiresCityLocations) {
-    if (requestedCities.length === 0) {
-      isCompatible = false;
-      reasons.push("At least one city is required for this source.");
-    } else {
-      reasons.push("Requested cities satisfy this source requirement.");
-    }
   }
 
   return {
@@ -699,20 +550,10 @@ export function planLocationSource(args: {
 export function planLocationSources(args: {
   intent: LocationIntentInput | LocationIntent;
   sources: readonly (JobSource | string)[];
-  capabilitiesBySource?: Partial<
-    Record<
-      JobSource | string,
-      LocationSourceCapabilitiesInput | LocationSourceCapabilities
-    >
-  >;
 }): LocationPlanResult {
   const intent = normalizeLocationIntent(args.intent);
   const plans = args.sources.map((source) =>
-    planLocationSource({
-      intent,
-      source,
-      capabilities: args.capabilitiesBySource?.[source],
-    }),
+    planLocationSource({ intent, source }),
   );
 
   return {
@@ -725,97 +566,6 @@ export function planLocationSources(args: {
       .filter((plan) => !plan.isCompatible)
       .map((plan) => plan.source),
   };
-}
-
-export function getCompatibleSourcesForLocationIntent(
-  sources: readonly (JobSource | string)[],
-  intent: LocationIntentInput | LocationIntent,
-): Array<JobSource | string> {
-  return planLocationSources({ intent, sources }).compatibleSources;
-}
-
-export function describeLocationIntent(
-  intent: LocationIntentInput | LocationIntent,
-): string {
-  const normalized = normalizeLocationIntent(intent);
-  const selectedGeography = describeSelectedGeography(
-    normalized.selectedCountry,
-    normalized.cityLocations,
-  );
-  const workplaceTypes = normalized.workplaceTypes;
-  const remoteSelected = workplaceTypes.includes("remote");
-  const nonRemotePhrase = describeNonRemoteWorkplaceTypes(workplaceTypes);
-
-  let summary: string;
-  switch (normalized.geoScope) {
-    case "selected_plus_remote_worldwide":
-      if (remoteSelected) {
-        if (nonRemotePhrase) {
-          summary = `You'll get ${nonRemotePhrase} jobs in ${selectedGeography} plus remote jobs worldwide.`;
-        } else {
-          summary = `You'll get remote jobs worldwide, including roles explicitly available in ${selectedGeography}.`;
-        }
-      } else {
-        summary = `You'll only get jobs in ${selectedGeography}.`;
-      }
-      break;
-    case "remote_worldwide_prioritize_selected":
-      if (remoteSelected) {
-        summary = `You'll get remote jobs worldwide, with ${selectedGeography} favored for local roles.`;
-      } else if (nonRemotePhrase) {
-        summary = `You'll get ${nonRemotePhrase} jobs in ${selectedGeography} first.`;
-      } else {
-        summary = `You'll get jobs in ${selectedGeography} first.`;
-      }
-      break;
-    default:
-      if (nonRemotePhrase && !remoteSelected) {
-        summary = `You'll only get ${nonRemotePhrase} jobs explicitly available in ${selectedGeography}.`;
-      } else if (remoteSelected && workplaceTypes.length === 1) {
-        summary = `You'll only get remote jobs explicitly available in ${selectedGeography}.`;
-      } else {
-        summary = `You'll only get jobs explicitly available in ${selectedGeography}.`;
-      }
-      break;
-  }
-
-  if (normalized.matchStrictness === "flexible") {
-    return `${summary} Likely matches are included.`;
-  }
-
-  return summary;
-}
-
-export function summarizeLocationIntent(
-  intent: LocationIntentInput | LocationIntent,
-): string {
-  return describeLocationIntent(intent);
-}
-
-export function buildLocationPreferencesSummary(args: {
-  country: string;
-  cityLocations: string[];
-  workplaceTypes: Array<"remote" | "hybrid" | "onsite">;
-  searchScope: LocationSearchScope;
-  matchStrictness: LocationMatchStrictness;
-}): string {
-  return describeLocationIntent({
-    selectedCountry: args.country,
-    cityLocations: args.cityLocations,
-    workplaceTypes: args.workplaceTypes,
-    geoScope: args.searchScope,
-    matchStrictness: args.matchStrictness,
-  });
-}
-
-export function isSourceCompatibleWithLocationIntent(
-  source: JobSource,
-  intent: LocationIntentInput | LocationIntent,
-): boolean {
-  return isSourceAllowedForCountry(
-    source,
-    normalizeLocationIntent(intent).selectedCountry,
-  );
 }
 
 export function createLocationIntentFromLegacyInputs(
@@ -860,12 +610,4 @@ export function getPrimaryLocationLabel(
     normalized.selectedCountry,
     normalized.cityLocations,
   );
-}
-
-export function getSourceLocationPlan(
-  source: JobSource | string,
-  intent: LocationIntentInput | LocationIntent,
-  capabilities?: LocationSourceCapabilitiesInput | LocationSourceCapabilities,
-): LocationSourcePlan {
-  return planLocationSource({ source, intent, capabilities });
 }

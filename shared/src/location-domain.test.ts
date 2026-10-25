@@ -3,11 +3,10 @@ import {
   buildLocationEvidence,
   createLocationIntent,
   createLocationIntentFromLegacyInputs,
-  describeLocationIntent,
+  getDefaultLocationSourceCapabilities,
   getLegacyLocationSelection,
   getPrimaryLocationLabel,
   normalizeLocationMatchStrictness,
-  normalizeLocationSourceCapabilities,
   planLocationSource,
   planLocationSources,
 } from "./location-domain";
@@ -99,21 +98,7 @@ describe("location-domain", () => {
     });
   });
 
-  it("describes location intent using the current preference wording", () => {
-    expect(
-      describeLocationIntent({
-        selectedCountry: "UK",
-        cityLocations: ["Leeds", "London"],
-        workplaceTypes: ["remote", "hybrid", "onsite"],
-        searchScope: "selected_plus_remote_worldwide",
-        matchStrictness: "flexible",
-      }),
-    ).toBe(
-      "You'll get hybrid and onsite jobs in Leeds and London in United Kingdom plus remote jobs worldwide. Likely matches are included.",
-    );
-  });
-
-  it("plans source compatibility based on the selected country", () => {
+  it("keeps sources compatible when a country is selected", () => {
     const result = planLocationSources({
       intent: {
         selectedCountry: "united states",
@@ -122,39 +107,11 @@ describe("location-domain", () => {
         searchScope: "selected_plus_remote_worldwide",
         matchStrictness: "exact_only",
       },
-      sources: ["indeed", "glassdoor", "startupjobs"],
+      sources: ["indeed", "startupjobs"],
     });
 
-    expect(result.compatibleSources).toEqual([
-      "indeed",
-      "glassdoor",
-      "startupjobs",
-    ]);
+    expect(result.compatibleSources).toEqual(["indeed", "startupjobs"]);
     expect(result.incompatibleSources).toEqual([]);
-  });
-
-  it("marks glassdoor incompatible until at least one city is provided", () => {
-    const result = planLocationSources({
-      intent: {
-        selectedCountry: "united kingdom",
-        cityLocations: [],
-        workplaceTypes: ["remote"],
-        searchScope: "selected_only",
-        matchStrictness: "exact_only",
-      },
-      sources: ["glassdoor", "linkedin"],
-    });
-
-    expect(result.compatibleSources).toEqual(["linkedin"]);
-    expect(result.incompatibleSources).toEqual(["glassdoor"]);
-    expect(result.plans[0]).toMatchObject({
-      source: "glassdoor",
-      isCompatible: false,
-      canRun: false,
-    });
-    expect(result.plans[0]?.reasons).toContain(
-      "At least one city is required for this source.",
-    );
   });
 
   it("exposes legacy location labels for compatibility", () => {
@@ -168,38 +125,19 @@ describe("location-domain", () => {
 
     expect(getLegacyLocationSelection(intent)).toBe("croatia");
     expect(getPrimaryLocationLabel(intent)).toBe("Zagreb in Croatia");
+    expect(
+      getPrimaryLocationLabel({
+        selectedCountry: "UK",
+        cityLocations: ["Leeds", "London"],
+      }),
+    ).toBe("Leeds and London in United Kingdom");
   });
 
-  it("exposes normalized source capabilities for known sources", () => {
-    expect(
-      normalizeLocationSourceCapabilities({ source: "startupjobs" }),
-    ).toEqual({
-      requiresCityLocations: false,
+  it("exposes default source capabilities for known sources", () => {
+    expect(getDefaultLocationSourceCapabilities("startupjobs")).toEqual({
       requiresCountry: true,
       requiresRemoteProfile: false,
       source: "startupjobs",
-      supportedCountryKeys: null,
-    });
-    expect(
-      normalizeLocationSourceCapabilities({ source: "glassdoor" }),
-    ).toMatchObject({
-      requiresCityLocations: true,
-      source: "glassdoor",
-    });
-  });
-
-  it("preserves default city requirements when overriding supported countries", () => {
-    expect(
-      normalizeLocationSourceCapabilities({
-        source: "glassdoor",
-        supportedCountryKeys: ["united kingdom"],
-      }),
-    ).toEqual({
-      requiresCityLocations: true,
-      requiresCountry: false,
-      requiresRemoteProfile: false,
-      source: "glassdoor",
-      supportedCountryKeys: ["united kingdom"],
     });
   });
 
@@ -227,23 +165,15 @@ describe("location-domain", () => {
         searchScope: "selected_plus_remote_worldwide",
         matchStrictness: "exact_only",
       },
-      sources: ["glassdoor", "startupjobs"],
+      sources: ["linkedin", "startupjobs"],
     });
 
     // startup.jobs needs a country OR a city (it would silently return
-    // nothing with neither), so with no cities it is skipped too.
-    expect(result.compatibleSources).toEqual([]);
-    expect(result.incompatibleSources).toEqual(["glassdoor", "startupjobs"]);
+    // nothing with neither), so with no cities it is skipped.
+    expect(result.compatibleSources).toEqual(["linkedin"]);
+    expect(result.incompatibleSources).toEqual(["startupjobs"]);
     expect(result.plans[1]?.reasons).toContain(
       "A selected country or city is required for this source.",
-    );
-    expect(result.plans[0]).toMatchObject({
-      source: "glassdoor",
-      isCompatible: false,
-      canRun: false,
-    });
-    expect(result.plans[0]?.reasons).toContain(
-      "A selected country is required for this source.",
     );
   });
 });
@@ -271,51 +201,7 @@ describe("remote-type profile plumbing", () => {
     expect(rederived.remoteLocationBlocklist).toEqual(["US only", "Colorado"]);
   });
 
-  it("gates a requiresRemoteProfile source on the profile flag", () => {
-    const capabilities = {
-      source: "himalayas",
-      requiresRemoteProfile: true,
-    };
-    const blocked = planLocationSource({
-      intent: { selectedCountry: "portugal", workplaceTypes: ["remote"] },
-      source: "himalayas",
-      capabilities,
-    });
-    expect(blocked).toMatchObject({ isCompatible: false, canRun: false });
-    expect(blocked.reasons).toContain("Only runs on a remote-type profile.");
-
-    const allowed = planLocationSource({
-      intent: {
-        selectedCountry: "portugal",
-        workplaceTypes: ["remote"],
-        remoteProfile: true,
-      },
-      source: "himalayas",
-      capabilities,
-    });
-    expect(allowed).toMatchObject({ isCompatible: true, canRun: true });
-  });
-
-  it("keeps requiresRemoteProfile through the capabilities normalizer", () => {
-    // planLocationSource routes EVERY capabilities value through the
-    // normalizer's field-by-field rebuild — a field dropped there fails the
-    // gate open on every profile.
-    expect(
-      normalizeLocationSourceCapabilities({
-        source: "himalayas",
-        requiresRemoteProfile: true,
-      }).requiresRemoteProfile,
-    ).toBe(true);
-    expect(
-      normalizeLocationSourceCapabilities({ source: "startupjobs" })
-        .requiresRemoteProfile,
-    ).toBe(false);
-  });
-
-  it("derives the gate from source metadata on the default-capabilities path", () => {
-    // No explicit capabilities: this exercises metadata -> defaults ->
-    // normalizer end to end, so a dropped metadata flag fails the test, not
-    // just the explicit-capabilities path above.
+  it("gates a remote-only source on the profile flag, read from its metadata", () => {
     const blocked = planLocationSource({
       intent: { selectedCountry: "portugal", workplaceTypes: ["remote"] },
       source: "himalayas",
@@ -364,19 +250,5 @@ describe("remote-type profile plumbing", () => {
         source: "startupjobs",
       }),
     ).toMatchObject({ isCompatible: true, canRun: true });
-    // The gate reads the capability, not the source id.
-    expect(
-      planLocationSource({
-        intent: { selectedCountry: "" },
-        source: "startupjobs",
-        capabilities: { source: "startupjobs", requiresCountry: false },
-      }),
-    ).toMatchObject({ isCompatible: true, canRun: true });
-    expect(
-      normalizeLocationSourceCapabilities({
-        source: "himalayas",
-        requiresCountry: true,
-      }).requiresCountry,
-    ).toBe(true);
   });
 });
