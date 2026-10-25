@@ -12,7 +12,7 @@ import { extractMarkerIds } from "./render-template";
  * for compile + content-equivalence checking.
  *
  * `fieldsJson` is JSON-encoded as a string for strict structured-output
- * compatibility — same workaround as cv-extract / cv-adjust.
+ * compatibility — same workaround as cv-adjust.
  */
 const TEMPLATE_EXTRACT_SCHEMA: JsonSchemaDefinition = {
   name: "cv_template_extract_result",

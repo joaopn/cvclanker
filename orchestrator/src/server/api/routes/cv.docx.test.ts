@@ -240,31 +240,6 @@ describe.sequential("CV docx route dispatch", () => {
     expect(runDocxMock).toHaveBeenCalledTimes(2);
   });
 
-  it("422s the legacy POST /api/cv on a docx profile", async () => {
-    await setDocxProfile();
-    const res = await fetch(`${baseUrl}/api/cv`, {
-      method: "POST",
-      body: uploadForm("\\documentclass{article}", "cv.tex"),
-    });
-    expect(res.status).toBe(422);
-  });
-
-  it("422s the legacy re-extract on a docx profile", async () => {
-    await setDocxProfile();
-    runDocxMock.mockResolvedValue(docxSuccess());
-    const uploadRes = await uploadTemplate(DOCX_FIXTURE, "cv.docx");
-    const { data } = (await uploadRes.json()) as {
-      data: { cv: { id: string } };
-    };
-
-    const res = await fetch(`${baseUrl}/api/cv/${data.cv.id}/re-extract`, {
-      method: "POST",
-    });
-    expect(res.status).toBe(422);
-    const payload = (await res.json()) as { error: { message: string } };
-    expect(payload.error.message).toContain("re-extract-template");
-  });
-
   it("serves the docx extraction prompt default", async () => {
     await setDocxProfile();
     promptDefaultMock.mockResolvedValue("docx-default-prompt");

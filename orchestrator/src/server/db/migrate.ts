@@ -726,6 +726,11 @@ const migrations: string[] = [
   // The visa-sponsor badge toggle: the badge went with visa sponsorship, so the
   // setting switched nothing.
   `DELETE FROM settings WHERE key = 'showSponsorInfo'`,
+
+  // The legacy CV extractor's prompt: its only caller, the ungated legacy
+  // upload and re-extract routes, is gone. The seed block below leaves rows
+  // whose file disappeared in place, so this one is removed explicitly.
+  `DELETE FROM prompts WHERE name = 'cv-extract'`,
 ];
 
 console.log("🔧 Running database migrations...");

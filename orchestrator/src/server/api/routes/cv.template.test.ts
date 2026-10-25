@@ -1,6 +1,5 @@
 // @vitest-environment node
 import type { Server } from "node:http";
-import { extractCv } from "@server/services/cv/llm-extract-cv";
 import {
   RunTectonicError,
   runTectonic,
@@ -12,11 +11,6 @@ import { startServer, stopServer } from "./test-utils";
 
 vi.mock("@server/services/cv/upload-pipeline", () => ({
   runUploadPipeline: vi.fn(),
-}));
-
-vi.mock("@server/services/cv/llm-extract-cv", () => ({
-  extractCv: vi.fn(),
-  CvExtractError: class extends Error {},
 }));
 
 vi.mock("@server/services/cv/run-tectonic", () => ({
@@ -350,23 +344,18 @@ describe.sequential("PUT /api/cv/:id/template", () => {
   });
 
   it("422s a CV that has no template yet", async () => {
-    vi.mocked(extractCv).mockResolvedValueOnce({
+    // Such rows predate the gated upload; seeded directly, since no route
+    // creates one any more.
+    const { createCvDocument } = await import(
+      "@server/repositories/cv-documents"
+    );
+    const legacy = await createCvDocument({
+      name: "Legacy CV",
+      originalArchive: new TextEncoder().encode(SOURCE_TEX),
+      flattenedTex: SOURCE_TEX,
       fields: [{ id: "basics.name", role: "name", value: "Ada Lovelace" }],
       personalBrief: "brief",
     });
-    const form = new FormData();
-    form.append("name", "Legacy CV");
-    form.append(
-      "file",
-      new Blob([SOURCE_TEX], { type: "application/x-tex" }),
-      "ada.tex",
-    );
-    const upload = await fetch(`${baseUrl}/api/cv`, {
-      method: "POST",
-      body: form,
-    });
-    expect(upload.status).toBe(201);
-    const legacy = ((await upload.json()) as { data: CvDocument }).data;
     expect(legacy.templatedTex).toBe("");
 
     const res = await putTemplate(legacy.id, { templatedTex: EDITED });

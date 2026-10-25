@@ -24,12 +24,7 @@ import {
   RenderDocxError,
   renderDocx,
 } from "@server/services/cv/docx/render-docx";
-import {
-  FlattenInputError,
-  flattenInput,
-  isInLatexComment,
-} from "@server/services/cv/flatten-input";
-import { CvExtractError, extractCv } from "@server/services/cv/llm-extract-cv";
+import { isInLatexComment } from "@server/services/cv/flatten-input";
 import { RenderCvError, renderCv } from "@server/services/cv/render";
 import {
   extractMarkerIds,
@@ -184,65 +179,12 @@ function uploadFailureError(result: UploadPipelineFailureShape): AppError {
   });
 }
 
-cvRouter.post("/", async (req: Request, res: Response) => {
-  try {
-    const settings = await getEffectiveSettings();
-    // Legacy ungated path is LaTeX-only: a row it inserted into a docx
-    // profile would be misinterpreted as docx by every dispatch site.
-    if (resolveCvSourceFormat(settings) === "docx") {
-      return fail(
-        res,
-        unprocessableEntity(
-          "This profile uses Word CVs; this endpoint only accepts LaTeX uploads.",
-        ),
-      );
-    }
-    const upload = await parseUpload(req, settings.maxCvUploadBytes.value);
-    if (!upload) {
-      return fail(res, badRequest("No file uploaded."));
-    }
-
-    const flattened = flattenInput({
-      archive: upload.bytes,
-      filename: upload.filename,
-      maxExpandedBytes: settings.maxExpandedLatexBytes.value,
-    });
-    const extracted = await extractCv({
-      flattenedTex: flattened.flattenedTex,
-      assetReferences: flattened.assetReferences,
-    });
-
-    const document = await cvRepo.createCvDocument({
-      name:
-        upload.fields.name?.trim() ||
-        upload.filename.replace(/\.[^.]+$/, "") ||
-        "CV",
-      originalArchive: upload.bytes,
-      flattenedTex: flattened.flattenedTex,
-      fields: extracted.fields,
-      personalBrief: extracted.personalBrief,
-    });
-
-    logger.info("CV document created", {
-      cvDocumentId: document.id,
-      filename: upload.filename,
-      assetCount: flattened.assetReferences.length,
-      fieldCount: extracted.fields.length,
-    });
-
-    ok(res, document, 201);
-  } catch (error) {
-    handleCvError(res, error);
-  }
-});
-
 /**
  * 5e gated upload: runs the templated-tex pipeline (compile original →
  * LLM template-extract loop → compile templated → pdftotext diff). On
  * accept, persists the CV with the new substrate columns populated; on
  * reject, returns 502 with the per-attempt log so the UI can surface
- * tectonic stderr / pdftotext diff to the user. The 5d POST `/` route
- * stays untouched until 5e.4 cuts over.
+ * tectonic stderr / pdftotext diff to the user.
  */
 cvRouter.post("/upload-template", async (req: Request, res: Response) => {
   try {
@@ -416,52 +358,6 @@ cvRouter.patch("/:id", async (req: Request, res: Response) => {
     ok(res, updated);
   } catch (error) {
     fail(res, toAppError(error));
-  }
-});
-
-cvRouter.post("/:id/re-extract", async (req: Request, res: Response) => {
-  try {
-    const settings = await getEffectiveSettings();
-    // The 5d cursor-walk extractor is LaTeX-only; on a docx profile it
-    // would silently misroute the stored .docx bytes into flattenInput.
-    if (resolveCvSourceFormat(settings) === "docx") {
-      return fail(
-        res,
-        unprocessableEntity(
-          "This profile uses Word CVs; use re-extract-template instead.",
-        ),
-      );
-    }
-    const archive = await cvRepo.getCvDocumentArchive(req.params.id);
-    if (!archive) return fail(res, notFound("CV document not found."));
-    const existing = await cvRepo.getCvDocumentById(req.params.id);
-    if (!existing) return fail(res, notFound("CV document not found."));
-
-    const flattened = flattenInput({
-      archive: new Uint8Array(archive),
-      filename: existing.name,
-      maxExpandedBytes: settings.maxExpandedLatexBytes.value,
-    });
-    const extracted = await extractCv({
-      flattenedTex: flattened.flattenedTex,
-      assetReferences: flattened.assetReferences,
-    });
-    // Preserve the user's existing personalBrief — re-extract recovers
-    // template/fields, but the brief is user-editable scratch and gets
-    // its own regenerate-brief endpoint.
-    const updated = await cvRepo.updateCvDocument(req.params.id, {
-      flattenedTex: flattened.flattenedTex,
-      fields: extracted.fields,
-    });
-    if (!updated) return fail(res, notFound("CV document not found."));
-
-    logger.info("CV document re-extracted", {
-      cvDocumentId: req.params.id,
-      fieldCount: extracted.fields.length,
-    });
-    ok(res, updated);
-  } catch (error) {
-    handleCvError(res, error);
   }
 });
 
@@ -707,8 +603,7 @@ cvRouter.get(
  * 5e re-extract: re-runs the templated upload pipeline against the
  * existing archive. Same accept/reject semantics as the upload route —
  * returns 502 with the per-attempt log on failure rather than mutating
- * the document. The 5d POST `/:id/re-extract` route stays for 5d-era
- * documents until 5e.4 cuts over.
+ * the document.
  */
 cvRouter.post(
   "/:id/re-extract-template",
@@ -901,10 +796,6 @@ function parseUpload(
 }
 
 function handleCvError(res: Response, error: unknown): void {
-  if (error instanceof FlattenInputError) {
-    fail(res, badRequest(error.message, { code: error.code }));
-    return;
-  }
   if (error instanceof RenderCvError) {
     fail(res, badRequest(error.message, { code: error.code }));
     return;
@@ -940,18 +831,6 @@ function handleCvError(res: Response, error: unknown): void {
       unprocessableEntity(`PDF conversion failed: ${error.message}`, {
         code: error.code,
         stderr: error.stderr.slice(-2000),
-      }),
-    );
-    return;
-  }
-  if (error instanceof CvExtractError) {
-    fail(
-      res,
-      new AppError({
-        status: 502,
-        code: "UPSTREAM_ERROR",
-        message: error.message,
-        details: { code: error.code, detail: error.detail },
       }),
     );
     return;

@@ -1338,17 +1338,6 @@ export async function getCvDocument(id: string): Promise<CvDocument> {
   return fetchApi<CvDocument>(`/cv/${id}`);
 }
 
-export async function uploadCvDocument(args: {
-  file: Blob;
-  filename: string;
-  name?: string;
-}): Promise<CvDocument> {
-  const form = new FormData();
-  form.append("file", args.file, args.filename);
-  if (args.name) form.append("name", args.name);
-  return fetchApi<CvDocument>("/cv", { method: "POST", body: form });
-}
-
 export async function updateCvDocument(
   id: string,
   input: Partial<{
@@ -1377,10 +1366,6 @@ export async function deleteCvDocument(
   id: string,
 ): Promise<{ deleted: number }> {
   return fetchApi<{ deleted: number }>(`/cv/${id}`, { method: "DELETE" });
-}
-
-export async function reExtractCvDocument(id: string): Promise<CvDocument> {
-  return fetchApi<CvDocument>(`/cv/${id}/re-extract`, { method: "POST" });
 }
 
 /**

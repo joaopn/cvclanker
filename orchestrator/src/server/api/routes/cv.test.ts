@@ -1,20 +1,8 @@
 // @vitest-environment node
 import type { Server } from "node:http";
-import { extractCv } from "@server/services/cv/llm-extract-cv";
 import type { CvField } from "@shared/types";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { startServer, stopServer } from "./test-utils";
-
-vi.mock("@server/services/cv/llm-extract-cv", () => ({
-  extractCv: vi.fn(),
-  CvExtractError: class extends Error {
-    readonly code: string;
-    constructor(message: string, code: string) {
-      super(message);
-      this.code = code;
-    }
-  },
-}));
 
 const SAMPLE_FIELDS: CvField[] = [
   { id: "basics.name", role: "name", value: "Ada Lovelace" },
@@ -33,81 +21,48 @@ describe.sequential("CV API routes", () => {
 
   beforeEach(async () => {
     ({ server, baseUrl, closeDb, tempDir } = await startServer());
-    vi.mocked(extractCv).mockResolvedValue({
+  });
+
+  async function seedCv(): Promise<string> {
+    const { createCvDocument } = await import(
+      "@server/repositories/cv-documents"
+    );
+    const created = await createCvDocument({
+      name: "ada",
+      originalArchive: new TextEncoder().encode(SAMPLE_TEX),
+      flattenedTex: SAMPLE_TEX,
       fields: SAMPLE_FIELDS,
       personalBrief: SAMPLE_BRIEF,
     });
-  });
+    return created.id;
+  }
 
   afterEach(async () => {
     await stopServer({ server, closeDb, tempDir });
   });
 
-  it("rejects POST /api/cv with no file", async () => {
+  // The ungated legacy upload and re-extract routes are gone (B86): a CV
+  // only ever enters through the gated upload-template pipeline.
+  it("has no ungated legacy upload route", async () => {
     const form = new FormData();
-    form.append("name", "no-file");
+    form.append("file", new Blob([SAMPLE_TEX]), "ada.tex");
     const res = await fetch(`${baseUrl}/api/cv`, {
       method: "POST",
       body: form,
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(404);
   });
 
-  it("uploads a .tex file and persists the extracted fields", async () => {
-    const form = new FormData();
-    form.append("name", "Ada CV");
-    form.append(
-      "file",
-      new Blob([SAMPLE_TEX], { type: "application/x-tex" }),
-      "ada.tex",
-    );
-
-    const res = await fetch(`${baseUrl}/api/cv`, {
+  it("has no ungated legacy re-extract route", async () => {
+    const id = await seedCv();
+    const res = await fetch(`${baseUrl}/api/cv/${id}/re-extract`, {
       method: "POST",
-      body: form,
     });
-    expect(res.status).toBe(201);
-    const payload = (await res.json()) as {
-      data: {
-        id: string;
-        name: string;
-        fields: CvField[];
-        personalBrief: string;
-      };
-    };
-    expect(payload.data.name).toBe("Ada CV");
-    expect(payload.data.fields).toEqual(SAMPLE_FIELDS);
-    expect(payload.data.personalBrief).toBe(SAMPLE_BRIEF);
-    expect(payload.data.id).toMatch(/[0-9a-f-]+/);
-
-    expect(extractCv).toHaveBeenCalledWith(
-      expect.objectContaining({
-        flattenedTex: SAMPLE_TEX,
-        assetReferences: [],
-      }),
-    );
-  });
-
-  it("rejects single .tex with unresolved \\input directives", async () => {
-    const tex = "\\documentclass{article}\n\\input{header}\n";
-    const form = new FormData();
-    form.append("file", new Blob([tex]), "broken.tex");
-    const res = await fetch(`${baseUrl}/api/cv`, {
-      method: "POST",
-      body: form,
-    });
-    expect(res.status).toBe(400);
-    const payload = (await res.json()) as { error: { code: string } };
-    expect(payload.error.code).toBe("INVALID_REQUEST");
+    expect(res.status).toBe(404);
   });
 
   it("round-trips name and personal-brief edits via PATCH", async () => {
-    const form = new FormData();
-    form.append("file", new Blob([SAMPLE_TEX]), "ada.tex");
-    const created = (await (
-      await fetch(`${baseUrl}/api/cv`, { method: "POST", body: form })
-    ).json()) as { data: { id: string } };
-    const id = created.data.id;
+    const id = await seedCv();
 
     const updated = await fetch(`${baseUrl}/api/cv/${id}`, {
       method: "PATCH",
@@ -139,12 +94,7 @@ describe.sequential("CV API routes", () => {
   });
 
   it("rejects PATCH with 422 when personalBrief exceeds maxBriefChars", async () => {
-    const form = new FormData();
-    form.append("file", new Blob([SAMPLE_TEX]), "ada.tex");
-    const created = (await (
-      await fetch(`${baseUrl}/api/cv`, { method: "POST", body: form })
-    ).json()) as { data: { id: string } };
-    const id = created.data.id;
+    const id = await seedCv();
 
     // Default maxBriefChars is 200_000; send 200_001 to exceed it.
     const oversized = "x".repeat(200_001);
@@ -168,12 +118,7 @@ describe.sequential("CV API routes", () => {
   });
 
   it("rejects PATCH with 422 when extractionPrompt exceeds maxExtractionPromptChars", async () => {
-    const form = new FormData();
-    form.append("file", new Blob([SAMPLE_TEX]), "ada.tex");
-    const created = (await (
-      await fetch(`${baseUrl}/api/cv`, { method: "POST", body: form })
-    ).json()) as { data: { id: string } };
-    const id = created.data.id;
+    const id = await seedCv();
 
     const oversized = "x".repeat(100_001);
     const res = await fetch(`${baseUrl}/api/cv/${id}`, {
@@ -194,12 +139,7 @@ describe.sequential("CV API routes", () => {
   });
 
   it("accepts PATCH with personalBrief at the maxBriefChars boundary", async () => {
-    const form = new FormData();
-    form.append("file", new Blob([SAMPLE_TEX]), "ada.tex");
-    const created = (await (
-      await fetch(`${baseUrl}/api/cv`, { method: "POST", body: form })
-    ).json()) as { data: { id: string } };
-    const id = created.data.id;
+    const id = await seedCv();
 
     // Length of EXACTLY 200_000 should pass.
     const atCap = "x".repeat(200_000);
@@ -213,46 +153,5 @@ describe.sequential("CV API routes", () => {
       data: { personalBrief: string };
     };
     expect(payload.data.personalBrief.length).toBe(200_000);
-  });
-
-  it("re-runs extraction on POST /api/cv/:id/re-extract, refreshes fields, preserves the user's personal brief", async () => {
-    const form = new FormData();
-    form.append("file", new Blob([SAMPLE_TEX]), "ada.tex");
-    const created = (await (
-      await fetch(`${baseUrl}/api/cv`, { method: "POST", body: form })
-    ).json()) as { data: { id: string } };
-
-    // User edits the brief between upload and re-extract — re-extract
-    // must NOT clobber it. Brief regeneration is opt-in via the
-    // dedicated /regenerate-brief endpoint.
-    await fetch(`${baseUrl}/api/cv/${created.data.id}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ personalBrief: "User-edited brief." }),
-    });
-
-    vi.mocked(extractCv).mockClear();
-    const refreshedFields: CvField[] = [
-      ...SAMPLE_FIELDS,
-      { id: "summary.0", role: "summary", value: "Re-extracted summary." },
-    ];
-    vi.mocked(extractCv).mockResolvedValue({
-      fields: refreshedFields,
-      personalBrief: "LLM-regenerated brief (should be ignored on re-extract).",
-    });
-
-    const res = await fetch(`${baseUrl}/api/cv/${created.data.id}/re-extract`, {
-      method: "POST",
-    });
-    expect(res.status).toBe(200);
-    const payload = (await res.json()) as {
-      data: {
-        fields: CvField[];
-        personalBrief: string;
-      };
-    };
-    expect(payload.data.fields).toEqual(refreshedFields);
-    expect(payload.data.personalBrief).toBe("User-edited brief.");
-    expect(extractCv).toHaveBeenCalledTimes(1);
   });
 });
