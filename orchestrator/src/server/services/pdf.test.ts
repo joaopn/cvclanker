@@ -1,5 +1,6 @@
 // @vitest-environment node
 import type { CvDocument, CvField } from "@shared/types";
+import AdmZip from "adm-zip";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const SAMPLE_FIELDS: CvField[] = [
@@ -448,9 +449,12 @@ describe("generatePdf on a Word profile", () => {
     // The converter received the rendered docx, and the tailored text made it
     // into the document.
     const converted = vi.mocked(convertDocxToPdf).mock.calls[0][0].docx;
-    expect(Buffer.from(converted).toString("latin1")).not.toContain(
-      `⟦${DOCX_FIELD_ID}`,
-    );
+    const documentXml = new AdmZip(Buffer.from(converted))
+      .getEntry("word/document.xml")
+      ?.getData()
+      .toString("utf8");
+    expect(documentXml).toContain("Rebuilt the rendering fleet on a queue.");
+    expect(documentXml).not.toContain("⟦");
   });
 
   it("hard-fails a no-op tailoring without persisting or converting", async () => {

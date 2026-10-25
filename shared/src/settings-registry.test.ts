@@ -179,12 +179,22 @@ describe("settingsRegistry helpers", () => {
 
   describe("boolean (bit-bool) parsing and serialization", () => {
     it("parses bit bools correctly", () => {
-      expect(settingsRegistry.showSponsorInfo.parse("1")).toBe(true);
-      expect(settingsRegistry.showSponsorInfo.parse("true")).toBe(true);
-      expect(settingsRegistry.showSponsorInfo.parse("0")).toBe(false);
-      expect(settingsRegistry.showSponsorInfo.parse("false")).toBe(false);
-      expect(settingsRegistry.showSponsorInfo.parse("")).toBeNull();
-      expect(settingsRegistry.showSponsorInfo.parse(undefined)).toBeNull();
+      expect(settingsRegistry.companyInFlightCheckEnabled.parse("1")).toBe(
+        true,
+      );
+      expect(settingsRegistry.companyInFlightCheckEnabled.parse("true")).toBe(
+        true,
+      );
+      expect(settingsRegistry.companyInFlightCheckEnabled.parse("0")).toBe(
+        false,
+      );
+      expect(settingsRegistry.companyInFlightCheckEnabled.parse("false")).toBe(
+        false,
+      );
+      expect(settingsRegistry.companyInFlightCheckEnabled.parse("")).toBeNull();
+      expect(
+        settingsRegistry.companyInFlightCheckEnabled.parse(undefined),
+      ).toBeNull();
       expect(settingsRegistry.renderMarkdownInJobDescriptions.parse("1")).toBe(
         true,
       );
@@ -194,10 +204,18 @@ describe("settingsRegistry helpers", () => {
     });
 
     it("serializes bit bools correctly", () => {
-      expect(settingsRegistry.showSponsorInfo.serialize(true)).toBe("1");
-      expect(settingsRegistry.showSponsorInfo.serialize(false)).toBe("0");
-      expect(settingsRegistry.showSponsorInfo.serialize(null)).toBeNull();
-      expect(settingsRegistry.showSponsorInfo.serialize(undefined)).toBeNull();
+      expect(settingsRegistry.companyInFlightCheckEnabled.serialize(true)).toBe(
+        "1",
+      );
+      expect(
+        settingsRegistry.companyInFlightCheckEnabled.serialize(false),
+      ).toBe("0");
+      expect(
+        settingsRegistry.companyInFlightCheckEnabled.serialize(null),
+      ).toBeNull();
+      expect(
+        settingsRegistry.companyInFlightCheckEnabled.serialize(undefined),
+      ).toBeNull();
       expect(
         settingsRegistry.renderMarkdownInJobDescriptions.serialize(true),
       ).toBe("1");

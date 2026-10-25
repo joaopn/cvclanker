@@ -24,22 +24,17 @@ describe("pipeline progress source-stats tracking", () => {
   it("creates rows when a source starts with explicit platforms (jobspy split)", () => {
     progressHelpers.startCrawling(1);
     progressHelpers.startSource("jobspy", 0, 1, {
-      platforms: ["linkedin", "indeed", "glassdoor"],
+      platforms: ["linkedin", "indeed"],
     });
 
     const stats = getProgress().sourceStats;
-    expect(stats.map((row) => row.id)).toEqual([
-      "indeed",
-      "linkedin",
-      "glassdoor",
-    ]);
+    expect(stats.map((row) => row.id)).toEqual(["indeed", "linkedin"]);
     // Multi-platform extractor: each row's label gets a `[<extractorId>]`
     // suffix so the banner shows the underlying extractor alongside the
     // platform.
     expect(stats.map((row) => row.label)).toEqual([
       "Indeed [jobspy]",
       "LinkedIn [jobspy]",
-      "Glassdoor [jobspy]",
     ]);
     expect(stats.every((row) => row.status === "running")).toBe(true);
     expect(stats.every((row) => row.jobsScraped === 0)).toBe(true);

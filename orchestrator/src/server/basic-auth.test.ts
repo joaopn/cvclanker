@@ -52,7 +52,7 @@ function createMockResponse(): Response & {
   } as unknown as Response & { statusCode: number; jsonBody: unknown };
 }
 
-describe.sequential("Auth read-only enforcement", () => {
+describe.sequential("Auth guard on /api routes", () => {
   afterEach(() => {
     process.env = { ...originalEnv };
     vi.clearAllMocks();

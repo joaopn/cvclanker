@@ -176,7 +176,7 @@ describe("renderCoverLetterPdf", () => {
     expect(mocks.runTectonic).not.toHaveBeenCalled();
   });
 
-  it("falls back to most-recently-updated cover-letter doc when job not pinned", async () => {
+  it("falls back to the listed cover-letter doc when the job is not pinned", async () => {
     const job = createJob({ id: "job-2", coverLetterDocumentId: null });
     const doc = createCoverLetterDocument({
       id: "fallback-doc",

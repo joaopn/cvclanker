@@ -22,11 +22,12 @@ describe("asyncPool", () => {
     let maxInFlight = 0;
     const items = Array.from({ length: 20 }, (_, index) => index);
 
-    await asyncPool({
+    const nanResult = await asyncPool({
       items,
       concurrency: Number.NaN,
       task: async (item) => item,
     });
+    expect(nanResult).toEqual(items);
 
     // More items than the clamp allows in flight — with the requested
     // concurrency far above the ceiling, an unclamped pool would exceed it.

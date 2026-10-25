@@ -35,7 +35,7 @@ describe("runnableSources", () => {
   it("drops an extractor with no compatible platform", () => {
     const usable = runnableSources([
       source({ key: "jobspy" }),
-      source({ key: "glassdoor", platforms: [] }),
+      source({ key: "startupjobs", platforms: [] }),
     ]);
     expect(usable.map((entry) => entry.key)).toEqual(["jobspy"]);
   });
@@ -61,7 +61,10 @@ describe("buildRunSelection", () => {
   });
 
   it("ignores an unrunnable source when deciding 'everything'", () => {
-    const withDead = [...sources, source({ key: "glassdoor", platforms: [] })];
+    const withDead = [
+      ...sources,
+      source({ key: "startupjobs", platforms: [] }),
+    ];
     expect(
       buildRunSelection(withDead, new Set(["jobspy", "apify:abc"])),
     ).toEqual({});
@@ -93,7 +96,7 @@ describe("buildRunSelection", () => {
   it("never emits a platform the profile's location rules out", () => {
     const partial = source({
       platforms: ["indeed"],
-      incompatible: [{ platform: "glassdoor", reasons: ["needs a city"] }],
+      incompatible: [{ platform: "linkedin", reasons: ["needs a city"] }],
     });
     expect(
       buildRunSelection([partial, instance()], new Set(["jobspy"])),

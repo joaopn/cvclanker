@@ -17,7 +17,11 @@ describe("useSettings", () => {
 
   it("fetches settings on mount if not already cached", async () => {
     const mockSettings = createAppSettings({
-      showSponsorInfo: { value: false, default: true, override: false },
+      companyInFlightCheckEnabled: {
+        value: true,
+        default: false,
+        override: true,
+      },
       renderMarkdownInJobDescriptions: {
         value: false,
         default: true,
@@ -35,7 +39,7 @@ describe("useSettings", () => {
       expect(result.current.settings).toEqual(mockSettings);
     });
 
-    expect(result.current.showSponsorInfo).toBe(false);
+    expect(result.current.companyInFlightCheckEnabled).toBe(true);
     expect(result.current.renderMarkdownInJobDescriptions).toBe(false);
     expect(api.getSettings).toHaveBeenCalledTimes(1);
   });
@@ -46,8 +50,8 @@ describe("useSettings", () => {
     const { result } = renderHookWithQueryClient(() => useSettings());
 
     await waitFor(() => {
-      // settings is null, so showSponsorInfo should default to true
-      expect(result.current.showSponsorInfo).toBe(true);
+      // settings is null, so every flag falls back to its default
+      expect(result.current.companyInFlightCheckEnabled).toBe(false);
       expect(result.current.renderMarkdownInJobDescriptions).toBe(true);
     });
   });
@@ -55,7 +59,11 @@ describe("useSettings", () => {
   it("provides a refresh function that updates settings", async () => {
     const initialSettings = createAppSettings();
     const updatedSettings = createAppSettings({
-      showSponsorInfo: { value: false, default: true, override: false },
+      companyInFlightCheckEnabled: {
+        value: true,
+        default: false,
+        override: true,
+      },
       renderMarkdownInJobDescriptions: {
         value: false,
         default: true,
@@ -82,7 +90,7 @@ describe("useSettings", () => {
     });
 
     expect(refreshed).toEqual(updatedSettings);
-    expect(result.current.showSponsorInfo).toBe(false);
+    expect(result.current.companyInFlightCheckEnabled).toBe(true);
     expect(result.current.renderMarkdownInJobDescriptions).toBe(false);
   });
 

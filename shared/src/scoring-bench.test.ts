@@ -263,19 +263,23 @@ describe("buildStoredCells", () => {
   });
 
   it("makes a job only the database classified a gap, not a disagreement", () => {
+    // j3: the model's cell failed, so only the database classified it.
     const cells = [
       ...buildStoredCells([
         benchJob("j1", { storedCategory: "great_fit" }),
         benchJob("j2", { storedCategory: "bad_fit" }),
+        benchJob("j3", { storedCategory: "bad_fit" }),
       ]),
       cell({ jobId: "j1", configId: "cheap", category: "great_fit" }),
       cell({ jobId: "j2", configId: "cheap", category: "great_fit" }),
+      cell({ jobId: "j3", configId: "cheap", status: "error", error: "boom" }),
     ];
 
     const rows = findDisagreements({
       jobs: [
         benchJob("j1", { storedCategory: "great_fit" }),
         benchJob("j2", { storedCategory: "bad_fit" }),
+        benchJob("j3", { storedCategory: "bad_fit" }),
       ],
       configs: [benchConfig("cheap"), STORED_COLUMN],
       cells,

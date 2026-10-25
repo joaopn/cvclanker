@@ -213,6 +213,7 @@ describe("UserProfilesPanel", () => {
     );
 
     const storedInput = screen.getByDisplayValue("Old Search");
+    fireEvent.blur(storedInput);
     fireEvent.change(storedInput, { target: { value: "Archive" } });
     fireEvent.blur(storedInput);
     await waitFor(() =>
@@ -221,6 +222,10 @@ describe("UserProfilesPanel", () => {
         "Archive",
       ),
     );
+    // The unchanged blurs run before the renames, so a call they made has
+    // landed by now.
+    expect(api.renameActiveUserProfile).toHaveBeenCalledTimes(1);
+    expect(api.renameStoredUserProfile).toHaveBeenCalledTimes(1);
   });
 
   it("deletes a stored profile after the confirm dialog", async () => {

@@ -137,6 +137,11 @@ describe.sequential("updateJob applied_at stamping", () => {
     const id = await seed("https://ex/reopened");
     const applied = await move(id, { status: "applied" });
     const stamp = applied?.appliedAt;
+    await move(id, {
+      status: "closed",
+      outcome: "rejected",
+      closedAt: 1786711161,
+    });
 
     const reopened = await move(id, {
       status: "discovered",
@@ -145,6 +150,7 @@ describe.sequential("updateJob applied_at stamping", () => {
     });
 
     expect(reopened?.outcome).toBeNull();
+    expect(reopened?.closedAt).toBeNull();
     expect(reopened?.appliedAt).toBe(stamp);
   });
 

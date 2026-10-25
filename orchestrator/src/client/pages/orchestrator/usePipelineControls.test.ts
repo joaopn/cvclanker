@@ -111,22 +111,20 @@ describe("usePipelineControls", () => {
   it("reports the legs the server actually queued, not the ones asked for", async () => {
     vi.mocked(api.runPipeline).mockResolvedValue({
       message: "Pipeline started",
-      profileCount: 1,
+      profileCount: 2,
     } as never);
     const { result } = renderControls();
 
     await act(async () => {
-      await result.current.runPipelineNow(["p1", "p2", "p3"], {
-        sources: ["linkedin"],
-      });
+      await result.current.runPipelineNow(["p1", "p2", "p3"], {});
     });
 
-    // A leg the filter empties is dropped server-side, so the requested count
-    // would over-report what ran.
+    // The server can drop a leg from a chain, so the requested count would
+    // over-report what ran.
     expect(toast.message).toHaveBeenCalledWith(
       "Pipeline started",
       expect.objectContaining({
-        description: expect.not.stringContaining("3 profiles"),
+        description: expect.stringContaining("2 profiles, one after another"),
       }),
     );
   });

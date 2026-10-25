@@ -281,10 +281,6 @@ describe("runProfileSequence", () => {
     // A cancel arriving after the loop's check but before runPipeline started
     // would otherwise be wiped: runPipeline clears the orchestrator's cancel
     // flag at entry. The re-assert must land with no await in between.
-    requestProfileSequenceCancel();
-    endProfileSequence();
-    tryBeginProfileSequence();
-
     orchestratorMock.runPipeline.mockImplementation(async () => {
       requestProfileSequenceCancel();
       return ok;

@@ -499,6 +499,17 @@ describe("JobStageSwitcher moves", () => {
       "Moved to Interviewing",
       expect.objectContaining({ action: expect.anything() }),
     );
+
+    await pushUndo.mock.calls[0][0].restore();
+    expect(vi.mocked(api.updateJob).mock.calls.at(-1)).toEqual([
+      "undo",
+      expect.objectContaining({
+        status: "closed",
+        outcome: "withdrawn",
+        closedAt: 1_700_000_000,
+        appliedAt: APPLIED_AT,
+      }),
+    ]);
   });
 
   it("reports a failed move and pushes no undo", async () => {

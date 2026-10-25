@@ -89,7 +89,7 @@ describe("discoverJobsStep", () => {
     const jobspyManifest = {
       id: "jobspy",
       displayName: "JobSpy",
-      providesSources: ["indeed", "linkedin", "glassdoor"],
+      providesSources: ["indeed", "linkedin"],
       run: vi.fn().mockResolvedValue({
         success: true,
         jobs: [
@@ -109,7 +109,7 @@ describe("discoverJobsStep", () => {
         ],
       }),
     };
-    const ukvisaManifest = {
+    const hiringcafeManifest = {
       id: "hiringcafe",
       displayName: "Hiring Cafe",
       providesSources: ["hiringcafe"],
@@ -123,15 +123,14 @@ describe("discoverJobsStep", () => {
     vi.mocked(registryModule.getExtractorRegistry).mockResolvedValue({
       manifests: new Map([
         ["jobspy", jobspyManifest as any],
-        ["hiringcafe", ukvisaManifest as any],
+        ["hiringcafe", hiringcafeManifest as any],
       ]),
       manifestBySource: new Map([
         ["indeed", jobspyManifest as any],
         ["linkedin", jobspyManifest as any],
-        ["glassdoor", jobspyManifest as any],
-        ["hiringcafe", ukvisaManifest as any],
+        ["hiringcafe", hiringcafeManifest as any],
       ]),
-      availableSources: ["indeed", "linkedin", "glassdoor", "hiringcafe"],
+      availableSources: ["indeed", "linkedin", "hiringcafe"],
     } as any);
 
     const result = await discoverJobsStep({ mergedConfig: baseConfig });
@@ -291,7 +290,7 @@ describe("discoverJobsStep", () => {
     const jobspyManifest = {
       id: "jobspy",
       displayName: "JobSpy",
-      providesSources: ["indeed", "linkedin", "glassdoor"],
+      providesSources: ["indeed", "linkedin"],
       run: vi.fn().mockImplementation(
         () =>
           new Promise((resolve) => {
@@ -314,10 +313,9 @@ describe("discoverJobsStep", () => {
       manifestBySource: new Map([
         ["indeed", jobspyManifest as any],
         ["linkedin", jobspyManifest as any],
-        ["glassdoor", jobspyManifest as any],
         ["hiringcafe", hiringcafeManifest as any],
       ]),
-      availableSources: ["indeed", "linkedin", "glassdoor", "hiringcafe"],
+      availableSources: ["indeed", "linkedin", "hiringcafe"],
     } as any);
 
     const step = discoverJobsStep({
@@ -340,7 +338,7 @@ describe("discoverJobsStep", () => {
   it("throws when all enabled sources fail", async () => {
     const registryModule = await import("@server/extractors/registry");
 
-    const ukvisaManifest = {
+    const hiringcafeManifest = {
       id: "hiringcafe",
       displayName: "Hiring Cafe",
       providesSources: ["hiringcafe"],
@@ -352,8 +350,8 @@ describe("discoverJobsStep", () => {
     };
 
     vi.mocked(registryModule.getExtractorRegistry).mockResolvedValue({
-      manifests: new Map([["hiringcafe", ukvisaManifest as any]]),
-      manifestBySource: new Map([["hiringcafe", ukvisaManifest as any]]),
+      manifests: new Map([["hiringcafe", hiringcafeManifest as any]]),
+      manifestBySource: new Map([["hiringcafe", hiringcafeManifest as any]]),
       availableSources: ["hiringcafe"],
     } as any);
 
@@ -369,7 +367,7 @@ describe("discoverJobsStep", () => {
     );
   });
 
-  it("throws when all requested sources are incompatible for country", async () => {
+  it("throws when every requested source is incompatible with the profile", async () => {
     const registryModule = await import("@server/extractors/registry");
 
     vi.mocked(registryModule.getExtractorRegistry).mockResolvedValue({
@@ -378,19 +376,20 @@ describe("discoverJobsStep", () => {
       availableSources: [],
     } as any);
 
-    // Glassdoor is the only kept source with country restrictions; pick a
-    // country it does not support so the country-compat filter rejects it.
+    // A remote-only board on a profile that is not remote-type.
     await expect(
       discoverJobsStep({
         mergedConfig: {
           ...baseConfig,
-          sources: ["glassdoor"],
+          sources: ["himalayas"],
           locationIntent: createLocationIntentFromLegacyInputs({
             selectedCountry: "croatia",
           }),
         },
       }),
-    ).rejects.toThrow("No compatible sources for selected country: Croatia");
+    ).rejects.toThrow(
+      "No compatible sources for selected country: Croatia (himalayas: runs only on a remote-type profile)",
+    );
   });
 
   it("does not throw when no sources are requested", async () => {
@@ -422,7 +421,7 @@ describe("discoverJobsStep", () => {
     const jobspyManifest = {
       id: "jobspy",
       displayName: "JobSpy",
-      providesSources: ["indeed", "linkedin", "glassdoor"],
+      providesSources: ["indeed", "linkedin"],
       run: vi.fn().mockResolvedValue({
         success: true,
         jobs: [
@@ -447,9 +446,8 @@ describe("discoverJobsStep", () => {
       manifestBySource: new Map([
         ["indeed", jobspyManifest as any],
         ["linkedin", jobspyManifest as any],
-        ["glassdoor", jobspyManifest as any],
       ]),
-      availableSources: ["indeed", "linkedin", "glassdoor"],
+      availableSources: ["indeed", "linkedin"],
     } as any);
 
     const result = await discoverJobsStep({
@@ -495,7 +493,7 @@ describe("discoverJobsStep", () => {
         ],
       }),
     };
-    const ukvisaManifest = {
+    const hiringcafeManifest = {
       id: "hiringcafe",
       displayName: "Hiring Cafe",
       providesSources: ["hiringcafe"],
@@ -516,11 +514,11 @@ describe("discoverJobsStep", () => {
     vi.mocked(registryModule.getExtractorRegistry).mockResolvedValue({
       manifests: new Map([
         ["workingnomads", workingnomadsManifest as any],
-        ["hiringcafe", ukvisaManifest as any],
+        ["hiringcafe", hiringcafeManifest as any],
       ]),
       manifestBySource: new Map([
         ["workingnomads", workingnomadsManifest as any],
-        ["hiringcafe", ukvisaManifest as any],
+        ["hiringcafe", hiringcafeManifest as any],
       ]),
       availableSources: ["workingnomads", "hiringcafe"],
     } as any);
@@ -551,7 +549,7 @@ describe("discoverJobsStep", () => {
     const jobspyManifest = {
       id: "jobspy",
       displayName: "JobSpy",
-      providesSources: ["indeed", "linkedin", "glassdoor"],
+      providesSources: ["indeed", "linkedin"],
       run: vi.fn().mockResolvedValue({
         success: true,
         jobs: [
@@ -585,9 +583,8 @@ describe("discoverJobsStep", () => {
       manifestBySource: new Map([
         ["indeed", jobspyManifest as any],
         ["linkedin", jobspyManifest as any],
-        ["glassdoor", jobspyManifest as any],
       ]),
-      availableSources: ["indeed", "linkedin", "glassdoor"],
+      availableSources: ["indeed", "linkedin"],
     } as any);
 
     const result = await discoverJobsStep({
@@ -611,7 +608,7 @@ describe("discoverJobsStep", () => {
     const jobspyManifest = {
       id: "jobspy",
       displayName: "JobSpy",
-      providesSources: ["indeed", "linkedin", "glassdoor"],
+      providesSources: ["indeed", "linkedin"],
       run: vi.fn().mockResolvedValue({
         success: true,
         jobs: [
@@ -638,9 +635,8 @@ describe("discoverJobsStep", () => {
       manifestBySource: new Map([
         ["indeed", jobspyManifest as any],
         ["linkedin", jobspyManifest as any],
-        ["glassdoor", jobspyManifest as any],
       ]),
-      availableSources: ["indeed", "linkedin", "glassdoor"],
+      availableSources: ["indeed", "linkedin"],
     } as any);
 
     const result = await discoverJobsStep({
@@ -674,7 +670,7 @@ describe("discoverJobsStep", () => {
     const jobspyManifest = {
       id: "jobspy",
       displayName: "JobSpy",
-      providesSources: ["indeed", "linkedin", "glassdoor"],
+      providesSources: ["indeed", "linkedin"],
       run: vi.fn().mockResolvedValue({
         success: true,
         jobs: [
@@ -698,9 +694,8 @@ describe("discoverJobsStep", () => {
       manifestBySource: new Map([
         ["indeed", jobspyManifest as any],
         ["linkedin", jobspyManifest as any],
-        ["glassdoor", jobspyManifest as any],
       ]),
-      availableSources: ["indeed", "linkedin", "glassdoor"],
+      availableSources: ["indeed", "linkedin"],
     } as any);
 
     const result = await discoverJobsStep({
@@ -728,7 +723,7 @@ describe("discoverJobsStep", () => {
     const jobspyManifest = {
       id: "jobspy",
       displayName: "JobSpy",
-      providesSources: ["indeed", "linkedin", "glassdoor"],
+      providesSources: ["indeed", "linkedin"],
       run: vi.fn().mockResolvedValue({
         success: true,
         jobs: [
@@ -757,9 +752,8 @@ describe("discoverJobsStep", () => {
       manifestBySource: new Map([
         ["indeed", jobspyManifest as any],
         ["linkedin", jobspyManifest as any],
-        ["glassdoor", jobspyManifest as any],
       ]),
-      availableSources: ["indeed", "linkedin", "glassdoor"],
+      availableSources: ["indeed", "linkedin"],
     } as any);
 
     const result = await discoverJobsStep({
@@ -880,7 +874,7 @@ describe("discoverJobsStep", () => {
     const jobspyManifest = {
       id: "jobspy",
       displayName: "JobSpy",
-      providesSources: ["indeed", "linkedin", "glassdoor"],
+      providesSources: ["indeed", "linkedin"],
       run: vi.fn().mockResolvedValue({
         success: true,
         jobs: [
@@ -900,9 +894,8 @@ describe("discoverJobsStep", () => {
       manifestBySource: new Map([
         ["indeed", jobspyManifest as any],
         ["linkedin", jobspyManifest as any],
-        ["glassdoor", jobspyManifest as any],
       ]),
-      availableSources: ["indeed", "linkedin", "glassdoor"],
+      availableSources: ["indeed", "linkedin"],
     } as any);
 
     const result = await discoverJobsStep({
@@ -962,8 +955,8 @@ describe("discoverJobsStep", () => {
   });
 
   it("keeps a fan-out extractor's unmappable count instead of losing it", async () => {
-    // jobspy's task id is "jobspy" while its platforms are indeed/linkedin/
-    // glassdoor, so an attribution keyed on the task's own id matches no
+    // jobspy's task id is "jobspy" while its platforms are indeed/linkedin,
+    // so an attribution keyed on the task's own id matches no
     // platform and silently drops the number — which is how this shipped
     // broken the first time. Reported once, never multiplied across siblings.
     const registryModule = await import("@server/extractors/registry");
@@ -1032,7 +1025,7 @@ describe("discoverJobsStep", () => {
     const jobspyManifest = {
       id: "jobspy",
       displayName: "JobSpy",
-      providesSources: ["indeed", "linkedin", "glassdoor"],
+      providesSources: ["indeed", "linkedin"],
       run: vi.fn().mockResolvedValue({ success: true, jobs: [] }),
     };
     const workingnomadsManifest = {
@@ -1041,7 +1034,7 @@ describe("discoverJobsStep", () => {
       providesSources: ["workingnomads"],
       run: vi.fn().mockResolvedValue({ success: true, jobs: [] }),
     };
-    const ukvisaManifest = {
+    const hiringcafeManifest = {
       id: "hiringcafe",
       displayName: "Hiring Cafe",
       providesSources: ["hiringcafe"],
@@ -1056,22 +1049,15 @@ describe("discoverJobsStep", () => {
       manifests: new Map([
         ["jobspy", jobspyManifest as any],
         ["workingnomads", workingnomadsManifest as any],
-        ["hiringcafe", ukvisaManifest as any],
+        ["hiringcafe", hiringcafeManifest as any],
       ]),
       manifestBySource: new Map([
         ["indeed", jobspyManifest as any],
         ["linkedin", jobspyManifest as any],
-        ["glassdoor", jobspyManifest as any],
         ["workingnomads", workingnomadsManifest as any],
-        ["hiringcafe", ukvisaManifest as any],
+        ["hiringcafe", hiringcafeManifest as any],
       ]),
-      availableSources: [
-        "indeed",
-        "linkedin",
-        "glassdoor",
-        "workingnomads",
-        "hiringcafe",
-      ],
+      availableSources: ["indeed", "linkedin", "workingnomads", "hiringcafe"],
     } as any);
 
     await discoverJobsStep({
@@ -1103,7 +1089,7 @@ describe("discoverJobsStep", () => {
     const jobspyManifest = {
       id: "jobspy",
       displayName: "JobSpy",
-      providesSources: ["indeed", "linkedin", "glassdoor"],
+      providesSources: ["indeed", "linkedin"],
       run: vi.fn().mockResolvedValue({ success: true, jobs: [] }),
     };
 
@@ -1112,9 +1098,8 @@ describe("discoverJobsStep", () => {
       manifestBySource: new Map([
         ["indeed", jobspyManifest as any],
         ["linkedin", jobspyManifest as any],
-        ["glassdoor", jobspyManifest as any],
       ]),
-      availableSources: ["indeed", "linkedin", "glassdoor"],
+      availableSources: ["indeed", "linkedin"],
     } as any);
 
     await discoverJobsStep({
@@ -1148,7 +1133,7 @@ describe("discoverJobsStep scrape-since-last-run window", () => {
   const makeJobspyManifest = () => ({
     id: "jobspy",
     displayName: "JobSpy",
-    providesSources: ["indeed", "linkedin", "glassdoor"],
+    providesSources: ["indeed", "linkedin"],
     configSchema: jobspySchema,
     run: vi.fn().mockResolvedValue({ success: true, jobs: [] }),
   });
@@ -1160,9 +1145,8 @@ describe("discoverJobsStep scrape-since-last-run window", () => {
       manifestBySource: new Map([
         ["indeed", manifest as any],
         ["linkedin", manifest as any],
-        ["glassdoor", manifest as any],
       ]),
-      availableSources: ["indeed", "linkedin", "glassdoor"],
+      availableSources: ["indeed", "linkedin"],
     } as any);
   }
 

@@ -139,21 +139,23 @@ describe.sequential("POST /api/jobs/:id/apply — the permanent apply mark", () 
     expect(body.data.appliedAt).toBeNull();
   });
 
-  it("restores the original date when undo carries one", async () => {
+  it("restores the snapshot's date when undo carries one", async () => {
     await seedJob("apply-undo-2", "ready");
     const applied = await apply("apply-undo-2");
-    const stamp = applied.body.data.appliedAt;
+    // A date other than the stored one: the stamp otherwise survives every
+    // move, so only an undo that really writes it can produce this value.
+    const snapshotStamp = "2026-01-02T03:04:05.000Z";
+    expect(applied.body.data.appliedAt).not.toBe(snapshotStamp);
 
-    // Undoing a later move to Interviewing restores the snapshot's stamp.
     await patchStatus("apply-undo-2", "in_progress");
     const res = await fetch(`${baseUrl}/api/jobs/apply-undo-2`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "applied", appliedAt: stamp }),
+      body: JSON.stringify({ status: "applied", appliedAt: snapshotStamp }),
     });
     const body = await res.json();
 
-    expect(body.data.appliedAt).toBe(stamp);
+    expect(body.data.appliedAt).toBe(snapshotStamp);
   });
 
   it("404s an unknown job", async () => {

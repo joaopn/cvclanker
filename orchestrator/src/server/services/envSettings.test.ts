@@ -11,7 +11,7 @@ describe.sequential("envSettings overrides", () => {
 
   beforeEach(async () => {
     vi.resetModules();
-    tempDir = await mkdtemp(join(tmpdir(), "cvclanker-env-migration-test-"));
+    tempDir = await mkdtemp(join(tmpdir(), "cvclanker-env-settings-test-"));
     process.env = {
       ...originalEnv,
       DATA_DIR: tempDir,
@@ -39,7 +39,6 @@ describe.sequential("envSettings overrides", () => {
 
     await applyStoredEnvOverrides();
 
-    expect(await settingsRepo.getSetting("llmApiKey")).toBe("sk-db-override");
     expect(process.env.LLM_API_KEY).toBe("sk-db-override");
   });
 

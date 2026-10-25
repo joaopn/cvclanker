@@ -1,5 +1,6 @@
 import * as api from "@client/api";
 import { useScoringBench } from "@client/hooks/useScoringBench";
+import { toast } from "@client/lib/toast";
 import type { BenchCell, BenchRun } from "@shared/types";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -261,9 +262,13 @@ describe("ModelBenchmarkingPanel", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /run benchmark/i }));
 
-    await waitFor(() => {
-      expect(api.startScoringBenchRun).not.toHaveBeenCalled();
-    });
+    expect(toast.error).toHaveBeenCalledWith(
+      "Enter how many jobs to sample (1 or more).",
+    );
+    // react-query runs a mutation's mutationFn after a tick, not inside
+    // mutate(), so the assertion must wait past it to see a call.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(api.startScoringBenchRun).not.toHaveBeenCalled();
   });
 
   it("renders one column per config and a category per cell", () => {
@@ -445,9 +450,13 @@ describe("ModelBenchmarkingPanel sampling filter", () => {
     }
     fireEvent.click(screen.getByRole("button", { name: /run benchmark/i }));
 
-    await waitFor(() => {
-      expect(api.startScoringBenchRun).not.toHaveBeenCalled();
-    });
+    expect(toast.error).toHaveBeenCalledWith(
+      "Pick at least one fit category to sample from.",
+    );
+    // react-query runs a mutation's mutationFn after a tick, not inside
+    // mutate(), so the assertion must wait past it to see a call.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(api.startScoringBenchRun).not.toHaveBeenCalled();
   });
 });
 

@@ -37,13 +37,14 @@ describe("inferManualJobDetails", () => {
   it("returns a warning when LlmService reports a missing API key", async () => {
     callJsonMock.mockResolvedValue({
       success: false,
-      error: "LLM API key not set",
+      error: "Invalid API key",
+      code: "auth",
     });
 
     const result = await inferManualJobDetails("JD text");
 
     expect(result.job).toEqual({});
-    expect(result.warning).toContain("LLM API key not set");
+    expect(result.warning).toBe("LLM API key not set. Fill details manually.");
   });
 
   it("returns a warning when LlmService reports a generic failure", async () => {

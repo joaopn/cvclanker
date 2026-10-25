@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
@@ -157,10 +157,17 @@ describe("clear-keyword-scores", () => {
     expect(result.matched).toBe(0);
   });
 
-  it("sweeps inactive profiles as well as the active database", () => {
-    const paths = findProfileDatabases("/data");
-    expect(paths[0]).toBe("/data/jobs.db");
+  it("sweeps inactive profiles as well as the active database", async () => {
+    await mkdir(join(dir, "user-profiles"));
+    await writeFile(join(dir, "user-profiles", "p1.db"), "");
+    await writeFile(join(dir, "user-profiles", "notes.txt"), "");
+
+    expect(findProfileDatabases(dir)).toEqual([
+      join(dir, "jobs.db"),
+      join(dir, "user-profiles", "p1.db"),
+    ]);
   });
+
   it("has no side effect on import — the sweep only runs from the CLI entry", async () => {
     // `vi.resetModules()` is load-bearing: this file already imports the module
     // at the top, so a bare `await import` is a cache hit and would prove

@@ -198,7 +198,12 @@ describe("flattenInput", () => {
   });
 
   it("matches priority entries case-insensitively", () => {
+    // A competing root-level document that both sorts and is added first, so
+    // whether the archive lists entries by name or by insertion it comes
+    // first, ties on depth and the fallback would pick it: only the
+    // case-insensitive priority match can land the letter.
     const archive = texZip({
+      "Appendix.tex": "\\documentclass{article}\nAppendix\n",
       "CoverLetter.tex": "\\documentclass{article}\nLetter\n",
     });
     const result = flattenInput({

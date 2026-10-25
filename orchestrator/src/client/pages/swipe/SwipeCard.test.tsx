@@ -79,15 +79,17 @@ describe("SwipeCardContent live status", () => {
   });
 
   it("shows no chip on a row nobody has checked", () => {
-    card({ liveClosed: null, liveEasyApply: null, liveStatusCheckedAt: null });
+    card({ liveClosed: null, liveEasyApply: true, liveStatusCheckedAt: null });
     expect(screen.queryByText("Easy Apply")).not.toBeInTheDocument();
   });
 
   it("shows no Easy Apply chip on a closed posting", () => {
+    // The server stores a null verdict for a closed posting; the fixture
+    // carries `true` so only the closed gate can hide the chip.
     card({
       liveClosed: true,
       liveApplicants: null,
-      liveEasyApply: null,
+      liveEasyApply: true,
       liveStatusCheckedAt: new Date().toISOString(),
     });
     expect(screen.queryByText("Easy Apply")).not.toBeInTheDocument();

@@ -1,9 +1,6 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  CoverLetterTemplateExtractError,
-  llmCoverLetterTemplateExtract,
-} from "./llm-template-extract";
+import { llmCoverLetterTemplateExtract } from "./llm-template-extract";
 
 const callJsonMock = vi.fn();
 
@@ -139,6 +136,9 @@ describe("llmCoverLetterTemplateExtract", () => {
         flattenedTex: "x",
         assetReferences: [],
       }),
-    ).rejects.toBeInstanceOf(CoverLetterTemplateExtractError);
+    ).rejects.toMatchObject({
+      name: "CoverLetterTemplateExtractError",
+      code: "LLM_FAILED",
+    });
   });
 });

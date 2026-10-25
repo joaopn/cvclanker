@@ -207,12 +207,12 @@ describe("JobRowContent Easy Apply chip", () => {
   });
 
   it("stays silent on a closed posting", () => {
-    // A closed posting renders no Apply button, so its verdict is null — the
-    // chip must not appear even on a row that was checked.
+    // A closed posting renders no Apply button, so the server stores a null
+    // verdict; the fixture carries `true` so only the closed gate can hide it.
     row({
       liveClosed: true,
       liveApplicants: null,
-      liveEasyApply: null,
+      liveEasyApply: true,
       liveStatusCheckedAt: new Date().toISOString(),
     });
 
@@ -220,7 +220,7 @@ describe("JobRowContent Easy Apply chip", () => {
   });
 
   it("stays silent on a row nobody has checked", () => {
-    row({ liveClosed: null, liveEasyApply: null, liveStatusCheckedAt: null });
+    row({ liveClosed: null, liveEasyApply: true, liveStatusCheckedAt: null });
 
     expect(screen.queryByText("Easy Apply")).not.toBeInTheDocument();
   });

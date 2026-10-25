@@ -87,11 +87,6 @@ describe("extractorHonoursRunWindow", () => {
   });
 
   /**
-   * An unticked mapping makes the source honour its OWN stored max age and
-   * ignore the run entirely, so the run's window cannot exceed a limit that
-   * never applies to it.
-   */
-  /**
    * `resolveSourceContextSettings` falls back to the mapping's own
    * `enabledByDefault`, so defaulting to `true` here would disagree with the
    * runtime for any manifest shipping `false` — refusing a run over a ceiling
@@ -115,6 +110,11 @@ describe("extractorHonoursRunWindow", () => {
     ).toBe(true);
   });
 
+  /**
+   * An unticked mapping makes the source honour its OWN stored max age and
+   * ignore the run entirely, so the run's window cannot exceed a limit that
+   * never applies to it.
+   */
   it("is false when the user unticked the mapping", () => {
     expect(
       extractorHonoursRunWindow(

@@ -892,9 +892,9 @@ describe.sequential("stats repository", () => {
       const companies = await stats.getCompanyStats(ALL_TIME);
       expect(companies.companies).toHaveLength(1);
       expect(companies.companies[0]?.jobs).toBe(2);
-      // Not a leading-space variant: the label is handed to the client as the
-      // company's name and must be one of the spellings actually stored.
-      expect(companies.companies[0]?.employer.trim()).toBe(
+      // The label is handed to the client as the company's name, so it must
+      // be one of the spellings actually stored.
+      expect(["Canonical", "canonical"]).toContain(
         companies.companies[0]?.employer,
       );
     });
@@ -910,10 +910,12 @@ describe.sequential("stats repository", () => {
     });
 
     it("reports how many companies exist beyond the cut", async () => {
-      await seed({ id: "a", employer: "One" });
-      await seed({ id: "b", employer: "Two" });
+      for (let i = 0; i < 26; i++) {
+        await seed({ id: `c${i}`, employer: `Company ${i}` });
+      }
       const companies = await stats.getCompanyStats(ALL_TIME);
-      expect(companies.companiesTotal).toBe(2);
+      expect(companies.companies).toHaveLength(25);
+      expect(companies.companiesTotal).toBe(26);
     });
 
     it("carries a scored count so every fit rate shares one denominator", async () => {
@@ -928,7 +930,7 @@ describe.sequential("stats repository", () => {
       });
     });
 
-    it("ranks by good fit and reports its own cut", async () => {
+    it("ranks by good fit", async () => {
       await seed({ id: "big", employer: "Volume Ltd", suitability: "bad_fit" });
       await seed({ id: "b2", employer: "Volume Ltd", suitability: "bad_fit" });
       await seed({

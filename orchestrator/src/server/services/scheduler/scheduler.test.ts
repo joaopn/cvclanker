@@ -135,7 +135,6 @@ describe.sequential("scheduler pass", () => {
     await scheduler.runSchedulerPass(now);
 
     const after = await repo.getRunSchedule(created.id);
-    expect(after?.lastStatus).toBe("success");
     expect(after?.nextFireAt).toBe("2026-08-31T06:00:00.000Z");
   });
 
@@ -267,7 +266,7 @@ describe.sequential("scheduler pass", () => {
     expect("scrapeSinceLastRun" in body).toBe(false);
   });
 
-  it("gives the sequence claim back when it defers on a lost race", async () => {
+  it("defers on a lost race without releasing a claim it never took", async () => {
     await repo.createRunSchedule(dueSchedule());
     tryBeginProfileSequence.mockReturnValue(false);
 

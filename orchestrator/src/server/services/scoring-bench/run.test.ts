@@ -146,7 +146,7 @@ describe("executeBenchRun", () => {
     );
   });
 
-  it("passes each config's own model and effort through", async () => {
+  it("passes each config's model through and drops effort on a non-claude_code provider", async () => {
     getRandomScoreableJobsMock.mockResolvedValue([job("j1")]);
     classifyJobMock.mockResolvedValue({ category: "bad_fit", reason: "no" });
 

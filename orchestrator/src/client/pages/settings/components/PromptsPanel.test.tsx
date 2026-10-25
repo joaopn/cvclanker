@@ -133,6 +133,9 @@ describe("PromptsPanel", () => {
     await expandEditor();
 
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    // react-query runs a mutation's mutationFn after a tick, not inside
+    // mutate(), so the assertion must wait past it to see a call.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(api.updatePrompt).not.toHaveBeenCalled();
   });
 

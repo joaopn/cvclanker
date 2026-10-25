@@ -88,16 +88,9 @@ describe.sequential("Pipeline API routes", () => {
           maxJobsPerTerm: null,
         },
         autoSkipCategory: "bad_fit",
-        pdfRenderer: "rxresume",
         models: {
           scorer: "model-scorer",
           tailoring: "model-tailoring",
-          projectSelection: "model-project-selection",
-        },
-        resumeProjects: {
-          maxProjects: 3,
-          lockedProjectCount: 1,
-          aiSelectableProjectCount: 2,
         },
       },
       resultSummary: {

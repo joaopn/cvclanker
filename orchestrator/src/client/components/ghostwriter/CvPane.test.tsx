@@ -172,6 +172,7 @@ describe("CvPane", () => {
       expect(apiMocks.renderCvPdf).toHaveBeenCalledWith("job-1");
     });
     expect(apiMocks.updateJob).toHaveBeenCalled();
+    expect(await screen.findByTitle("Compiled CV preview")).toBeInTheDocument();
   });
 
   it("Raw sub-tab hydrates fence text from the current state", async () => {

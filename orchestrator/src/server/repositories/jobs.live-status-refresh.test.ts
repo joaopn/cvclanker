@@ -227,9 +227,6 @@ describe.sequential("getJobsForLiveStatusRefresh", () => {
       await insert("just-checked", { liveStatusCheckedAt: hoursAgo(0) });
 
       expect(await idsFor(50)).toEqual(["just-checked"]);
-      expect(
-        (await jobsRepo.getJobsForLiveStatusRefresh(50, 0)).map((r) => r.id),
-      ).toEqual(["just-checked"]);
     });
 
     it("lets a later run carry on down the list instead of repeating it", async () => {

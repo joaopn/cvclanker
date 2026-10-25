@@ -25,11 +25,14 @@ describe.sequential("Database API routes", () => {
       jobUrl: "https://example.com/job/cleanup",
       jobDescription: "Test description",
     });
+    const { createPipelineRun } = await import("@server/repositories/pipeline");
+    await createPipelineRun();
 
     const res = await fetch(`${baseUrl}/api/database`, { method: "DELETE" });
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(body.data.jobsDeleted).toBe(1);
+    expect(body.data.runsDeleted).toBe(1);
     expect(typeof body.meta.requestId).toBe("string");
   });
 });

@@ -312,18 +312,22 @@ describe("StatsPage", () => {
     expect(screen.queryByText(/400%/)).not.toBeInTheDocument();
   });
 
-  it("shows the whole calibration crosstab in the order the server sends", async () => {
+  it("shows the whole calibration crosstab, best fit first", async () => {
     renderPage();
     await screen.findByText("Jobs found");
 
-    for (const label of [
+    const rows = [
       "Great fit",
       "Very good fit",
       "Good fit",
       "Bad fit",
       "Unscored",
-    ]) {
-      expect(screen.getByText(label)).toBeInTheDocument();
+    ].map((label) => screen.getByText(label));
+    for (let i = 1; i < rows.length; i++) {
+      expect(
+        rows[i - 1].compareDocumentPosition(rows[i]) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
     }
   });
 

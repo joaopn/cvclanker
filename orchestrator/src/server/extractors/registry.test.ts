@@ -54,11 +54,7 @@ describe("extractor registry", () => {
     vi.mocked(discovery.loadManifestFromFile).mockImplementation(
       async (path) =>
         path === "/tmp/jobspy.ts"
-          ? makeManifest(
-              "jobspy",
-              ["indeed", "linkedin", "glassdoor"],
-              "JobSpy",
-            )
+          ? makeManifest("jobspy", ["indeed", "linkedin"], "JobSpy")
           : makeManifest("hiringcafe", ["hiringcafe"], "Hiring Cafe"),
     );
 
