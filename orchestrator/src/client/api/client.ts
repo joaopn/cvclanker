@@ -38,8 +38,6 @@ import type {
   ManualJobDraft,
   ManualJobFetchResponse,
   ManualJobInferenceResponse,
-  PipelineRun,
-  PipelineRunInsights,
   PipelineStatusResponse,
   RunJobBucket,
   RunJobsResponse,
@@ -205,21 +203,6 @@ export async function signInWithCredentials(
 }
 
 export async function recoverAuthHeaderAfterUnauthorized(): Promise<void> {
-  clearAuthSession();
-  redirectToSignIn();
-}
-
-export async function logout(): Promise<void> {
-  if (cachedAuthToken) {
-    try {
-      await fetch("/api/auth/logout", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${cachedAuthToken}` },
-      });
-    } catch {
-      // Best-effort server-side invalidation.
-    }
-  }
   clearAuthSession();
   redirectToSignIn();
 }
@@ -1063,18 +1046,6 @@ export async function updateJobOutcome(
 // Pipeline API
 export async function getPipelineStatus(): Promise<PipelineStatusResponse> {
   return fetchApi<PipelineStatusResponse>("/pipeline/status");
-}
-
-export async function getPipelineRuns(): Promise<PipelineRun[]> {
-  return fetchApi<PipelineRun[]>("/pipeline/runs");
-}
-
-export async function getPipelineRunInsights(
-  id: string,
-): Promise<PipelineRunInsights> {
-  return fetchApi<PipelineRunInsights>(
-    `/pipeline/runs/${encodeURIComponent(id)}/insights`,
-  );
 }
 
 export async function getRunOptions(

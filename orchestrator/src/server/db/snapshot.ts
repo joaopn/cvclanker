@@ -13,11 +13,10 @@
  * This module is deliberately import-free of `./index` (the DB singleton opens
  * SQLite at module load). The pure export/validate helpers open their own
  * connections against an explicit path so they can be unit-tested without
- * touching the live DB; the live-connection swap is the route's job
- * (`closeDb()` then `applyRestore`).
+ * touching the live DB; swapping a live connection is the caller's job.
  */
 
-import { existsSync, mkdtempSync, renameSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SECRET_SETTING_KEYS } from "@shared/settings-registry";
@@ -200,30 +199,4 @@ export function validateSnapshot(path: string): ValidateResult {
   } finally {
     d.close();
   }
-}
-
-/**
- * Swap a validated snapshot in as the live DB. The caller MUST have closed the
- * live connection (`closeDb()`) first. Backs up the outgoing DB to
- * `jobs.db.bak`, clears stale WAL/SHM sidecars, and renames the snapshot into
- * place. The process must restart afterward to re-open the connection and run
- * idempotent migrations.
- */
-export function applyRestore(
-  stagingPath: string,
-  targetPath = liveDbPath(),
-): void {
-  for (const sidecar of [`${targetPath}-wal`, `${targetPath}-shm`]) {
-    if (existsSync(sidecar)) rmSync(sidecar, { force: true });
-  }
-  if (existsSync(targetPath)) {
-    renameSync(targetPath, `${targetPath}.bak`);
-  }
-  renameSync(stagingPath, targetPath);
-}
-
-/** Staging path for an uploaded restore file — kept on the same filesystem as
- * the live DB so the final rename is atomic. */
-export function restoreStagingPath(): string {
-  return join(getDataDir(), "restore-staging.db");
 }

@@ -10,7 +10,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { BACKUP_FORMAT_VERSION, validateSnapshot } from "./snapshot";
 import {
   activateStoredProfile,
   createFreshLiveDb,
@@ -37,7 +36,6 @@ function makeProfileDb(
   path: string,
   opts: {
     name?: string;
-    versionStamp?: number;
     jobIds?: string[];
     wal?: boolean;
     omitCvDocuments?: boolean;
@@ -76,12 +74,6 @@ function makeProfileDb(
     d.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run(
       "userProfileName",
       opts.name,
-    );
-  }
-  if (opts.versionStamp !== undefined) {
-    d.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run(
-      "__backup_format_version",
-      String(opts.versionStamp),
     );
   }
   for (const id of opts.jobIds ?? []) {
@@ -201,27 +193,6 @@ describe("storeImportedProfile", () => {
 
     expect(name).toMatch(/^Imported \d{4}-\d{2}-\d{2}$/);
     expect(readProfileName(storedProfilePath(id))).toBe(name);
-  });
-
-  it("accepts raw unstamped copies and version-stamped exports alike", () => {
-    const rawPath = join(workDir, "raw.db");
-    makeProfileDb(rawPath);
-    expect(validateSnapshot(rawPath)).toEqual({ ok: true, formatVersion: 0 });
-
-    const stampedPath = join(workDir, "stamped.db");
-    makeProfileDb(stampedPath, { versionStamp: BACKUP_FORMAT_VERSION });
-    expect(validateSnapshot(stampedPath)).toEqual({
-      ok: true,
-      formatVersion: BACKUP_FORMAT_VERSION,
-    });
-
-    const futurePath = join(workDir, "future.db");
-    makeProfileDb(futurePath, { versionStamp: BACKUP_FORMAT_VERSION + 1 });
-    expect(validateSnapshot(futurePath).ok).toBe(false);
-
-    const garbagePath = join(workDir, "garbage.db");
-    writeFileSync(garbagePath, "definitely not sqlite");
-    expect(validateSnapshot(garbagePath).ok).toBe(false);
   });
 });
 

@@ -61,23 +61,6 @@ describe("API client auth flow", () => {
     expect(api.getCachedAuthHeader()).toBe("Bearer fresh-token");
   });
 
-  it("redirects after logout and clears the cached token", async () => {
-    api.__setAuthTokenForTests("logout-token");
-
-    vi.spyOn(global, "fetch").mockResolvedValueOnce(
-      createJsonResponse(200, {
-        ok: true,
-        data: { message: "Logged out" },
-        meta: { requestId: "req-1" },
-      }),
-    );
-
-    await api.logout();
-
-    expect(api.getCachedAuthHeader()).toBeUndefined();
-    expect(redirectToSignIn).toHaveBeenCalledTimes(1);
-  });
-
   it("sends the full automatic run payload to the pipeline API", async () => {
     const fetchSpy = vi.spyOn(global, "fetch");
     fetchSpy.mockResolvedValueOnce(

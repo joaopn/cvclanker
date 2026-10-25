@@ -1,11 +1,5 @@
 // @vitest-environment node
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SECRET_SETTING_KEYS } from "@shared/settings-registry";
@@ -13,7 +7,6 @@ import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   BACKUP_FORMAT_VERSION,
-  applyRestore,
   exportSnapshot,
   validateSnapshot,
 } from "./snapshot";
@@ -115,16 +108,24 @@ describe("exportSnapshot", () => {
 });
 
 describe("validateSnapshot", () => {
-  it("accepts a freshly exported snapshot", () => {
+  it("accepts a freshly exported snapshot at its stamped format version", () => {
     const source = join(workDir, "source.db");
     makeSourceDb(source);
     const result = exportSnapshot({ includeSecrets: true, sourcePath: source });
     try {
-      const verdict = validateSnapshot(result.path);
-      expect(verdict.ok).toBe(true);
+      expect(validateSnapshot(result.path)).toEqual({
+        ok: true,
+        formatVersion: BACKUP_FORMAT_VERSION,
+      });
     } finally {
       result.cleanup();
     }
+  });
+
+  it("accepts a raw unstamped copy as format version 0", () => {
+    const raw = join(workDir, "raw.db");
+    makeSourceDb(raw);
+    expect(validateSnapshot(raw)).toEqual({ ok: true, formatVersion: 0 });
   });
 
   it("rejects a non-SQLite file", () => {
@@ -161,25 +162,5 @@ describe("validateSnapshot", () => {
     } finally {
       result.cleanup();
     }
-  });
-});
-
-describe("applyRestore", () => {
-  it("swaps staging in and backs up the outgoing db", () => {
-    const target = join(workDir, "jobs.db");
-    const staging = join(workDir, "restore-staging.db");
-    writeFileSync(target, "OLD");
-    writeFileSync(staging, "NEW");
-    // Stale sidecars should be cleared.
-    writeFileSync(`${target}-wal`, "wal");
-    writeFileSync(`${target}-shm`, "shm");
-
-    applyRestore(staging, target);
-
-    expect(readFileSync(target, "utf8")).toBe("NEW");
-    expect(readFileSync(`${target}.bak`, "utf8")).toBe("OLD");
-    expect(existsSync(staging)).toBe(false);
-    expect(existsSync(`${target}-wal`)).toBe(false);
-    expect(existsSync(`${target}-shm`)).toBe(false);
   });
 });

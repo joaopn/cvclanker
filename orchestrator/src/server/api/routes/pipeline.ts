@@ -154,25 +154,6 @@ pipelineRouter.get("/progress", (req: Request, res: Response) => {
   });
 });
 
-/**
- * GET /api/pipeline/runs - Get recent pipeline runs
- */
-pipelineRouter.get("/runs", async (_req: Request, res: Response) => {
-  try {
-    const runs = await pipelineRepo.getRecentPipelineRuns(20);
-    ok(res, runs);
-  } catch (error) {
-    fail(
-      res,
-      new AppError({
-        status: 500,
-        code: "INTERNAL_ERROR",
-        message: error instanceof Error ? error.message : "Unknown error",
-      }),
-    );
-  }
-});
-
 const runJobsQuerySchema = z.object({
   source: z.string().min(1),
   // Which profile's page the count was clicked on. Absent for an ordinary
@@ -222,31 +203,6 @@ pipelineRouter.get("/run-jobs", (req: Request, res: Response) => {
     );
   }
 });
-
-/**
- * GET /api/pipeline/runs/:id/insights - Get exact and inferred metrics for a run
- */
-pipelineRouter.get(
-  "/runs/:id/insights",
-  async (req: Request, res: Response) => {
-    try {
-      const insights = await pipelineRepo.getPipelineRunInsights(req.params.id);
-      if (!insights) {
-        return fail(res, notFound("Pipeline run not found"));
-      }
-      ok(res, insights);
-    } catch (error) {
-      fail(
-        res,
-        new AppError({
-          status: 500,
-          code: "INTERNAL_ERROR",
-          message: error instanceof Error ? error.message : "Unknown error",
-        }),
-      );
-    }
-  },
-);
 
 /**
  * Everything the run menu needs to offer a scoped run.
