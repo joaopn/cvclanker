@@ -367,13 +367,6 @@ export const settingsRegistry = {
   },
   // ghostwriterSystemPromptTemplate, tailoringPromptTemplate, scoringPromptTemplate
   // were removed — all LLM prompts now live in user-editable YAML under prompts/.
-  showSponsorInfo: {
-    kind: "typed" as const,
-    schema: z.boolean(),
-    default: (): boolean => true,
-    parse: parseBitBoolOrNull,
-    serialize: serializeBitBool,
-  },
   renderMarkdownInJobDescriptions: {
     kind: "typed" as const,
     schema: z.boolean(),

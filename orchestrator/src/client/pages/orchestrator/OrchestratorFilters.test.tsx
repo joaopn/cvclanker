@@ -8,12 +8,7 @@ import {
 } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import type {
-  AppliedFilter,
-  FilterTab,
-  JobSort,
-  SponsorFilter,
-} from "./constants";
+import type { AppliedFilter, FilterTab, JobSort } from "./constants";
 import { OrchestratorFilters } from "./OrchestratorFilters";
 
 const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
@@ -51,8 +46,6 @@ const renderFilters = (
     onOpenCommandBar: vi.fn(),
     sourceFilter: "all" as const,
     onSourceFilterChange: vi.fn(),
-    sponsorFilter: "all" as SponsorFilter,
-    onSponsorFilterChange: vi.fn(),
     salaryFilter: {
       mode: "at_least" as const,
       min: null,
@@ -95,16 +88,13 @@ describe("OrchestratorFilters", () => {
     expect(props.onOpenCommandBar).toHaveBeenCalled();
   });
 
-  it("updates source, sponsor, salary range, and sort from the drawer", async () => {
+  it("updates source, salary range, and sort from the drawer", async () => {
     const { props } = renderFilters();
 
     fireEvent.click(screen.getByRole("button", { name: /^filters/i }));
 
     fireEvent.click(await screen.findByRole("button", { name: /linkedin/i }));
     expect(props.onSourceFilterChange).toHaveBeenCalledWith("linkedin");
-
-    fireEvent.click(screen.getByRole("button", { name: "Potential sponsor" }));
-    expect(props.onSponsorFilterChange).toHaveBeenCalledWith("potential");
 
     fireEvent.change(screen.getByLabelText("Minimum"), {
       target: { value: "65000" },

@@ -42,7 +42,6 @@ import type {
   JobSorter,
   SalaryFilter,
   SalaryFilterMode,
-  SponsorFilter,
 } from "./constants";
 import {
   ALLOWED_APPLIED_FILTERS,
@@ -63,8 +62,6 @@ interface OrchestratorFiltersProps {
   onOpenCommandBar: () => void;
   sourceFilter: JobSource | "all";
   onSourceFilterChange: (value: JobSource | "all") => void;
-  sponsorFilter: SponsorFilter;
-  onSponsorFilterChange: (value: SponsorFilter) => void;
   salaryFilter: SalaryFilter;
   onSalaryFilterChange: (value: SalaryFilter) => void;
   dateFilter: JobDateFilter;
@@ -84,17 +81,6 @@ interface OrchestratorFiltersProps {
   isFiltersOpen?: boolean;
   onFiltersOpenChange?: (open: boolean) => void;
 }
-
-const sponsorOptions: Array<{
-  value: SponsorFilter;
-  label: string;
-}> = [
-  { value: "all", label: "All statuses" },
-  { value: "confirmed", label: "Confirmed sponsor" },
-  { value: "potential", label: "Potential sponsor" },
-  { value: "not_found", label: "Sponsor not found" },
-  { value: "unknown", label: "Unchecked sponsor" },
-];
 
 const salaryModeOptions: Array<{
   value: SalaryFilterMode;
@@ -213,8 +199,6 @@ export const OrchestratorFilters: React.FC<OrchestratorFiltersProps> = ({
   onOpenCommandBar,
   sourceFilter,
   onSourceFilterChange,
-  sponsorFilter,
-  onSponsorFilterChange,
   salaryFilter,
   onSalaryFilterChange,
   dateFilter,
@@ -243,7 +227,6 @@ export const OrchestratorFilters: React.FC<OrchestratorFiltersProps> = ({
   const activeFilterCount = useMemo(
     () =>
       Number(sourceFilter !== "all") +
-      Number(sponsorFilter !== "all") +
       Number(dateFilter.dimensions.length > 0) +
       Number(
         (typeof salaryFilter.min === "number" && salaryFilter.min > 0) ||
@@ -253,7 +236,6 @@ export const OrchestratorFilters: React.FC<OrchestratorFiltersProps> = ({
       Number(appliedFilter !== "all"),
     [
       sourceFilter,
-      sponsorFilter,
       dateFilter.dimensions.length,
       salaryFilter.min,
       salaryFilter.max,
@@ -582,29 +564,6 @@ export const OrchestratorFilters: React.FC<OrchestratorFiltersProps> = ({
                           placeholder="e.g. 21"
                         />
                       </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader className="pb-3">
-                      <CardTitle>Sponsor status</CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex flex-wrap gap-2">
-                      {sponsorOptions.map((option) => (
-                        <Button
-                          key={option.value}
-                          type="button"
-                          size="sm"
-                          variant={
-                            sponsorFilter === option.value
-                              ? "default"
-                              : "outline"
-                          }
-                          onClick={() => onSponsorFilterChange(option.value)}
-                        >
-                          {option.label}
-                        </Button>
-                      ))}
                     </CardContent>
                   </Card>
 

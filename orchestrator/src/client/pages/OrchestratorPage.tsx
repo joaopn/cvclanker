@@ -115,8 +115,6 @@ export const OrchestratorPage: React.FC = () => {
     searchParams,
     sourceFilter,
     setSourceFilter,
-    sponsorFilter,
-    setSponsorFilter,
     salaryFilter,
     setSalaryFilter,
     dateFilter,
@@ -659,7 +657,6 @@ export const OrchestratorPage: React.FC = () => {
       const nextParams = new URLSearchParams(searchParams);
       for (const key of [
         "source",
-        "sponsor",
         "salaryMode",
         "salaryMin",
         "salaryMax",
@@ -859,8 +856,6 @@ export const OrchestratorPage: React.FC = () => {
                 onFiltersOpenChange={setIsFiltersOpen}
                 sourceFilter={sourceFilter}
                 onSourceFilterChange={setSourceFilter}
-                sponsorFilter={sponsorFilter}
-                onSponsorFilterChange={setSponsorFilter}
                 salaryFilter={salaryFilter}
                 onSalaryFilterChange={setSalaryFilter}
                 dateFilter={dateFilter}

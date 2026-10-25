@@ -60,7 +60,6 @@ export interface AppSettings {
   llmBaseUrl: Resolved<string>;
   scoringInstructions: Resolved<string>;
   coverLetterInstructions: Resolved<string>;
-  showSponsorInfo: Resolved<boolean>;
   renderMarkdownInJobDescriptions: Resolved<boolean>;
   companyInFlightCheckEnabled: Resolved<boolean>;
   chatStyleTone: Resolved<string>;

@@ -344,12 +344,6 @@ export type SortKey =
   | "applicants"
   | "easyApplyApplicants";
 export type SortDirection = "asc" | "desc";
-export type SponsorFilter =
-  | "all"
-  | "confirmed"
-  | "potential"
-  | "not_found"
-  | "unknown";
 export type SalaryFilterMode = "at_least" | "at_most" | "between";
 
 export interface SalaryFilter {

@@ -722,6 +722,10 @@ const migrations: string[] = [
      'chatStyleMaxKeywordsPerSkill',
      'missingSalaryPenalty'
    )`,
+
+  // The visa-sponsor badge toggle: the badge went with visa sponsorship, so the
+  // setting switched nothing.
+  `DELETE FROM settings WHERE key = 'showSponsorInfo'`,
 ];
 
 console.log("🔧 Running database migrations...");

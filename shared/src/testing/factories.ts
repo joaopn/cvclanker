@@ -193,7 +193,6 @@ export const createAppSettings = (
     default: DEFAULT_COVER_LETTER_INSTRUCTIONS,
     override: null,
   },
-  showSponsorInfo: { value: true, default: true, override: null },
   renderMarkdownInJobDescriptions: {
     value: true,
     default: true,

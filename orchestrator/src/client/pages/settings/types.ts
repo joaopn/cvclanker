@@ -23,7 +23,6 @@ export type ModelValues = EffectiveDefault<string> & {
 };
 
 export type DisplayValues = {
-  showSponsorInfo: EffectiveDefault<boolean>;
   renderMarkdownInJobDescriptions: EffectiveDefault<boolean>;
   companyInFlightCheckEnabled: EffectiveDefault<boolean>;
 };

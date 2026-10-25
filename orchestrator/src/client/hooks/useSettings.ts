@@ -26,7 +26,6 @@ export function useSettings() {
     settings,
     error: error ?? null,
     isLoading: isLoading || (!!isFetching && !settings && !error),
-    showSponsorInfo: settings?.showSponsorInfo?.value ?? true,
     renderMarkdownInJobDescriptions:
       settings?.renderMarkdownInJobDescriptions?.value ?? true,
     // Opt-in duplicate-application guard on the Tailor action. Defaults off

@@ -9,6 +9,7 @@ const DEAD_KEYS = [
   "chatStyleSummaryMaxWords",
   "chatStyleMaxKeywordsPerSkill",
   "missingSalaryPenalty",
+  "showSponsorInfo",
 ];
 
 describe.sequential("dead settings cleanup", () => {

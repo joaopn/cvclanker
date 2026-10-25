@@ -119,7 +119,6 @@ function renderSection(
   return render(
     <DisplaySettingsSection
       values={{
-        showSponsorInfo: { effective: false, default: false },
         renderMarkdownInJobDescriptions: { effective: true, default: true },
         companyInFlightCheckEnabled: { effective: false, default: false },
         ...overrides,

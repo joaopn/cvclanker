@@ -73,7 +73,6 @@ const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
   llmApiKey: "",
   claudeCodeOauthToken: "",
   claudeCodeEffort: null,
-  showSponsorInfo: null,
 
   renderMarkdownInJobDescriptions: null,
   companyInFlightCheckEnabled: null,
@@ -271,8 +270,8 @@ const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
       {
         id: "display",
         label: "Display Preferences",
-        description: "Sponsor badges and markdown rendering behavior.",
-        searchTerms: ["markdown", "sponsor", "rendering", "appearance"],
+        description: "Theme, markdown rendering and the tailoring warning.",
+        searchTerms: ["markdown", "rendering", "appearance", "theme"],
       },
     ],
   },
@@ -366,11 +365,7 @@ export const SECTION_FIELD_MAP: Record<
     "basicAuthPassword",
     "jwtExpirySeconds",
   ],
-  display: [
-    "showSponsorInfo",
-    "renderMarkdownInJobDescriptions",
-    "companyInFlightCheckEnabled",
-  ],
+  display: ["renderMarkdownInJobDescriptions", "companyInFlightCheckEnabled"],
   pipeline: [
     "autoTailoringEnabled",
     "enableJobScoring",
@@ -439,7 +434,6 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   llmApiKey: null,
   claudeCodeOauthToken: null,
   claudeCodeEffort: null,
-  showSponsorInfo: null,
 
   renderMarkdownInJobDescriptions: null,
   companyInFlightCheckEnabled: null,
@@ -543,7 +537,6 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   claudeCodeOauthToken: "",
   claudeCodeEffort: normalizeClaudeCodeEffort(data.claudeCodeEffort),
 
-  showSponsorInfo: data.showSponsorInfo.override,
   renderMarkdownInJobDescriptions:
     data.renderMarkdownInJobDescriptions.override,
   companyInFlightCheckEnabled: data.companyInFlightCheckEnabled.override,
@@ -626,10 +619,6 @@ const getDerivedSettings = (settings: AppSettings | null) => {
       claudeCodeOauthTokenHint: settings?.claudeCodeOauthTokenHint ?? null,
     },
     display: {
-      showSponsorInfo: {
-        effective: settings?.showSponsorInfo?.value ?? true,
-        default: settings?.showSponsorInfo?.default ?? true,
-      },
       renderMarkdownInJobDescriptions: {
         effective: settings?.renderMarkdownInJobDescriptions?.value ?? true,
         default: settings?.renderMarkdownInJobDescriptions?.default ?? true,
@@ -976,10 +965,6 @@ export const SettingsPage: React.FC = () => {
         scorerPrefilterModel: normalizeString(data.scorerPrefilterModel),
         scorerPrefilterProvider: data.scorerPrefilterProvider ?? null,
         scorerPrefilterEffort: data.scorerPrefilterEffort ?? null,
-        showSponsorInfo: nullIfSame(
-          data.showSponsorInfo,
-          display.showSponsorInfo.default,
-        ),
         renderMarkdownInJobDescriptions: nullIfSame(
           data.renderMarkdownInJobDescriptions,
           display.renderMarkdownInJobDescriptions.default,
