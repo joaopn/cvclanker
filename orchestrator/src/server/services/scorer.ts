@@ -474,38 +474,3 @@ async function buildScoringPrompt(
   });
   return { system: loaded.system, user: loaded.user };
 }
-
-/**
- * Score multiple jobs and return sorted by category rank (best first), with
- * `discoveredAt` desc as the tiebreaker.
- */
-export async function scoreAndRankJobs(
-  jobs: Job[],
-  brief: string,
-): Promise<
-  Array<
-    Job & {
-      suitabilityCategory: SuitabilityCategory;
-      suitabilityReason: string;
-    }
-  >
-> {
-  const scoredJobs = await Promise.all(
-    jobs.map(async (job) => {
-      const { category, reason } = await scoreJobSuitability(job, brief);
-      return {
-        ...job,
-        suitabilityCategory: category,
-        suitabilityReason: reason,
-      };
-    }),
-  );
-
-  return scoredJobs.sort((a, b) => {
-    const rankDiff =
-      SUITABILITY_CATEGORY_RANK[b.suitabilityCategory] -
-      SUITABILITY_CATEGORY_RANK[a.suitabilityCategory];
-    if (rankDiff !== 0) return rankDiff;
-    return b.discoveredAt.localeCompare(a.discoveredAt);
-  });
-}

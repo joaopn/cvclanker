@@ -497,11 +497,11 @@ cvRouter.get("/:id/render-preview", async (req: Request, res: Response) => {
       pdf = await convertDocxToPdf({ docx: rendered });
     } else {
       // 5e CVs render via marker-replace against `defaultFieldValues`.
-      // 5d CVs (no `templatedTex`) keep the cursor-walk path. Cutover to
-      // single substrate happens in 5e.4.
+      // 5d CVs (no `templatedTex`) render their flattened source as is.
+      // Cutover to single substrate happens in 5e.4.
       const tex = document.templatedTex
         ? renderTemplate(document.templatedTex, document.defaultFieldValues)
-        : renderCv(document.flattenedTex, document.fields, {});
+        : renderCv(document.flattenedTex);
       const result = await runTectonic({
         renderedTex: tex,
         archive: new Uint8Array(archive),

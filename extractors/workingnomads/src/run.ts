@@ -474,13 +474,7 @@ async function fetchWorkingNomadsJobs(args: {
     );
   }
 
-  const payload = (await response.json()) as
-    | WorkingNomadsSearchResponse
-    | WorkingNomadsSearchJob[];
-  if (Array.isArray(payload)) {
-    return { items: payload, dropped: 0 };
-  }
-
+  const payload = (await response.json()) as WorkingNomadsSearchResponse;
   const hits = payload.hits?.hits;
   if (!Array.isArray(hits)) {
     throw new Error("Working Nomads search returned an unexpected payload.");

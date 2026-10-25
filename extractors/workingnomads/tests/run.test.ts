@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { runWorkingNomads } from "../src/run";
 
-function createResponse(payload: unknown): Response {
+function createResponse(jobs: unknown[]): Response {
   return {
     ok: true,
     status: 200,
-    json: async () => payload,
+    json: async () => ({
+      hits: { hits: jobs.map((job) => ({ _source: job })) },
+    }),
   } as Response;
 }
 
@@ -226,6 +228,25 @@ describe("runWorkingNomads", () => {
     expect(result.success).toBe(true);
     expect(result.jobs).toEqual([]);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fails on a response that is not the search hits payload", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => [],
+    } as unknown as Response);
+
+    const result = await runWorkingNomads({
+      searchTerms: ["backend"],
+      fetchImpl: fetchMock,
+    });
+
+    expect(result).toEqual({
+      success: false,
+      jobs: [],
+      error: "Working Nomads search returned an unexpected payload.",
+    });
   });
 
   it("maps the legacy usa/ca country filter to the search tokens used for US and Canada", async () => {

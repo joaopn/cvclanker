@@ -20,47 +20,14 @@ const FIELDS: CvField[] = [
 ];
 
 describe("renderCv", () => {
-  it("returns the source byte-for-byte when no overrides are applied", () => {
-    expect(renderCv(SOURCE, FIELDS, {})).toBe(SOURCE);
+  it("returns the source byte-for-byte", () => {
+    expect(renderCv(SOURCE)).toBe(SOURCE);
   });
 
-  it("substitutes a single field's override into the source", () => {
-    const result = renderCv(SOURCE, FIELDS, {
-      "basics.name": "Ada L. Byron",
-    });
-    expect(result).toContain("\\name{Ada L. Byron}");
-    expect(result).not.toContain("Ada Lovelace");
-  });
-
-  it("walks the cursor forward so repeated values resolve to distinct occurrences", () => {
-    // Both "Engineer at ACME" instances live in the source. The first one
-    // (basics.position) is overridden; the second one (experience.0.title)
-    // is left alone because the cursor advanced past the first.
-    const result = renderCv(SOURCE, FIELDS, {
-      "basics.position": "Senior Engineer at ACME",
-    });
-    expect(result).toContain("\\position{Senior Engineer at ACME}");
-    expect(result).toContain("\\experience{Engineer at ACME}");
-  });
-
-  it("preserves LaTeX-escaped chars verbatim in field values", () => {
-    const source = "\\name{Ada \\& Co.}\n\\position{Engineer}";
-    const fields: CvField[] = [
-      { id: "basics.name", role: "name", value: "Ada \\& Co." },
-      { id: "basics.position", role: "title", value: "Engineer" },
-    ];
-    const result = renderCv(source, fields, {
-      "basics.name": "Ada \\& Co. Ltd.",
-    });
-    expect(result).toBe("\\name{Ada \\& Co. Ltd.}\n\\position{Engineer}");
-  });
-
-  it("throws when an override contains a forbidden pattern", () => {
-    expect(() =>
-      renderCv(SOURCE, FIELDS, {
-        "basics.name": "Evil\\write18{rm -rf /}",
-      }),
-    ).toThrow(RenderCvError);
+  it("throws when the source contains a forbidden pattern", () => {
+    expect(() => renderCv(`${SOURCE}\\write18{rm -rf /}\n`)).toThrow(
+      RenderCvError,
+    );
   });
 });
 
