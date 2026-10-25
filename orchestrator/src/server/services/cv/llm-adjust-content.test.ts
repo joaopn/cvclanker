@@ -39,8 +39,6 @@ vi.mock("@server/services/writing-style", () => ({
     doNotUse: "",
     languageMode: "manual",
     manualLanguage: "english",
-    summaryMaxWords: null,
-    maxKeywordsPerSkill: null,
   }),
   stripLanguageDirectivesFromConstraints: (s: string) => s,
 }));

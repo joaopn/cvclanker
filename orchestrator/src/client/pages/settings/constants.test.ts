@@ -25,8 +25,6 @@ describe("settings constants", () => {
           coverLetterInstructions: { effective: "", default: "" },
           languageMode: { effective: "manual", default: "manual" },
           manualLanguage: { effective: "english", default: "english" },
-          summaryMaxWords: { effective: null, default: null },
-          maxKeywordsPerSkill: { effective: null, default: null },
         },
       }),
     ).toEqual({

@@ -34,8 +34,6 @@ describe("getWritingStyle", () => {
       doNotUse: "",
       languageMode: "manual",
       manualLanguage: "english",
-      summaryMaxWords: null,
-      maxKeywordsPerSkill: null,
     });
   });
 
@@ -66,39 +64,7 @@ describe("getWritingStyle", () => {
       doNotUse: "synergy",
       languageMode: "match-resume",
       manualLanguage: "german",
-      summaryMaxWords: null,
-      maxKeywordsPerSkill: null,
     });
-  });
-
-  it("parses numeric string '35' as summaryMaxWords=35", async () => {
-    vi.mocked(getSetting).mockImplementation(async (key) => {
-      if (key === "chatStyleSummaryMaxWords") return "35";
-      return null;
-    });
-
-    const style = await getWritingStyle();
-    expect(style.summaryMaxWords).toBe(35);
-  });
-
-  it("falls back to null for non-numeric summaryMaxWords", async () => {
-    vi.mocked(getSetting).mockImplementation(async (key) => {
-      if (key === "chatStyleSummaryMaxWords") return "abc";
-      return null;
-    });
-
-    const style = await getWritingStyle();
-    expect(style.summaryMaxWords).toBeNull();
-  });
-
-  it("guards zero summaryMaxWords to null", async () => {
-    vi.mocked(getSetting).mockImplementation(async (key) => {
-      if (key === "chatStyleSummaryMaxWords") return "0";
-      return null;
-    });
-
-    const style = await getWritingStyle();
-    expect(style.summaryMaxWords).toBeNull();
   });
 });
 

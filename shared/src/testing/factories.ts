@@ -222,8 +222,6 @@ export const createAppSettings = (
     default: "english",
     override: null,
   },
-  chatStyleSummaryMaxWords: { value: null, default: null, override: null },
-  chatStyleMaxKeywordsPerSkill: { value: null, default: null, override: null },
   llmApiKeyHint: null,
   basicAuthUser: null,
   basicAuthPassword: null,
@@ -233,7 +231,6 @@ export const createAppSettings = (
 
   basicAuthActive: false,
   penalizeMissingSalary: { value: false, default: false, override: null },
-  missingSalaryPenalty: { value: 10, default: 10, override: null },
   minSuitabilityCategory: {
     value: "good_fit",
     default: "good_fit",

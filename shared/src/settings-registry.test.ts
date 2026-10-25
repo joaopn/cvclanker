@@ -28,24 +28,6 @@ describe("settingsRegistry helpers", () => {
     });
   });
 
-  describe("number parsing and clamping", () => {
-    it("returns null for empty/invalid values", () => {
-      expect(settingsRegistry.missingSalaryPenalty.parse("")).toBeNull();
-      expect(settingsRegistry.missingSalaryPenalty.parse("abc")).toBeNull();
-      expect(settingsRegistry.missingSalaryPenalty.parse(undefined)).toBeNull();
-    });
-
-    it("parses valid numbers", () => {
-      expect(settingsRegistry.missingSalaryPenalty.parse("42")).toBe(42);
-    });
-
-    it("clamps missingSalaryPenalty to 0-100", () => {
-      expect(settingsRegistry.missingSalaryPenalty.parse("150")).toBe(100);
-      expect(settingsRegistry.missingSalaryPenalty.parse("-10")).toBe(0);
-      expect(settingsRegistry.missingSalaryPenalty.parse("50")).toBe(50);
-    });
-  });
-
   describe("concurrency limits", () => {
     const keys = [
       "discoveryConcurrency",

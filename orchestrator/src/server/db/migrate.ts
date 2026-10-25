@@ -714,6 +714,14 @@ const migrations: string[] = [
   // Additive: existing DBs predate it (skipped on dup-column). Null follows
   // the auto-skip setting, which is what every schedule did before.
   `ALTER TABLE run_schedules ADD COLUMN auto_skip_bad_matches INTEGER`,
+
+  // Drop settings keys that nothing reads any more (the chat-style summary
+  // and keyword limits, and the missing-salary penalty amount).
+  `DELETE FROM settings WHERE key IN (
+     'chatStyleSummaryMaxWords',
+     'chatStyleMaxKeywordsPerSkill',
+     'missingSalaryPenalty'
+   )`,
 ];
 
 console.log("🔧 Running database migrations...");

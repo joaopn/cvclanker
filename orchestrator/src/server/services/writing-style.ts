@@ -12,8 +12,6 @@ export type WritingStyle = {
   doNotUse: string;
   languageMode: ChatStyleLanguageMode;
   manualLanguage: ChatStyleManualLanguage;
-  summaryMaxWords: number | null;
-  maxKeywordsPerSkill: number | null;
 };
 
 const LANGUAGE_NAMES_PATTERN = "english|german|french|spanish";
@@ -83,8 +81,6 @@ export async function getWritingStyle(): Promise<WritingStyle> {
     doNotUseRaw,
     languageModeRaw,
     manualLanguageRaw,
-    summaryMaxWordsRaw,
-    maxKeywordsPerSkillRaw,
   ] = await Promise.all([
     getSetting("chatStyleTone"),
     getSetting("chatStyleFormality"),
@@ -92,26 +88,7 @@ export async function getWritingStyle(): Promise<WritingStyle> {
     getSetting("chatStyleDoNotUse"),
     getSetting("chatStyleLanguageMode"),
     getSetting("chatStyleManualLanguage"),
-    getSetting("chatStyleSummaryMaxWords"),
-    getSetting("chatStyleMaxKeywordsPerSkill"),
   ]);
-
-  const rawSummaryMaxWords =
-    settingsRegistry.chatStyleSummaryMaxWords.parse(
-      summaryMaxWordsRaw ?? undefined,
-    ) ?? settingsRegistry.chatStyleSummaryMaxWords.default();
-  const parsedSummaryMaxWords =
-    rawSummaryMaxWords != null && rawSummaryMaxWords > 0
-      ? Math.max(1, Math.min(500, rawSummaryMaxWords))
-      : null;
-  const rawMaxKeywordsPerSkill =
-    settingsRegistry.chatStyleMaxKeywordsPerSkill.parse(
-      maxKeywordsPerSkillRaw ?? undefined,
-    ) ?? settingsRegistry.chatStyleMaxKeywordsPerSkill.default();
-  const parsedMaxKeywordsPerSkill =
-    rawMaxKeywordsPerSkill != null && rawMaxKeywordsPerSkill > 0
-      ? Math.max(1, Math.min(50, rawMaxKeywordsPerSkill))
-      : null;
 
   return {
     tone:
@@ -135,13 +112,5 @@ export async function getWritingStyle(): Promise<WritingStyle> {
       settingsRegistry.chatStyleManualLanguage.parse(
         manualLanguageRaw ?? undefined,
       ) ?? settingsRegistry.chatStyleManualLanguage.default(),
-    summaryMaxWords:
-      parsedSummaryMaxWords != null && parsedSummaryMaxWords > 0
-        ? parsedSummaryMaxWords
-        : null,
-    maxKeywordsPerSkill:
-      parsedMaxKeywordsPerSkill != null && parsedMaxKeywordsPerSkill > 0
-        ? parsedMaxKeywordsPerSkill
-        : null,
   };
 }

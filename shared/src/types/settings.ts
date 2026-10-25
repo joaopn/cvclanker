@@ -69,10 +69,7 @@ export interface AppSettings {
   chatStyleDoNotUse: Resolved<string>;
   chatStyleLanguageMode: Resolved<ChatStyleLanguageMode>;
   chatStyleManualLanguage: Resolved<ChatStyleManualLanguage>;
-  chatStyleSummaryMaxWords: Resolved<number | null>;
-  chatStyleMaxKeywordsPerSkill: Resolved<number | null>;
   penalizeMissingSalary: Resolved<boolean>;
-  missingSalaryPenalty: Resolved<number>;
   minSuitabilityCategory: Resolved<SuitabilityCategory>;
   autoSkipCategory: Resolved<SuitabilityCategory | null>;
   autoTailoringEnabled: Resolved<boolean>;

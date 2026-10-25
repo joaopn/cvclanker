@@ -82,8 +82,6 @@ const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
   chatStyleConstraints: "",
   chatStyleDoNotUse: "",
   coverLetterInstructions: "",
-  chatStyleSummaryMaxWords: null,
-  chatStyleMaxKeywordsPerSkill: null,
   chatStyleLanguageMode: null,
   chatStyleManualLanguage: null,
   basicAuthUser: "",
@@ -91,7 +89,6 @@ const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
   enableBasicAuth: false,
   jwtExpirySeconds: null,
   penalizeMissingSalary: null,
-  missingSalaryPenalty: null,
   autoSkipCategory: null,
   autoTailoringEnabled: null,
   enableJobScoring: null,
@@ -354,8 +351,6 @@ export const SECTION_FIELD_MAP: Record<
     "coverLetterInstructions",
     "chatStyleLanguageMode",
     "chatStyleManualLanguage",
-    "chatStyleSummaryMaxWords",
-    "chatStyleMaxKeywordsPerSkill",
   ],
   "context-limits": [
     "maxBriefChars",
@@ -453,8 +448,6 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   chatStyleConstraints: null,
   chatStyleDoNotUse: null,
   coverLetterInstructions: null,
-  chatStyleSummaryMaxWords: null,
-  chatStyleMaxKeywordsPerSkill: null,
   chatStyleLanguageMode: null,
   chatStyleManualLanguage: null,
   basicAuthUser: null,
@@ -462,7 +455,6 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   enableBasicAuth: undefined,
   jwtExpirySeconds: null,
   penalizeMissingSalary: null,
-  missingSalaryPenalty: null,
   autoSkipCategory: null,
   autoTailoringEnabled: null,
   enableJobScoring: null,
@@ -562,9 +554,6 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   coverLetterInstructions:
     data.coverLetterInstructions.override ??
     data.coverLetterInstructions.default,
-  chatStyleSummaryMaxWords: data.chatStyleSummaryMaxWords.override ?? null,
-  chatStyleMaxKeywordsPerSkill:
-    data.chatStyleMaxKeywordsPerSkill.override ?? null,
   chatStyleLanguageMode: data.chatStyleLanguageMode.override ?? null,
   chatStyleManualLanguage: data.chatStyleManualLanguage.override ?? null,
   basicAuthUser: data.basicAuthUser ?? "",
@@ -572,7 +561,6 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   enableBasicAuth: data.basicAuthActive,
   jwtExpirySeconds: data.jwtExpirySeconds.override ?? null,
   penalizeMissingSalary: data.penalizeMissingSalary.override,
-  missingSalaryPenalty: data.missingSalaryPenalty.override,
   autoSkipCategory: data.autoSkipCategory.override,
   autoTailoringEnabled: data.autoTailoringEnabled.override,
   enableJobScoring: data.enableJobScoring.override,
@@ -680,14 +668,6 @@ const getDerivedSettings = (settings: AppSettings | null) => {
         effective: settings?.chatStyleManualLanguage?.value ?? "english",
         default: settings?.chatStyleManualLanguage?.default ?? "english",
       },
-      summaryMaxWords: {
-        effective: settings?.chatStyleSummaryMaxWords?.value ?? null,
-        default: settings?.chatStyleSummaryMaxWords?.default ?? null,
-      },
-      maxKeywordsPerSkill: {
-        effective: settings?.chatStyleMaxKeywordsPerSkill?.value ?? null,
-        default: settings?.chatStyleMaxKeywordsPerSkill?.default ?? null,
-      },
     },
     envSettings: {
       readable: {
@@ -707,10 +687,6 @@ const getDerivedSettings = (settings: AppSettings | null) => {
       penalizeMissingSalary: {
         effective: settings?.penalizeMissingSalary?.value ?? false,
         default: settings?.penalizeMissingSalary?.default ?? false,
-      },
-      missingSalaryPenalty: {
-        effective: settings?.missingSalaryPenalty?.value ?? 10,
-        default: settings?.missingSalaryPenalty?.default ?? 10,
       },
     },
     pipeline: {
@@ -1020,23 +996,11 @@ export const SettingsPage: React.FC = () => {
           normalizeString(data.coverLetterInstructions),
           chat.coverLetterInstructions.default,
         ),
-        chatStyleSummaryMaxWords: Number.isNaN(data.chatStyleSummaryMaxWords)
-          ? null
-          : (data.chatStyleSummaryMaxWords ?? null),
-        chatStyleMaxKeywordsPerSkill: Number.isNaN(
-          data.chatStyleMaxKeywordsPerSkill,
-        )
-          ? null
-          : (data.chatStyleMaxKeywordsPerSkill ?? null),
         chatStyleLanguageMode: data.chatStyleLanguageMode ?? null,
         chatStyleManualLanguage: data.chatStyleManualLanguage ?? null,
         penalizeMissingSalary: nullIfSame(
           data.penalizeMissingSalary,
           scoring.penalizeMissingSalary.default,
-        ),
-        missingSalaryPenalty: nullIfSame(
-          data.missingSalaryPenalty,
-          scoring.missingSalaryPenalty.default,
         ),
         autoSkipCategory: nullIfSame(
           data.autoSkipCategory,

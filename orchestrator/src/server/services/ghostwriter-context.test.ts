@@ -64,8 +64,6 @@ beforeEach(() => {
     doNotUse: "",
     languageMode: "manual",
     manualLanguage: "english",
-    summaryMaxWords: null,
-    maxKeywordsPerSkill: null,
   });
   mocks.getEffectiveSettings.mockResolvedValue({ cvSourceFormat: null });
   mocks.getCvFormatNote.mockImplementation(
