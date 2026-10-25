@@ -16,22 +16,6 @@ export type WritingStyle = {
   maxKeywordsPerSkill: number | null;
 };
 
-const WORD_LIMIT_PATTERNS = [
-  // "keep summary under 100 words", "max 80 words", "no more than 60 words in the summary"
-  /\b(?:keep|limit|max(?:imum)?|no more than|under|at most|up to)[\w\s]{0,20}\b\d+\s*words?\b[\w\s]{0,15}[.,;!?]?/gi,
-  // "50 words max", "80 words or less/fewer", "100 words limit"
-  /\b\d+\s*words?\s*(?:max(?:imum)?|limit|or (?:less|fewer))\b[.,;!?]?/gi,
-];
-
-const KEYWORD_LIMIT_PATTERNS = [
-  // "max 5 keywords per category", "at most 8 keywords per skill"
-  /\b(?:max(?:imum)?|no more than|at most|up to)\s+\d+\s*keywords?\b(?:\s+per\s+(?:category|skill|section))?[.,;!?]?/gi,
-  // "limit keywords to 10", "keep keywords under 5"
-  /\b(?:keep|limit)\s+keywords?\s+(?:to|under|at)\s+\d+\b(?:\s+per\s+(?:category|skill|section))?[.,;!?]?/gi,
-  // "5 keywords max", "10 keywords per category limit", "8 keywords or fewer"
-  /\b\d+\s*keywords?\s*(?:max(?:imum)?|limit|per (?:category|skill|section)|or (?:less|fewer))\b[.,;!?]?/gi,
-];
-
 const LANGUAGE_NAMES_PATTERN = "english|german|french|spanish";
 
 const LANGUAGE_DIRECTIVE_PATTERNS = [
@@ -83,14 +67,6 @@ export function stripLanguageDirectivesFromConstraints(
     constraints,
     LANGUAGE_DIRECTIVE_PATTERNS,
   );
-}
-
-export function stripWordLimitFromConstraints(constraints: string): string {
-  return stripDirectivesFromConstraints(constraints, WORD_LIMIT_PATTERNS);
-}
-
-export function stripKeywordLimitFromConstraints(constraints: string): string {
-  return stripDirectivesFromConstraints(constraints, KEYWORD_LIMIT_PATTERNS);
 }
 
 export async function getWritingStyle(): Promise<WritingStyle> {
