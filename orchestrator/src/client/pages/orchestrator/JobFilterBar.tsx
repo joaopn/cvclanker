@@ -28,6 +28,8 @@ interface JobFilterBarProps {
   enabledTypes: JobFilterChipType[];
   onToggleType: (type: JobFilterChipType) => void;
   fitFilter: FitFilterValue[];
+  // Rows each fit badge would show; a non-zero count is appended to its label.
+  fitCounts?: Partial<Record<FitFilterValue, number>>;
   onFitFilterChange: (value: FitFilterValue[]) => void;
   profiles: JobFilterBarProfile[];
   profileFilter: string[];
@@ -59,6 +61,7 @@ export function JobFilterBar({
   enabledTypes,
   onToggleType,
   fitFilter,
+  fitCounts,
   onFitFilterChange,
   profiles,
   profileFilter,
@@ -105,6 +108,7 @@ export function JobFilterBar({
           {FIT_FILTER_VALUES.map((value) => {
             const active = fitFilter.includes(value);
             const classes = FIT_FILTER_CHIP_CLASS[value];
+            const count = fitCounts?.[value] ?? 0;
             return (
               <Button
                 key={value}
@@ -128,6 +132,7 @@ export function JobFilterBar({
                 }
               >
                 {FIT_FILTER_LABELS[value]}
+                {count > 0 ? ` (${count})` : null}
               </Button>
             );
           })}

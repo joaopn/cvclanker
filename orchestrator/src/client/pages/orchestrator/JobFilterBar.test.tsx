@@ -64,6 +64,25 @@ describe("JobFilterBar", () => {
     expect(props.onFitFilterChange).toHaveBeenLastCalledWith([]);
   });
 
+  it("appends a non-zero fit count to its badge and leaves a zero bare", () => {
+    render(
+      <JobFilterBar
+        {...baseProps()}
+        fitCounts={{ great_fit: 3, good_fit: 0 }}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Great fit (3)" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Good fit" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Unscored" }),
+    ).toBeInTheDocument();
+  });
+
   it("offers an Unattributed badge beside the real profiles", () => {
     const props = baseProps();
     render(<JobFilterBar {...props} enabledTypes={["profile"]} />);

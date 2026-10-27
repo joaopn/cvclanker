@@ -6,13 +6,32 @@ import {
   type Profile,
   SUITABILITY_CATEGORY_RANK,
 } from "@shared/types";
-import type { DateFilterDimension, FilterTab, JobSort } from "./constants";
+import type {
+  DateFilterDimension,
+  FilterTab,
+  FitFilterValue,
+  JobSort,
+} from "./constants";
 import {
+  FIT_FILTER_VALUES,
   orderedFilterSources,
   orderedSources,
   showsEasyApplyChip,
 } from "./constants";
 import { hasLinkedinPostingId } from "./jobActions";
+
+/** Rows per fit badge; a row with no category counts as `unscored`. */
+export const countJobsByFit = (
+  jobs: JobListItem[],
+): Record<FitFilterValue, number> => {
+  const counts = Object.fromEntries(
+    FIT_FILTER_VALUES.map((value) => [value, 0]),
+  ) as Record<FitFilterValue, number>;
+  for (const job of jobs) {
+    counts[job.suitabilityCategory ?? "unscored"] += 1;
+  }
+  return counts;
+};
 
 /**
  * Best-effort ms timestamp for a stored date. Some extractors persist

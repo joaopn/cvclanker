@@ -12,6 +12,7 @@ import {
   applicantsSortRank,
   collectProfileSearchTitles,
   compareJobs,
+  countJobsByFit,
   easyApplySortRank,
   formatCheckedAge,
   getEnabledSources,
@@ -25,6 +26,25 @@ const profile = (id: string, searchTerms: string[]): Profile => ({
   config: { ...defaultProfileConfig(), searchTerms },
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
+});
+
+describe("countJobsByFit", () => {
+  it("counts each category, unscored rows included, and zeroes the rest", () => {
+    expect(
+      countJobsByFit([
+        createJob({ id: "a", suitabilityCategory: "good_fit" }),
+        createJob({ id: "b", suitabilityCategory: "good_fit" }),
+        createJob({ id: "c", suitabilityCategory: "great_fit" }),
+        createJob({ id: "d", suitabilityCategory: null }),
+      ]),
+    ).toEqual({
+      great_fit: 1,
+      very_good_fit: 0,
+      good_fit: 2,
+      bad_fit: 0,
+      unscored: 1,
+    });
+  });
 });
 
 describe("collectProfileSearchTitles", () => {

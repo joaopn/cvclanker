@@ -31,6 +31,7 @@ import {
   FACET_TABS,
   FILTER_BAR_TABS,
   type FilterTab,
+  type FitFilterValue,
   filterChipTypesForTab,
   isFilterFamilyActive,
   type JobSorter,
@@ -74,6 +75,7 @@ import {
 } from "./orchestrator/useUndoController";
 import {
   collectProfileSearchTitles,
+  countJobsByFit,
   getEnabledSources,
   getJobCountsFromStats,
   getSourcesWithJobs,
@@ -84,6 +86,8 @@ import {
 const EMPTY_ACTIVE_FACETS: ActiveFacet[] = [];
 // Same, for the profile / job-title badge selections on tabs without the bar.
 const EMPTY_CHIP_FILTER: string[] = [];
+// Same, for the fit-badge counts, which ignore the fit selection itself.
+const EMPTY_FIT_FILTER: FitFilterValue[] = [];
 
 // Keep only the picks still offered as a badge, returning the original array
 // when nothing was dropped so the useFilteredJobs memo isn't busted.
@@ -497,6 +501,29 @@ export const OrchestratorPage: React.FC = () => {
     knownProfileIds,
     sorterForTab,
     appliedFilter,
+  );
+  // Every filter but fit, so an unpicked badge still says what it would add.
+  const jobsIgnoringFit = useFilteredJobs(
+    jobs,
+    activeTab,
+    dateFilter,
+    sourceFilter,
+    salaryFilter,
+    sort,
+    maxAgeDays,
+    closedSubFilter,
+    EMPTY_FIT_FILTER,
+    untailoredOnly,
+    activeFacetsForTab,
+    profileFilterForTab,
+    titleFilterForTab,
+    knownProfileIds,
+    sorterForTab,
+    appliedFilter,
+  );
+  const fitCounts = useMemo(
+    () => countJobsByFit(jobsIgnoringFit),
+    [jobsIgnoringFit],
   );
   const setActiveTab = useCallback(
     (newTab: FilterTab) => {
@@ -938,6 +965,7 @@ export const OrchestratorPage: React.FC = () => {
                           enabledTypes={filterChips.enabledTypes}
                           onToggleType={filterChips.toggleType}
                           fitFilter={fitFilter}
+                          fitCounts={fitCounts}
                           onFitFilterChange={setFitFilter}
                           profiles={profiles}
                           profileFilter={filterChips.profileFilter}
