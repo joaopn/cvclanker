@@ -251,8 +251,8 @@ const migrations: string[] = [
   `ALTER TABLE jobs ADD COLUMN cover_letter_draft TEXT NOT NULL DEFAULT ''`,
   // Idempotent ALTER so the jobs-rebuild SELECT below can reference
   // `tailored_fields` directly instead of hardcoding `'{}' AS
-  // tailored_fields`. Without this, every boot wipes per-job tailoring back
-  // to '{}' (the rebuild runs on every startup).
+  // tailored_fields`. Without this, a rebuild wipes per-job tailoring back
+  // to '{}'.
   `ALTER TABLE jobs ADD COLUMN tailored_fields TEXT NOT NULL DEFAULT '{}'`,
   // suitability_category replaces suitability_score (numeric → categorical
   // enum). Idempotent ALTER lets the rebuild's SELECT reference the new
@@ -343,16 +343,21 @@ const migrations: string[] = [
   // `processing` then had the real cause replaced by reconcileTransientStatuses'
   // restart notice; a failed re-tailor on a ready/applied row simply lost it.
   `ALTER TABLE jobs ADD COLUMN tailoring_failure_reason TEXT`,
+];
 
-  // Canonical jobs-table rebuild. Originally added in 5d to drop unused
-  // columns (tailored_summary/headline/skills, tracer_links_enabled,
-  // sponsor_match_*); 5g extended it with the new status + outcome enums and
-  // the repost-tracking columns. Runs every boot; on a fresh DB it's a
-  // round-trip with zero rows. The CASE expressions remap legacy enum values
-  // forward for any pre-5g rows that might still be in flight.
-  `PRAGMA foreign_keys = OFF`,
-  `DROP TABLE IF EXISTS jobs_new`,
-  `CREATE TABLE jobs_new (
+// Canonical jobs-table rebuild. Originally added in 5d to drop unused
+// columns (tailored_summary/headline/skills, tracer_links_enabled,
+// sponsor_match_*); 5g extended it with the new status + outcome enums and
+// the repost-tracking columns. The CASE expressions remap legacy enum values
+// forward for any pre-5g rows that might still be in flight.
+//
+// Runs only when the stored CREATE statement differs from JOBS_TABLE_DDL, so
+// editing the canonical shape rebuilds once on the next boot. A change to the
+// SELECT alone therefore never reaches a DB whose jobs table is already
+// canonical: a new data fold needs a guarded backfill below, not a new CASE
+// here. It used to run every boot, rewriting the whole table each time —
+// minutes on a large DB.
+const JOBS_TABLE_DDL = `CREATE TABLE jobs_new (
     id TEXT PRIMARY KEY,
     source TEXT NOT NULL DEFAULT 'linkedin',
     source_job_id TEXT,
@@ -427,7 +432,12 @@ const migrations: string[] = [
     applied_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`,
+  )`;
+
+const jobsTableRebuild: string[] = [
+  `PRAGMA foreign_keys = OFF`,
+  `DROP TABLE IF EXISTS jobs_new`,
+  JOBS_TABLE_DDL,
   `INSERT INTO jobs_new (
     id, source, source_job_id, job_url_direct, date_posted, job_type,
     salary_source, salary_interval, salary_min_amount, salary_max_amount,
@@ -488,7 +498,9 @@ const migrations: string[] = [
   `DROP TABLE jobs`,
   `ALTER TABLE jobs_new RENAME TO jobs`,
   `PRAGMA foreign_keys = ON`,
+];
 
+const postRebuildMigrations: string[] = [
   // Indices.
   `CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)`,
   `CREATE INDEX IF NOT EXISTS idx_jobs_discovered_at ON jobs(discovered_at)`,
@@ -733,26 +745,49 @@ const migrations: string[] = [
   `DELETE FROM prompts WHERE name = 'cv-extract'`,
 ];
 
-console.log("🔧 Running database migrations...");
+function runMigrations(statements: string[]) {
+  for (const migration of statements) {
+    try {
+      sqlite.exec(migration);
+      console.log("✅ Migration applied");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const lower = message.toLowerCase();
 
-for (const migration of migrations) {
-  try {
-    sqlite.exec(migration);
-    console.log("✅ Migration applied");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const lower = message.toLowerCase();
+      const isAlterAdd = /alter table \S+ add column/i.test(migration);
+      if (isAlterAdd && lower.includes("duplicate column name")) {
+        console.log("↩️ Migration skipped (column already exists)");
+        continue;
+      }
 
-    const isAlterAdd = /alter table \S+ add column/i.test(migration);
-    if (isAlterAdd && lower.includes("duplicate column name")) {
-      console.log("↩️ Migration skipped (column already exists)");
-      continue;
+      console.error("❌ Migration failed:", error);
+      process.exit(1);
     }
-
-    console.error("❌ Migration failed:", error);
-    process.exit(1);
   }
 }
+
+console.log("🔧 Running database migrations...");
+
+runMigrations(migrations);
+
+// SQLite keeps the CREATE text verbatim and rewrites only the table name on
+// RENAME, so a canonical table stores JOBS_TABLE_DDL under the name "jobs".
+const storedJobsDdl = (
+  sqlite
+    .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='jobs'")
+    .get() as { sql: string } | undefined
+)?.sql;
+if (
+  storedJobsDdl ===
+  JOBS_TABLE_DDL.replace("CREATE TABLE jobs_new", 'CREATE TABLE "jobs"')
+) {
+  runMigrations([`DROP TABLE IF EXISTS jobs_new`]);
+  console.log("↩️ jobs table rebuild skipped (already canonical)");
+} else {
+  runMigrations(jobsTableRebuild);
+}
+
+runMigrations(postRebuildMigrations);
 
 // Source-configs migration + backfill.
 //
@@ -1543,8 +1578,8 @@ try {
 // Idempotent: the WHERE matches only `applied_at IS NULL`, so a second boot
 // matches nothing — and post-fix no new row can enter the population, since
 // both `applied` and `in_progress` now stamp live. It runs here, after the SQL
-// migrations array, so the every-boot `jobs` rebuild (which carries applied_at
-// in both its INSERT and SELECT lists) has already completed.
+// migrations array, so the `jobs` rebuild (which carries applied_at in both
+// its INSERT and SELECT lists), when it runs, has already completed.
 try {
   const candidates = sqlite
     .prepare(

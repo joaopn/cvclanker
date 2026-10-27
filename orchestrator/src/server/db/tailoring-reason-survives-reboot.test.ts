@@ -7,9 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const REASON = "LaTeX compile failed: Misplaced alignment tab character &.";
 
-// B61: the every-boot jobs rebuild in migrate.ts must carry
-// `tailoring_failure_reason`, or every restart wipes the real cause of a
-// failed tailor.
+// B61: the jobs rebuild in migrate.ts must carry `tailoring_failure_reason`,
+// or a rebuild wipes the real cause of a failed tailor. The rebuild runs only
+// on a shape change, so the test makes one.
 describe.sequential("tailoring failure reason across a reboot", () => {
   let tempDir: string;
 
@@ -31,6 +31,7 @@ describe.sequential("tailoring failure reason across a reboot", () => {
   it("keeps the reason through the second boot's jobs rebuild", async () => {
     await boot();
     const db = new Database(join(tempDir, "jobs.db"));
+    db.exec("ALTER TABLE jobs ADD COLUMN legacy_extra TEXT");
     db.prepare(
       `INSERT INTO jobs (id, source, title, employer, job_url, status, tailoring_failure_reason)
        VALUES ('job-1', 'manual', 'Repro', 'Repro Ltd', 'https://example.com/b61', 'processing', ?)`,

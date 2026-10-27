@@ -151,7 +151,7 @@ describe.sequential("applied_at backfill", () => {
   });
 
   /**
-   * The ambiguity guard. The every-boot rebuild folds the legacy `expired`
+   * The ambiguity guard. The jobs rebuild folds the legacy `expired`
    * status — an auto-expiry marker for stale postings, never applied to — into
    * `closed` + 'other', alongside the genuinely post-apply 'offer_accepted' /
    * 'offer_declined'. Treating 'other' as evidence would stamp every legacy
