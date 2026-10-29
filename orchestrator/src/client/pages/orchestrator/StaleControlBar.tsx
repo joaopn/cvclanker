@@ -98,7 +98,78 @@ export const StaleControlBar = ({
       onSubmit={handleSubmit}
       className="flex flex-col gap-2 border-b border-border/40 px-4 py-2"
     >
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="grid grid-cols-2 gap-2">
+        <Button
+          type="submit"
+          size="sm"
+          variant="default"
+          disabled={busy}
+          className="h-auto min-h-7 w-full whitespace-normal px-3 py-1 text-xs"
+        >
+          {busyScope === "shelf" ? (
+            <>
+              <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+              Sweeping...
+            </>
+          ) : (
+            "Move stale rows"
+          )}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          onClick={() => void runSweep("tailoring")}
+          className="h-auto min-h-7 w-full whitespace-normal px-3 py-1 text-xs"
+        >
+          {busyScope === "tailoring" ? (
+            <>
+              <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+              Sweeping...
+            </>
+          ) : (
+            "Move Tailoring"
+          )}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          onClick={() => void runSweep("applied")}
+          className="h-auto min-h-7 w-full whitespace-normal px-3 py-1 text-xs"
+          title="Moves Live/Interviewing jobs applied to more than the threshold ago."
+        >
+          {busyScope === "applied" ? (
+            <>
+              <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+              Sweeping...
+            </>
+          ) : (
+            "Move Applied"
+          )}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          onClick={() => void runSweep("liveClosed")}
+          className="h-auto min-h-7 w-full whitespace-normal px-3 py-1 text-xs"
+          title='Moves Inbox/Backlog jobs whose live LinkedIn check found "No longer accepting applications". Run Live status on a selection first to populate the check.'
+        >
+          {busyScope === "liveClosed" ? (
+            <>
+              <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+              Sweeping...
+            </>
+          ) : (
+            "Move closed postings"
+          )}
+        </Button>
+      </div>
+      <div className="flex items-center gap-2">
         <label
           htmlFor="stale-threshold-days"
           className="text-xs text-muted-foreground"
@@ -122,76 +193,7 @@ export const StaleControlBar = ({
           disabled={busy}
         />
         <span className="text-xs text-muted-foreground">days</span>
-        <Button
-          type="submit"
-          size="sm"
-          variant="default"
-          disabled={busy}
-          className="ml-auto h-7 px-3 text-xs"
-        >
-          {busyScope === "shelf" ? (
-            <>
-              <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-              Sweeping...
-            </>
-          ) : (
-            "Move stale rows"
-          )}
-        </Button>
       </div>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        disabled={busy}
-        onClick={() => void runSweep("tailoring")}
-        className="h-7 px-3 text-xs sm:ml-auto sm:w-auto"
-      >
-        {busyScope === "tailoring" ? (
-          <>
-            <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-            Sweeping...
-          </>
-        ) : (
-          "Move Tailoring"
-        )}
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        disabled={busy}
-        onClick={() => void runSweep("applied")}
-        className="h-7 px-3 text-xs sm:ml-auto sm:w-auto"
-        title="Moves Live/Interviewing jobs applied to more than the threshold ago."
-      >
-        {busyScope === "applied" ? (
-          <>
-            <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-            Sweeping...
-          </>
-        ) : (
-          "Move Applied"
-        )}
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        disabled={busy}
-        onClick={() => void runSweep("liveClosed")}
-        className="h-7 px-3 text-xs sm:ml-auto sm:w-auto"
-        title='Moves Inbox/Backlog jobs whose live LinkedIn check found "No longer accepting applications". Run Live status on a selection first to populate the check.'
-      >
-        {busyScope === "liveClosed" ? (
-          <>
-            <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-            Sweeping...
-          </>
-        ) : (
-          "Move closed postings"
-        )}
-      </Button>
     </form>
   );
 };
