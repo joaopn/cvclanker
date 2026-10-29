@@ -94,6 +94,16 @@ export function useSkipJobMutation() {
   });
 }
 
+export function useCloseStaleJobMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.closeStaleJob(id),
+    onSettled: async (_data, _error, id) => {
+      await invalidateJobData(queryClient, id);
+    },
+  });
+}
+
 export function useRescoreJobMutation() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -197,6 +197,10 @@ const jobActionRequestSchema = z.discriminatedUnion("action", [
     action: z.literal("fetch_live_status"),
     jobIds: z.array(z.string().min(1)).min(1),
   }),
+  z.object({
+    action: z.literal("close_stale"),
+    jobIds: z.array(z.string().min(1)).min(1),
+  }),
 ]);
 
 const listJobsQuerySchema = z.object({
@@ -629,6 +633,36 @@ async function executeJobActionForJob(
       }
 
       const updated = await jobsRepo.updateJob(jobId, { status: "discovered" });
+      if (!updated) {
+        throw new AppError({
+          status: 404,
+          code: "NOT_FOUND",
+          message: "Job not found",
+        });
+      }
+
+      return { jobId, ok: true, job: updated };
+    }
+
+    if (action === "close_stale") {
+      if (job.status !== "stale") {
+        throw badRequest(`Job is not closable from status "${job.status}"`, {
+          jobId,
+          status: job.status,
+          allowedStatuses: ["stale"],
+        });
+      }
+
+      const updated = await jobsRepo.updateJob(
+        jobId,
+        job.appliedAt
+          ? {
+              status: "closed",
+              outcome: "ghosted",
+              closedAt: Math.floor(Date.now() / 1000),
+            }
+          : { status: "skipped", outcome: null, closedAt: null },
+      );
       if (!updated) {
         throw new AppError({
           status: 404,
@@ -1533,9 +1567,10 @@ jobsRouter.post(
 
 const sweepStaleRequestSchema = z.object({
   thresholdDays: z.number().int().min(1).max(365),
-  // `shelf` (default) sweeps Inbox/Selected/Backlog; `tailoring` sweeps the
-  // Tailoring tab's finished Ready rows on explicit request.
-  scope: z.enum(["shelf", "tailoring"]).optional(),
+  // `shelf` (default) sweeps Inbox/Backlog; `tailoring` sweeps the Tailoring
+  // tab's finished Ready rows and `applied` the Live/Interviewing ones, each on
+  // explicit request.
+  scope: z.enum(["shelf", "tailoring", "applied"]).optional(),
 });
 
 /**
@@ -1579,7 +1614,7 @@ jobsRouter.post("/sweep-live-closed", async (_req: Request, res: Response) => {
 /**
  * POST /api/jobs/sweep-stale - Bulk-move aged rows into `stale`. The `scope`
  * bounds the source statuses: `shelf` (default) covers {discovered, backlog};
- * `tailoring` covers {ready}. Returns the row count plus a
+ * `tailoring` covers {ready}; `applied` covers {applied, in_progress}. Returns the row count plus a
  * per-source-status breakdown so the UI can render a meaningful toast.
  */
 jobsRouter.post("/sweep-stale", async (req: Request, res: Response) => {

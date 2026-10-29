@@ -21,6 +21,7 @@ interface FloatingJobActionsBarProps {
   selectedCount: number;
   canMoveSelected: boolean;
   canSkipSelected: boolean;
+  canCloseStaleSelected: boolean;
   canRescoreSelected: boolean;
   canClearScoreSelected: boolean;
   canRescrapeSelected: boolean;
@@ -48,6 +49,7 @@ interface FloatingJobActionsBarProps {
   jobActionInFlight: boolean;
   onMoveToReady: () => void;
   onSkipSelected: () => void;
+  onCloseStaleSelected: () => void;
   onRescoreSelected: () => void;
   onScreenRescoreSelected: () => void;
   onClearScoreSelected: () => void;
@@ -70,6 +72,7 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
   selectedCount,
   canMoveSelected,
   canSkipSelected,
+  canCloseStaleSelected,
   canRescoreSelected,
   canClearScoreSelected,
   canRescrapeSelected,
@@ -87,6 +90,7 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
   jobActionInFlight,
   onMoveToReady,
   onSkipSelected,
+  onCloseStaleSelected,
   onRescoreSelected,
   onScreenRescoreSelected,
   onClearScoreSelected,
@@ -387,16 +391,17 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
               </Button>
             )}
             {rescrapeButton}
-            {canSkipSelected && (
+            {canCloseStaleSelected && (
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
                 className={buttonClass}
                 disabled={jobActionInFlight}
-                onClick={onSkipSelected}
+                onClick={onCloseStaleSelected}
+                title="Applied jobs close as Ghosted; the rest are skipped."
               >
-                Skip
+                Close
               </Button>
             )}
           </>

@@ -214,6 +214,35 @@ describe.sequential("jobs repository repost detection", () => {
     expect(refreshed?.repostCount).toBe(1);
   });
 
+  it("keeps a shelved application in stale on a forward repost", async () => {
+    const url = "https://example.com/jobs/repost-stale-applied";
+    await db.insert(schema.jobs).values({
+      id: "stale-applied-1",
+      source: "linkedin",
+      title: "Backend Engineer",
+      employer: "Acme",
+      jobUrl: url,
+      datePosted: "2026-04-01",
+      status: "stale",
+      appliedAt: "2026-04-02T00:00:00.000Z",
+    });
+
+    const result = await jobsRepo.createJobs([
+      {
+        source: "linkedin",
+        title: "Backend Engineer",
+        employer: "Acme",
+        jobUrl: url,
+        datePosted: "2026-04-15",
+      },
+    ]);
+    expect(result.reposted).toBe(1);
+
+    const refreshed = await jobsRepo.getJobByUrl(url);
+    expect(refreshed?.status).toBe("stale");
+    expect(refreshed?.repostCount).toBe(1);
+  });
+
   it("preserves user-driven status (selected/skipped/closed) on a repost", async () => {
     const fixtures: Array<{ id: string; url: string; status: string }> = [
       {

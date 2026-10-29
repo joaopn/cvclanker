@@ -1,5 +1,6 @@
 import * as api from "@client/api";
 import {
+  useCloseStaleJobMutation,
   useMarkAsAppliedMutation,
   useSkipJobMutation,
 } from "@client/hooks/queries/useJobMutations";
@@ -83,6 +84,7 @@ export function useKeyboardShortcuts(args: UseKeyboardShortcutsArgs): void {
   const shortcutActionInFlight = useRef(false);
   const markAsAppliedMutation = useMarkAsAppliedMutation();
   const skipJobMutation = useSkipJobMutation();
+  const closeStaleJobMutation = useCloseStaleJobMutation();
   const { personName } = useActiveCv();
   const { cvSourceFormat } = useSettings();
 
@@ -180,28 +182,36 @@ export function useKeyboardShortcuts(args: UseKeyboardShortcutsArgs): void {
       },
 
       // ── Context actions ─────────────────────────────────────────────────
+      // `skip` and `closeStale` share the key; the tab decides which runs.
       [SHORTCUTS.skip.key]: () => {
-        if (!isShortcutInScope(SHORTCUTS.skip, activeTab)) return;
+        const closesStale = isShortcutInScope(SHORTCUTS.closeStale, activeTab);
+        if (!closesStale && !isShortcutInScope(SHORTCUTS.skip, activeTab)) {
+          return;
+        }
         if (shortcutActionInFlight.current) return;
 
         if (selectedJobIds.size > 0) {
-          void runJobAction("skip");
+          void runJobAction(closesStale ? "close_stale" : "skip");
           return;
         }
 
         if (!selectedJob) return;
         shortcutActionInFlight.current = true;
         const jobId = selectedJob.id;
-        skipJobMutation
+        (closesStale ? closeStaleJobMutation : skipJobMutation)
           .mutateAsync(jobId)
           .then(async () => {
-            toast.message("Job skipped");
+            toast.message(closesStale ? "Job closed" : "Job skipped");
             selectNextAfterAction(jobId);
             await loadJobs();
           })
           .catch((err: unknown) => {
             const msg =
-              err instanceof Error ? err.message : "Failed to skip job";
+              err instanceof Error
+                ? err.message
+                : closesStale
+                  ? "Failed to close job"
+                  : "Failed to skip job";
             toast.error(msg);
           })
           .finally(() => {

@@ -25,6 +25,7 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     jobUrl?: string;
     tailoringFailureReason?: string | null;
     liveEasyApply?: boolean | null;
+    appliedAt?: string | null;
   }) {
     const { db, schema } = await import("@server/db/index");
     await db.insert(schema.jobs).values({
@@ -53,6 +54,7 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
       closedAt: overrides.closedAt ?? null,
       tailoringFailureReason: overrides.tailoringFailureReason ?? null,
       liveEasyApply: overrides.liveEasyApply ?? null,
+      appliedAt: overrides.appliedAt ?? null,
     });
   }
 
@@ -212,6 +214,55 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     expect(body.data.succeeded).toBe(0);
     expect(body.data.failed).toBe(1);
     expect(body.data.results[0].error.code).toBe("INVALID_REQUEST");
+  });
+
+  it("close_stale ghosts a stale row that was applied to and skips the rest", async () => {
+    await seedJob({
+      id: "close-stale-applied",
+      status: "stale",
+      appliedAt: "2026-04-02T00:00:00.000Z",
+    });
+    await seedJob({
+      id: "close-stale-shelf",
+      status: "stale",
+      outcome: "other",
+      closedAt: 1700000000,
+    });
+
+    const { body } = await postAction({
+      action: "close_stale",
+      jobIds: ["close-stale-applied", "close-stale-shelf"],
+    });
+
+    expect(body.data.succeeded).toBe(2);
+    const [applied, shelf] = body.data.results;
+    expect(applied.job.status).toBe("closed");
+    expect(applied.job.outcome).toBe("ghosted");
+    expect(typeof applied.job.closedAt).toBe("number");
+    expect(applied.job.appliedAt).toBe("2026-04-02T00:00:00.000Z");
+    expect(shelf.job.status).toBe("skipped");
+    expect(shelf.job.outcome).toBeNull();
+    expect(shelf.job.closedAt).toBeNull();
+  });
+
+  it("close_stale rejects rows that are not stale", async () => {
+    await seedJob({
+      id: "close-stale-live",
+      status: "applied",
+      appliedAt: "2026-04-02T00:00:00.000Z",
+    });
+    await seedJob({ id: "close-stale-backlog", status: "backlog" });
+
+    const { body } = await postAction({
+      action: "close_stale",
+      jobIds: ["close-stale-live", "close-stale-backlog"],
+    });
+
+    expect(body.data.succeeded).toBe(0);
+    expect(body.data.failed).toBe(2);
+    for (const result of body.data.results) {
+      expect(result.error.code).toBe("INVALID_REQUEST");
+    }
   });
 
   it("move_to_inbox promotes a stale row to discovered", async () => {
@@ -408,6 +459,62 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     expect(byId["sweep-tailoring-inprogress"]).toBe("in_progress");
     expect(byId["sweep-tailoring-processing"]).toBe("processing");
     expect(byId["sweep-tailoring-discovered"]).toBe("discovered");
+  });
+
+  it("sweep-stale scope=applied sweeps Live/Interviewing rows by application age", async () => {
+    const { db, schema } = await import("@server/db/index");
+    const { sql } = await import("drizzle-orm");
+    await seedJob({ id: "sweep-applied-old", status: "applied" });
+    await seedJob({ id: "sweep-applied-inprogress", status: "in_progress" });
+    // Old posting, recent application: the application date decides.
+    await seedJob({ id: "sweep-applied-recent", status: "applied" });
+    // No stamp: falls back to the posting age.
+    await seedJob({ id: "sweep-applied-unstamped", status: "applied" });
+    // Other scopes' statuses stay put, even aged.
+    await seedJob({ id: "sweep-applied-ready", status: "ready" });
+    await seedJob({ id: "sweep-applied-discovered", status: "discovered" });
+
+    await db
+      .update(schema.jobs)
+      .set({ discoveredAt: sql`datetime('now', '-30 days')` });
+    await db
+      .update(schema.jobs)
+      .set({
+        appliedAt: sql`strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-20 days')`,
+      })
+      .where(
+        sql`${schema.jobs.id} IN ('sweep-applied-old', 'sweep-applied-inprogress')`,
+      );
+    await db
+      .update(schema.jobs)
+      .set({
+        appliedAt: sql`strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-2 days')`,
+      })
+      .where(sql`${schema.jobs.id} = 'sweep-applied-recent'`);
+
+    const res = await fetch(`${baseUrl}/api/jobs/sweep-stale`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ thresholdDays: 14, scope: "applied" }),
+    });
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as {
+      ok: boolean;
+      data: { moved: number; breakdown: Record<string, number> };
+    };
+    expect(payload.data.moved).toBe(3);
+    expect(payload.data.breakdown).toEqual({ applied: 2, in_progress: 1 });
+
+    const rows = await db
+      .select({ id: schema.jobs.id, status: schema.jobs.status })
+      .from(schema.jobs);
+    const byId = Object.fromEntries(rows.map((r) => [r.id, r.status]));
+    expect(byId["sweep-applied-old"]).toBe("stale");
+    expect(byId["sweep-applied-inprogress"]).toBe("stale");
+    expect(byId["sweep-applied-unstamped"]).toBe("stale");
+    expect(byId["sweep-applied-recent"]).toBe("applied");
+    expect(byId["sweep-applied-ready"]).toBe("ready");
+    expect(byId["sweep-applied-discovered"]).toBe("discovered");
   });
 
   it("sweep-stale rejects the retired active scope", async () => {

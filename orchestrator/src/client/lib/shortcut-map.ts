@@ -109,7 +109,15 @@ export const SHORTCUTS = {
     displayKey: "s",
     label: "Skip job",
     group: "actions",
-    scope: ["inbox", "tailoring", "backlog", "stale"],
+    scope: ["inbox", "tailoring", "backlog"],
+  },
+  // Same key as `skip`: the Stale tab's `s` closes instead (see close_stale).
+  closeStale: {
+    key: "s",
+    displayKey: "s",
+    label: "Close job",
+    group: "actions",
+    scope: ["stale"],
   },
   moveToReady: {
     key: "r",

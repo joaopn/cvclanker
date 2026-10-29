@@ -19,6 +19,7 @@ import type { FilterTab } from "./constants";
 import { JobActionProgressToast } from "./JobActionProgressToast";
 import {
   canClearScore,
+  canCloseStale,
   canDelete,
   canFetchLiveStatus,
   canMarkClosed,
@@ -52,6 +53,7 @@ const jobActionLabel: Record<JobAction, string> = {
   fetch_live_status: "Checking LinkedIn status...",
   delete: "Deleting jobs...",
   retailor: "Re-tailoring selected jobs...",
+  close_stale: "Closing selected jobs...",
 };
 
 const jobActionSuccessLabel: Record<JobAction, string> = {
@@ -69,6 +71,7 @@ const jobActionSuccessLabel: Record<JobAction, string> = {
   fetch_live_status: "live statuses checked",
   delete: "jobs deleted",
   retailor: "jobs sent for re-tailoring",
+  close_stale: "jobs closed",
 };
 
 // Triage status moves whose prior {status, outcome, closedAt} can be restored.
@@ -85,6 +88,7 @@ const undoActionLabel: Partial<Record<JobAction, string>> = {
   move_to_inbox: "Move to Inbox",
   mark_closed: "Close application",
   reopen: "Reopen",
+  close_stale: "Close",
 };
 
 interface UseJobSelectionActionsArgs {
@@ -143,6 +147,10 @@ export function useJobSelectionActions({
   );
 
   const canSkipSelected = useMemo(() => canSkip(selectedJobs), [selectedJobs]);
+  const canCloseStaleSelected = useMemo(
+    () => canCloseStale(selectedJobs),
+    [selectedJobs],
+  );
   const canMoveSelected = useMemo(
     () => canMoveToReady(selectedJobs),
     [selectedJobs],
@@ -582,6 +590,7 @@ export function useJobSelectionActions({
   return {
     selectedJobIds,
     canSkipSelected,
+    canCloseStaleSelected,
     canMoveSelected,
     canRescoreSelected,
     canClearScoreSelected,

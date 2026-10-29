@@ -15,6 +15,7 @@ function renderBar(
       selectedCount={2}
       canMoveSelected={false}
       canSkipSelected={false}
+      canCloseStaleSelected={false}
       canRescoreSelected={false}
       canClearScoreSelected={false}
       canRescrapeSelected={false}
@@ -32,6 +33,7 @@ function renderBar(
       jobActionInFlight={false}
       onMoveToReady={noop}
       onSkipSelected={noop}
+      onCloseStaleSelected={noop}
       onRescoreSelected={noop}
       onScreenRescoreSelected={noop}
       onClearScoreSelected={noop}
@@ -50,6 +52,28 @@ function renderBar(
   );
   return { onDelete };
 }
+
+describe("FloatingJobActionsBar stale tab", () => {
+  it("offers Close, not Skip, and dispatches the stale close", () => {
+    const onCloseStaleSelected = vi.fn();
+    const onSkipSelected = vi.fn();
+    renderBar({
+      activeTab: "stale",
+      canSkipSelected: false,
+      canCloseStaleSelected: true,
+      onCloseStaleSelected,
+      onSkipSelected,
+    });
+
+    expect(
+      screen.queryByRole("button", { name: "Skip" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    expect(onCloseStaleSelected).toHaveBeenCalledTimes(1);
+    expect(onSkipSelected).not.toHaveBeenCalled();
+  });
+});
 
 describe("FloatingJobActionsBar delete", () => {
   it("does not delete on the first click — it opens a confirmation", () => {

@@ -16,9 +16,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@client/api", () => ({
   processJob: vi.fn(),
 }));
+const skipMutateAsync = vi.fn();
+const closeStaleMutateAsync = vi.fn();
 vi.mock("@client/hooks/queries/useJobMutations", () => ({
   useMarkAsAppliedMutation: () => ({ mutateAsync: vi.fn() }),
-  useSkipJobMutation: () => ({ mutateAsync: vi.fn() }),
+  useSkipJobMutation: () => ({ mutateAsync: skipMutateAsync }),
+  useCloseStaleJobMutation: () => ({ mutateAsync: closeStaleMutateAsync }),
 }));
 vi.mock("@client/hooks/useActiveCv", () => ({
   useActiveCv: () => ({ personName: "Test Person" }),
@@ -37,6 +40,7 @@ vi.mock("@client/lib/toast", () => ({
   },
 }));
 
+import type { FilterTab } from "./constants";
 import type { ConfirmTailor } from "./tailorCompanyConflicts";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 
@@ -54,6 +58,7 @@ interface Overrides {
   selectedJob?: Job | null;
   confirmTailor?: ConfirmTailor;
   runTailorAction?: () => Promise<void>;
+  activeTab?: FilterTab;
 }
 
 const setup = (overrides: Overrides = {}) => {
@@ -64,13 +69,14 @@ const setup = (overrides: Overrides = {}) => {
   const handleSelectJobId = vi.fn();
   const loadJobs = vi.fn().mockResolvedValue(undefined);
   const selectedJob = overrides.selectedJob ?? job("j1");
+  const runJobAction = vi.fn().mockResolvedValue(undefined);
 
   renderHook(() =>
     useKeyboardShortcuts({
       isAnyModalOpen: false,
       isAnyModalOpenExcludingCommandBar: false,
       isAnyModalOpenExcludingHelp: false,
-      activeTab: "inbox",
+      activeTab: overrides.activeTab ?? "inbox",
       activeJobs: selectedJob ? [selectedJob] : [],
       selectedJobId: selectedJob?.id ?? null,
       selectedJob,
@@ -83,7 +89,7 @@ const setup = (overrides: Overrides = {}) => {
       setIsHelpDialogOpen: vi.fn(),
       clearSelection: vi.fn(),
       toggleSelectJob: vi.fn(),
-      runJobAction: vi.fn().mockResolvedValue(undefined),
+      runJobAction,
       runTailorAction,
       confirmTailor,
       loadJobs,
@@ -91,7 +97,13 @@ const setup = (overrides: Overrides = {}) => {
     }),
   );
 
-  return { runTailorAction, confirmTailor, handleSelectJobId, loadJobs };
+  return {
+    runTailorAction,
+    runJobAction,
+    confirmTailor,
+    handleSelectJobId,
+    loadJobs,
+  };
 };
 
 beforeEach(() => {
@@ -99,6 +111,46 @@ beforeEach(() => {
   vi.mocked(api.processJob).mockResolvedValue(createJob({ id: "resolved" }));
   toastSuccess.mockClear();
   toastError.mockClear();
+  skipMutateAsync.mockReset();
+  skipMutateAsync.mockResolvedValue(undefined);
+  closeStaleMutateAsync.mockReset();
+  closeStaleMutateAsync.mockResolvedValue(undefined);
+});
+
+describe("the s shortcut", () => {
+  it("closes rather than skips the focused job on the Stale tab", async () => {
+    const { loadJobs } = setup({ activeTab: "stale" });
+
+    press("s");
+
+    await waitFor(() => expect(loadJobs).toHaveBeenCalled());
+    expect(closeStaleMutateAsync).toHaveBeenCalledWith("j1");
+    expect(skipMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("closes the selection on the Stale tab", () => {
+    const { runJobAction } = setup({
+      activeTab: "stale",
+      selectedJobIds: new Set(["j1"]),
+    });
+
+    press("s");
+
+    expect(runJobAction).toHaveBeenCalledWith("close_stale");
+  });
+
+  it("still skips on the other tabs", async () => {
+    const { loadJobs, runJobAction } = setup({
+      activeTab: "backlog",
+    });
+
+    press("s");
+
+    await waitFor(() => expect(loadJobs).toHaveBeenCalled());
+    expect(skipMutateAsync).toHaveBeenCalledWith("j1");
+    expect(closeStaleMutateAsync).not.toHaveBeenCalled();
+    expect(runJobAction).not.toHaveBeenCalled();
+  });
 });
 
 describe("the Tailor shortcut with a selection", () => {

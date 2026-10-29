@@ -928,6 +928,11 @@ export async function skipJob(
   return getSingleJobFromActionResult(result, idOrIds);
 }
 
+export async function closeStaleJob(id: string): Promise<Job> {
+  const result = await runJobAction({ action: "close_stale", jobIds: [id] });
+  return getSingleJobFromActionResult(result, id);
+}
+
 /**
  * Close ONE still-open application with an outcome. Goes through the bulk
  * action rather than the two PATCHes the detail panel uses, because the action
@@ -974,7 +979,7 @@ function getSingleJobFromActionResult(
 
 export async function sweepStaleJobs(
   thresholdDays: number,
-  scope: "shelf" | "tailoring" = "shelf",
+  scope: "shelf" | "tailoring" | "applied" = "shelf",
 ): Promise<{
   moved: number;
   breakdown: Partial<Record<JobStatus, number>>;

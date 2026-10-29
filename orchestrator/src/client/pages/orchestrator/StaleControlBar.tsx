@@ -12,7 +12,7 @@ interface StaleControlBarProps {
   onSwept: () => Promise<void> | void;
 }
 
-type SweepScope = "shelf" | "tailoring" | "liveClosed";
+type SweepScope = "shelf" | "tailoring" | "applied" | "liveClosed";
 
 const MIN_DAYS = 1;
 const MAX_DAYS = 365;
@@ -21,12 +21,14 @@ const clampDays = (value: number): number =>
   Math.max(MIN_DAYS, Math.min(MAX_DAYS, Math.floor(value)));
 
 // Friendly tab labels for the toast breakdown, covering every status the bar's
-// three sweeps can report: shelf and liveClosed both draw from {discovered,
-// backlog}, tailoring from {ready}.
+// four sweeps can report: shelf and liveClosed both draw from {discovered,
+// backlog}, tailoring from {ready}, applied from {applied, in_progress}.
 const STATUS_LABELS: Partial<Record<JobStatus, string>> = {
   discovered: "Inbox",
   backlog: "Backlog",
   ready: "Ready",
+  applied: "Live",
+  in_progress: "Interviewing",
 };
 
 function describeBreakdown(
@@ -152,6 +154,24 @@ export const StaleControlBar = ({
           </>
         ) : (
           "Move Tailoring"
+        )}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={busy}
+        onClick={() => void runSweep("applied")}
+        className="h-7 px-3 text-xs sm:ml-auto sm:w-auto"
+        title="Moves Live/Interviewing jobs applied to more than the threshold ago."
+      >
+        {busyScope === "applied" ? (
+          <>
+            <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+            Sweeping...
+          </>
+        ) : (
+          "Move Applied"
         )}
       </Button>
       <Button

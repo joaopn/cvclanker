@@ -28,6 +28,10 @@ export function canSkip(jobs: JobListItem[]): boolean {
   );
 }
 
+export function canCloseStale(jobs: JobListItem[]): boolean {
+  return jobs.length > 0 && jobs.every((job) => job.status === "stale");
+}
+
 export function canMoveToReady(jobs: JobListItem[]): boolean {
   return (
     jobs.length > 0 &&

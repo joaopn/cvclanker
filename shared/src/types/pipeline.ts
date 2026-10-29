@@ -396,7 +396,12 @@ export type JobAction =
   // template renamed are silently dropped at render time (and if ALL of them
   // die the baseline guard hard-fails the render). Also absent from
   // `undoActionLabel` — a PATCH cannot restore overwritten tailoredFields.
-  | "retailor";
+  | "retailor"
+  // The Stale tab's Close: a row that was applied to (`appliedAt` set) closes
+  // as `ghosted`; any other row is skipped. `stale` does not keep the status a
+  // row came from, so the permanent mark is the proxy for "was Live or
+  // Interviewing" — it is also set on a row moved off those stages by hand.
+  | "close_stale";
 
 export type JobActionRequest =
   | {
@@ -411,7 +416,8 @@ export type JobActionRequest =
         | "reopen"
         | "fetch_live_status"
         | "delete"
-        | "retailor";
+        | "retailor"
+        | "close_stale";
       jobIds: string[];
     }
   | {

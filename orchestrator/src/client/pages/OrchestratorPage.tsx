@@ -568,6 +568,7 @@ export const OrchestratorPage: React.FC = () => {
   const {
     selectedJobIds,
     canSkipSelected,
+    canCloseStaleSelected,
     canMoveSelected,
     canRescoreSelected,
     canClearScoreSelected,
@@ -1057,6 +1058,7 @@ export const OrchestratorPage: React.FC = () => {
           selectedCount={selectedJobIds.size}
           canMoveSelected={canMoveSelected}
           canSkipSelected={canSkipSelected}
+          canCloseStaleSelected={canCloseStaleSelected}
           canRescoreSelected={canRescoreSelected}
           canClearScoreSelected={canClearScoreSelected}
           canRescrapeSelected={canRescrapeSelected}
@@ -1074,6 +1076,7 @@ export const OrchestratorPage: React.FC = () => {
           jobActionInFlight={jobActionInFlight !== null}
           onMoveToReady={() => void runTailorAction()}
           onSkipSelected={() => void runJobAction("skip")}
+          onCloseStaleSelected={() => void runJobAction("close_stale")}
           onRescoreSelected={() => void runJobAction("rescore")}
           onScreenRescoreSelected={() => void runScreenedRescoreAction()}
           onClearScoreSelected={() => void runJobAction("clear_score")}

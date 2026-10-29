@@ -690,7 +690,7 @@ export const emptyStateCopy: Record<FilterTab, string> = {
   backlog:
     "Empty. Inbox rows that age past the threshold land here automatically; reposted listings get re-promoted.",
   stale:
-    'Empty. Set an age threshold above and click "Move stale rows" to sweep aged Inbox and Backlog rows into this holding pen; "Move Tailoring" is a separate sweep over aged Ready rows.',
+    'Empty. Set an age threshold above and click "Move stale rows" to sweep aged Inbox and Backlog rows into this holding pen; "Move Tailoring" and "Move Applied" are separate sweeps over aged Ready and Live/Interviewing rows.',
   closed:
     "Empty. Skipped jobs and Live rows you Mark Closed land here with an outcome chip.",
   all: "No jobs in the system yet. Run the pipeline to get started.",

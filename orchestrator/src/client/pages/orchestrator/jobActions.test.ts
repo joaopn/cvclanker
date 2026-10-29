@@ -2,6 +2,7 @@ import { createJob } from "@shared/testing/factories.js";
 import { describe, expect, it } from "vitest";
 import {
   canClearScore,
+  canCloseStale,
   canDelete,
   canFetchLiveStatus,
   canMoveToReady,
@@ -12,6 +13,22 @@ import {
 } from "./jobActions";
 
 describe("jobActions", () => {
+  it("offers the stale close only on an all-stale selection", () => {
+    expect(
+      canCloseStale([
+        createJob({ id: "1", status: "stale" }),
+        createJob({ id: "2", status: "stale", appliedAt: "2026-04-02" }),
+      ]),
+    ).toBe(true);
+    expect(
+      canCloseStale([
+        createJob({ id: "1", status: "stale" }),
+        createJob({ id: "2", status: "backlog" }),
+      ]),
+    ).toBe(false);
+    expect(canCloseStale([])).toBe(false);
+  });
+
   it("computes eligibility for skip, move-to-ready, and rescore", () => {
     expect(
       canSkip([

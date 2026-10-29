@@ -718,6 +718,7 @@ export async function createJobs(
       jobUrl: jobs.jobUrl,
       datePosted: jobs.datePosted,
       status: jobs.status,
+      appliedAt: jobs.appliedAt,
       repostCount: jobs.repostCount,
     })
     .from(jobs)
@@ -734,8 +735,11 @@ export async function createJobs(
         incomingDate > existing.datePosted;
       if (isForwardShift) {
         const now = new Date().toISOString();
+        // A shelved application stays shelved: the Stale tab's `applied` sweep
+        // puts applied-to rows there, and the Inbox is no place for one.
         const nextStatus =
-          existing.status === "backlog" || existing.status === "stale"
+          existing.status === "backlog" ||
+          (existing.status === "stale" && existing.appliedAt === null)
             ? "discovered"
             : existing.status;
         await db
@@ -1189,21 +1193,25 @@ export async function deleteJobsByStatus(status: JobStatus): Promise<number> {
  *    explicit request only. Deliberately excludes the tab's other status,
  *    `processing`: with a null failure reason it is a tailor running right
  *    now, and with a reason set it is a failed one the user can still retry —
- *    shelving either buries work in progress. Applied/Interviewing rows are
- *    out of every scope: moving a job the user has applied to is their call.
- * Both target the same `stale` status; the scope just bounds the source set so
+ *    shelving either buries work in progress.
+ *  - `applied`   — the open applications (Live / Interviewing), swept on
+ *    explicit request only and aged by the application date rather than the
+ *    posting date. The other scopes leave every applied-to row alone.
+ * All target the same `stale` status; the scope just bounds the source set so
  * the default sweep never touches a user's tailored rows by surprise.
  */
 const STALE_SWEEP_SCOPE_STATUSES = {
   shelf: ["discovered", "backlog"],
   tailoring: ["ready"],
+  applied: ["applied", "in_progress"],
 } satisfies Record<string, JobStatus[]>;
 
 export type StaleSweepScope = keyof typeof STALE_SWEEP_SCOPE_STATUSES;
 
 /**
  * Move every row in the scope's source statuses whose effective age
- * (`date_posted` when present, else `discovered_at`) is older than
+ * (`date_posted` when present, else `discovered_at`; the `applied` scope reads
+ * `applied_at` ahead of both) is older than
  * `thresholdDays` into the `stale` status. Returns the total moved plus a
  * per-source-status breakdown.
  *
@@ -1238,16 +1246,21 @@ export async function sweepStaleJobs(
     END,
     datetime(${jobs.discoveredAt})
   )`;
-  const ageWhere = and(
-    inArray(jobs.status, eligibleStatuses),
-    // The scope's own rule is "applied/interviewing rows are out of every
-    // scope: moving a job the user has applied to is their call", and the
-    // status list used to be enough to enforce it — nothing could put an
-    // applied row on a shelf. The stage switcher can, so the rule now reads
-    // the permanent mark instead of inferring it from where the row sits.
-    isNull(jobs.appliedAt),
-    sql`${effectiveDateClause} < ${cutoffClause}`,
-  );
+  const ageWhere =
+    scope === "applied"
+      ? and(
+          inArray(jobs.status, eligibleStatuses),
+          sql`COALESCE(datetime(${jobs.appliedAt}), ${effectiveDateClause}) < ${cutoffClause}`,
+        )
+      : and(
+          inArray(jobs.status, eligibleStatuses),
+          // Applied-to rows belong to the `applied` scope alone. The status
+          // list used to be enough to keep them out — nothing could put an
+          // applied row on a shelf. The stage switcher can, so the rule reads
+          // the permanent mark instead of inferring it from where the row sits.
+          isNull(jobs.appliedAt),
+          sql`${effectiveDateClause} < ${cutoffClause}`,
+        );
   const rows = await db
     .select({ status: jobs.status })
     .from(jobs)
