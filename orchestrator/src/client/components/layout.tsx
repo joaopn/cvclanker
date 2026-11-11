@@ -2,10 +2,19 @@
  * Shared layout components for consistent page structure.
  */
 
+import { useHotkeys } from "@client/hooks/useHotkeys";
 import { useProfileSwitch } from "@client/hooks/useProfileSwitch";
-import { ExternalLink, type LucideIcon, Menu } from "lucide-react";
+import { useTopBarVisibility } from "@client/hooks/useTopBarVisibility";
+import { getDisplayKey, SHORTCUTS } from "@client/lib/shortcut-map";
+import {
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  type LucideIcon,
+  Menu,
+} from "lucide-react";
 import type React from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +36,20 @@ import { UserProfileSwitcher } from "./UserProfileSwitcher";
 // ============================================================================
 // Page Header
 // ============================================================================
+
+// The toggle shortcut is left alone inside menus, listboxes and other popups,
+// and on comboboxes, open or closed (letters typed there can be typeahead, and
+// hiding the bar could hide a popup's anchor), and inside dialogs (the bar
+// would toggle out of sight behind the overlay, and could hide the trigger
+// focus returns to on close).
+const TOP_BAR_HOTKEY_IGNORED_WITHIN = [
+  '[role="menu"]',
+  '[role="listbox"]',
+  '[role="combobox"]',
+  '[role="dialog"]',
+  '[role="alertdialog"]',
+  "[data-radix-popper-content-wrapper]",
+].join(",");
 
 interface PageHeaderProps {
   /** Boxed section glyph. Omit when `brand` is provided. */
@@ -91,6 +114,47 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   // closing the drawer to show the restart overlay and reload.
   const { switchState, activateProfile, isPending } = useProfileSwitch();
 
+  // Hidden with the `hidden` attribute, not unmounted, so the actions keep
+  // their state while the bar is out of sight.
+  const { isVisible: isTopBarVisible, setVisible: setTopBarVisible } =
+    useTopBarVisibility();
+  const barRef = useRef<HTMLDivElement>(null);
+  const hideButtonRef = useRef<HTMLButtonElement>(null);
+  const showHandleRef = useRef<HTMLButtonElement>(null);
+  const moveFocusRef = useRef(false);
+
+  // Hiding the focused control drops focus to <body>, so hand it to the
+  // control that replaces it — only when focus was in the bar or on the handle.
+  const changeTopBarVisible = (visible: boolean) => {
+    const active = document.activeElement;
+    moveFocusRef.current =
+      active !== null &&
+      (barRef.current?.contains(active) === true ||
+        active === showHandleRef.current);
+    setTopBarVisible(visible);
+  };
+
+  useEffect(() => {
+    if (!moveFocusRef.current) return;
+    moveFocusRef.current = false;
+    (isTopBarVisible ? hideButtonRef : showHandleRef).current?.focus();
+  }, [isTopBarVisible]);
+
+  useHotkeys({
+    [SHORTCUTS.toggleTopBar.key]: (event) => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest(TOP_BAR_HOTKEY_IGNORED_WITHIN)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      if (event.repeat) return;
+      changeTopBarVisible(!isTopBarVisible);
+    },
+  });
+  const topBarShortcut = getDisplayKey(SHORTCUTS.toggleTopBar);
+
   const handleNavClick = (to: string, activePaths?: string[]) => {
     if (isNavActive(location.pathname, to, activePaths)) {
       setNavOpen(false);
@@ -103,6 +167,8 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   return (
     <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div
+        ref={barRef}
+        hidden={!isTopBarVisible}
         className={cn(
           "flex px-4 py-4",
           inlineActions
@@ -203,8 +269,32 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
           )}
         >
           {actions}
+          <Button
+            ref={hideButtonRef}
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => changeTopBarVisible(false)}
+            className="ml-auto h-8 w-8 shrink-0"
+            aria-label="Hide top bar"
+            title={`Hide top bar (${topBarShortcut})`}
+          >
+            <ChevronUp className="h-4 w-4" />
+          </Button>
         </div>
       </div>
+      {!isTopBarVisible && (
+        <button
+          ref={showHandleRef}
+          type="button"
+          onClick={() => changeTopBarVisible(true)}
+          className="flex h-6 w-full items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          aria-label="Show top bar"
+          title={`Show top bar (${topBarShortcut})`}
+        >
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
+      )}
       <ProfileSwitchOverlay state={switchState} />
     </header>
   );

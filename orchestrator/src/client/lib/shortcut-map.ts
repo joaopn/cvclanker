@@ -206,6 +206,12 @@ export const SHORTCUTS = {
     label: "Keyboard shortcuts",
     group: "meta",
   },
+  toggleTopBar: {
+    key: "Shift+H",
+    displayKey: "Shift+H",
+    label: "Hide/show top bar",
+    group: "meta",
+  },
   undo: {
     key: "$mod+z",
     displayKey: "$mod+Z",
