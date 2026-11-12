@@ -6,13 +6,7 @@ import { useHotkeys } from "@client/hooks/useHotkeys";
 import { useProfileSwitch } from "@client/hooks/useProfileSwitch";
 import { useTopBarVisibility } from "@client/hooks/useTopBarVisibility";
 import { getDisplayKey, SHORTCUTS } from "@client/lib/shortcut-map";
-import {
-  ChevronDown,
-  ChevronUp,
-  ExternalLink,
-  type LucideIcon,
-  Menu,
-} from "lucide-react";
+import { ChevronDown, ExternalLink, type LucideIcon, Menu } from "lucide-react";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -36,6 +30,25 @@ import { UserProfileSwitcher } from "./UserProfileSwitcher";
 // ============================================================================
 // Page Header
 // ============================================================================
+
+// A click on any of these inside the bar is the control's own, so it does not
+// hide the bar.
+const TOP_BAR_INTERACTIVE = [
+  "a[href]",
+  "button",
+  "input",
+  "select",
+  "textarea",
+  "label",
+  '[role="button"]',
+  '[role="link"]',
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
+
+const OPEN_POPUP_SELECTOR = [
+  '[data-radix-popper-content-wrapper] > :not([data-state="closed"])',
+  '[role="menu"]:not([data-state="closed"])',
+].join(",");
 
 // The toggle shortcut is left alone inside menus, listboxes and other popups,
 // and on comboboxes, open or closed (letters typed there can be typeahead, and
@@ -119,12 +132,14 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   const { isVisible: isTopBarVisible, setVisible: setTopBarVisible } =
     useTopBarVisibility();
   const barRef = useRef<HTMLDivElement>(null);
-  const hideButtonRef = useRef<HTMLButtonElement>(null);
+  const navButtonRef = useRef<HTMLButtonElement>(null);
   const showHandleRef = useRef<HTMLButtonElement>(null);
   const moveFocusRef = useRef(false);
+  const popupOpenAtPointerDownRef = useRef(false);
 
-  // Hiding the focused control drops focus to <body>, so hand it to the
-  // control that replaces it — only when focus was in the bar or on the handle.
+  // Hiding the focused control drops focus to <body>, so hand it to the handle
+  // on hide and to the nav button on reveal — only when focus was in the bar or
+  // on the handle.
   const changeTopBarVisible = (visible: boolean) => {
     const active = document.activeElement;
     moveFocusRef.current =
@@ -137,8 +152,45 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   useEffect(() => {
     if (!moveFocusRef.current) return;
     moveFocusRef.current = false;
-    (isTopBarVisible ? hideButtonRef : showHandleRef).current?.focus();
+    (isTopBarVisible ? navButtonRef : showHandleRef).current?.focus();
   }, [isTopBarVisible]);
+
+  // A click that dismisses an open popup or menu only dismisses it. Radix
+  // keeps closing content mounted through its exit animation, so that is
+  // excluded.
+  const handleBarPointerDownCapture = () => {
+    popupOpenAtPointerDownRef.current =
+      document.querySelector(OPEN_POPUP_SELECTOR) !== null;
+  };
+
+  // Clicks from portaled children (the nav drawer, popovers) bubble through
+  // the React tree to this handler too, so only targets in the bar's own DOM
+  // count. A click that ends a text selection is left alone.
+  const handleBarClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const bar = barRef.current;
+    const target = event.target;
+    if (!bar || !(target instanceof Element) || !bar.contains(target)) return;
+    const control = target.closest(TOP_BAR_INTERACTIVE);
+    if (control && bar.contains(control)) return;
+    // The shared `Button` sets `disabled:pointer-events-none`, so a click on a
+    // disabled one targets whatever is underneath: test the click point
+    // against every control's box.
+    for (const element of bar.querySelectorAll(TOP_BAR_INTERACTIVE)) {
+      const box = element.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) continue;
+      if (
+        event.clientX >= box.left &&
+        event.clientX <= box.right &&
+        event.clientY >= box.top &&
+        event.clientY <= box.bottom
+      ) {
+        return;
+      }
+    }
+    if (popupOpenAtPointerDownRef.current) return;
+    if (window.getSelection()?.isCollapsed === false) return;
+    changeTopBarVisible(false);
+  };
 
   useHotkeys({
     [SHORTCUTS.toggleTopBar.key]: (event) => {
@@ -166,9 +218,12 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: clicking the bar's empty space is a pointer shortcut; Shift+H is the keyboard route to the same toggle */}
       <div
         ref={barRef}
         hidden={!isTopBarVisible}
+        onPointerDownCapture={handleBarPointerDownCapture}
+        onClick={handleBarClick}
         className={cn(
           "flex px-4 py-4",
           inlineActions
@@ -180,7 +235,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
         <div className="flex min-w-0 items-center gap-3">
           <Sheet open={navOpen} onOpenChange={setNavOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon">
+              <Button ref={navButtonRef} variant="ghost" size="icon">
                 <Menu className="h-5 w-5" />
                 <span className="sr-only">Open navigation menu</span>
               </Button>
@@ -269,18 +324,6 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
           )}
         >
           {actions}
-          <Button
-            ref={hideButtonRef}
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={() => changeTopBarVisible(false)}
-            className="ml-auto h-8 w-8 shrink-0"
-            aria-label="Hide top bar"
-            title={`Hide top bar (${topBarShortcut})`}
-          >
-            <ChevronUp className="h-4 w-4" />
-          </Button>
         </div>
       </div>
       {!isTopBarVisible && (
