@@ -505,6 +505,7 @@ const postRebuildMigrations: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)`,
   `CREATE INDEX IF NOT EXISTS idx_jobs_discovered_at ON jobs(discovered_at)`,
   `CREATE INDEX IF NOT EXISTS idx_jobs_status_discovered_at ON jobs(status, discovered_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_jobs_status_updated_at ON jobs(status, updated_at)`,
   `CREATE INDEX IF NOT EXISTS idx_pipeline_runs_started_at ON pipeline_runs(started_at)`,
   `CREATE INDEX IF NOT EXISTS idx_tasks_application_id ON tasks(application_id)`,
   `CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date)`,
