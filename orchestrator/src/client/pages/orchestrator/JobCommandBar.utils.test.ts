@@ -25,17 +25,19 @@ describe("JobCommandBar score helpers", () => {
     expect(score).toBe(0);
   });
 
-  it("keeps only relevant matches when a query is provided", () => {
+  // Which rows answer the query is the server's decision now; the grouping
+  // only orders what it is given, and must not drop a row the server chose.
+  it("orders the rows it is given by score, then newest, dropping none", () => {
     const grouped = groupJobsForCommandBar(
       [
         createJob({
-          id: "no-match",
+          id: "no-score",
           title: "Visual Designer",
           employer: "Studio Co",
           discoveredAt: "2025-02-01T00:00:00Z",
         }),
         createJob({
-          id: "fuzzy",
+          id: "prefix",
           title: "Backender Engineer",
           employer: "Platform Co",
           discoveredAt: "2025-01-02T00:00:00Z",
@@ -50,29 +52,28 @@ describe("JobCommandBar score helpers", () => {
       "backend",
     );
 
-    expect(grouped.ready.map((job) => job.id)).toEqual(["exact", "fuzzy"]);
+    expect(grouped.ready.map((job) => job.id)).toEqual([
+      "exact",
+      "prefix",
+      "no-score",
+    ]);
   });
 
-  it("filters out weak fuzzy matches below the relevance floor", () => {
+  it("orders by newest alone when there is no query", () => {
     const grouped = groupJobsForCommandBar(
       [
-        createJob({
-          id: "weak-fuzzy",
-          title: "Backend Engineer",
-          employer: "Platform Co",
-          discoveredAt: "2025-01-02T00:00:00Z",
-        }),
+        createJob({ id: "older", discoveredAt: "2025-01-01T00:00:00Z" }),
+        createJob({ id: "newer", discoveredAt: "2025-02-01T00:00:00Z" }),
       ],
-      "bde",
+      "",
     );
 
-    expect(grouped.ready).toEqual([]);
+    expect(grouped.ready.map((job) => job.id)).toEqual(["newer", "older"]);
   });
 
   it("scores a location across diacritic spellings", () => {
-    // Same query, same screen: the Manage location facet and the pipeline both
-    // fold now, so the command bar has to as well or "malaga" answers
-    // differently depending on which box the user typed it into.
+    // The server matches "malaga" to Málaga; the ordering has to agree, or
+    // the row it matched sinks below rows that merely share letters.
     const job = createJob({
       title: "Research Scientist",
       employer: "Acme",

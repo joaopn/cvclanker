@@ -1,5 +1,5 @@
 import { foldDiacritics } from "@shared/location-support";
-import type { JobListItem, JobStatus } from "@shared/types.js";
+import type { JobListItem, JobSearchLock, JobStatus } from "@shared/types.js";
 import {
   type BadgeTone,
   EVER_APPLIED_CHIP_CLASS,
@@ -14,15 +14,11 @@ export type CommandGroupId = "ready" | "discovered" | "applied" | "other";
  *
  * Five of the six name a job status; `ever_applied` does not, which is why
  * this is not called `StatusLock` any more and why `jobMatchesLock` is a
- * switch rather than a comparison against `job.status`.
+ * switch rather than a comparison against `job.status`. The server applies
+ * the same narrowing in SQL (`searchJobListItems`), and a repository test
+ * holds the two to the same answer.
  */
-export type CommandBarLock =
-  | "ready"
-  | "discovered"
-  | "applied"
-  | "in_progress"
-  | "skipped"
-  | "ever_applied";
+export type CommandBarLock = JobSearchLock;
 
 export type CommandBarRow =
   | {
@@ -109,7 +105,6 @@ export const lockTokens: Record<CommandBarLock, BadgeTone> = {
 };
 
 const tokenRegex = /^\s*@([a-z-]*)/i;
-const MINIMUM_MATCH_SCORE = 600;
 
 const parseTime = (value: string | null) => {
   if (!value) return Number.NaN;
@@ -117,11 +112,10 @@ const parseTime = (value: string | null) => {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 };
 
-// Diacritic-folded on both sides through the same helper the location matcher
-// uses. This scorer reads job.location as well as title and employer, so
-// without it typing "malaga" here would miss the Málaga rows that the pipeline
-// now keeps and the Manage location facet now finds — the same query, the same
-// screen, two different answers.
+// Orders the rows the server's search returned; it decides nothing about which
+// rows those are. Diacritic-folded on both sides through the same helper the
+// location matcher uses, so a "Málaga" row the server matched for "malaga"
+// ranks as the exact match it is.
 const computeFieldMatchScore = (fieldRaw: string, needleRaw: string) => {
   const field = foldDiacritics(fieldRaw.trim().toLowerCase());
   const needle = foldDiacritics(needleRaw.trim().toLowerCase());
@@ -137,7 +131,7 @@ const computeFieldMatchScore = (fieldRaw: string, needleRaw: string) => {
   const compactField = field.replace(/\s+/g, "");
   if (compactField.includes(needle)) return 700;
 
-  // Light typo-tolerance via ordered-character subsequence matching.
+  // Ordered-character subsequence: a weak score, below every substring match.
   let matchIndex = 0;
   for (const character of compactField) {
     if (character === needle[matchIndex]) {
@@ -268,14 +262,12 @@ export const groupJobsForCommandBar = (
     other: [],
   };
 
-  const scoredJobs = normalizedQuery
-    ? scopedJobs
-        .map((job) => ({
-          job,
-          score: computeJobMatchScore(job, normalizedQuery),
-        }))
-        .filter(({ score }) => score >= MINIMUM_MATCH_SCORE)
-    : scopedJobs.map((job) => ({ job, score: 0 }));
+  // Which jobs answer the query is the server's call (its full-text index);
+  // the score only orders them.
+  const scoredJobs = scopedJobs.map((job) => ({
+    job,
+    score: normalizedQuery ? computeJobMatchScore(job, normalizedQuery) : 0,
+  }));
 
   const sorted = scoredJobs.sort((a, b) => {
     if (normalizedQuery && a.score !== b.score) return b.score - a.score;

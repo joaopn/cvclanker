@@ -28,6 +28,8 @@ import type {
   JobListItem,
   JobNote,
   JobOutcome,
+  JobSearchLock,
+  JobSearchResponse,
   JobSource,
   JobStatus,
   JobsListResponse,
@@ -389,6 +391,18 @@ export async function getJobs(options?: {
   return fetchApi<JobsListResponse<Job> | JobsListResponse<JobListItem>>(
     `/jobs${query ? `?${query}` : ""}`,
   );
+}
+
+/** The ctrl+K search. An empty query lists the newest jobs. */
+export async function searchJobs(options: {
+  query: string;
+  lock: JobSearchLock | null;
+}): Promise<JobSearchResponse> {
+  const params = new URLSearchParams();
+  if (options.query) params.set("q", options.query);
+  if (options.lock) params.set("lock", options.lock);
+  const query = params.toString();
+  return fetchApi<JobSearchResponse>(`/jobs/search${query ? `?${query}` : ""}`);
 }
 
 export async function getJobsRevision(options?: {

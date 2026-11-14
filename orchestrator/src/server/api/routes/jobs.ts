@@ -53,6 +53,7 @@ import {
   APPLICATION_OUTCOMES,
   SUITABILITY_CATEGORIES,
   type DuplicateJobGroupsResponse,
+  JOB_SEARCH_LOCKS,
   type Job,
   type JobAction,
   type JobActionBatchStreamEvent,
@@ -211,6 +212,11 @@ const listJobsQuerySchema = z.object({
 
 const jobsRevisionQuerySchema = z.object({
   status: z.string().optional(),
+});
+
+const searchJobsQuerySchema = z.object({
+  q: z.string().optional(),
+  lock: z.enum(JOB_SEARCH_LOCKS).optional(),
 });
 
 const SKIPPABLE_STATUSES: ReadonlySet<JobStatus> = new Set([
@@ -1234,6 +1240,43 @@ jobsRouter.get("/revision", async (req: Request, res: Response) => {
     });
 
     ok(res, response);
+  } catch (error) {
+    const err =
+      error instanceof AppError
+        ? error
+        : new AppError({
+            status: 500,
+            code: "INTERNAL_ERROR",
+            message: error instanceof Error ? error.message : "Unknown error",
+          });
+    fail(res, err);
+  }
+});
+
+/**
+ * GET /api/jobs/search - The ctrl+K search: at most JOB_SEARCH_RESULT_LIMIT
+ * jobs matching `q` (title, employer or location), narrowed by an optional
+ * `lock`, plus the total match count. The handler adds no log line of its
+ * own: the dialog asks on every keystroke.
+ */
+jobsRouter.get("/search", async (req: Request, res: Response) => {
+  try {
+    const parsedQuery = searchJobsQuerySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
+      return fail(
+        res,
+        badRequest(
+          "Invalid job search query parameters",
+          parsedQuery.error.flatten(),
+        ),
+      );
+    }
+
+    const result = await jobsRepo.searchJobListItems({
+      query: parsedQuery.data.q ?? "",
+      lock: parsedQuery.data.lock ?? null,
+    });
+    ok(res, result);
   } catch (error) {
     const err =
       error instanceof AppError

@@ -1,14 +1,7 @@
 import { useHotkeys } from "@client/hooks/useHotkeys";
 import type { JobListItem } from "@shared/types.js";
 import type React from "react";
-import {
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CommandDialog, CommandInput } from "@/components/ui/command";
 import { DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -34,8 +27,39 @@ import { JobRowContent } from "./JobRowContent";
 import { canMarkClosed } from "./jobActions";
 import { useVirtualizedList } from "./virtualizedList";
 
-interface JobCommandBarProps {
+/** One answer from the server's search, tagged with the search it answers. */
+export interface JobCommandBarResults {
+  query: string;
+  lock: CommandBarLock | null;
   jobs: JobListItem[];
+  /** Every match; `jobs` carries at most the server's result limit. */
+  total: number;
+}
+
+interface JobCommandBarProps {
+  /**
+   * The newest answer the parent holds — possibly for an earlier query or
+   * lock, while the current one is in flight or after it failed — or null
+   * before the first.
+   */
+  results: JobCommandBarResults | null;
+  /** The search for the current text and lock failed. */
+  searchFailed: boolean;
+  /**
+   * A request for the current text and lock is in flight — including one
+   * re-asking a cached answer, as every reopen does.
+   */
+  searchPending: boolean;
+  /**
+   * Asks the parent to search: the trimmed query and the lock. Not called
+   * while a leading `@token` is being typed, which only offers locks. Called
+   * while closed too (the lock clears on close), so a reopened dialog asks
+   * for what it shows.
+   */
+  onSearchChange: (search: {
+    query: string;
+    lock: CommandBarLock | null;
+  }) => void;
   onSelectJob: (tab: FilterTab, jobId: string) => void;
   /**
    * Close a still-open application as rejected, straight from a result row.
@@ -184,7 +208,10 @@ const RejectRowButton: React.FC<{
 );
 
 export const JobCommandBar: React.FC<JobCommandBarProps> = ({
-  jobs,
+  results,
+  searchFailed,
+  searchPending,
+  onSearchChange,
   onSelectJob,
   onMarkRejected,
   open,
@@ -237,15 +264,38 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
     { enabled },
   );
 
-  const deferredQuery = useDeferredValue(query);
-  const normalizedQuery = (jobs.length > 250 ? deferredQuery : query)
-    .trim()
-    .toLowerCase();
+  const leadingToken = extractLeadingAtToken(query);
+  const searchQuery = query.trim();
+  const normalizedQuery = searchQuery.toLowerCase();
+
+  useEffect(() => {
+    if (leadingToken !== null) return;
+    onSearchChange({ query: searchQuery, lock: activeLock });
+  }, [activeLock, leadingToken, onSearchChange, searchQuery]);
+
+  // The rows on screen may answer an earlier query or lock, or be a cached
+  // answer being asked again: they stay visible (no flicker per keystroke),
+  // but Enter does not select from them until a current answer lands, and an
+  // empty list says "Searching…" rather than "No jobs found.".
+  const answersCurrentSearch =
+    results !== null &&
+    results.query === searchQuery &&
+    results.lock === activeLock;
+  const isSearching = !answersCurrentSearch || searchPending;
 
   const scopedJobs = useMemo(() => {
-    if (!activeLock) return jobs;
-    return jobs.filter((job) => jobMatchesLock(job, activeLock));
-  }, [activeLock, jobs]);
+    // A leading `@token` offers locks only, as it always has.
+    if (leadingToken !== null || results === null) return [];
+    if (!activeLock) return results.jobs;
+    return results.jobs.filter((job) => jobMatchesLock(job, activeLock));
+  }, [activeLock, leadingToken, results]);
+
+  const showTruncationNote =
+    answersCurrentSearch &&
+    results !== null &&
+    scopedJobs.length > 0 &&
+    results.total > results.jobs.length;
+  const showFailureNote = searchFailed && scopedJobs.length > 0;
 
   const groupedJobs = useMemo(
     () => groupJobsForCommandBar(scopedJobs, normalizedQuery),
@@ -383,8 +433,8 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
       return;
     }
     // Through `applyLock`, so a half-typed `@ev` is consumed the same way the
-    // suggestion row consumes it — otherwise the token stays in the query and
-    // silently scores every row to zero.
+    // suggestion row consumes it — otherwise the token stays at the head of
+    // the query, which offers locks only, and no search goes out.
     applyLock("ever_applied");
   }, [activeLock, applyLock]);
 
@@ -473,6 +523,9 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
           );
           if (selectedRow) {
             event.preventDefault();
+            // A job row from a stale answer is not what the text now asks
+            // for. Lock suggestions are local and stay selectable.
+            if (selectedRow.optionKind === "job" && isSearching) return;
             selectRow(selectedRow);
           }
         }
@@ -606,7 +659,13 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
 
       {rows.length === 0 ? (
         <output className="block py-6 text-center text-sm" aria-live="polite">
-          No jobs found.
+          {leadingToken !== null
+            ? "No jobs found."
+            : searchFailed
+              ? "Search failed."
+              : isSearching
+                ? "Searching…"
+                : "No jobs found."}
         </output>
       ) : (
         <div
@@ -729,6 +788,17 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
             })}
           </div>
         </div>
+      )}
+      {showFailureNote && (
+        <p className="border-t px-3 py-1.5 text-[11px] text-muted-foreground">
+          Search failed. These are the previous results.
+        </p>
+      )}
+      {showTruncationNote && results && (
+        <p className="border-t px-3 py-1.5 text-[11px] text-muted-foreground">
+          Showing {results.jobs.length.toLocaleString()} of{" "}
+          {results.total.toLocaleString()} matches. Keep typing to narrow.
+        </p>
       )}
     </CommandDialog>
   );

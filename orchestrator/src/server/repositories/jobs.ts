@@ -25,6 +25,8 @@ import type {
   JobListItem,
   JobLocationEvidence,
   JobNote,
+  JobSearchLock,
+  JobSearchResponse,
   JobStatus,
   JobsRevisionResponse,
   SuitabilityCategory,
@@ -46,6 +48,7 @@ import {
   like,
   ne,
   or,
+  type SQL,
   sql,
 } from "drizzle-orm";
 import { db, schema } from "../db/index";
@@ -54,6 +57,7 @@ import {
   resolveSourceDisplayLabel,
 } from "../services/sources/display";
 import { deleteOrphanedJobPdfs } from "./job-pdfs";
+import { buildJobSearchPhrase } from "./job-search-phrase";
 import { getAllProviderInstances } from "./provider-instances";
 
 const {
@@ -129,60 +133,49 @@ export async function getAllJobs(statuses?: JobStatus[]): Promise<Job[]> {
   return rows.map(mapRowToJob);
 }
 
-/**
- * Get lightweight list items for jobs, optionally filtered by status.
- */
-export async function getJobListItems(
-  statuses?: JobStatus[],
-  employer?: string,
-): Promise<JobListItem[]> {
-  const selection = {
-    id: jobs.id,
-    source: jobs.source,
-    title: jobs.title,
-    employer: jobs.employer,
-    jobUrl: jobs.jobUrl,
-    applicationLink: jobs.applicationLink,
-    datePosted: jobs.datePosted,
-    deadline: jobs.deadline,
-    salary: jobs.salary,
-    location: jobs.location,
-    status: jobs.status,
-    outcome: jobs.outcome,
-    closedAt: jobs.closedAt,
-    profileId: jobs.profileId,
-    suitabilityCategory: jobs.suitabilityCategory,
-    tailoringFailureReason: jobs.tailoringFailureReason,
-    jobType: jobs.jobType,
-    jobFunction: jobs.jobFunction,
-    salaryMinAmount: jobs.salaryMinAmount,
-    salaryMaxAmount: jobs.salaryMaxAmount,
-    salaryCurrency: jobs.salaryCurrency,
-    repostedAt: jobs.repostedAt,
-    repostCount: jobs.repostCount,
-    liveClosed: jobs.liveClosed,
-    liveApplicants: jobs.liveApplicants,
-    liveEasyApply: jobs.liveEasyApply,
-    liveStatusCheckedAt: jobs.liveStatusCheckedAt,
-    discoveredAt: jobs.discoveredAt,
-    readyAt: jobs.readyAt,
-    appliedAt: jobs.appliedAt,
-    updatedAt: jobs.updatedAt,
-  } as const;
+// The columns a list row carries, shared by the jobs list and the ctrl+K
+// search so the two cannot answer with different shapes.
+const jobListItemSelection = {
+  id: jobs.id,
+  source: jobs.source,
+  title: jobs.title,
+  employer: jobs.employer,
+  jobUrl: jobs.jobUrl,
+  applicationLink: jobs.applicationLink,
+  datePosted: jobs.datePosted,
+  deadline: jobs.deadline,
+  salary: jobs.salary,
+  location: jobs.location,
+  status: jobs.status,
+  outcome: jobs.outcome,
+  closedAt: jobs.closedAt,
+  profileId: jobs.profileId,
+  suitabilityCategory: jobs.suitabilityCategory,
+  tailoringFailureReason: jobs.tailoringFailureReason,
+  jobType: jobs.jobType,
+  jobFunction: jobs.jobFunction,
+  salaryMinAmount: jobs.salaryMinAmount,
+  salaryMaxAmount: jobs.salaryMaxAmount,
+  salaryCurrency: jobs.salaryCurrency,
+  repostedAt: jobs.repostedAt,
+  repostCount: jobs.repostCount,
+  liveClosed: jobs.liveClosed,
+  liveApplicants: jobs.liveApplicants,
+  liveEasyApply: jobs.liveEasyApply,
+  liveStatusCheckedAt: jobs.liveStatusCheckedAt,
+  discoveredAt: jobs.discoveredAt,
+  readyAt: jobs.readyAt,
+  appliedAt: jobs.appliedAt,
+  updatedAt: jobs.updatedAt,
+} as const;
 
-  const conditions = [
-    statuses && statuses.length > 0
-      ? inArray(jobs.status, statuses)
-      : undefined,
-    employer ? sql`lower(${jobs.employer}) = lower(${employer})` : undefined,
-  ].filter(Boolean);
-  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+function selectJobListItemRows() {
+  return db.select(jobListItemSelection).from(jobs);
+}
 
-  const baseQuery = db.select(selection).from(jobs);
-  const rows = await (whereClause
-    ? baseQuery.where(whereClause).orderBy(desc(jobs.discoveredAt))
-    : baseQuery.orderBy(desc(jobs.discoveredAt)));
+type JobListItemRow = Awaited<ReturnType<typeof selectJobListItemRows>>[number];
 
+async function toJobListItems(rows: JobListItemRow[]): Promise<JobListItem[]> {
   // Resolve a human label for each row's source. Provider-instance sources
   // (`<provider>:<uuid>`) need the configured instances to map to the user's
   // display name; only load them when at least one such source is present.
@@ -202,6 +195,139 @@ export async function getJobListItems(
       providerInstances,
     }),
   }));
+}
+
+/**
+ * Get lightweight list items for jobs, optionally filtered by status.
+ */
+export async function getJobListItems(
+  statuses?: JobStatus[],
+  employer?: string,
+): Promise<JobListItem[]> {
+  const conditions = [
+    statuses && statuses.length > 0
+      ? inArray(jobs.status, statuses)
+      : undefined,
+    employer ? sql`lower(${jobs.employer}) = lower(${employer})` : undefined,
+  ].filter(Boolean);
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const baseQuery = selectJobListItemRows();
+  const rows = await (whereClause
+    ? baseQuery.where(whereClause).orderBy(desc(jobs.discoveredAt))
+    : baseQuery.orderBy(desc(jobs.discoveredAt)));
+
+  return toJobListItems(rows);
+}
+
+/**
+ * At most this many jobs answer one ctrl+K search. Each row is about 1 KB of
+ * JSON, every keystroke asks again, and the dialog shows roughly ten rows at a
+ * time, so a longer list is one a person narrows by typing rather than by
+ * scrolling; `total` tells the dialog how many more there are.
+ */
+export const JOB_SEARCH_RESULT_LIMIT = 200;
+
+// Each scope walks a date index newest first and probes the match set,
+// stopping at the limit. Left to itself the planner looks up every match
+// before sorting, which for a one-letter prefix is most of the table.
+function jobSearchScope(lock: JobSearchLock | null): {
+  index: string;
+  condition: SQL | undefined;
+} {
+  if (lock === null) {
+    return { index: "idx_jobs_discovered_at", condition: undefined };
+  }
+  if (lock === "ever_applied") {
+    // INDEXED BY a partial index needs a WHERE that implies its predicate.
+    return {
+      index: "idx_jobs_applied_discovered_at",
+      condition: sql`${jobs.appliedAt} IS NOT NULL`,
+    };
+  }
+  return {
+    index: "idx_jobs_status_discovered_at",
+    condition: sql`${jobs.status} = ${lock}`,
+  };
+}
+
+function jobSearchWhere(
+  scope: ReturnType<typeof jobSearchScope>,
+  match: string | null,
+): SQL {
+  const conditions: SQL[] = [];
+  if (scope.condition) conditions.push(scope.condition);
+  if (match !== null) {
+    conditions.push(
+      sql`${jobs}.rowid IN (SELECT rowid FROM jobs_search WHERE jobs_search MATCH ${match})`,
+    );
+  }
+  return conditions.length > 0
+    ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
+    : sql.empty();
+}
+
+async function pickJobSearchIds(
+  scope: ReturnType<typeof jobSearchScope>,
+  match: string | null,
+): Promise<string[]> {
+  const rows = await db.all<{ id: string }>(
+    sql`SELECT ${jobs.id} AS id FROM ${jobs} INDEXED BY ${sql.raw(scope.index)} ${jobSearchWhere(scope, match)} ORDER BY ${jobs.discoveredAt} DESC LIMIT ${JOB_SEARCH_RESULT_LIMIT}`,
+  );
+  return rows.map((row) => row.id);
+}
+
+async function countJobSearchMatches(
+  scope: ReturnType<typeof jobSearchScope>,
+  match: string | null,
+): Promise<number> {
+  const [row] = await db.all<{ total: number }>(
+    sql`SELECT count(*) AS total FROM ${jobs} INDEXED BY ${sql.raw(scope.index)} ${jobSearchWhere(scope, match)}`,
+  );
+  return row?.total ?? 0;
+}
+
+/**
+ * The ctrl+K search: jobs whose title, employer or location holds the typed
+ * text as a phrase at word starts, narrowed by an optional lock.
+ *
+ * Rows where the last word was typed in full come first, then the newest of
+ * the rest, up to JOB_SEARCH_RESULT_LIMIT; `total` counts every match. Without
+ * the exact pass, a short word ("sap") could lose its own rows to the newest
+ * of the longer words it prefixes. An empty query lists the newest jobs.
+ */
+export async function searchJobListItems(args: {
+  query: string;
+  lock: JobSearchLock | null;
+}): Promise<JobSearchResponse> {
+  const scope = jobSearchScope(args.lock);
+  let ids: string[];
+  let total: number;
+
+  if (args.query.trim() === "") {
+    ids = await pickJobSearchIds(scope, null);
+    total = await countJobSearchMatches(scope, null);
+  } else {
+    const phrase = buildJobSearchPhrase(args.query);
+    if (phrase === null) return { jobs: [], total: 0 };
+    const prefix = `${phrase}*`;
+    const exactIds = await pickJobSearchIds(scope, phrase);
+    const prefixIds =
+      exactIds.length < JOB_SEARCH_RESULT_LIMIT
+        ? await pickJobSearchIds(scope, prefix)
+        : [];
+    ids = [...new Set([...exactIds, ...prefixIds])].slice(
+      0,
+      JOB_SEARCH_RESULT_LIMIT,
+    );
+    total = await countJobSearchMatches(scope, prefix);
+  }
+
+  if (ids.length === 0) return { jobs: [], total };
+  const rows = await selectJobListItemRows().where(inArray(jobs.id, ids));
+  const order = new Map(ids.map((id, index) => [id, index]));
+  rows.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+  return { jobs: await toJobListItems(rows), total };
 }
 
 // Statuses the user is actively triaging — duplicate detection is scoped here

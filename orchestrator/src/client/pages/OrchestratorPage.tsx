@@ -12,7 +12,7 @@ import { useSettings } from "@client/hooks/useSettings";
 import { toast } from "@client/lib/toast";
 import { restoreJobStates, snapshotJob } from "@client/lib/undo";
 import type { JobListItem } from "@shared/types.js";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -27,6 +27,7 @@ import { ClosedFilterChips } from "./orchestrator/ClosedFilterChips";
 import { CompanyInFlightDialog } from "./orchestrator/CompanyInFlightDialog";
 import { CompanyJobsDialog } from "./orchestrator/CompanyJobsDialog";
 import { CompanyPanelProvider } from "./orchestrator/CompanyPanelContext";
+import { ConnectedJobCommandBar } from "./orchestrator/ConnectedJobCommandBar";
 import {
   FACET_TABS,
   FILTER_BAR_TABS,
@@ -43,7 +44,6 @@ import { DuplicateReviewModal } from "./orchestrator/DuplicateReviewModal";
 import { FacetBar } from "./orchestrator/FacetBar";
 import { FloatingJobActionsBar } from "./orchestrator/FloatingJobActionsBar";
 import type { ActiveFacet } from "./orchestrator/facets/registry";
-import { JobCommandBar } from "./orchestrator/JobCommandBar";
 import { JobDetailPanel } from "./orchestrator/JobDetailPanel";
 import { JobFilterBar } from "./orchestrator/JobFilterBar";
 import { JobListPanel } from "./orchestrator/JobListPanel";
@@ -306,17 +306,6 @@ export const OrchestratorPage: React.FC = () => {
     [settings],
   );
 
-  // The command bar searches "across all states", while the tab list is now
-  // scoped — so it lazily fetches the unscoped list itself, only once the
-  // dialog opens, falling back to the scoped rows while that loads.
-  const { data: commandBarData } = useQuery({
-    queryKey: queryKeys.jobs.list({ view: "list" }),
-    queryFn: () => api.getJobs({ view: "list" }),
-    enabled: isCommandBarOpen,
-    staleTime: 30_000,
-  });
-  const commandBarJobs = commandBarData?.jobs ?? jobs;
-
   const undoController = useUndoController(loadJobs);
   const queryClient = useQueryClient();
 
@@ -327,9 +316,10 @@ export const OrchestratorPage: React.FC = () => {
    * `JobCommandBar`, which owns that half.
    *
    * Undoable like every other triage move, and it invalidates the command
-   * bar's OWN unscoped list as well as reloading the tab's: that query is what
-   * the dialog is reading, and without the invalidation the row it just closed
-   * would sit there still offering the button for up to its 30s staleTime.
+   * bar's OWN searches as well as reloading the tab's: those are what the
+   * dialog is reading, and without the invalidation the row it just closed
+   * would sit there still offering the button until the search is next asked
+   * for.
    */
   const handleCommandMarkRejected = useCallback(
     async (job: JobListItem) => {
@@ -354,7 +344,7 @@ export const OrchestratorPage: React.FC = () => {
       }
       await loadJobs();
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.jobs.list({ view: "list" }),
+        queryKey: [...queryKeys.jobs.all, "search"] as const,
       });
     },
     [loadJobs, queryClient, undoController],
@@ -867,8 +857,7 @@ export const OrchestratorPage: React.FC = () => {
           >
             {/* Main content: tabs/filters -> list/detail */}
             <section className="space-y-4 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
-              <JobCommandBar
-                jobs={commandBarJobs}
+              <ConnectedJobCommandBar
                 onSelectJob={handleCommandSelectJob}
                 onMarkRejected={handleCommandMarkRejected}
                 open={isCommandBarOpen}

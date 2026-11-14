@@ -9,8 +9,10 @@ import {
   screen,
   within,
 } from "@testing-library/react";
+import { useCallback, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { JobCommandBar } from "./JobCommandBar";
+import { JobCommandBar, type JobCommandBarResults } from "./JobCommandBar";
+import { type CommandBarLock, jobMatchesLock } from "./JobCommandBar.utils";
 
 const APPLIED_AT = "2025-03-01T00:00:00Z";
 
@@ -83,18 +85,94 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const renderBar = () => {
-  render(
-    <JobCommandBar
-      jobs={jobs}
-      onSelectJob={vi.fn()}
-      open
-      onOpenChange={vi.fn()}
-    />,
-  );
+type Search = { query: string; lock: CommandBarLock | null };
+
+// What the page's search query would answer, computed from a fixture. The
+// matcher is deliberately crude (a substring of title or employer): the real
+// matching is the server's full-text index, tested in the repository.
+const answer = (
+  fixture: JobListItem[],
+  search: Search,
+): JobCommandBarResults => {
+  const needle = search.query.toLowerCase();
+  const matched = fixture
+    .filter((job) => (search.lock ? jobMatchesLock(job, search.lock) : true))
+    .filter(
+      (job) =>
+        !needle ||
+        `${job.title} ${job.employer}`.toLowerCase().includes(needle),
+    );
+  return { ...search, jobs: matched, total: matched.length };
+};
+
+// Stands in for the page: records every search the bar asks for and answers
+// it from the fixture, either at once or only when the test calls `respond`;
+// `fail`, `pend` and `close` drive the other things the page can do to it.
+const renderBar = (
+  options: {
+    fixture?: JobListItem[];
+    answers?: "at-once" | "on-demand";
+    onMarkRejected?: (job: JobListItem) => void | Promise<void>;
+  } = {},
+) => {
+  const fixture = options.fixture ?? jobs;
+  const searches: Search[] = [];
+  const onSelectJob = vi.fn();
+  const onOpenChange = vi.fn();
+  const control: {
+    setResults?: (results: JobCommandBarResults) => void;
+    setFailed?: (failed: boolean) => void;
+    setPending?: (pending: boolean) => void;
+    setOpen?: (open: boolean) => void;
+  } = {};
+
+  const Page = () => {
+    const [results, setResults] = useState<JobCommandBarResults | null>(null);
+    const [failed, setFailed] = useState(false);
+    const [pending, setPending] = useState(false);
+    const [open, setOpen] = useState(true);
+    control.setResults = setResults;
+    control.setFailed = setFailed;
+    control.setPending = setPending;
+    control.setOpen = setOpen;
+    const onSearchChange = useCallback((search: Search) => {
+      searches.push(search);
+      if (options.answers !== "on-demand") {
+        setResults(answer(fixture, search));
+      }
+    }, []);
+    return (
+      <JobCommandBar
+        results={results}
+        searchFailed={failed}
+        searchPending={pending}
+        onSearchChange={onSearchChange}
+        onSelectJob={onSelectJob}
+        onMarkRejected={options.onMarkRejected}
+        open={open}
+        onOpenChange={onOpenChange}
+      />
+    );
+  };
+
+  render(<Page />);
   return {
     input: screen.getByRole("combobox"),
     results: () => screen.getByRole("listbox", { name: "Job search results" }),
+    searches,
+    onSelectJob,
+    onOpenChange,
+    /** Answer the newest search, or hand over a prepared answer. */
+    respond: (prepared?: JobCommandBarResults) => {
+      const latest = searches.at(-1);
+      if (!latest && !prepared) throw new Error("nothing was searched");
+      act(() => {
+        control.setResults?.(prepared ?? answer(fixture, latest as Search));
+      });
+    },
+    fail: () => act(() => control.setFailed?.(true)),
+    pend: (pending: boolean) => act(() => control.setPending?.(pending)),
+    close: () => act(() => control.setOpen?.(false)),
   };
 };
 
@@ -128,21 +206,26 @@ describe("JobCommandBar", () => {
   });
 
   it("consumes the token so the rest of the query still searches", () => {
-    const { input, results } = renderBar();
+    const { input, results, searches } = renderBar();
 
     fireEvent.change(input, { target: { value: "@ever rejected" } });
     fireEvent.keyDown(input, { key: "Tab" });
 
     expect(input).toHaveValue("rejected");
+    expect(searches.at(-1)).toEqual({
+      query: "rejected",
+      lock: "ever_applied",
+    });
     const listed = within(results());
     expect(listed.getByText("Applied Rejected Role")).toBeInTheDocument();
     expect(listed.queryByText("Applied Live Role")).not.toBeInTheDocument();
   });
 
   it("keeps @applied meaning the status, so the two locks stay distinct", () => {
-    const { input, results } = renderBar();
+    const { input, results, searches } = renderBar();
 
     lockTo(input, "@applied");
+    expect(searches.at(-1)).toEqual({ query: "", lock: "applied" });
 
     const listed = within(results());
     expect(listed.getByText("Applied Live Role")).toBeInTheDocument();
@@ -240,15 +323,16 @@ describe("JobCommandBar", () => {
     ).toBeInTheDocument();
   });
 
-  it("consumes a half-typed token so the button's filter is not scored away", () => {
-    // Without the strip the query keeps "@ev", which scores every row below
-    // the relevance floor — the button would appear to filter to nothing.
-    const { input, results } = renderBar();
+  it("consumes a half-typed token so the button's filter still searches", () => {
+    // Without the strip the box keeps a leading "@ev", which offers locks
+    // only — no search goes out and the button appears to filter to nothing.
+    const { input, results, searches } = renderBar();
 
     fireEvent.change(input, { target: { value: "@ev" } });
     fireEvent.click(screen.getByRole("button", { name: "Ever applied" }));
 
     expect(input).toHaveValue("");
+    expect(searches.at(-1)).toEqual({ query: "", lock: "ever_applied" });
     expect(
       within(results()).getByText("Applied Rejected Role"),
     ).toBeInTheDocument();
@@ -285,14 +369,7 @@ describe("JobCommandBar", () => {
     // The button row renders ABOVE the empty-state branch on purpose: a filter
     // that matches nothing must still be releasable, or the dialog is a dead
     // end with no visible way back.
-    render(
-      <JobCommandBar
-        jobs={[jobs[3], jobs[4]]}
-        onSelectJob={vi.fn()}
-        open
-        onOpenChange={vi.fn()}
-      />,
-    );
+    renderBar({ fixture: [jobs[3], jobs[4]] });
 
     const button = screen.getAllByRole("button", { name: "Ever applied" })[0];
     fireEvent.click(button);
@@ -344,32 +421,18 @@ describe("JobCommandBar rejection button", () => {
     }),
   ];
 
-  // Mounting WITHOUT the prop is a case of its own and renders directly; this
-  // helper is the mounted-with-a-handler shape, whose body a caller can swap
-  // (for one that never settles, say).
+  // Mounting WITHOUT the prop is a case of its own; this helper is the
+  // mounted-with-a-handler shape, whose body a caller can swap (for one that
+  // never settles, say).
   const renderWithReject = (
     implementation: (job: JobListItem) => void | Promise<void> = () =>
       Promise.resolve(),
   ) => {
     const onMarkRejected = vi.fn(implementation);
-    const onSelectJob = vi.fn();
-    const onOpenChange = vi.fn();
-    render(
-      <JobCommandBar
-        jobs={openApplications}
-        onSelectJob={onSelectJob}
-        onMarkRejected={onMarkRejected}
-        open
-        onOpenChange={onOpenChange}
-      />,
-    );
+    const bar = renderBar({ fixture: openApplications, onMarkRejected });
     return {
+      ...bar,
       onMarkRejected,
-      onSelectJob,
-      onOpenChange,
-      input: screen.getByRole("combobox"),
-      results: () =>
-        screen.getByRole("listbox", { name: "Job search results" }),
       rejectButtons: () =>
         screen.queryAllByRole("button", { name: /^Mark .* rejected$/ }),
     };
@@ -413,10 +476,7 @@ describe("JobCommandBar rejection button", () => {
   });
 
   it("does not render a button a mount cannot service", () => {
-    const onSelectJob = vi.fn();
-    render(
-      <JobCommandBar jobs={openApplications} onSelectJob={onSelectJob} open />,
-    );
+    renderBar({ fixture: openApplications });
 
     fireEvent.click(screen.getAllByRole("button", { name: "Ever applied" })[0]);
 
@@ -520,5 +580,139 @@ describe("JobCommandBar rejection button", () => {
 
     expect(button).toBeDisabled();
     expect(onMarkRejected).toHaveBeenCalledTimes(1);
+  });
+});
+
+// The search runs on the server, so the rows on screen can answer an earlier
+// text or lock while the current one is in flight.
+describe("JobCommandBar and the server's answers", () => {
+  it("asks for nothing while a leading @token is typed, and lists only locks", () => {
+    const { input, results, searches } = renderBar();
+    const asked = searches.length;
+
+    fireEvent.change(input, { target: { value: "@ev" } });
+
+    expect(searches).toHaveLength(asked);
+    const options = within(results()).getAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual([
+      "Lock to @ever-applied",
+    ]);
+  });
+
+  it("says it is searching, not that nothing matched, before the first answer", () => {
+    const { respond } = renderBar({ fixture: [], answers: "on-demand" });
+
+    expect(screen.getByText("Searching…")).toBeInTheDocument();
+    expect(screen.queryByText("No jobs found.")).not.toBeInTheDocument();
+
+    respond();
+
+    expect(screen.getByText("No jobs found.")).toBeInTheDocument();
+  });
+
+  it("keeps the previous rows on screen but selects nothing from them on Enter", () => {
+    const { input, results, respond, onSelectJob } = renderBar({
+      answers: "on-demand",
+    });
+    respond();
+
+    fireEvent.change(input, { target: { value: "Live" } });
+    expect(
+      within(results()).getByText("Untouched Ready Role"),
+    ).toBeInTheDocument();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onSelectJob).not.toHaveBeenCalled();
+
+    respond();
+    expect(
+      within(results()).queryByText("Untouched Ready Role"),
+    ).not.toBeInTheDocument();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onSelectJob).toHaveBeenCalledWith("live", "live");
+  });
+
+  // A reopen shows the cached answer for the same text while asking again;
+  // the job in it may have moved since, so Enter waits for the new answer.
+  it("selects nothing from a current answer while it is being asked again", () => {
+    const { input, respond, pend, onSelectJob } = renderBar({
+      answers: "on-demand",
+    });
+    fireEvent.change(input, { target: { value: "Live" } });
+    respond();
+
+    pend(true);
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onSelectJob).not.toHaveBeenCalled();
+
+    pend(false);
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onSelectJob).toHaveBeenCalledWith("live", "live");
+  });
+
+  it("still applies a lock suggestion on Enter while a search is pending", () => {
+    const { input } = renderBar({ answers: "on-demand" });
+
+    fireEvent.change(input, { target: { value: "@" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(screen.getByText("@ready")).toBeInTheDocument();
+  });
+
+  it("says how many matches the answer left out, for the answer on screen only", () => {
+    const { input, respond } = renderBar({ answers: "on-demand" });
+    respond({ query: "", lock: null, jobs: jobs.slice(0, 2), total: 1234 });
+
+    expect(
+      screen.getByText("Showing 2 of 1,234 matches. Keep typing to narrow."),
+    ).toBeInTheDocument();
+
+    fireEvent.change(input, { target: { value: "Live" } });
+    expect(screen.queryByText(/^Showing /)).not.toBeInTheDocument();
+  });
+
+  it("says the search failed, keeping the rows it already had", () => {
+    const { input, results, respond, fail, onSelectJob } = renderBar({
+      answers: "on-demand",
+    });
+    respond();
+    fireEvent.change(input, { target: { value: "Live" } });
+
+    fail();
+
+    expect(
+      screen.getByText("Search failed. These are the previous results."),
+    ).toBeInTheDocument();
+    expect(
+      within(results()).getByText("Untouched Ready Role"),
+    ).toBeInTheDocument();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onSelectJob).not.toHaveBeenCalled();
+  });
+
+  it("says the search failed, not that it is still searching, when it has nothing", () => {
+    const { fail } = renderBar({ answers: "on-demand" });
+
+    fail();
+
+    expect(screen.getByText("Search failed.")).toBeInTheDocument();
+    expect(screen.queryByText("Searching…")).not.toBeInTheDocument();
+  });
+
+  // The lock clears on close; the page has to hear that while the dialog is
+  // closed, or a reopened dialog first fetches and shows the old lock's rows.
+  it("reports the cleared lock when the dialog closes", () => {
+    const { input, searches, close } = renderBar();
+    lockTo(input, "@applied");
+    expect(searches.at(-1)).toEqual({ query: "", lock: "applied" });
+
+    close();
+
+    expect(searches.at(-1)).toEqual({ query: "", lock: null });
+  });
+
+  it("says nothing about left-out matches when there are none", () => {
+    renderBar();
+
+    expect(screen.queryByText(/^Showing /)).not.toBeInTheDocument();
   });
 });

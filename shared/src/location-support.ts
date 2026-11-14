@@ -13,7 +13,7 @@ const COUNTRY_ALIASES: Record<string, string> = {
 // which is the invariant `pronounUsIndices` depends on (see foldDiacritics).
 // `ı` deliberately has no uppercase entry: it uppercases to plain ASCII "I",
 // which needs no folding.
-const STANDALONE_LETTER_FOLDS: Record<string, string> = {
+export const STANDALONE_LETTER_FOLDS: Readonly<Record<string, string>> = {
   ß: "ss",
   ẞ: "SS",
   æ: "ae",
@@ -50,13 +50,31 @@ const STANDALONE_LETTER_PATTERN = new RegExp(
   "gu",
 );
 
+function foldStandaloneLetter(letter: string): string {
+  return STANDALONE_LETTER_FOLDS[letter];
+}
+
+/**
+ * Only the letters NFD cannot reach (ß→ss, ø→o, ł→l, …), and nothing else.
+ *
+ * The job-search index (`jobs_search`, built in `db/migrate.ts`) applies this
+ * same fold in SQL and leaves the decomposable accents to SQLite's tokenizer,
+ * so a query passed through here meets the indexed text on identical terms.
+ */
+export function foldStandaloneLetters(value: string): string {
+  return value.replace(STANDALONE_LETTER_PATTERN, foldStandaloneLetter);
+}
+
 /**
  * Drop diacritics from place text so one spelling of a name matches another:
  * "Málaga" and "Malaga", "Zürich" and "Zurich", "Kraków" and "Krakow".
  *
  * This is the ONE place that decision is made for the app's own LOCATION
  * matching — the pipeline's filter, the remote blocklist, and the two search
- * surfaces that read `job.location` (the Manage facets and the command bar).
+ * surfaces that read `job.location` (the Manage facets, and the command bar's
+ * ordering). Which rows the command bar returns is decided by its full-text
+ * index instead (`jobs_search` in db/migrate.ts), which folds with
+ * `foldStandaloneLetters` plus SQLite's own accent stripping.
  * Three things deliberately stay outside it: `trailingCountryCode` /
  * `hasTrailingRegionCode`, which test ISO alpha-2 and are ASCII by
  * construction; `extractors/hiringcafe/src/country-map.ts`, which carries its
@@ -96,10 +114,7 @@ export function foldDiacritics(value: string): string {
       // (they squash non-ASCII anyway) but observable through the exported
       // normalizeLocationToken.
       .replace(/[\u0300-\u036f]/g, "")
-      .replace(
-        STANDALONE_LETTER_PATTERN,
-        (letter) => STANDALONE_LETTER_FOLDS[letter],
-      )
+      .replace(STANDALONE_LETTER_PATTERN, foldStandaloneLetter)
       // Back to composed form. Without this the function returns DECOMPOSED
       // text for everything it did not fold — canonically equal to the input
       // but not string-equal to it, which matters because normalizeLocationToken

@@ -1,4 +1,4 @@
-import type { JobStatus } from "@shared/types";
+import type { JobSearchLock, JobStatus } from "@shared/types";
 
 export const queryKeys = {
   stats: {
@@ -41,6 +41,8 @@ export const queryKeys = {
       [...queryKeys.jobs.all, "list", options ?? {}] as const,
     revision: (options?: { statuses?: JobStatus[] }) =>
       [...queryKeys.jobs.all, "revision", options ?? {}] as const,
+    search: (options: { query: string; lock: JobSearchLock | null }) =>
+      [...queryKeys.jobs.all, "search", options] as const,
     duplicates: () => [...queryKeys.jobs.all, "duplicates"] as const,
     byCompany: (employer: string) =>
       [...queryKeys.jobs.all, "by-company", employer] as const,

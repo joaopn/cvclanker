@@ -321,6 +321,27 @@ export type JobListItem = Pick<
   sourceLabel?: string;
 };
 
+/**
+ * The narrowings the ctrl+K search can hold. Five name a job status;
+ * `ever_applied` reads the permanent `appliedAt` mark instead.
+ */
+export const JOB_SEARCH_LOCKS = [
+  "ready",
+  "discovered",
+  "applied",
+  "in_progress",
+  "skipped",
+  "ever_applied",
+] as const;
+
+export type JobSearchLock = (typeof JOB_SEARCH_LOCKS)[number];
+
+export interface JobSearchResponse {
+  jobs: JobListItem[];
+  /** Every match, of which `jobs` carries at most the server's result limit. */
+  total: number;
+}
+
 // A cluster of active-triage jobs the board itself lists under one posting id.
 export interface DuplicateJobGroup {
   /** `<board>:<id>` — globally unique, and what the modal keys its keeper on. */

@@ -14,6 +14,7 @@ import {
 import { basename, dirname, isAbsolute, join } from "node:path";
 import Database from "better-sqlite3";
 import { getDataDir } from "../config/dataDir";
+import { JOBS_SEARCH_LETTER_FOLDS } from "./jobs-search-folds";
 
 const DB_PATH = join(getDataDir(), "jobs.db");
 
@@ -517,6 +518,8 @@ const postRebuildMigrations: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_job_chat_runs_thread_status ON job_chat_runs(thread_id, status)`,
   `CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires_at ON auth_sessions(expires_at)`,
   `CREATE INDEX IF NOT EXISTS idx_auth_sessions_revoked_at ON auth_sessions(revoked_at)`,
+  // The ctrl+K search's @ever-applied lock walks this instead of every row.
+  `CREATE INDEX IF NOT EXISTS idx_jobs_applied_discovered_at ON jobs(discovered_at) WHERE applied_at IS NOT NULL`,
 
   // Backfill duplicate-running-runs guard rail.
   `WITH ranked AS (
@@ -746,6 +749,51 @@ const postRebuildMigrations: string[] = [
   `DELETE FROM prompts WHERE name = 'cv-extract'`,
 ];
 
+// The ctrl+K job search index: a contentless FTS5 table over title, employer
+// and location, keyed by `jobs.rowid` and kept in step by triggers.
+//
+// Dropped and rebuilt from `jobs` on every boot. That is what keeps the rowid
+// key honest: the guarded jobs rebuild above renumbers rowids and drops the
+// triggers with the table, and a restored backup or a profile swap comes back
+// through a boot too. It also means a change to the definition, the tokenizer
+// or the fold reaches every database, where `IF NOT EXISTS` would freeze the
+// first one ever created.
+//
+// unicode61 strips the accents NFD can decompose (á, ü, é); the letters it
+// cannot reach are folded first, by JOBS_SEARCH_LETTER_FOLDS.
+function jobsSearchFold(column: string): string {
+  return Object.entries(JOBS_SEARCH_LETTER_FOLDS).reduce(
+    (expression, [letter, folded]) =>
+      `replace(${expression}, '${letter}', '${folded}')`,
+    column,
+  );
+}
+
+function jobsSearchRow(prefix: string): string {
+  return ["title", "employer", "location"]
+    .map((column) => jobsSearchFold(`${prefix}${column}`))
+    .join(", ");
+}
+
+const jobsSearchIndex: string[] = [
+  `DROP TRIGGER IF EXISTS jobs_search_ai`,
+  `DROP TRIGGER IF EXISTS jobs_search_ad`,
+  `DROP TRIGGER IF EXISTS jobs_search_au`,
+  `DROP TABLE IF EXISTS jobs_search`,
+  `CREATE VIRTUAL TABLE jobs_search USING fts5(title, employer, location, content='', contentless_delete=1, tokenize='unicode61 remove_diacritics 2')`,
+  `INSERT INTO jobs_search(rowid, title, employer, location) SELECT rowid, ${jobsSearchRow("")} FROM jobs`,
+  `CREATE TRIGGER jobs_search_ai AFTER INSERT ON jobs BEGIN
+    INSERT INTO jobs_search(rowid, title, employer, location) VALUES (new.rowid, ${jobsSearchRow("new.")});
+  END`,
+  `CREATE TRIGGER jobs_search_ad AFTER DELETE ON jobs BEGIN
+    DELETE FROM jobs_search WHERE rowid = old.rowid;
+  END`,
+  `CREATE TRIGGER jobs_search_au AFTER UPDATE OF title, employer, location ON jobs BEGIN
+    DELETE FROM jobs_search WHERE rowid = old.rowid;
+    INSERT INTO jobs_search(rowid, title, employer, location) VALUES (new.rowid, ${jobsSearchRow("new.")});
+  END`,
+];
+
 function runMigrations(statements: string[]) {
   for (const migration of statements) {
     try {
@@ -789,6 +837,7 @@ if (
 }
 
 runMigrations(postRebuildMigrations);
+runMigrations(jobsSearchIndex);
 
 // Source-configs migration + backfill.
 //
