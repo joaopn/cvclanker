@@ -1,5 +1,6 @@
 import { logger } from "@infra/logger";
 import { type Browser, type BrowserContext, chromium } from "playwright";
+import { bundlePathForUrl, urlForBundlePath } from "./bundle-url";
 
 // HTML→PDF for the HTML-CV substrate (the run-tectonic.ts / convert-docx-pdf.ts
 // analog), through one lazily launched headless Chromium shared by every
@@ -41,8 +42,6 @@ const VIEWPORT = { width: 720, height: 1049 };
 // convert-docx-pdf's budget: a longer one only keeps a wedged browser alive
 // longer.
 const DEFAULT_TIMEOUT_MS = 60_000;
-
-const ORIGIN_HOST = "cv.invalid";
 
 const LAUNCH_ARGS = [
   "--host-resolver-rules=MAP * ~NOTFOUND",
@@ -167,7 +166,7 @@ export async function renderHtmlToPdf(
     });
     await context.route("**/*", (route) => {
       const url = route.request().url();
-      const path = bundlePath(url);
+      const path = bundlePathForUrl(url);
       const body = path === null ? undefined : args.files.get(path);
       if (path === null || body === undefined) {
         unanswered.push(url);
@@ -181,7 +180,7 @@ export async function renderHtmlToPdf(
     });
     const page = await context.newPage();
     await page.emulateMedia({ media: "print" });
-    await page.goto(`http://${ORIGIN_HOST}/${encodePath(args.entry)}`, {
+    await page.goto(urlForBundlePath(args.entry), {
       waitUntil: "load",
       timeout: 0,
     });
@@ -255,26 +254,6 @@ export async function renderHtmlToPdf(
       await context?.close().catch(() => undefined);
     }
   }
-}
-
-/** The bundle path a request URL names, or null when it is off-origin. */
-function bundlePath(url: string): string | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return null;
-  }
-  if (parsed.hostname !== ORIGIN_HOST) return null;
-  try {
-    return decodeURIComponent(parsed.pathname).replace(/^\/+/, "");
-  } catch {
-    return null;
-  }
-}
-
-function encodePath(path: string): string {
-  return path.split("/").map(encodeURIComponent).join("/");
 }
 
 function contentTypeFor(path: string): string {
