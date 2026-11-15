@@ -41,6 +41,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fontconfig python3-uno && \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
+# Chromium's runtime libraries (the headless-shell binary itself is installed
+# by Playwright in node-deps) + the colour emoji font, for HTML-CV rendering.
+# Listed by hand rather than via `playwright install-deps`, which also pulls
+# xvfb and the font packages fonts-unifont, xfonts-scalable,
+# fonts-ipafont-gothic, fonts-wqy-zenhei, fonts-tlwg-loma-otf and
+# fonts-freefont-ttf (and fonts-liberation, already installed above); those
+# would become global to fontconfig and could change LibreOffice's glyph
+# fallback for Word CVs.
+# Lives in runtime-base so the tools image and production both get it.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libasound2 libatk-bridge2.0-0 libatk1.0-0 libatspi2.0-0 libcairo2 \
+    libcups2 libdbus-1-3 libdrm2 libgbm1 libglib2.0-0 libnspr4 libnss3 \
+    libpango-1.0-0 libx11-6 libxcb1 libxcomposite1 libxdamage1 libxext6 \
+    libxfixes3 libxkbcommon0 libxrandr2 libfontconfig1 libfreetype6 \
+    fonts-noto-color-emoji && \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+
 # unoserver wraps the LibreOffice UNO API in a long-lived conversion daemon.
 # Cold `soffice --convert-to` is NOT a viable fallback: real-world CVs can
 # hang it indefinitely while converting fine through the daemon (W1 finding).
@@ -98,15 +115,21 @@ RUN --mount=type=cache,target=/root/.npm \
     --no-audit --no-fund --progress=false
 
 # Install the Firefox revision that the Node Playwright package version
-# expects, alongside the Python-installed Firefox that already lives in
-# /ms-playwright. The revisions live in disjoint firefox-<N>/ subdirs so
-# neither overwrites the other. Needed because orchestrator's manual-fetch
-# tier-2 fallback calls firefox.launch() without an explicit executablePath.
+# expects (python-deps installs its own, in a disjoint firefox-<N>/ subdir).
+# Needed because Hiring Cafe's fallback, when its first page load under
+# Camoufox fails, calls firefox.launch() without an explicit executablePath;
+# manual job import launches Camoufox itself.
 RUN npx playwright install firefox
 
 # Fetch Camoufox binaries before copying source to keep the download cached.
 # Anonymous GitHub fetch — no token plumbing into the build by design.
 RUN node ./scripts/camoufox-fetch.mjs
+
+# Chromium headless shell for HTML-CV rendering (services/cv/html). Its system
+# libraries come from runtime-base; --with-deps here would reach the tools
+# image but not production, which takes only /ms-playwright and Camoufox's
+# cache from this stage, never its system packages.
+RUN npx playwright install chromium-headless-shell
 
 FROM node-deps AS build-sources
 
@@ -177,9 +200,11 @@ FROM runtime-node-deps AS production
 COPY --from=tectonic /usr/local/bin/tectonic /usr/local/bin/tectonic
 COPY --from=python-deps /usr/local/lib/python3.11/dist-packages /usr/local/lib/python3.11/dist-packages
 COPY --from=python-deps /ms-playwright /ms-playwright
-# Node-installed Firefox revision (manual-fetch tier-2 fallback). Sits in a
-# disjoint firefox-<rev>/ subdir from python-deps' install above, so this
-# COPY adds the Node revision without overwriting Python's.
+# Node Playwright's browsers: its Firefox revision (Hiring Cafe's fallback when
+# its first page load under Camoufox fails) and Chromium headless shell
+# (HTML-CV rendering).
+# They sit in their own subdirs, disjoint from python-deps' Firefox above, so
+# this COPY adds them without overwriting it.
 COPY --from=node-deps /ms-playwright /ms-playwright
 COPY --from=node-deps /root/.cache/camoufox /root/.cache/camoufox
 
