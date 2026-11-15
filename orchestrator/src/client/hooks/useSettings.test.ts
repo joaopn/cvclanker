@@ -27,6 +27,11 @@ describe("useSettings", () => {
         default: true,
         override: false,
       },
+      candidateName: {
+        value: "Jane Q. Doe",
+        default: null,
+        override: "Jane Q. Doe",
+      },
     });
     vi.mocked(api.getSettings).mockResolvedValue(mockSettings);
 
@@ -41,6 +46,7 @@ describe("useSettings", () => {
 
     expect(result.current.companyInFlightCheckEnabled).toBe(true);
     expect(result.current.renderMarkdownInJobDescriptions).toBe(false);
+    expect(result.current.candidateName).toBe("Jane Q. Doe");
     expect(api.getSettings).toHaveBeenCalledTimes(1);
   });
 
@@ -53,6 +59,7 @@ describe("useSettings", () => {
       // settings is null, so every flag falls back to its default
       expect(result.current.companyInFlightCheckEnabled).toBe(false);
       expect(result.current.renderMarkdownInJobDescriptions).toBe(true);
+      expect(result.current.candidateName).toBeNull();
     });
   });
 

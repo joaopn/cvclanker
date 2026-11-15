@@ -32,6 +32,12 @@ function parseIntOrNull(raw: string | undefined): number | null {
 // to 100 on 2026-08-10.
 export const MAX_POOL_CONCURRENCY = 100;
 
+// The candidate's full name, read only to name downloaded CVs and cover
+// letters. A file name is capped at 255 characters on common filesystems (the
+// generated name is ASCII), and the name has to leave room for the document
+// type, the company and the extension.
+export const CANDIDATE_NAME_MAX_CHARS = 100;
+
 // The most rows one pipeline run may re-check against LinkedIn. Its job is the
 // same as MAX_POOL_CONCURRENCY's — blast containment, not tuning — because
 // every row is a request to LinkedIn from the user's own IP and the requests
@@ -382,6 +388,14 @@ export const settingsRegistry = {
     default: (): boolean => false,
     parse: parseBitBoolOrNull,
     serialize: serializeBitBool,
+  },
+  candidateName: {
+    kind: "typed" as const,
+    schema: z.string().trim().max(CANDIDATE_NAME_MAX_CHARS),
+    default: (): string | null => null,
+    parse: parseNonEmptyStringOrNull,
+    serialize: (value: string | null | undefined): string | null =>
+      value ?? null,
   },
   chatStyleTone: {
     kind: "typed" as const,

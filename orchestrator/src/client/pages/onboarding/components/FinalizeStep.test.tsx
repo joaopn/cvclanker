@@ -16,17 +16,20 @@ afterEach(() => {
 
 function renderStep(overrides?: {
   basicAuthChoice?: "enable" | "skip" | null;
+  candidateName?: string;
 }) {
   const handlers = {
     onBasicAuthChoiceChange: vi.fn(),
     onBasicAuthPasswordChange: vi.fn(),
     onBasicAuthUserChange: vi.fn(),
+    onCandidateNameChange: vi.fn(),
   };
   render(
     <FinalizeStep
       basicAuthChoice={overrides?.basicAuthChoice ?? "skip"}
       basicAuthPassword=""
       basicAuthUser=""
+      candidateName={overrides?.candidateName ?? ""}
       isBusy={false}
       {...handlers}
     />,
@@ -49,6 +52,30 @@ describe("FinalizeStep", () => {
     expect(screen.getByRole("radio", { name: "Dark" })).toBeVisible();
     expect(screen.getByLabelText("Light theme")).toBeVisible();
     expect(screen.getByLabelText("Dark theme")).toBeVisible();
+  });
+
+  it("asks for the name and shows the file name it produces", () => {
+    const { onCandidateNameChange } = renderStep({
+      candidateName: "Jane Q. Doe",
+    });
+
+    const input = screen.getByLabelText("Your name (optional)");
+    expect(input).toHaveValue("Jane Q. Doe");
+    expect(screen.getByTestId("candidate-name-example")).toHaveTextContent(
+      "Doe_JQ_resume_Acme_Corp.pdf",
+    );
+
+    fireEvent.change(input, { target: { value: "Ana Silva" } });
+    expect(onCandidateNameChange).toHaveBeenCalledWith("Ana Silva");
+  });
+
+  it("places the name below the auth choice", () => {
+    renderStep();
+    const skip = screen.getByRole("radio", { name: /Skip for now/ });
+    const name = screen.getByLabelText("Your name (optional)");
+    expect(
+      skip.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("still wires the auth choice through after the composition", () => {

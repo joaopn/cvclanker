@@ -76,6 +76,7 @@ const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
 
   renderMarkdownInJobDescriptions: null,
   companyInFlightCheckEnabled: null,
+  candidateName: "",
   chatStyleTone: "",
   chatStyleFormality: "",
   chatStyleConstraints: "",
@@ -270,8 +271,17 @@ const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
       {
         id: "display",
         label: "Display Preferences",
-        description: "Theme, markdown rendering and the tailoring warning.",
-        searchTerms: ["markdown", "rendering", "appearance", "theme"],
+        description:
+          "Theme, markdown rendering, the tailoring warning and your name for downloaded files.",
+        searchTerms: [
+          "markdown",
+          "rendering",
+          "appearance",
+          "theme",
+          "name",
+          "file name",
+          "download",
+        ],
       },
     ],
   },
@@ -365,7 +375,11 @@ export const SECTION_FIELD_MAP: Record<
     "basicAuthPassword",
     "jwtExpirySeconds",
   ],
-  display: ["renderMarkdownInJobDescriptions", "companyInFlightCheckEnabled"],
+  display: [
+    "renderMarkdownInJobDescriptions",
+    "companyInFlightCheckEnabled",
+    "candidateName",
+  ],
   pipeline: [
     "autoTailoringEnabled",
     "enableJobScoring",
@@ -437,6 +451,7 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
 
   renderMarkdownInJobDescriptions: null,
   companyInFlightCheckEnabled: null,
+  candidateName: null,
   chatStyleTone: null,
   chatStyleFormality: null,
   chatStyleConstraints: null,
@@ -483,22 +498,23 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
 };
 
 /**
- * Credentials are never cleared by a reset — losing them locks the user out
- * of scoring/tailoring (and, for the LLM key, bounces the app back into the
- * onboarding wizard via the llmValid gate). They have their own explicit
- * update affordances.
+ * Fields a reset never clears. Credentials, because losing them locks the user
+ * out of scoring/tailoring (and, for the LLM key, bounces the app back into the
+ * onboarding wizard via the llmValid gate); the candidate's name, because it is
+ * who they are rather than a preference with a default.
  */
-export const RESET_EXCLUDED_SECRETS: ReadonlySet<keyof UpdateSettingsInput> =
+export const RESET_EXCLUDED_FIELDS: ReadonlySet<keyof UpdateSettingsInput> =
   new Set([
     "llmApiKey",
     "claudeCodeOauthToken",
     "basicAuthUser",
     "basicAuthPassword",
+    "candidateName",
   ]);
 
 /**
  * Reset payload for ONE settings section: null (= clear the override) for
- * each of the section's fields, minus credential secrets. Keys whose
+ * each of the section's fields, minus RESET_EXCLUDED_FIELDS. Keys whose
  * NULL_SETTINGS_PAYLOAD value is undefined (enableBasicAuth) are omitted
  * entirely — same as the old global reset, which never flipped basic auth.
  */
@@ -507,7 +523,7 @@ export const buildSectionResetPayload = (
 ): UpdateSettingsInput => {
   const payload: Record<string, null> = {};
   for (const field of SECTION_FIELD_MAP[sectionId]) {
-    if (RESET_EXCLUDED_SECRETS.has(field)) continue;
+    if (RESET_EXCLUDED_FIELDS.has(field)) continue;
     if (NULL_SETTINGS_PAYLOAD[field] === undefined) continue;
     payload[field] = null;
   }
@@ -540,6 +556,7 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   renderMarkdownInJobDescriptions:
     data.renderMarkdownInJobDescriptions.override,
   companyInFlightCheckEnabled: data.companyInFlightCheckEnabled.override,
+  candidateName: data.candidateName.override ?? "",
   chatStyleTone: data.chatStyleTone.override ?? "",
   chatStyleFormality: data.chatStyleFormality.override ?? "",
   chatStyleConstraints: data.chatStyleConstraints.override ?? "",
@@ -973,6 +990,7 @@ export const SettingsPage: React.FC = () => {
           data.companyInFlightCheckEnabled,
           display.companyInFlightCheckEnabled.default,
         ),
+        candidateName: normalizeString(data.candidateName),
         chatStyleTone: normalizeString(data.chatStyleTone),
         chatStyleFormality: normalizeString(data.chatStyleFormality),
         chatStyleConstraints: normalizeString(data.chatStyleConstraints),
@@ -1575,8 +1593,8 @@ export const SettingsPage: React.FC = () => {
                             its defaults apply again. Other sections' saved
                             values are not touched (though unsaved edits
                             anywhere on this page are discarded), and stored
-                            credentials (API keys, tokens, passwords) are always
-                            kept. This cannot be undone.
+                            credentials (API keys, tokens, passwords) and your
+                            name are always kept. This cannot be undone.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>

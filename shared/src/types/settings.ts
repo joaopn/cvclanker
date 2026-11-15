@@ -62,6 +62,7 @@ export interface AppSettings {
   coverLetterInstructions: Resolved<string>;
   renderMarkdownInJobDescriptions: Resolved<boolean>;
   companyInFlightCheckEnabled: Resolved<boolean>;
+  candidateName: Resolved<string | null>;
   chatStyleTone: Resolved<string>;
   chatStyleFormality: Resolved<string>;
   chatStyleConstraints: Resolved<string>;

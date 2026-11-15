@@ -1,10 +1,11 @@
 /**
- * Covers the `r` (Tailor) shortcut's two arms and their interaction with the
- * duplicate-application guard. Both arms were rewritten when the guard landed:
- * the selection arm now goes through `runTailorAction`, and the single-job arm
- * became an async body precisely so a cancelled guard skips the success toast
- * and the row advance — a `.then` chain would have run both on the undefined it
- * passes along, and nothing else in the repo pins that.
+ * Covers the `s` and `d` shortcuts, and the `r` (Tailor) shortcut's two arms
+ * and their interaction with the duplicate-application guard. Both arms were
+ * rewritten when the guard landed: the selection arm now goes through
+ * `runTailorAction`, and the single-job arm became an async body precisely so a
+ * cancelled guard skips the success toast and the row advance — a `.then` chain
+ * would have run both on the undefined it passes along, and nothing else in the
+ * repo pins that.
  */
 
 import * as api from "@client/api";
@@ -23,11 +24,17 @@ vi.mock("@client/hooks/queries/useJobMutations", () => ({
   useSkipJobMutation: () => ({ mutateAsync: skipMutateAsync }),
   useCloseStaleJobMutation: () => ({ mutateAsync: closeStaleMutateAsync }),
 }));
-vi.mock("@client/hooks/useActiveCv", () => ({
-  useActiveCv: () => ({ personName: "Test Person" }),
+const { settingsState } = vi.hoisted(() => ({
+  settingsState: {
+    cvSourceFormat: "latex" as "latex" | "docx",
+    candidateName: null as string | null,
+  },
 }));
 vi.mock("@client/hooks/useSettings", () => ({
-  useSettings: () => ({ cvSourceFormat: "latex" }),
+  useSettings: () => ({
+    cvSourceFormat: settingsState.cvSourceFormat,
+    candidateName: settingsState.candidateName,
+  }),
 }));
 
 const toastSuccess = vi.fn();
@@ -107,6 +114,8 @@ const setup = (overrides: Overrides = {}) => {
 };
 
 beforeEach(() => {
+  settingsState.cvSourceFormat = "latex";
+  settingsState.candidateName = null;
   vi.mocked(api.processJob).mockClear();
   vi.mocked(api.processJob).mockResolvedValue(createJob({ id: "resolved" }));
   toastSuccess.mockClear();
@@ -212,5 +221,38 @@ describe("the Tailor shortcut with no selection", () => {
 
     await waitFor(() => expect(toastError).toHaveBeenCalled());
     expect(toastSuccess).not.toHaveBeenCalled();
+  });
+});
+
+describe("the d shortcut", () => {
+  const readyJob = () =>
+    createJob({ id: "j9", employer: "WU Wien", status: "ready" });
+  const pressAndCapture = () => {
+    const downloads: string[] = [];
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        downloads.push(this.download);
+      });
+    try {
+      press("d");
+    } finally {
+      click.mockRestore();
+    }
+    return downloads;
+  };
+
+  it("names the CV after the candidate when a name is set", () => {
+    settingsState.candidateName = "Jane Q. Doe";
+    setup({ activeTab: "tailoring", selectedJob: readyJob() });
+
+    expect(pressAndCapture()).toEqual(["Doe_JQ_resume_WU_Wien.pdf"]);
+  });
+
+  it("drops the name part when no name is set, keeping the Word extension", () => {
+    settingsState.cvSourceFormat = "docx";
+    setup({ activeTab: "tailoring", selectedJob: readyJob() });
+
+    expect(pressAndCapture()).toEqual(["resume_WU_Wien.docx"]);
   });
 });

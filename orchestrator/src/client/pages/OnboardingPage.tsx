@@ -100,6 +100,7 @@ export const OnboardingPage: React.FC = () => {
                     basicAuthChoice={flow.basicAuthChoice}
                     basicAuthPassword={flow.watch("basicAuthPassword")}
                     basicAuthUser={flow.watch("basicAuthUser")}
+                    candidateName={flow.watch("candidateName")}
                     control={flow.control}
                     currentStep={flow.currentStep}
                     cvChoice={flow.cvChoice}
@@ -132,6 +133,9 @@ export const OnboardingPage: React.FC = () => {
                     }
                     onBasicAuthUserChange={(value) =>
                       flow.setValue("basicAuthUser", value)
+                    }
+                    onCandidateNameChange={(value) =>
+                      flow.setValue("candidateName", value)
                     }
                     onCvChoiceChange={flow.setCvChoice}
                     onCvDocumentChange={flow.setCvDocument}

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CANDIDATE_NAME_MAX_CHARS } from "./settings-registry";
 import { updateSettingsSchema } from "./settings-schema";
 
 describe("updateSettingsSchema", () => {
@@ -44,4 +45,19 @@ describe("updateSettingsSchema", () => {
     ).toBeDefined();
   });
 
+  it("caps the candidate name and accepts null to clear it", () => {
+    expect(
+      updateSettingsSchema.safeParse({
+        candidateName: "x".repeat(CANDIDATE_NAME_MAX_CHARS),
+      }).success,
+    ).toBe(true);
+    expect(
+      updateSettingsSchema.safeParse({
+        candidateName: "x".repeat(CANDIDATE_NAME_MAX_CHARS + 1),
+      }).success,
+    ).toBe(false);
+    expect(updateSettingsSchema.parse({ candidateName: null })).toEqual({
+      candidateName: null,
+    });
+  });
 });

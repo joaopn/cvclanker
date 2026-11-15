@@ -4,13 +4,12 @@ import { Download, ExternalLink, FileText } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { safeFilenamePart } from "@/lib/utils";
+import { buildDownloadFilename } from "@/lib/download-filename";
 
 type DocKind = "cv" | "cover";
 
 interface JobDocumentsPanelProps {
   job: Job;
-  personName: string | null;
 }
 
 /**
@@ -21,9 +20,8 @@ interface JobDocumentsPanelProps {
  */
 export const JobDocumentsPanel: React.FC<JobDocumentsPanelProps> = ({
   job,
-  personName,
 }) => {
-  const { cvSourceFormat } = useSettings();
+  const { cvSourceFormat, candidateName } = useSettings();
   const hasCv = Boolean(job.pdfPath);
   const hasCover = Boolean(job.coverLetterPdfPath);
   const [doc, setDoc] = useState<DocKind>(hasCv ? "cv" : "cover");
@@ -52,8 +50,6 @@ export const JobDocumentsPanel: React.FC<JobDocumentsPanelProps> = ({
   const href = isCv
     ? `/pdfs/resume_${job.id}.pdf?v=${encodeURIComponent(job.updatedAt)}`
     : `/pdfs/cover_letter_${job.id}.pdf?v=${encodeURIComponent(job.updatedAt)}`;
-  const person = safeFilenamePart(personName || "Unknown");
-  const employer = safeFilenamePart(job.employer || "Unknown");
 
   // Download hands over the editable artifact — the .docx on a Word profile.
   // Open and the iframe below keep the PDF: it's the view, and a .docx can't
@@ -62,9 +58,12 @@ export const JobDocumentsPanel: React.FC<JobDocumentsPanelProps> = ({
   const downloadHref = isDocxCv
     ? `/pdfs/resume_${job.id}.docx?v=${encodeURIComponent(job.updatedAt)}`
     : href;
-  const downloadName = isCv
-    ? `${person}_${employer}.${isDocxCv ? "docx" : "pdf"}`
-    : `${person}_${employer}_Cover.pdf`;
+  const downloadName = buildDownloadFilename({
+    candidateName,
+    kind: isCv ? "resume" : "cover",
+    employer: job.employer,
+    ext: isDocxCv ? "docx" : "pdf",
+  });
 
   return (
     <div className="flex flex-col">

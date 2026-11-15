@@ -18,7 +18,6 @@ vi.mock("@client/api", () => ({
 vi.mock("@client/hooks/useActiveCv", () => ({
   useActiveCv: () => ({
     cv: activeCvMock.current,
-    personName: "",
     isLoading: false,
     error: null,
   }),

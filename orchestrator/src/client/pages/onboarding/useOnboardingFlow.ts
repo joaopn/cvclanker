@@ -132,6 +132,7 @@ export function useOnboardingFlow() {
         searchTermDraft: "",
         basicAuthUser: "",
         basicAuthPassword: "",
+        candidateName: "",
       },
     });
 
@@ -191,6 +192,7 @@ export function useOnboardingFlow() {
       searchTermDraft: "",
       basicAuthUser: settings.basicAuthUser ?? "",
       basicAuthPassword: "",
+      candidateName: settings.candidateName?.value ?? "",
     });
     // Auth already on → "enable". Everything else (an explicit earlier skip, or
     // an untouched install) defaults to "skip" — the PI's call. Must match the
@@ -438,11 +440,11 @@ export function useOnboardingFlow() {
       {
         id: "finalize",
         label: "Finalize",
-        subtitle: "Sign-in and appearance",
-        // Keyed on the basic-auth decision ALONE. The theme half of this step
-        // is a per-device localStorage preference with no server-side value to
-        // check, and gating on it would push existing installs back through
-        // onboarding.
+        subtitle: "Sign-in, your name and appearance",
+        // Keyed on the basic-auth decision ALONE. The name on this step is
+        // optional, and the theme is a per-device localStorage preference with
+        // no server-side value to check; gating on either would push existing
+        // installs back through onboarding.
         complete: basicAuthComplete,
         disabled: false,
       },
@@ -953,11 +955,13 @@ export function useOnboardingFlow() {
   ]);
 
   const handleCompleteBasicAuth = useCallback(async () => {
+    const candidateName = getValues().candidateName.trim() || null;
     if (basicAuthChoice === "skip") {
       try {
         setIsSaving(true);
         const nextSettings = await api.updateSettings({
           onboardingBasicAuthDecision: "skipped",
+          candidateName,
         });
         syncSettingsCache(nextSettings);
         toast.success("Authentication skipped for now");
@@ -995,6 +999,7 @@ export function useOnboardingFlow() {
         basicAuthUser: normalizedUser,
         basicAuthPassword: normalizedPassword,
         onboardingBasicAuthDecision: "enabled",
+        candidateName,
       });
       syncSettingsCache(nextSettings);
       setValue("basicAuthPassword", "");

@@ -1,3 +1,4 @@
+import { CandidateNameInput } from "@client/components/CandidateNameInput";
 import { ThemeControls } from "@client/components/ThemeControls";
 import { SettingsSectionFrame } from "@client/pages/settings/components/SettingsSectionFrame";
 import type { DisplayValues } from "@client/pages/settings/types";
@@ -102,6 +103,21 @@ export const DisplaySettingsSection: React.FC<DisplaySettingsSectionProps> = ({
             </p>
           </div>
         </div>
+
+        <Separator />
+
+        <Controller
+          name="candidateName"
+          control={control}
+          render={({ field }) => (
+            <CandidateNameInput
+              value={field.value ?? ""}
+              onChange={field.onChange}
+              onBlur={field.onBlur}
+              disabled={isLoading || isSaving}
+            />
+          )}
+        />
 
         <Separator />
 

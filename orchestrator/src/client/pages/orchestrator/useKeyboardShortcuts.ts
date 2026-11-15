@@ -5,13 +5,12 @@ import {
   useSkipJobMutation,
 } from "@client/hooks/queries/useJobMutations";
 import { useHotkeys } from "@client/hooks/useHotkeys";
-import { useActiveCv } from "@client/hooks/useActiveCv";
 import { useSettings } from "@client/hooks/useSettings";
 import { SHORTCUTS, isShortcutInScope } from "@client/lib/shortcut-map";
 import type { JobAction, JobListItem } from "@shared/types.js";
 import { useCallback, useRef } from "react";
 import { toast } from "@client/lib/toast";
-import { safeFilenamePart } from "@/lib/utils";
+import { buildDownloadFilename } from "@/lib/download-filename";
 import type { FilterTab } from "./constants";
 import { tabs } from "./constants";
 import { type ConfirmTailor, tailorApproved } from "./tailorCompanyConflicts";
@@ -85,8 +84,7 @@ export function useKeyboardShortcuts(args: UseKeyboardShortcutsArgs): void {
   const markAsAppliedMutation = useMarkAsAppliedMutation();
   const skipJobMutation = useSkipJobMutation();
   const closeStaleJobMutation = useCloseStaleJobMutation();
-  const { personName } = useActiveCv();
-  const { cvSourceFormat } = useSettings();
+  const { cvSourceFormat, candidateName } = useSettings();
 
   const navigateJobList = useCallback(
     (direction: 1 | -1) => {
@@ -321,7 +319,12 @@ export function useKeyboardShortcuts(args: UseKeyboardShortcutsArgs): void {
         const href = `/pdfs/resume_${selectedJob.id}.${ext}?v=${encodeURIComponent(selectedJob.updatedAt)}`;
         const a = document.createElement("a");
         a.href = href;
-        a.download = `${safeFilenamePart(personName || "Unknown")}_${safeFilenamePart(selectedJob.employer)}.${ext}`;
+        a.download = buildDownloadFilename({
+          candidateName,
+          kind: "resume",
+          employer: selectedJob.employer,
+          ext,
+        });
         a.click();
       },
 

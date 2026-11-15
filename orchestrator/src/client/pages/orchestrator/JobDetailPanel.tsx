@@ -10,7 +10,6 @@ import {
   useMarkAsAppliedMutation,
   useSkipJobMutation,
 } from "@client/hooks/queries/useJobMutations";
-import { useActiveCv } from "@client/hooks/useActiveCv";
 import { useSettings } from "@client/hooks/useSettings";
 import { toast } from "@client/lib/toast";
 import { restoreJobStates, snapshotJob } from "@client/lib/undo";
@@ -41,11 +40,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  copyTextToClipboard,
-  formatJobForWebhook,
-  safeFilenamePart,
-} from "@/lib/utils";
+import { buildDownloadFilename } from "@/lib/download-filename";
+import { copyTextToClipboard, formatJobForWebhook } from "@/lib/utils";
 import { CompanyNameButton } from "./CompanyNameButton";
 import { type FilterTab, outcomeLabel, showsAppliedBadge } from "./constants";
 import { InterviewQaSection } from "./InterviewQaSection";
@@ -111,8 +107,8 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
     [undo],
   );
 
-  const { personName } = useActiveCv();
-  const { cvSourceFormat, renderMarkdownInJobDescriptions } = useSettings();
+  const { cvSourceFormat, renderMarkdownInJobDescriptions, candidateName } =
+    useSettings();
   const openEditDetails = useCallback(() => {
     window.setTimeout(() => setIsEditDetailsOpen(true), 0);
   }, []);
@@ -700,7 +696,12 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
                 <DropdownMenuItem asChild>
                   <a
                     href={selectedCvDownloadHref}
-                    download={`${safeFilenamePart(personName || "Unknown")}_${safeFilenamePart(selectedJob.employer || "Unknown")}.${isDocxCv ? "docx" : "pdf"}`}
+                    download={buildDownloadFilename({
+                      candidateName,
+                      kind: "resume",
+                      employer: selectedJob.employer,
+                      ext: isDocxCv ? "docx" : "pdf",
+                    })}
                   >
                     <FileText className="mr-2 h-4 w-4" />
                     {isDocxCv ? "Download .docx" : "Download CV"}
@@ -712,7 +713,12 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
               <DropdownMenuItem asChild>
                 <a
                   href={selectedCoverHref}
-                  download={`${safeFilenamePart(personName || "Unknown")}_${safeFilenamePart(selectedJob.employer || "Unknown")}_Cover.pdf`}
+                  download={buildDownloadFilename({
+                    candidateName,
+                    kind: "cover",
+                    employer: selectedJob.employer,
+                    ext: "pdf",
+                  })}
                 >
                   <FileText className="mr-2 h-4 w-4" />
                   Download Cover
@@ -939,7 +945,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
 
         {hasDocuments && (
           <TabsContent value="documents" className="space-y-3 pt-3">
-            <JobDocumentsPanel job={selectedJob} personName={personName} />
+            <JobDocumentsPanel job={selectedJob} />
           </TabsContent>
         )}
 

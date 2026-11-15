@@ -1,34 +1,41 @@
+import { CandidateNameInput } from "@client/components/CandidateNameInput";
 import { ThemeControls } from "@client/components/ThemeControls";
 import type React from "react";
 import { Separator } from "@/components/ui/separator";
 import type { BasicAuthChoice } from "../types";
 import { BasicAuthStep } from "./BasicAuthStep";
 
-// The wizard's last step: the basic-auth decision plus the theme picker.
+// The wizard's last step: the basic-auth decision, the candidate's name and the
+// theme picker.
 //
-// Only the auth half is gated or persisted — the primary button still drives
-// handleCompleteBasicAuth, and step completion still keys on the stored
-// basic-auth decision. ThemeControls writes per-device localStorage on every
-// change and re-stamps the document immediately, so appearance needs no save
-// and deliberately does NOT feed the completion predicate: gating on it would
-// push every existing install back through onboarding, and there is no
-// server-side value to check in the first place.
+// The primary button drives handleCompleteBasicAuth, which saves the auth
+// decision and the name in one request; step completion still keys on the
+// stored basic-auth decision alone, since the name is optional. ThemeControls
+// writes per-device localStorage on every change and re-stamps the document
+// immediately, so appearance needs no save and deliberately does NOT feed the
+// completion predicate: gating on it would push every existing install back
+// through onboarding, and there is no server-side value to check in the first
+// place.
 export const FinalizeStep: React.FC<{
   basicAuthChoice: BasicAuthChoice;
   basicAuthPassword: string;
   basicAuthUser: string;
+  candidateName: string;
   isBusy: boolean;
   onBasicAuthChoiceChange: (choice: BasicAuthChoice) => void;
   onBasicAuthPasswordChange: (value: string) => void;
   onBasicAuthUserChange: (value: string) => void;
+  onCandidateNameChange: (value: string) => void;
 }> = ({
   basicAuthChoice,
   basicAuthPassword,
   basicAuthUser,
+  candidateName,
   isBusy,
   onBasicAuthChoiceChange,
   onBasicAuthPasswordChange,
   onBasicAuthUserChange,
+  onCandidateNameChange,
 }) => (
   <div className="space-y-8">
     <section className="space-y-4">
@@ -49,6 +56,16 @@ export const FinalizeStep: React.FC<{
         onBasicAuthChoiceChange={onBasicAuthChoiceChange}
         onBasicAuthPasswordChange={onBasicAuthPasswordChange}
         onBasicAuthUserChange={onBasicAuthUserChange}
+      />
+    </section>
+
+    <Separator />
+
+    <section className="space-y-4">
+      <CandidateNameInput
+        value={candidateName}
+        onChange={onCandidateNameChange}
+        disabled={isBusy}
       />
     </section>
 

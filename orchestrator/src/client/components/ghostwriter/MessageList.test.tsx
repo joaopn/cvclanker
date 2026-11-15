@@ -13,7 +13,6 @@ vi.mock("sonner", () => ({
 vi.mock("@client/hooks/useActiveCv", () => ({
   useActiveCv: () => ({
     cv: null,
-    personName: "",
     isLoading: false,
     error: null,
   }),

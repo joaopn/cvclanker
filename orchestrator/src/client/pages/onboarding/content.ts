@@ -49,6 +49,6 @@ export const STEP_COPY: Record<
     eyebrow: "Step 6",
     title: "Finish setting up.",
     description:
-      "Two last things. Add a username and password so only signed-in users can reach the protected parts of CV Clanker — or skip it and set it up later in Settings. Then pick the theme you want to work in; it applies immediately and is stored on this device.",
+      "Three last things. Add a username and password so only signed-in users can reach the protected parts of CV Clanker — or skip it and set it up later in Settings. Optionally, give your name so downloaded CVs and cover letters are named after you. Then pick the theme you want to work in; it applies immediately and is stored on this device.",
   },
 };

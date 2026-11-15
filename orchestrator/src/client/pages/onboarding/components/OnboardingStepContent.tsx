@@ -32,6 +32,7 @@ export const OnboardingStepContent: React.FC<{
   basicAuthChoice: BasicAuthChoice;
   basicAuthPassword: string;
   basicAuthUser: string;
+  candidateName: string;
   control: Control<OnboardingFormData>;
   currentStep: StepId;
   cvChoice: CvChoice;
@@ -60,6 +61,7 @@ export const OnboardingStepContent: React.FC<{
   onBasicAuthChoiceChange: (choice: BasicAuthChoice) => void;
   onBasicAuthPasswordChange: (value: string) => void;
   onBasicAuthUserChange: (value: string) => void;
+  onCandidateNameChange: (value: string) => void;
   onCvChoiceChange: (choice: CvChoice) => void;
   onCvDocumentChange: (cv: CvDocument) => void;
   onCvFormatChoiceChange: (choice: CvFormatChoice) => void;
@@ -149,10 +151,12 @@ export const OnboardingStepContent: React.FC<{
       basicAuthChoice={props.basicAuthChoice}
       basicAuthPassword={props.basicAuthPassword}
       basicAuthUser={props.basicAuthUser}
+      candidateName={props.candidateName}
       isBusy={props.isBusy}
       onBasicAuthChoiceChange={props.onBasicAuthChoiceChange}
       onBasicAuthPasswordChange={props.onBasicAuthPasswordChange}
       onBasicAuthUserChange={props.onBasicAuthUserChange}
+      onCandidateNameChange={props.onCandidateNameChange}
     />
   );
 };

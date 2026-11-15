@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildSectionResetPayload,
-  RESET_EXCLUDED_SECRETS,
+  RESET_EXCLUDED_FIELDS,
   SECTION_FIELD_MAP,
 } from "./SettingsPage";
 
@@ -79,7 +79,15 @@ describe("buildSectionResetPayload", () => {
     expect(SECTION_FIELD_MAP.chat).toContain("coverLetterInstructions");
   });
 
-  it("every mapped non-secret field is resettable (no silent exclusions)", () => {
+  it("display reset keeps the candidate's name, which is still mapped to display", () => {
+    const payload = buildSectionResetPayload("display");
+    expect(payload.renderMarkdownInJobDescriptions).toBeNull();
+    expect(payload.companyInFlightCheckEnabled).toBeNull();
+    expect("candidateName" in payload).toBe(false);
+    expect(SECTION_FIELD_MAP.display).toContain("candidateName");
+  });
+
+  it("every mapped field outside RESET_EXCLUDED_FIELDS is resettable (no silent exclusions)", () => {
     // Guards the NULL_SETTINGS_PAYLOAD membership check inside the builder:
     // a field added to a section map but forgotten there would silently drop
     // out of reset. enableBasicAuth is the one deliberate exception.
@@ -88,7 +96,7 @@ describe("buildSectionResetPayload", () => {
         section as keyof typeof SECTION_FIELD_MAP,
       );
       for (const field of fields) {
-        if (RESET_EXCLUDED_SECRETS.has(field)) continue;
+        if (RESET_EXCLUDED_FIELDS.has(field)) continue;
         if (field === "enableBasicAuth") continue;
         expect(payload[field], `${section}.${field}`).toBeNull();
       }

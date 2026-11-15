@@ -16,6 +16,7 @@ export type OnboardingFormData = {
   searchTermDraft: string;
   basicAuthUser: string;
   basicAuthPassword: string;
+  candidateName: string;
 };
 
 export type StepId =

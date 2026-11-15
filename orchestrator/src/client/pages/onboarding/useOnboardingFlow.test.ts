@@ -35,6 +35,7 @@ import {
   suggestOnboardingSearchTerms,
   updateProfile,
   updateProviderInstance,
+  updateSettings,
   validateLlm,
 } from "@client/api";
 import { useOnboardingFlow } from "./useOnboardingFlow";
@@ -432,5 +433,107 @@ describe("useOnboardingFlow — saving the sources step", () => {
 
     expect(updateProfile).not.toHaveBeenCalled();
     expect(updateProviderInstance).not.toHaveBeenCalled();
+  });
+});
+
+describe("useOnboardingFlow — the candidate name on the final step", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getSourceConfigs).mockResolvedValue({ extractors: [] });
+    vi.mocked(getProviderInstances).mockResolvedValue({ providers: [] });
+    vi.mocked(validateLlm).mockResolvedValue({ valid: true, message: null });
+    vi.mocked(listCvDocuments).mockResolvedValue([]);
+    vi.mocked(getProfiles).mockResolvedValue({
+      profiles: [makeProfile([])],
+      defaultProfileId: "p1",
+    });
+    vi.mocked(updateSettings).mockResolvedValue(createAppSettings());
+  });
+
+  async function renderAtFinalize(storedName: string | null = null) {
+    vi.mocked(getSettings).mockResolvedValue(
+      createAppSettings({
+        candidateName: {
+          value: storedName,
+          default: null,
+          override: storedName,
+        },
+      }),
+    );
+    const rendered = renderHookWithQueryClient(() => useOnboardingFlow());
+    await waitFor(() =>
+      expect(rendered.result.current.settings).not.toBeNull(),
+    );
+    await act(async () => {
+      rendered.result.current.setCurrentStep("finalize");
+    });
+    return rendered;
+  }
+
+  it("seeds the field from the stored name", async () => {
+    const { result } = await renderAtFinalize("Jane Q. Doe");
+
+    expect(result.current.watch("candidateName")).toBe("Jane Q. Doe");
+  });
+
+  it("saves the trimmed name with a skipped auth decision", async () => {
+    const { result } = await renderAtFinalize();
+
+    await act(async () => {
+      result.current.setValue("candidateName", "  Jane Q. Doe ");
+    });
+    await act(async () => {
+      await result.current.handlePrimaryAction();
+    });
+
+    expect(vi.mocked(updateSettings).mock.calls).toStrictEqual([
+      [
+        {
+          onboardingBasicAuthDecision: "skipped",
+          candidateName: "Jane Q. Doe",
+        },
+      ],
+    ]);
+  });
+
+  it("clears the name when the field is left blank", async () => {
+    const { result } = await renderAtFinalize("Jane Q. Doe");
+
+    await act(async () => {
+      result.current.setValue("candidateName", "   ");
+    });
+    await act(async () => {
+      await result.current.handlePrimaryAction();
+    });
+
+    expect(vi.mocked(updateSettings).mock.calls).toStrictEqual([
+      [{ onboardingBasicAuthDecision: "skipped", candidateName: null }],
+    ]);
+  });
+
+  it("saves the name in the same request as enabled auth", async () => {
+    const { result } = await renderAtFinalize();
+
+    await act(async () => {
+      result.current.setBasicAuthChoice("enable");
+      result.current.setValue("basicAuthUser", "admin");
+      result.current.setValue("basicAuthPassword", "secret");
+      result.current.setValue("candidateName", "Ana Silva");
+    });
+    await act(async () => {
+      await result.current.handlePrimaryAction();
+    });
+
+    expect(vi.mocked(updateSettings).mock.calls).toStrictEqual([
+      [
+        {
+          enableBasicAuth: true,
+          basicAuthUser: "admin",
+          basicAuthPassword: "secret",
+          onboardingBasicAuthDecision: "enabled",
+          candidateName: "Ana Silva",
+        },
+      ],
+    ]);
   });
 });

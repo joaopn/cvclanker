@@ -28,12 +28,10 @@ export function useActiveCv() {
   });
 
   const cv = detailQuery.data ?? null;
-  const personName = readPersonName(cv) || "Resume";
   const isLoading = summariesQuery.isLoading || detailQuery.isLoading;
 
   return {
     cv,
-    personName,
     isLoading,
     error: summariesQuery.error ?? detailQuery.error ?? null,
   };
@@ -52,13 +50,4 @@ export function useActiveCvName(enabled: boolean): string | null {
     enabled,
   });
   return summariesQuery.data?.[0]?.name?.trim() || null;
-}
-
-function readPersonName(cv: CvDocument | null): string {
-  if (!cv) return "";
-  // Pick the first field whose role is "name" — by convention the
-  // candidate's display name. Falls back to empty if no such field exists
-  // (extraction failure or pre-5d document).
-  const nameField = cv.fields.find((field) => field.role === "name");
-  return nameField?.value.trim() ?? "";
 }

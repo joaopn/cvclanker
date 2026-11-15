@@ -24,12 +24,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  cn,
-  copyTextToClipboard,
-  formatJobForWebhook,
-  safeFilenamePart,
-} from "@/lib/utils";
+import { buildDownloadFilename } from "@/lib/download-filename";
+import { cn, copyTextToClipboard, formatJobForWebhook } from "@/lib/utils";
 import { getRenderableJobDescription } from "@/client/lib/jobDescription";
 import { restoreJobStates, snapshotJob } from "@client/lib/undo";
 import { useUndo } from "@client/pages/orchestrator/useUndoController";
@@ -106,13 +102,14 @@ export const ReadyPanel: React.FC<ReadyPanelProps> = ({
     cvSourceFormat,
     renderMarkdownInJobDescriptions,
     hasScorerPrefilter,
+    candidateName,
   } = useSettings();
   const { pushUndo, undo } = useUndo();
   const previousJobIdRef = useRef<string | null>(null);
   const markAsAppliedMutation = useMarkAsAppliedMutation();
   const skipJobMutation = useSkipJobMutation();
 
-  const { cv, personName } = useActiveCv();
+  const { cv } = useActiveCv();
   const [activeTab, setActiveTab] = useState<ReadyTab>(readInitialReadyTab);
   const [pendingCoverLetter, setPendingCoverLetter] = useState<string | null>(
     null,
@@ -394,7 +391,12 @@ export const ReadyPanel: React.FC<ReadyPanelProps> = ({
             >
               <a
                 href={cvDownloadHref}
-                download={`${safeFilenamePart(personName || "Unknown")}_${safeFilenamePart(job.employer || "Unknown")}.${isDocxCv ? "docx" : "pdf"}`}
+                download={buildDownloadFilename({
+                  candidateName,
+                  kind: "resume",
+                  employer: job.employer,
+                  ext: isDocxCv ? "docx" : "pdf",
+                })}
               >
                 <Download className="h-3.5 w-3.5 shrink-0" />
                 <span>{isDocxCv ? "Download .docx" : "Download CV"}</span>
@@ -410,7 +412,12 @@ export const ReadyPanel: React.FC<ReadyPanelProps> = ({
               >
                 <a
                   href={coverPdfHref}
-                  download={`${safeFilenamePart(personName || "Unknown")}_${safeFilenamePart(job.employer || "Unknown")}_Cover.pdf`}
+                  download={buildDownloadFilename({
+                    candidateName,
+                    kind: "cover",
+                    employer: job.employer,
+                    ext: "pdf",
+                  })}
                 >
                   <Download className="h-3.5 w-3.5 shrink-0" />
                   <span>Download Cover</span>

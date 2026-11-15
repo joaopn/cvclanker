@@ -203,6 +203,7 @@ export const createAppSettings = (
     default: false,
     override: null,
   },
+  candidateName: { value: null, default: null, override: null },
   chatStyleTone: {
     value: "professional",
     default: "professional",

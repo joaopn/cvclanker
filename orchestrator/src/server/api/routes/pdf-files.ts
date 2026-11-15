@@ -64,10 +64,10 @@ pdfFilesRouter.get("/:filename", async (req: Request, res: Response) => {
     // and for `inline` whenever the fetch is a trusted (same-origin) one —
     // which /pdfs always is. So pinning the URL's own basename overrode all
     // six download surfaces, each of which computes a far better name than
-    // this route could ("<person>_<employer>" from the job and the active CV),
-    // and every CV saved as `resume_<jobId>.pdf`. That was the regression this
-    // route introduced when it replaced an `express.static` mount, which sent
-    // no Content-Disposition at all.
+    // this route could (`buildDownloadFilename`, from the job and the
+    // `candidateName` setting), and every CV saved as `resume_<jobId>.pdf`.
+    // That was the regression this route introduced when it replaced an
+    // `express.static` mount, which sent no Content-Disposition at all.
     //
     // The type is kept as the explicit signal, not because either behaviour
     // depends on it: with no header whatsoever `application/pdf` still

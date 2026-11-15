@@ -42,6 +42,7 @@ export function useSettings() {
     // which case a screened rescore just behaves like a normal one — the client
     // cannot see either condition, and failing open is the existing contract.
     hasScorerPrefilter: Boolean(settings?.scorerPrefilterModel?.value?.trim()),
+    candidateName: settings?.candidateName?.value ?? null,
     // Mirrors the server's resolveCvSourceFormat: an unset format is latex.
     cvSourceFormat: settings?.cvSourceFormat ?? "latex",
     refreshSettings,

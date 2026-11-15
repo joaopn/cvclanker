@@ -59,12 +59,16 @@ vi.mock("@client/hooks/queries/useJobMutations", () => ({
   useMarkAsAppliedMutation: () => ({ mutateAsync: vi.fn() }),
   useSkipJobMutation: () => ({ mutateAsync: vi.fn() }),
 }));
-vi.mock("@client/hooks/useActiveCv", () => ({
-  useActiveCv: () => ({ personName: "Test Person" }),
+const { settingsState } = vi.hoisted(() => ({
+  settingsState: {
+    cvSourceFormat: "latex" as "latex" | "docx",
+    candidateName: null as string | null,
+  },
 }));
 vi.mock("@client/hooks/useSettings", () => ({
   useSettings: () => ({
-    cvSourceFormat: "latex",
+    cvSourceFormat: settingsState.cvSourceFormat,
+    candidateName: settingsState.candidateName,
     renderMarkdownInJobDescriptions: false,
   }),
 }));
@@ -132,6 +136,8 @@ const renderPanel = (job: Job, confirmTailor: ConfirmTailor = allow) =>
   );
 
 beforeEach(() => {
+  settingsState.cvSourceFormat = "latex";
+  settingsState.candidateName = null;
   vi.mocked(api.processJob)
     .mockClear()
     .mockResolvedValue(createJob({ id: "resolved" }));
@@ -257,5 +263,49 @@ describe("the More-actions Generate PDF item", () => {
     await waitFor(() => expect(api.generateJobPdf).toHaveBeenCalledWith("j2"));
     expect(confirmTailor).not.toHaveBeenCalled();
     expect(api.processJob).not.toHaveBeenCalled();
+  });
+});
+
+describe("the More-actions download items", () => {
+  const tailoredJob = () =>
+    createJob({
+      id: "j4",
+      employer: "Scientis Search Ltd",
+      status: "backlog",
+      pdfPath: "resume_j4.pdf",
+      coverLetterPdfPath: "cover_letter_j4.pdf",
+    });
+  const downloadName = (label: string) =>
+    screen.getByText(label).closest("a")?.getAttribute("download");
+
+  it("names both files after the candidate when a name is set", () => {
+    settingsState.candidateName = "Jane Q. Doe";
+    renderPanel(tailoredJob());
+
+    expect(downloadName("Download CV")).toBe(
+      "Doe_JQ_resume_Scientis_Search_Ltd.pdf",
+    );
+    expect(downloadName("Download Cover")).toBe(
+      "Doe_JQ_cover_Scientis_Search_Ltd.pdf",
+    );
+  });
+
+  it("drops the name part when no name is set", () => {
+    renderPanel(tailoredJob());
+
+    expect(downloadName("Download CV")).toBe("resume_Scientis_Search_Ltd.pdf");
+    expect(downloadName("Download Cover")).toBe(
+      "cover_Scientis_Search_Ltd.pdf",
+    );
+  });
+
+  it("names the Word CV with its own extension", () => {
+    settingsState.cvSourceFormat = "docx";
+    settingsState.candidateName = "Jane Q. Doe";
+    renderPanel(tailoredJob());
+
+    expect(downloadName("Download .docx")).toBe(
+      "Doe_JQ_resume_Scientis_Search_Ltd.docx",
+    );
   });
 });

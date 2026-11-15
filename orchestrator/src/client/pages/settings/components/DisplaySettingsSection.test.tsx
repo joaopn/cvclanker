@@ -1,3 +1,4 @@
+import { CANDIDATE_NAME_MAX_CHARS } from "@shared/settings-registry";
 import type { UpdateSettingsInput } from "@shared/settings-schema.js";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
@@ -262,5 +263,26 @@ describe("DisplaySettingsSection company in-flight check", () => {
     ).nextElementSibling;
     expect(effective).toHaveTextContent("Enabled");
     expect(fallback).toHaveTextContent("Disabled");
+  });
+});
+
+describe("DisplaySettingsSection candidate name", () => {
+  it("writes the typed name into the form and shows the file name it gives", () => {
+    renderSection();
+    const input = screen.getByLabelText("Your name (optional)");
+    expect(input).toHaveAttribute(
+      "maxLength",
+      String(CANDIDATE_NAME_MAX_CHARS),
+    );
+    expect(screen.getByTestId("candidate-name-example")).toHaveTextContent(
+      /^resume_Acme_Corp\.pdf$/,
+    );
+
+    fireEvent.change(input, { target: { value: "García Márquez, Gabriel" } });
+
+    expect(input).toHaveValue("García Márquez, Gabriel");
+    expect(screen.getByTestId("candidate-name-example")).toHaveTextContent(
+      /^Garcia_Marquez_G_resume_Acme_Corp\.pdf$/,
+    );
   });
 });
