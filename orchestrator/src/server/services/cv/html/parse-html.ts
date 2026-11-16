@@ -1,26 +1,30 @@
 import { TokenType, tokenize } from "@csstools/css-tokenizer";
 import { DOMParser } from "@xmldom/xmldom";
-import {
-  type DefaultTreeAdapterMap,
-  type DefaultTreeAdapterTypes,
-  defaultTreeAdapter,
-  parse,
-  serialize,
-  type TreeAdapter,
-} from "parse5";
 import type { HtmlBundle } from "./bundle";
 import { resolveReference } from "./bundle-url";
+import {
+  attribute,
+  type Element,
+  HTML_NS,
+  isJavascriptUrl,
+  MAX_DEPTH,
+  MAX_ELEMENTS,
+  type Node,
+  PageTooComplexError,
+  type ParentNode,
+  type ParsedPage,
+  parsePage,
+  SVG_NS,
+  serializePage,
+  type TextNode,
+  walk,
+} from "./html-tree";
 import { displayName } from "./zip-reader";
 
 // The upload-time check of an HTML CV: simple HTML only (no scripts, no
 // embedded documents), nothing loaded from the network, every file the page
 // uses present in the upload — and the clean-up that leaves a page whose
 // rendering cannot depend on anything outside the bundle.
-
-type Node = DefaultTreeAdapterTypes.Node;
-type Element = DefaultTreeAdapterTypes.Element;
-type ParentNode = DefaultTreeAdapterTypes.ParentNode;
-type DocumentType = DefaultTreeAdapterTypes.DocumentType;
 
 const MARKER_CHARS = /[⟦⟧]/;
 
@@ -33,9 +37,6 @@ const UTF8_LABELS = new Set([
   "utf8",
   "x-unicode20utf8",
 ]);
-
-const SVG_NS = "http://www.w3.org/2000/svg";
-const HTML_NS = "http://www.w3.org/1999/xhtml";
 
 /** HTML attributes whose value is a URL that can carry `javascript:`. */
 const URL_ATTRIBUTES = new Set([
@@ -96,19 +97,6 @@ const BACKGROUND_ELEMENTS = new Set([
 // A person, or the agent that made the page, reads these lists; past this
 // many the rest are more of the same, and the message stays readable.
 const MAX_LISTED = 20;
-
-// Chromium's HTML parser stops nesting at 512 open elements; deeper markup is
-// rebuilt differently from what parse5 builds (and parse5's serializer
-// recurses, so far deeper nesting overflows the stack).
-const MAX_DEPTH = 512;
-
-// A CV page has a few hundred elements. Without a cap, 21 KB of markup built
-// a million elements (formatting elements are rebuilt per block), and parse
-// cost grows with elements × depth. Parsing cost that remains after both caps
-// (text and end tags searching the open-element stack, and more) is bounded
-// by running the whole check in a worker with a deadline
-// (check-html-worker.ts).
-const MAX_ELEMENTS = 10_000;
 
 export type HtmlRejectCode =
   | "NOT_UTF8"
@@ -177,7 +165,7 @@ export function checkHtmlBundleUnbounded(
   }
 
   // Pass 1: parse and clean up.
-  const first = parsePage(text, bundle.entry);
+  const first = parseChecked(text, bundle.entry);
   cleanUp(first.document);
   const entryHtml = serializePage(first);
   // The serializer writes text and attribute values decoded (escaping only
@@ -190,7 +178,7 @@ export function checkHtmlBundleUnbounded(
   // no further clean-up and read back to itself. Markup the parser rebuilds
   // differently on a second read (the "mutation XSS" family) could
   // otherwise carry elements no check or clean-up saw.
-  const second = parsePage(entryHtml, bundle.entry);
+  const second = parseChecked(entryHtml, bundle.entry);
   const scan = new ReferenceScan(bundle);
   walk(second.document, (node) => {
     if ("tagName" in node) checkElement(node as Element, bundle.entry, scan);
@@ -209,102 +197,23 @@ export function checkHtmlBundleUnbounded(
   return { bundle: { ...bundle, files }, entryHtml };
 }
 
-interface ParsedPage {
-  document: DefaultTreeAdapterTypes.Document;
-  /** Each doctype's original text, so serialising keeps it verbatim. */
-  doctypes: Map<DocumentType, string>;
-}
-
-function parsePage(text: string, entry: string): ParsedPage {
-  const document = parse(text, {
-    scriptingEnabled: false,
-    sourceCodeLocationInfo: true,
-    treeAdapter: boundedTreeAdapter(entry),
-  });
-  const doctypes = new Map<DocumentType, string>();
-  for (const child of document.childNodes) {
-    if (child.nodeName !== "#documentType") continue;
-    const location = (child as DocumentType).sourceCodeLocation;
-    if (location) {
-      doctypes.set(
-        child as DocumentType,
-        text.slice(location.startOffset, location.endOffset),
+/** parsePage, with its complexity caps worded for the upload. */
+function parseChecked(text: string, entry: string): ParsedPage {
+  try {
+    return parsePage(text);
+  } catch (error) {
+    if (!(error instanceof PageTooComplexError)) throw error;
+    if (error.code === "TOO_MANY_ELEMENTS") {
+      reject(
+        "TOO_MANY_ELEMENTS",
+        `"${displayName(entry)}" makes more than ${MAX_ELEMENTS} elements; a CV page needs far fewer — simplify it.`,
       );
     }
+    reject(
+      "NESTING_TOO_DEEP",
+      `"${displayName(entry)}" nests elements more than ${MAX_DEPTH} deep; simplify it.`,
+    );
   }
-  return { document, doctypes };
-}
-
-/**
- * parse5's default tree adapter, counting the elements it creates and the
- * depth of its open-element stack as it parses, so markup that would build a
- * vast tree or nest past Chromium's limit is refused before it is built.
- * (Counting tags in the source is not enough: "</br>" and "</p>" create
- * elements, and formatting elements are rebuilt for every block they span.)
- */
-function boundedTreeAdapter(entry: string): TreeAdapter<DefaultTreeAdapterMap> {
-  let elements = 0;
-  let depth = 0;
-  return {
-    ...defaultTreeAdapter,
-    createElement: (tagName, namespaceURI, attrs) => {
-      elements++;
-      if (elements > MAX_ELEMENTS) {
-        reject(
-          "TOO_MANY_ELEMENTS",
-          `"${displayName(entry)}" makes more than ${MAX_ELEMENTS} elements; a CV page needs far fewer — simplify it.`,
-        );
-      }
-      return defaultTreeAdapter.createElement(tagName, namespaceURI, attrs);
-    },
-    onItemPush: () => {
-      depth++;
-      if (depth > MAX_DEPTH) {
-        reject(
-          "NESTING_TOO_DEEP",
-          `"${displayName(entry)}" nests elements more than ${MAX_DEPTH} deep; simplify it.`,
-        );
-      }
-    },
-    onItemPop: () => {
-      depth--;
-    },
-  };
-}
-
-function serializePage(page: ParsedPage): string {
-  // The parser drops one newline right after <pre>, <textarea> and
-  // <listing>, and parse5's serializer does not write it back, so a page
-  // with a blank first line there would change on every parse. Writing one
-  // back when the content starts with a newline makes it read back to itself.
-  walk(page.document, (node) => {
-    if (!("tagName" in node)) return;
-    const element = node as Element;
-    if (
-      element.namespaceURI !== HTML_NS ||
-      !["pre", "textarea", "listing"].includes(element.tagName)
-    ) {
-      return;
-    }
-    const first = element.childNodes[0];
-    if (
-      first?.nodeName === "#text" &&
-      (first as DefaultTreeAdapterTypes.TextNode).value.startsWith("\n")
-    ) {
-      (first as DefaultTreeAdapterTypes.TextNode).value =
-        `\n${(first as DefaultTreeAdapterTypes.TextNode).value}`;
-    }
-  });
-  const treeAdapter = {
-    ...defaultTreeAdapter,
-    getDocumentTypeNodeName: (node: DocumentType) => {
-      const original = page.doctypes.get(node);
-      return original === undefined
-        ? defaultTreeAdapter.getDocumentTypeNodeName(node)
-        : doctypeBody(original);
-    },
-  };
-  return serialize(page.document, { treeAdapter });
 }
 
 function checkElement(
@@ -827,33 +736,6 @@ function cleanUp(document: ParentNode): void {
   }
 }
 
-/** Visits every node, `<template>` contents included; safe to remove the visited node. */
-function walk(root: ParentNode, visit: (node: Node) => void): void {
-  const stack: Node[] = [root];
-  while (stack.length > 0) {
-    const node = stack.pop() as Node;
-    visit(node);
-    const children = childrenOf(node);
-    for (let i = children.length - 1; i >= 0; i--) stack.push(children[i]);
-  }
-}
-
-/** A node's children, with a `<template>`'s contents first. */
-function childrenOf(node: Node): Node[] {
-  const children: Node[] = [];
-  const content = (node as DefaultTreeAdapterTypes.Template).content;
-  if (content) children.push(content);
-  // A loop, not push(...childNodes): a spread passes every child as an
-  // argument and overflows the stack on a few hundred thousand of them.
-  if ("childNodes" in node)
-    for (const child of node.childNodes) children.push(child);
-  return children;
-}
-
-function attribute(element: Element, name: string): string | undefined {
-  return element.attrs.find((attr) => attr.name === name)?.value;
-}
-
 function relTokens(element: Element): string[] {
   return (attribute(element, "rel") ?? "").toLowerCase().split(/[\t\n\f\r ]+/);
 }
@@ -861,34 +743,9 @@ function relTokens(element: Element): string[] {
 function textContent(element: Element): string {
   return element.childNodes
     .map((child) =>
-      child.nodeName === "#text"
-        ? (child as DefaultTreeAdapterTypes.TextNode).value
-        : "",
+      child.nodeName === "#text" ? (child as TextNode).value : "",
     )
     .join("");
-}
-
-/** `<!DOCTYPE html PUBLIC …>` → `html PUBLIC …`, what the serializer wraps. */
-function doctypeBody(original: string): string {
-  return original.replace(/^<!doctype[\t\n\f\r ]*/i, "").replace(/>$/, "");
-}
-
-function isJavascriptUrl(value: string): boolean {
-  // The URL spec strips leading C0 controls and spaces, and tabs and newlines
-  // anywhere, before reading the scheme. Only the scheme's characters are
-  // read, so a megabyte-long attribute is not copied.
-  const scheme = "javascript:";
-  let at = 0;
-  while (at < value.length && value.charCodeAt(at) <= 0x20) at++;
-  let matched = 0;
-  for (; at < value.length && matched < scheme.length; at++) {
-    const code = value.charCodeAt(at);
-    if (code === 0x09 || code === 0x0a || code === 0x0d) continue;
-    const lower = code >= 0x41 && code <= 0x5a ? code + 0x20 : code;
-    if (lower !== scheme.charCodeAt(matched)) return false;
-    matched++;
-  }
-  return matched === scheme.length;
 }
 
 /** True when a file's first bytes are an SVG document's (linear scan). */
