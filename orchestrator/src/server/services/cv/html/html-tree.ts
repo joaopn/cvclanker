@@ -3,6 +3,7 @@ import {
   type DefaultTreeAdapterTypes,
   defaultTreeAdapter,
   parse,
+  parseFragment,
   serialize,
   serializeOuter,
   type TreeAdapter,
@@ -30,8 +31,8 @@ export const MAX_DEPTH = 512;
 // a million elements (formatting elements are rebuilt per block), and parse
 // cost grows with elements × depth. Parsing cost that remains after both caps
 // (text and end tags searching the open-element stack, and more) is bounded
-// by running the parse in a worker with a deadline (check-html-worker.ts) —
-// so every parse of a stored page must run in that worker too.
+// by running the parse in a worker with a deadline (html-worker.ts) — so
+// every parse of a stored page must run in that worker too.
 export const MAX_ELEMENTS = 10_000;
 
 /** A page past MAX_ELEMENTS or MAX_DEPTH; callers word it for their context. */
@@ -73,6 +74,19 @@ export function parsePage(text: string): ParsedPage {
     }
   }
   return { document, doctypes };
+}
+
+/**
+ * Parses markup as the children of `context`, as the browser would read it
+ * there, with the element and depth caps (counted for this fragment alone);
+ * throws PageTooComplexError. The returned nodes still have the fragment as
+ * their parent.
+ */
+export function parseFragmentBounded(context: Element, markup: string): Node[] {
+  return parseFragment(context, markup, {
+    scriptingEnabled: false,
+    treeAdapter: boundedTreeAdapter(),
+  }).childNodes;
 }
 
 /** Serialises a page with its original doctype, reading back to itself. */
@@ -191,6 +205,32 @@ export function childrenOf(node: Node): Node[] {
 
 export function isElement(node: Node): node is Element {
   return "tagName" in node;
+}
+
+/** The node and its ancestors, innermost first. */
+export function ancestorsOf(node: Node): Node[] {
+  const chain: Node[] = [];
+  let current: Node | null = node;
+  while (current) {
+    chain.push(current);
+    current =
+      (current as { parentNode?: ParentNode | null }).parentNode ?? null;
+  }
+  return chain;
+}
+
+/** True when `node` is an HTML `<a>` or sits inside one. */
+export function isInsideLink(node: Node): boolean {
+  for (const ancestor of ancestorsOf(node)) {
+    if (
+      isElement(ancestor) &&
+      ancestor.namespaceURI === HTML_NS &&
+      ancestor.tagName === "a"
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function attribute(element: Element, name: string): string | undefined {

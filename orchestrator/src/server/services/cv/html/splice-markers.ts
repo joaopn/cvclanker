@@ -1,8 +1,7 @@
 import {
+  ancestorsOf,
   childrenOf,
-  type Element,
-  HTML_NS,
-  isElement,
+  isInsideLink,
   type Node,
   type ParentNode,
   type ParsedPage,
@@ -243,18 +242,6 @@ function locate(
   };
 }
 
-/** The node and its ancestors, innermost first. */
-function ancestorsOf(node: Node): Node[] {
-  const chain: Node[] = [];
-  let current: Node | null = node;
-  while (current) {
-    chain.push(current);
-    current =
-      (current as { parentNode?: ParentNode | null }).parentNode ?? null;
-  }
-  return chain;
-}
-
 /** True when every character of `element`'s text before (node, offset) is whitespace. */
 function onlySpaceBefore(
   element: Node,
@@ -333,19 +320,6 @@ function boundaryKey(
 
 function compareKeys(a: [number, number], b: [number, number]): number {
   return a[0] - b[0] || a[1] - b[1];
-}
-
-function isInsideLink(parent: ParentNode): boolean {
-  for (const node of ancestorsOf(parent)) {
-    if (
-      isElement(node) &&
-      node.namespaceURI === HTML_NS &&
-      (node as Element).tagName === "a"
-    ) {
-      return true;
-    }
-  }
-  return false;
 }
 
 /** The markup a range covers, serialised in place (its parent decides the escaping). */

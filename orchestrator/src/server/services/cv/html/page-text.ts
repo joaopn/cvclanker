@@ -180,6 +180,16 @@ export function segmentsOf(root: ParentNode): PageSegment[] {
   return segments;
 }
 
+/** The text nodes segmentsOf reads: the only places a field's marker may sit. */
+export function tailorableTextNodes(root: ParentNode): Set<TextNode> {
+  const nodes = new Set<TextNode>();
+  traverse(root, true, {
+    text: (node) => nodes.add(node),
+    boundary: () => {},
+  });
+  return nodes;
+}
+
 interface TextVisitor {
   text(node: TextNode): void;
   /** A segment boundary: entering or leaving a block, or a line break. */

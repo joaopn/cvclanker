@@ -139,6 +139,11 @@ export interface CheckedHtmlBundle {
   entryHtml: string;
 }
 
+export interface UnboundedCheck extends CheckedHtmlBundle {
+  /** `entryHtml` as parsed (the check's second parse). */
+  page: ParsedPage;
+}
+
 /** The files the check reads as text (the rest it only sniffs). */
 export function isTextBundleFile(path: string): boolean {
   return /\.(?:html?|css|svg)$/i.test(path);
@@ -147,12 +152,10 @@ export function isTextBundleFile(path: string): boolean {
 /**
  * Checks an uploaded HTML CV and returns it cleaned up, or throws an
  * HtmlRejectError saying what to fix. Unbounded in time and memory: callers
- * use checkHtmlBundleBounded (check-html-worker.ts), which runs this in a
- * worker with a deadline and a heap cap.
+ * use checkHtmlBundleBounded (html-worker.ts), which runs this in a worker
+ * with a deadline and a heap cap.
  */
-export function checkHtmlBundleUnbounded(
-  bundle: HtmlBundle,
-): CheckedHtmlBundle {
+export function checkHtmlBundleUnbounded(bundle: HtmlBundle): UnboundedCheck {
   const entryBytes = bundle.files.get(bundle.entry);
   if (!entryBytes) throw new Error(`bundle entry "${bundle.entry}" is missing`);
   const text = decodeUtf8(entryBytes, bundle.entry, "NOT_UTF8");
@@ -194,7 +197,7 @@ export function checkHtmlBundleUnbounded(
 
   const files = new Map(bundle.files);
   files.set(bundle.entry, new TextEncoder().encode(entryHtml));
-  return { bundle: { ...bundle, files }, entryHtml };
+  return { bundle: { ...bundle, files }, entryHtml, page: second };
 }
 
 /** parsePage, with its complexity caps worded for the upload. */
