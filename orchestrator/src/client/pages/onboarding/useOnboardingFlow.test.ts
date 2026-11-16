@@ -1671,3 +1671,43 @@ describe("useOnboardingFlow — the LLM step's Add provider and Configured provi
     expect(updateSettings).not.toHaveBeenCalled();
   });
 });
+
+describe("useOnboardingFlow — saving the CV format", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getSettings).mockResolvedValue(createAppSettings());
+    vi.mocked(getSourceConfigs).mockResolvedValue({ extractors: [] });
+    vi.mocked(getProviderInstances).mockResolvedValue({ providers: [] });
+    vi.mocked(validateLlm).mockResolvedValue({ valid: true, message: null });
+    vi.mocked(listCvDocuments).mockResolvedValue([]);
+    vi.mocked(getProfiles).mockResolvedValue({
+      profiles: [makeProfile([])],
+      defaultProfileId: "p1",
+    });
+  });
+
+  it("names the saved format, whichever it is", async () => {
+    for (const [format, name] of [
+      ["docx", "Word"],
+      ["html", "HTML"],
+    ] as const) {
+      vi.mocked(updateSettings).mockResolvedValue(
+        createAppSettings({ cvSourceFormat: format }),
+      );
+      const { result, unmount } = renderHookWithQueryClient(() =>
+        useOnboardingFlow(),
+      );
+      await waitFor(() => expect(result.current.settings).not.toBeNull());
+      await act(async () => {
+        result.current.setCurrentStep("cvformat");
+        result.current.setCvFormatChoice(format);
+      });
+      await act(async () => {
+        await result.current.handlePrimaryAction();
+      });
+      expect(updateSettings).toHaveBeenCalledWith({ cvSourceFormat: format });
+      expect(toast.success).toHaveBeenCalledWith(`CV format set to ${name}`);
+      unmount();
+    }
+  });
+});

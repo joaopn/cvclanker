@@ -44,6 +44,34 @@ const DOCX: CvFormatCopy = {
     "Output from the most recent successful PDF conversion of your CV. Empty when this CV was uploaded in the older format (re-extract to populate).",
 };
 
+const HTML: CvFormatCopy = {
+  acceptedExtensions: [".html", ".htm", ".zip"],
+  dropHint: ".html, .htm or .zip (max 10 MB)",
+  uploadSubtitle:
+    "Upload your HTML CV; the server extracts the tailorable text and renders a tailored PDF and page (or zip) per job.",
+  uploadDescription:
+    "Drop a single .html page, or a .zip with the page and every file it uses (stylesheets, fonts, images) linked by relative paths. The page must be self-contained: nothing loaded from the internet (no fonts, images or stylesheets loaded from the web) and no scripts. The server checks and tidies the page (links that change nothing in the PDF, such as icons and preloads, are dropped, and so are OS junk files in a zip), asks the LLM to pick out the text that per-job tailoring can rewrite, then marks it in place. The upload is only accepted if (a) the marked-up page still holds exactly the same text as the page you uploaded, and (b) it renders to PDF cleanly. Up to 3 LLM attempts — beyond that the upload is rejected with the per-attempt log.",
+  uploadingLabel: "Uploading, checking, and extracting…",
+  sourceStderrLabel: "Render output (your CV's source)",
+  fieldsDescription:
+    'Spans of your page\'s text that per-job tailoring can override. Tailoring leaves every other element, style and file untouched. Spot-check the role tags here — if the LLM mislabeled one (e.g. tagged your email as `bullet`), click "Re-extract" above.',
+  compileLogTitle: "Render log",
+  compileLogDescription:
+    "Output from the most recent successful PDF render of your CV, if it reported anything.",
+};
+
 export function getCvFormatCopy(format: CvSourceFormat): CvFormatCopy {
-  return format === "docx" ? DOCX : LATEX;
+  switch (format) {
+    case "latex":
+      return LATEX;
+    case "docx":
+      return DOCX;
+    case "html":
+      return HTML;
+    default:
+      // A stored format this build does not know: the LaTeX copy, as for an
+      // unset format.
+      format satisfies never;
+      return LATEX;
+  }
 }

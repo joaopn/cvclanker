@@ -1,4 +1,8 @@
-import type { CvSourceFormat } from "@shared/types";
+import {
+  CV_SOURCE_FORMAT_NAMES,
+  CV_SOURCE_FORMATS,
+  type CvSourceFormat,
+} from "@shared/types";
 import { Lock } from "lucide-react";
 import type React from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -41,16 +45,19 @@ export const CvFormatStep: React.FC<CvFormatStepProps> = ({
   storedFormat,
 }) => {
   const locked = storedFormat !== null;
-  // A first write of "docx" while a CV already exists is the server's 409 —
-  // pre-empt it here rather than surfacing an error the user can't act on.
-  const wordBlockedByExistingCv = !locked && hasExistingCv;
+  // A first write of any format but LaTeX while a CV already exists is the
+  // server's 409 — pre-empt it here rather than surfacing an error the user
+  // can't act on.
+  const blockedByExistingCv = !locked && hasExistingCv;
 
   return (
     <div className="space-y-6">
       <RadioGroup
         value={(locked ? storedFormat : choice) ?? ""}
         onValueChange={(value) =>
-          onChoiceChange(value === "latex" || value === "docx" ? value : null)
+          onChoiceChange(
+            CV_SOURCE_FORMATS.find((format) => format === value) ?? null,
+          )
         }
         className="grid gap-4 lg:grid-cols-2"
       >
@@ -59,7 +66,7 @@ export const CvFormatStep: React.FC<CvFormatStepProps> = ({
           const disabled =
             isBusy ||
             locked ||
-            (option.value === "docx" && wordBlockedByExistingCv);
+            (option.value !== "latex" && blockedByExistingCv);
           const radioId = `cv-format-${option.value}`;
           return (
             <label
@@ -87,10 +94,10 @@ export const CvFormatStep: React.FC<CvFormatStepProps> = ({
                 <div className="text-sm leading-6 text-muted-foreground">
                   {option.description}
                 </div>
-                {option.value === "docx" && wordBlockedByExistingCv ? (
+                {option.value !== "latex" && blockedByExistingCv ? (
                   <div className="text-sm leading-6 text-status-warn-text">
                     This profile already has a LaTeX CV. Delete it, or start a
-                    new user profile, to work in Word.
+                    new user profile, to work in {option.title}.
                   </div>
                 ) : null}
               </div>
@@ -103,10 +110,12 @@ export const CvFormatStep: React.FC<CvFormatStepProps> = ({
         <Alert>
           <Lock className="h-4 w-4" />
           <AlertTitle>
-            Format locked to {storedFormat === "docx" ? "Word" : "LaTeX"}
+            Format locked to{" "}
+            {CV_SOURCE_FORMAT_NAMES[storedFormat] ??
+              "a format this version does not know"}
           </AlertTitle>
           <AlertDescription>
-            The CV format is fixed for this user profile. To work with the other
+            The CV format is fixed for this user profile. To work in another
             format, create a new user profile.
           </AlertDescription>
         </Alert>

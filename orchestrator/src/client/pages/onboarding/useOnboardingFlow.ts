@@ -23,14 +23,15 @@ import {
 } from "@client/pages/settings/utils";
 import { getDefaultModelForProvider } from "@shared/settings-registry";
 import type { UpdateSettingsInput } from "@shared/settings-schema.js";
-import type {
-  AppSettings,
-  CvDocument,
-  CvDocumentSummary,
-  LlmProviderCredentialSummary,
-  ProviderInstanceRow,
-  SearchTermsSuggestionResponse,
-  ValidationResult,
+import {
+  type AppSettings,
+  CV_SOURCE_FORMAT_NAMES,
+  type CvDocument,
+  type CvDocumentSummary,
+  type LlmProviderCredentialSummary,
+  type ProviderInstanceRow,
+  type SearchTermsSuggestionResponse,
+  type ValidationResult,
 } from "@shared/types.js";
 import { normalizeSearchTerms } from "@shared/utils/search-terms";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -1206,7 +1207,7 @@ export function useOnboardingFlow() {
     if (storedCvSourceFormat !== null) {
       if (storedCvSourceFormat !== cvFormatChoice) {
         toast.info(
-          "The CV format is fixed for this user profile. Create a new user profile to work in the other format.",
+          "The CV format is fixed for this user profile. Create a new user profile to work in another format.",
         );
       }
       return true;
@@ -1219,9 +1220,7 @@ export function useOnboardingFlow() {
       });
       syncSettingsCache(nextSettings);
       toast.success(
-        cvFormatChoice === "docx"
-          ? "CV format set to Word"
-          : "CV format set to LaTeX",
+        `CV format set to ${CV_SOURCE_FORMAT_NAMES[cvFormatChoice]}`,
       );
       return true;
     } catch (error) {

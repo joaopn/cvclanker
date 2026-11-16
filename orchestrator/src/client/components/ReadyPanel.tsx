@@ -25,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { buildDownloadFilename } from "@/lib/download-filename";
+import { cvDownloadTarget } from "@client/lib/cv-download";
 import { cn, copyTextToClipboard, formatJobForWebhook } from "@/lib/utils";
 import { getRenderableJobDescription } from "@/client/lib/jobDescription";
 import { restoreJobStates, snapshotJob } from "@client/lib/undo";
@@ -157,12 +158,7 @@ export const ReadyPanel: React.FC<ReadyPanelProps> = ({
   // On a Word profile the tailored .docx is the artifact you download; the PDF
   // stays a view (the preview iframe and "View PDF"). Cover letters are
   // LaTeX-only, so coverPdfHref is unconditional.
-  const isDocxCv = cvSourceFormat === "docx";
-  const cvDownloadHref = !job
-    ? "#"
-    : isDocxCv
-      ? `/pdfs/resume_${job.id}.docx?v=${encodeURIComponent(job.updatedAt)}`
-      : pdfHref;
+  const cvDownload = job ? cvDownloadTarget(cvSourceFormat, job) : null;
 
   const hasCoverPdf = Boolean(job?.coverLetterPdfPath);
 
@@ -390,16 +386,20 @@ export const ReadyPanel: React.FC<ReadyPanelProps> = ({
               className="h-9 gap-1 px-2 text-xs"
             >
               <a
-                href={cvDownloadHref}
+                href={cvDownload?.href ?? "#"}
                 download={buildDownloadFilename({
                   candidateName,
                   kind: "resume",
                   employer: job.employer,
-                  ext: isDocxCv ? "docx" : "pdf",
+                  ext: cvDownload?.ext ?? "pdf",
                 })}
               >
                 <Download className="h-3.5 w-3.5 shrink-0" />
-                <span>{isDocxCv ? "Download .docx" : "Download CV"}</span>
+                <span>
+                  {cvDownload?.ext === "docx"
+                    ? "Download .docx"
+                    : "Download CV"}
+                </span>
                 <KbdHint shortcut="d" className="ml-1" />
               </a>
             </Button>

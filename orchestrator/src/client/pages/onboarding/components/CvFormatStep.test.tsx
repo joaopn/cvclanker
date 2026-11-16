@@ -1,11 +1,12 @@
+import type { CvSourceFormat } from "@shared/types";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { CvFormatStep } from "./CvFormatStep";
 
 function renderStep(overrides?: {
-  choice?: "latex" | "docx" | null;
+  choice?: CvSourceFormat | null;
   hasExistingCv?: boolean;
-  storedFormat?: "latex" | "docx" | null;
+  storedFormat?: CvSourceFormat | null;
 }) {
   const onChoiceChange = vi.fn();
   render(
@@ -48,7 +49,7 @@ describe("CvFormatStep", () => {
     expect(latexRadio).toBeEnabled();
     expect(
       screen.getByText(/This profile already has a LaTeX CV/i),
-    ).toBeInTheDocument();
+    ).toHaveTextContent(/to work in Word\./);
 
     fireEvent.click(wordRadio);
     expect(onChoiceChange).not.toHaveBeenCalled();
@@ -62,6 +63,24 @@ describe("CvFormatStep", () => {
     expect(wordRadio).toBeChecked();
     expect(screen.getByText(/Format locked to Word/i)).toBeInTheDocument();
     expect(screen.getByText(/create a new user profile/i)).toBeInTheDocument();
+  });
+
+  it("names an HTML profile's locked format", () => {
+    const { latexRadio, wordRadio } = renderStep({ storedFormat: "html" });
+
+    expect(latexRadio).toBeDisabled();
+    expect(wordRadio).toBeDisabled();
+    expect(latexRadio).not.toBeChecked();
+    expect(wordRadio).not.toBeChecked();
+    expect(screen.getByText(/Format locked to HTML/i)).toBeInTheDocument();
+  });
+
+  it("does not name a stored format this build does not know", () => {
+    renderStep({ storedFormat: "bogus" as never });
+
+    expect(
+      screen.getByText(/Format locked to a format this version does not know/i),
+    ).toBeInTheDocument();
   });
 
   it("shows the stored format as selected even when it is latex", () => {

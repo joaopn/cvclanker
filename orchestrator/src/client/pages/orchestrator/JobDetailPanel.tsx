@@ -11,6 +11,7 @@ import {
   useSkipJobMutation,
 } from "@client/hooks/queries/useJobMutations";
 import { useSettings } from "@client/hooks/useSettings";
+import { cvDownloadTarget } from "@client/lib/cv-download";
 import { toast } from "@client/lib/toast";
 import { restoreJobStates, snapshotJob } from "@client/lib/undo";
 import type { Job, JobListItem, JobOutcome } from "@shared/types.js";
@@ -382,12 +383,9 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
   // Download hands over the editable artifact — the .docx on a Word profile.
   // selectedPdfHref stays the PDF: it feeds the views ("PDF" button, "View
   // PDF"). Cover letters are LaTeX-only.
-  const isDocxCv = cvSourceFormat === "docx";
-  const selectedCvDownloadHref = !selectedJob
-    ? "#"
-    : isDocxCv
-      ? `/pdfs/resume_${selectedJob.id}.docx?v=${encodeURIComponent(selectedJob.updatedAt)}`
-      : selectedPdfHref;
+  const selectedCvDownload = selectedJob
+    ? cvDownloadTarget(cvSourceFormat, selectedJob)
+    : null;
   const canApply = selectedJob?.status === "ready";
   const canMoveToInProgress = selectedJob?.status === "applied";
   const canMarkClosed =
@@ -695,16 +693,18 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
                 )}
                 <DropdownMenuItem asChild>
                   <a
-                    href={selectedCvDownloadHref}
+                    href={selectedCvDownload?.href ?? "#"}
                     download={buildDownloadFilename({
                       candidateName,
                       kind: "resume",
                       employer: selectedJob.employer,
-                      ext: isDocxCv ? "docx" : "pdf",
+                      ext: selectedCvDownload?.ext ?? "pdf",
                     })}
                   >
                     <FileText className="mr-2 h-4 w-4" />
-                    {isDocxCv ? "Download .docx" : "Download CV"}
+                    {selectedCvDownload?.ext === "docx"
+                      ? "Download .docx"
+                      : "Download CV"}
                   </a>
                 </DropdownMenuItem>
               </>

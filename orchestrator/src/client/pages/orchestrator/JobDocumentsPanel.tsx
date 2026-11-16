@@ -1,4 +1,5 @@
 import { useSettings } from "@client/hooks/useSettings";
+import { cvDownloadTarget } from "@client/lib/cv-download";
 import type { Job } from "@shared/types";
 import { Download, ExternalLink, FileText } from "lucide-react";
 import type React from "react";
@@ -54,15 +55,14 @@ export const JobDocumentsPanel: React.FC<JobDocumentsPanelProps> = ({
   // Download hands over the editable artifact — the .docx on a Word profile.
   // Open and the iframe below keep the PDF: it's the view, and a .docx can't
   // render in a frame. Cover letters are LaTeX-only, so they stay PDF.
-  const isDocxCv = isCv && cvSourceFormat === "docx";
-  const downloadHref = isDocxCv
-    ? `/pdfs/resume_${job.id}.docx?v=${encodeURIComponent(job.updatedAt)}`
-    : href;
+  const download = isCv
+    ? cvDownloadTarget(cvSourceFormat, job)
+    : { href, ext: "pdf" as const };
   const downloadName = buildDownloadFilename({
     candidateName,
     kind: isCv ? "resume" : "cover",
     employer: job.employer,
-    ext: isDocxCv ? "docx" : "pdf",
+    ext: download.ext,
   });
 
   return (
@@ -105,9 +105,9 @@ export const JobDocumentsPanel: React.FC<JobDocumentsPanelProps> = ({
           size="sm"
           className="h-7 gap-1 px-2 text-xs"
         >
-          <a href={downloadHref} download={downloadName}>
+          <a href={download.href} download={downloadName}>
             <Download className="h-3 w-3" />
-            {isDocxCv ? "Download .docx" : "Download"}
+            {download.ext === "docx" ? "Download .docx" : "Download"}
           </a>
         </Button>
       </div>

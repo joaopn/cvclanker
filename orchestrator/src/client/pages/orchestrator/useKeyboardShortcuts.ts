@@ -6,6 +6,7 @@ import {
 } from "@client/hooks/queries/useJobMutations";
 import { useHotkeys } from "@client/hooks/useHotkeys";
 import { useSettings } from "@client/hooks/useSettings";
+import { cvDownloadTarget } from "@client/lib/cv-download";
 import { SHORTCUTS, isShortcutInScope } from "@client/lib/shortcut-map";
 import type { JobAction, JobListItem } from "@shared/types.js";
 import { useCallback, useRef } from "react";
@@ -315,8 +316,7 @@ export function useKeyboardShortcuts(args: UseKeyboardShortcutsArgs): void {
         if (selectedJob.status !== "ready") return;
         // Must track the Download button in ReadyPanel: on a Word profile the
         // editable .docx is the artifact, and the PDF stays a view (`p`).
-        const ext = cvSourceFormat === "docx" ? "docx" : "pdf";
-        const href = `/pdfs/resume_${selectedJob.id}.${ext}?v=${encodeURIComponent(selectedJob.updatedAt)}`;
+        const { href, ext } = cvDownloadTarget(cvSourceFormat, selectedJob);
         const a = document.createElement("a");
         a.href = href;
         a.download = buildDownloadFilename({

@@ -2,7 +2,7 @@ import { foldDiacritics } from "@shared/location-support";
 import { safeFilenamePart } from "./utils";
 
 type DownloadDocumentKind = "resume" | "cover";
-type DownloadExtension = "pdf" | "docx";
+export type DownloadExtension = "pdf" | "docx" | "html" | "zip";
 
 const NAME_CHARACTER = /[\p{L}\p{N}]/u;
 const LATIN_LETTER = /[a-z]/i;
