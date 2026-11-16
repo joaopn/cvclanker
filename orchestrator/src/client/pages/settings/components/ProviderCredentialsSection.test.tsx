@@ -114,37 +114,16 @@ describe("ProviderCredentialsSection", () => {
   });
 });
 
-describe("reuse outside Settings", () => {
-  it("replaces the Settings blurb when given a description", async () => {
-    renderSection("openrouter", {
-      description: <p>Wizard framing goes here</p>,
-    });
-
-    expect(
-      await screen.findByText("Wizard framing goes here"),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText(/The configured provider's own key stays in Models/i),
-    ).not.toBeInTheDocument();
-  });
-
-  it("drops the configured provider when asked, keeping the rest", async () => {
-    renderSection("openrouter", { excludeConfigured: true });
-
-    expect(await screen.findByText("OpenAI")).toBeInTheDocument();
-    expect(screen.queryByText("OpenRouter")).not.toBeInTheDocument();
-  });
-
-  it("keeps the configured provider by default", async () => {
+describe("hosting and Enter", () => {
+  it("lists the configured provider too", async () => {
     renderSection("openrouter");
 
     expect(await screen.findByText("OpenRouter")).toBeInTheDocument();
   });
 
-  // The onboarding wizard hosts this inside its <form>, where a bare Enter
-  // implicitly submits. jsdom has no default action for key events, so a host
-  // form's onSubmit can never fire here — asserting it was NOT called proves
-  // nothing. Cancellation is the actual mechanism, so assert that directly:
+  // Inside a host <form>, a bare Enter implicitly submits. jsdom has no
+  // default action for key events, so a host form's onSubmit can never fire
+  // here — asserting it was NOT called proves nothing. Cancellation is the actual mechanism, so assert that directly:
   // fireEvent returns false when preventDefault was called.
   it("cancels Enter so a host form cannot implicitly submit", async () => {
     renderSection();

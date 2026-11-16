@@ -16,6 +16,9 @@ import {
 } from "@client/pages/profiles/ProfileConfigFields";
 import {
   getLlmProviderConfig,
+  LLM_PROVIDER_LABELS,
+  LLM_PROVIDERS,
+  type LlmProviderId,
   normalizeLlmProvider,
 } from "@client/pages/settings/utils";
 import { getDefaultModelForProvider } from "@shared/settings-registry";
@@ -24,6 +27,7 @@ import type {
   AppSettings,
   CvDocument,
   CvDocumentSummary,
+  LlmProviderCredentialSummary,
   ProviderInstanceRow,
   SearchTermsSuggestionResponse,
   ValidationResult,
@@ -35,13 +39,83 @@ import { useForm } from "react-hook-form";
 import { EMPTY_VALIDATION_STATE, STEP_COPY } from "./content";
 import type {
   BasicAuthChoice,
+  ConfiguredLlmProvider,
   CvChoice,
   CvFormatChoice,
+  LlmStepModel,
+  LlmTestResult,
   OnboardingFormData,
   OnboardingStep,
   StepId,
   ValidationState,
 } from "./types";
+
+/**
+ * The "Configured providers" rows: the app's provider first when one is in use,
+ * then every other provider with something stored — a credentials row with a
+ * key or a base URL, a Claude Code token, or a Codex sign-in.
+ */
+function listConfiguredLlmProviders(args: {
+  appProvider: LlmProviderId;
+  appProviderInUse: boolean;
+  appBaseUrl: string;
+  claudeCodeTokenHint: string | null;
+  codexSignedIn: boolean;
+  credentials: LlmProviderCredentialSummary[];
+  llmKeyHint: string | null;
+}): ConfiguredLlmProvider[] {
+  const rows: ConfiguredLlmProvider[] = [];
+  const loginDetails = (provider: LlmProviderId): string[] => [
+    ...(provider === "claude_code" && args.claudeCodeTokenHint
+      ? ["Token saved"]
+      : []),
+    ...(provider === "codex" && args.codexSignedIn ? ["Signed in"] : []),
+  ];
+
+  if (args.appProviderInUse) {
+    const config = getLlmProviderConfig(args.appProvider);
+    rows.push({
+      provider: args.appProvider,
+      usedByApp: true,
+      details: [
+        ...(config.showApiKey && args.llmKeyHint
+          ? [`API key ${args.llmKeyHint}********`]
+          : []),
+        ...(config.showBaseUrl && args.appBaseUrl ? [args.appBaseUrl] : []),
+        ...loginDetails(args.appProvider),
+      ],
+    });
+  }
+
+  for (const provider of LLM_PROVIDERS) {
+    if (rows.some((row) => row.provider === provider)) continue;
+    const saved = args.credentials.find((entry) => entry.provider === provider);
+    const details = [
+      ...(saved?.apiKeyHint ? [`API key ${saved.apiKeyHint}********`] : []),
+      ...(saved?.baseUrl ? [saved.baseUrl] : []),
+      ...loginDetails(provider),
+    ];
+    if (details.length > 0) rows.push({ provider, usedByApp: false, details });
+  }
+  return rows;
+}
+
+/**
+ * After Remove wrote its nulls, whether the provider is still the app's — set
+ * by the server's environment, which a null restores and the UI cannot clear.
+ */
+function isStillAppProvider(
+  next: AppSettings,
+  provider: LlmProviderId,
+): boolean {
+  if (normalizeLlmProvider(next.llmProvider?.value) !== provider) return false;
+  const config = getLlmProviderConfig(provider);
+  return Boolean(
+    (config.showApiKey && next.llmApiKeyHint) ||
+      (config.showBaseUrl && next.llmBaseUrl?.value) ||
+      (provider === "claude_code" && next.claudeCodeOauthTokenHint),
+  );
+}
 
 function resolvePrimaryLabel(args: {
   basicAuthChoice: BasicAuthChoice;
@@ -52,10 +126,18 @@ function resolvePrimaryLabel(args: {
   hasCvDocument: boolean;
   hasEnabledSource: boolean;
   hasSavedSearchTermsInSession: boolean;
+  llmChecking: boolean;
+  llmProviderInUse: boolean;
   llmValidated: boolean;
 }): string {
   if (args.currentStep === "llm") {
-    return args.llmValidated ? "Revalidate connection" : "Save connection";
+    if (args.llmValidated) return "Continue";
+    if (args.llmChecking && args.llmProviderInUse) {
+      return "Checking the provider…";
+    }
+    return args.llmProviderInUse
+      ? "Fix the provider to continue"
+      : "Add a provider to continue";
   }
   if (args.currentStep === "cvformat") {
     if (args.cvFormatComplete) return "Continue";
@@ -85,9 +167,20 @@ export function useOnboardingFlow() {
 
   const [isSaving, setIsSaving] = useState(false);
   const [isValidatingLlm, setIsValidatingLlm] = useState(false);
+  const [isTestingLlm, setIsTestingLlm] = useState(false);
   const [isGeneratingSearchTerms, setIsGeneratingSearchTerms] = useState(false);
   const [llmValidation, setLlmValidation] = useState<ValidationState>(
     EMPTY_VALIDATION_STATE,
+  );
+  // The provider the last saved-configuration check was for. A result only
+  // counts for the provider it checked, so neither a check that lands late
+  // nor the render between a provider change and the reset effect can mark a
+  // different provider as working.
+  const [llmValidationFor, setLlmValidationFor] =
+    useState<LlmProviderId | null>(null);
+  const llmCheckRequestRef = useRef(0);
+  const [llmTestResult, setLlmTestResult] = useState<LlmTestResult | null>(
+    null,
   );
   // Defaults to "skip": the PI's call. The settings-reset effect below re-seeds
   // this on the first settings load, so BOTH sites must say "skip" or one
@@ -181,13 +274,16 @@ export function useOnboardingFlow() {
     if (!settings) return;
 
     setLlmValidation(EMPTY_VALIDATION_STATE);
+    const current = getValues();
     reset({
-      llmProvider: settings.llmProvider?.value || "",
-      llmBaseUrl: settings.llmBaseUrl?.value || "",
-      llmApiKey: "",
-      claudeCodeOauthToken: "",
+      // The LLM fields are the "Add provider" box's drafts, never the stored
+      // provider: what is stored is shown under "Configured providers".
+      llmProvider: current.llmProvider,
+      llmBaseUrl: current.llmBaseUrl,
+      llmApiKey: current.llmApiKey,
+      claudeCodeOauthToken: current.claudeCodeOauthToken,
       personalBrief: "",
-      searchTerms: getValues().searchTerms,
+      searchTerms: current.searchTerms,
 
       searchTermDraft: "",
       basicAuthUser: settings.basicAuthUser ?? "",
@@ -258,23 +354,125 @@ export function useOnboardingFlow() {
     );
   }, [instancesQuery.data]);
 
-  const llmProvider = watch("llmProvider");
-  const selectedProvider = normalizeLlmProvider(
-    llmProvider || settings?.llmProvider?.value || "openrouter",
-  );
-  const providerConfig = getLlmProviderConfig(selectedProvider);
-  const {
-    normalizedProvider,
-    showApiKey,
-    showBaseUrl,
-    requiresApiKey: requiresLlmKey,
-  } = providerConfig;
+  const credentialsQuery = useQuery({
+    queryKey: queryKeys.llmProviderCredentials.all,
+    queryFn: api.getLlmProviderCredentials,
+  });
+  // The status check runs the Codex CLI, so it is fetched once; the sign-in
+  // panel and Remove write every later change into the cache.
+  const codexStatusQuery = useQuery({
+    queryKey: queryKeys.codexAuth.status(),
+    queryFn: api.getCodexAuthStatus,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const credentials = credentialsQuery.data ?? [];
+  const codexSignedIn = codexStatusQuery.data?.authenticated ?? false;
 
+  // The app's provider is the stored settings trio, which every ordinary LLM
+  // call reads; other providers live in `llm_provider_credentials`.
+  const appProvider = normalizeLlmProvider(settings?.llmProvider?.value);
+  const appProviderConfig = getLlmProviderConfig(appProvider);
   const llmKeyHint = settings?.llmApiKeyHint ?? null;
   const claudeCodeTokenHint = settings?.claudeCodeOauthTokenHint ?? null;
-  const hasLlmKey = Boolean(llmKeyHint);
+  const appBaseUrl = settings?.llmBaseUrl?.value || "";
 
-  const llmValidated = llmValidation.valid;
+  const appCheck =
+    llmValidationFor === appProvider ? llmValidation : EMPTY_VALIDATION_STATE;
+  const llmValidated = appCheck.valid;
+  const appProviderInUse =
+    Boolean(settings?.llmProvider?.override) ||
+    llmValidated ||
+    (appProviderConfig.showApiKey && Boolean(llmKeyHint)) ||
+    (appProviderConfig.showBaseUrl && Boolean(appBaseUrl)) ||
+    (appProvider === "claude_code" && Boolean(claudeCodeTokenHint)) ||
+    (appProvider === "codex" && codexSignedIn);
+
+  const configuredLlmProviders = listConfiguredLlmProviders({
+    appProvider,
+    appProviderInUse,
+    appBaseUrl,
+    claudeCodeTokenHint,
+    codexSignedIn,
+    credentials,
+    llmKeyHint,
+  });
+
+  // While no provider is in use, Add makes the picked one the app's provider,
+  // so every provider is offered — one already configured as an extra
+  // included. Once one is in use, Add adds the providers not configured yet.
+  const addableLlmProviders = appProviderInUse
+    ? LLM_PROVIDERS.filter(
+        (provider) =>
+          !configuredLlmProviders.some((row) => row.provider === provider),
+      )
+    : [...LLM_PROVIDERS];
+  const draftLlmProvider = watch("llmProvider");
+  const addLlmProvider: LlmProviderId | null =
+    addableLlmProviders.find((provider) => provider === draftLlmProvider) ??
+    (addableLlmProviders.includes(appProvider)
+      ? appProvider
+      : (addableLlmProviders[0] ?? null));
+  const addLlmConfig = addLlmProvider
+    ? getLlmProviderConfig(addLlmProvider)
+    : null;
+  const draftApiKey = watch("llmApiKey").trim();
+  const draftBaseUrl = watch("llmBaseUrl").trim();
+  const draftToken = watch("claudeCodeOauthToken").trim();
+
+  // Ollama and LM Studio take no key, and the check route then falls back to
+  // the stored key whatever the provider (B99's server half), sending it to
+  // the typed URL. So they are not tested while a key belongs to another
+  // provider.
+  const testDisabledReason =
+    addLlmProvider &&
+    addLlmConfig &&
+    !addLlmConfig.showApiKey &&
+    addLlmConfig.showBaseUrl &&
+    llmKeyHint &&
+    addLlmProvider !== appProvider
+      ? `Test is unavailable for ${addLlmConfig.label} while another provider's API key is saved: the check would send that key along.`
+      : null;
+  // OpenAI-compatible with no URL would be checked against the server's
+  // default endpoint, sending the typed token to OpenAI.
+  const canTestLlm = Boolean(
+    addLlmConfig &&
+      (!addLlmConfig.showApiKey || draftApiKey) &&
+      (addLlmProvider !== "openai_compatible" || draftBaseUrl) &&
+      !testDisabledReason,
+  );
+  let addLlmDisabledReason: string | null = null;
+  if (!addLlmProvider || !addLlmConfig) {
+    addLlmDisabledReason = "Every provider has been added.";
+  } else if (addLlmConfig.showApiKey && !draftApiKey) {
+    addLlmDisabledReason = `Paste the ${addLlmConfig.label} API key to add it.`;
+  } else if (addLlmProvider === "codex" && !codexSignedIn) {
+    addLlmDisabledReason = appProviderInUse
+      ? "Sign in to Codex above: signing in adds it."
+      : "Sign in to Codex above to add it.";
+  } else if (
+    addLlmProvider === "claude_code" &&
+    !draftToken &&
+    (appProviderInUse || !claudeCodeTokenHint)
+  ) {
+    addLlmDisabledReason = "Paste a Claude Code token to add it.";
+  } else if (
+    addLlmConfig.showBaseUrl &&
+    !draftBaseUrl &&
+    (appProviderInUse || addLlmProvider === "openai_compatible")
+  ) {
+    addLlmDisabledReason = `Enter the ${addLlmConfig.label} base URL to add it.`;
+  }
+
+  // What is typed belongs to the provider it was typed for. The picked
+  // provider also changes without the user (one they were adding becomes
+  // configured and leaves the list), so this keys on the provider, not on
+  // the dropdown's onChange.
+  useEffect(() => {
+    void addLlmProvider;
+    setValue("llmApiKey", "");
+    setValue("llmBaseUrl", "");
+    setValue("claudeCodeOauthToken", "");
+  }, [addLlmProvider, setValue]);
   const searchTermsComplete = searchTermsSaved && !searchTermsStale;
   const basicAuthComplete = hasCompletedBasicAuthOnboarding(settings);
 
@@ -345,60 +543,60 @@ export function useOnboardingFlow() {
     [],
   );
 
-  const validateLlm = useCallback(
-    async (options?: { markChecked?: boolean }) => {
-      const values = getValues();
-
-      setIsValidatingLlm(true);
-      try {
-        const result = await api.validateLlm({
-          provider: selectedProvider,
-          baseUrl: showBaseUrl
-            ? values.llmBaseUrl.trim() || undefined
-            : undefined,
-          apiKey: requiresLlmKey
-            ? values.llmApiKey.trim() || undefined
-            : undefined,
-        });
-        setLlmValidation(toValidationState(result, options));
-        return result;
-      } catch (error) {
-        const result = {
-          valid: false,
-          message:
-            error instanceof Error ? error.message : "LLM validation failed",
-        };
-        setLlmValidation(toValidationState(result, options));
-        return result;
-      } finally {
-        setIsValidatingLlm(false);
-      }
-    },
-    [
-      getValues,
-      requiresLlmKey,
-      selectedProvider,
-      showBaseUrl,
-      toValidationState,
-    ],
-  );
-
-  useEffect(() => {
-    if (!showBaseUrl) {
-      setValue("llmBaseUrl", "");
+  // The check of the SAVED configuration: no key or base URL is sent, so the
+  // server uses what is stored — which belongs to this provider. It runs on
+  // mount, whenever the app's provider changes, and whenever the settings
+  // object changes (the reset effect above empties the validation), which is
+  // how an Add or a Remove re-checks the app's provider.
+  // Only the latest check writes its result and its provider, and clears the
+  // busy flag: a settings change can start one while another is running.
+  const checkAppProvider = useCallback(async () => {
+    const request = ++llmCheckRequestRef.current;
+    const provider = appProvider;
+    setIsValidatingLlm(true);
+    let state: ValidationState;
+    try {
+      state = toValidationState(await api.validateLlm({ provider }));
+    } catch (error) {
+      state = toValidationState({
+        valid: false,
+        message:
+          error instanceof Error ? error.message : "LLM validation failed",
+      });
     }
-  }, [setValue, showBaseUrl]);
-
-  useEffect(() => {
-    if (!selectedProvider) return;
-    setLlmValidation(EMPTY_VALIDATION_STATE);
-  }, [selectedProvider]);
+    if (request !== llmCheckRequestRef.current) return;
+    setLlmValidation(state);
+    setLlmValidationFor(provider);
+    setIsValidatingLlm(false);
+  }, [appProvider, toValidationState]);
 
   useEffect(() => {
     if (!settings || settingsLoading) return;
-    if (llmValidation.hydrated) return;
-    void validateLlm({ markChecked: false });
-  }, [llmValidation.hydrated, settings, settingsLoading, validateLlm]);
+    if (appCheck.hydrated) return;
+    void checkAppProvider();
+  }, [appCheck.hydrated, checkAppProvider, settings, settingsLoading]);
+
+  // A Codex sign-in or sign-out changes no setting, so the reset effect never
+  // sees it; re-check when it happens while the app runs on Codex. The check
+  // is started directly, because a check already running (its state already
+  // empty) would otherwise finish with a result taken before the change. The
+  // status query's first answer is not a change: the mount check covers it.
+  const codexAuthenticated = codexStatusQuery.data?.authenticated;
+  const codexAuthenticatedRef = useRef(codexAuthenticated);
+  useEffect(() => {
+    const previous = codexAuthenticatedRef.current;
+    if (previous === codexAuthenticated) return;
+    codexAuthenticatedRef.current = codexAuthenticated;
+    if (previous === undefined) return;
+    if (appProvider !== "codex" || !settings || settingsLoading) return;
+    void checkAppProvider();
+  }, [
+    appProvider,
+    checkAppProvider,
+    codexAuthenticated,
+    settings,
+    settingsLoading,
+  ]);
 
   const steps = useMemo<OnboardingStep[]>(
     () => [
@@ -483,91 +681,241 @@ export function useOnboardingFlow() {
     searchTermsValid: searchTermsComplete,
   });
 
-  const handleSaveLlm = useCallback(async () => {
+  const handleSelectLlmProvider = useCallback(
+    (provider: LlmProviderId) => {
+      setValue("llmProvider", provider);
+      setLlmTestResult(null);
+    },
+    [setValue],
+  );
+
+  // Test checks what is typed and saves nothing — except a Claude Code token:
+  // that check asks the CLI, which reads the token from the server's
+  // environment, so the token is saved first or the check runs without it.
+  // The check route falls back to the stored key and URL when none is sent,
+  // so a key provider is only tested with a typed key, a base-URL provider
+  // always sends the typed URL (empty means the provider's default), and
+  // `testDisabledReason` covers Ollama and LM Studio, which send no key.
+  const handleTestLlmProvider = useCallback(async () => {
+    if (!addLlmProvider || !canTestLlm) return;
+    const config = getLlmProviderConfig(addLlmProvider);
     const values = getValues();
-    const apiKeyValue = values.llmApiKey.trim();
-    const baseUrlValue = values.llmBaseUrl.trim();
+    const token = values.claudeCodeOauthToken.trim();
 
-    if (requiresLlmKey && !apiKeyValue && !hasLlmKey) {
-      toast.info("Add your LLM API key to continue");
-      return false;
-    }
-
-    // Claude Code validates by asking the CLI, which reads the token from the
-    // server's environment — so a token typed here has to be persisted (which
-    // applies it to process.env) BEFORE validating, or the check runs against
-    // the old credential and a first-time setup can never pass.
-    const claudeCodeTokenValue = values.claudeCodeOauthToken.trim();
-    if (normalizedProvider === "claude_code" && claudeCodeTokenValue) {
-      try {
-        setIsSaving(true);
+    setIsTestingLlm(true);
+    setLlmTestResult(null);
+    try {
+      if (addLlmProvider === "claude_code" && token) {
         const nextSettings = await api.updateSettings({
-          claudeCodeOauthToken: claudeCodeTokenValue,
+          claudeCodeOauthToken: token,
         });
         syncSettingsCache(nextSettings);
         setValue("claudeCodeOauthToken", "");
-      } catch (error) {
-        toast.error(
-          error instanceof Error ? error.message : "Failed to save the token",
-        );
-        return false;
-      } finally {
-        setIsSaving(false);
       }
+      const result = await api.validateLlm({
+        provider: addLlmProvider,
+        apiKey: config.showApiKey ? values.llmApiKey.trim() : undefined,
+        baseUrl: config.showBaseUrl ? values.llmBaseUrl.trim() : undefined,
+      });
+      setLlmTestResult({ ...result, provider: addLlmProvider });
+    } catch (error) {
+      setLlmTestResult({
+        provider: addLlmProvider,
+        valid: false,
+        message:
+          error instanceof Error ? error.message : "The connection test failed",
+      });
+    } finally {
+      setIsTestingLlm(false);
     }
+  }, [addLlmProvider, canTestLlm, getValues, setValue, syncSettingsCache]);
 
-    const validation = await validateLlm();
-
-    if (!validation.valid) {
-      toast.error(validation.message || "LLM validation failed");
-      return false;
+  // Add saves what is typed, with no check. While no provider is in use it
+  // writes the settings trio, making the provider the app's (the reset effect
+  // then re-checks it); otherwise it stores the provider as an extra.
+  const handleAddLlmProvider = useCallback(async () => {
+    if (!addLlmProvider) return;
+    if (addLlmDisabledReason) {
+      toast.info(addLlmDisabledReason);
+      return;
     }
-
-    const update: Partial<UpdateSettingsInput> = {
-      llmProvider: normalizedProvider,
-      llmBaseUrl: showBaseUrl ? baseUrlValue || null : null,
-      model: null,
-      modelScorer: null,
-      modelTailoring: null,
-    };
-
-    if (showApiKey && apiKeyValue) {
-      update.llmApiKey = apiKeyValue;
-    }
+    const config = getLlmProviderConfig(addLlmProvider);
+    const values = getValues();
+    const apiKey = values.llmApiKey.trim();
+    const baseUrl = values.llmBaseUrl.trim();
+    const token = values.claudeCodeOauthToken.trim();
 
     try {
       setIsSaving(true);
-      const nextSettings = await api.updateSettings(update);
-      syncSettingsCache(nextSettings);
+      if (!appProviderInUse) {
+        const update: Partial<UpdateSettingsInput> = {
+          llmProvider: addLlmProvider,
+          llmBaseUrl: config.showBaseUrl ? baseUrl || null : null,
+          model: null,
+          modelScorer: null,
+          modelTailoring: null,
+        };
+        // A provider without a key field clears the stored key, or its own
+        // check would send a previous provider's key along.
+        update.llmApiKey = config.showApiKey ? apiKey : null;
+        if (addLlmProvider === "claude_code" && token) {
+          update.claudeCodeOauthToken = token;
+        }
+        const nextSettings = await api.updateSettings(update);
+        syncSettingsCache(nextSettings);
+        try {
+          const nextCredentials =
+            await api.deleteLlmProviderCredential(addLlmProvider);
+          queryClient.setQueryData(
+            queryKeys.llmProviderCredentials.all,
+            nextCredentials,
+          );
+        } catch (error) {
+          toast.error(
+            `${config.label} was added, but its older saved credential could not be removed${
+              error instanceof Error ? `: ${error.message}` : ""
+            }`,
+          );
+        }
+        const defaultModel = getDefaultModelForProvider(addLlmProvider);
+        toast.success(`${config.label} added — the app runs on it`, {
+          description:
+            addLlmProvider === "openai" || addLlmProvider === "gemini"
+              ? `Default for ${config.label}: ${defaultModel}.`
+              : "You can fine-tune models later in Settings.",
+        });
+      } else if (addLlmProvider === "claude_code") {
+        const nextSettings = await api.updateSettings({
+          claudeCodeOauthToken: token,
+        });
+        syncSettingsCache(nextSettings);
+        toast.success(`${config.label} added`);
+      } else {
+        const nextCredentials = await api.saveLlmProviderCredential(
+          addLlmProvider,
+          {
+            ...(config.showApiKey ? { apiKey } : {}),
+            ...(config.showBaseUrl ? { baseUrl } : {}),
+          },
+        );
+        queryClient.setQueryData(
+          queryKeys.llmProviderCredentials.all,
+          nextCredentials,
+        );
+        toast.success(`${config.label} added`);
+      }
+      setValue("llmProvider", "");
       setValue("llmApiKey", "");
-      const defaultModel = getDefaultModelForProvider(normalizedProvider);
-      toast.success("LLM provider connected", {
-        description:
-          normalizedProvider === "openai" || normalizedProvider === "gemini"
-            ? `Default for ${providerConfig.label}: ${defaultModel}.`
-            : "You can fine-tune models later in Settings.",
-      });
-      return true;
+      setValue("llmBaseUrl", "");
+      setValue("claudeCodeOauthToken", "");
+      setLlmTestResult(null);
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to save LLM settings",
+        error instanceof Error ? error.message : "Failed to add the provider",
       );
-      return false;
     } finally {
       setIsSaving(false);
     }
   }, [
+    addLlmDisabledReason,
+    addLlmProvider,
+    appProviderInUse,
     getValues,
-    hasLlmKey,
-    normalizedProvider,
-    providerConfig.label,
-    requiresLlmKey,
+    queryClient,
     setValue,
-    showApiKey,
-    showBaseUrl,
     syncSettingsCache,
-    validateLlm,
   ]);
+
+  // Remove deletes everything stored for the provider. On the app's provider
+  // that is the settings trio (and the Claude Code token), so the step goes
+  // back to incomplete and the next Add becomes the app's provider; the
+  // other providers are left alone. The app's provider's own credentials row
+  // is deleted even when the list failed to load (the route accepts a
+  // missing row), or it would come back as an extra.
+  const handleRemoveLlmProvider = useCallback(
+    async (provider: LlmProviderId) => {
+      const row = configuredLlmProviders.find(
+        (entry) => entry.provider === provider,
+      );
+      if (!row) return;
+      try {
+        setIsSaving(true);
+        let nextSettings: AppSettings | null = null;
+        if (row.usedByApp) {
+          const update: Partial<UpdateSettingsInput> = {
+            llmProvider: null,
+            llmApiKey: null,
+            llmBaseUrl: null,
+          };
+          if (provider === "claude_code") update.claudeCodeOauthToken = null;
+          nextSettings = await api.updateSettings(update);
+          syncSettingsCache(nextSettings);
+        } else if (provider === "claude_code") {
+          nextSettings = await api.updateSettings({
+            claudeCodeOauthToken: null,
+          });
+          syncSettingsCache(nextSettings);
+        }
+        if (provider === "codex" && codexSignedIn) {
+          const status = await api.disconnectCodexAuth();
+          queryClient.setQueryData(queryKeys.codexAuth.status(), status);
+        }
+        if (
+          row.usedByApp ||
+          credentials.some((entry) => entry.provider === provider)
+        ) {
+          const nextCredentials =
+            await api.deleteLlmProviderCredential(provider);
+          queryClient.setQueryData(
+            queryKeys.llmProviderCredentials.all,
+            nextCredentials,
+          );
+        }
+        const label = LLM_PROVIDER_LABELS[provider];
+        const tokenFromEnvironment =
+          provider === "claude_code" &&
+          Boolean(nextSettings?.claudeCodeOauthTokenHint);
+        if (
+          (row.usedByApp &&
+            nextSettings &&
+            isStillAppProvider(nextSettings, provider)) ||
+          (!row.usedByApp && tokenFromEnvironment)
+        ) {
+          toast.info(
+            `${label} is set by the server's environment, so it cannot be removed here.`,
+          );
+        } else if (tokenFromEnvironment) {
+          toast.info(
+            `${label} no longer runs the app, but its token comes from the server's environment, so it stays listed.`,
+          );
+        } else {
+          toast.success(`${label} removed`);
+        }
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Failed to remove the provider",
+        );
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [
+      codexSignedIn,
+      configuredLlmProviders,
+      credentials,
+      queryClient,
+      syncSettingsCache,
+    ],
+  );
+
+  const handleCodexStatusChange = useCallback(
+    (status: api.CodexAuthStatusResponse) => {
+      queryClient.setQueryData(queryKeys.codexAuth.status(), status);
+    },
+    [queryClient],
+  );
 
   const markSearchTermsStale = useCallback(() => {
     const currentTerms = getValues().searchTerms;
@@ -1020,7 +1368,16 @@ export function useOnboardingFlow() {
   const handlePrimaryAction = useCallback(async () => {
     if (!currentStep) return;
     if (currentStep === "llm") {
-      await handleSaveLlm();
+      if (!llmValidated) {
+        toast.info(
+          appProviderInUse
+            ? "The provider the app uses did not pass its check — see Configured providers"
+            : "Add a provider to continue",
+        );
+        return;
+      }
+      const next = steps[steps.findIndex((step) => step.id === "llm") + 1];
+      if (next) setCurrentStep(next.id);
       return;
     }
     if (currentStep === "cvformat") {
@@ -1041,13 +1398,15 @@ export function useOnboardingFlow() {
     }
     await handleCompleteBasicAuth();
   }, [
+    appProviderInUse,
     currentStep,
     handleCompleteBasicAuth,
     handleCompleteCv,
     handleSaveCvFormat,
-    handleSaveLlm,
     handleSaveSearchProfile,
     handleSaveSources,
+    llmValidated,
+    steps,
   ]);
 
   const stepIndex = currentStep
@@ -1059,6 +1418,8 @@ export function useOnboardingFlow() {
     settingsLoading ||
     isGeneratingSearchTerms ||
     isValidatingLlm ||
+    isTestingLlm ||
+    credentialsQuery.isLoading ||
     profilesQuery.isLoading;
 
   const currentCopy = currentStep ? STEP_COPY[currentStep] : STEP_COPY.llm;
@@ -1090,8 +1451,31 @@ export function useOnboardingFlow() {
     hasCvDocument: Boolean(cvDocument),
     hasEnabledSource,
     hasSavedSearchTermsInSession,
+    llmChecking: isValidatingLlm,
+    llmProviderInUse: appProviderInUse,
     llmValidated,
   });
+
+  const llmStep: LlmStepModel = {
+    addProvider: addLlmProvider,
+    addableProviders: addableLlmProviders,
+    addMakesAppProvider: !appProviderInUse,
+    addDisabledReason: addLlmDisabledReason,
+    canTest: canTestLlm,
+    testDisabledReason,
+    claudeCodeTokenHint,
+    codexSignedIn,
+    configuredProviders: configuredLlmProviders,
+    isTesting: isTestingLlm,
+    isValidating: isValidatingLlm,
+    testResult: llmTestResult,
+    validation: appCheck,
+    onSelectProvider: handleSelectLlmProvider,
+    onTest: handleTestLlmProvider,
+    onAdd: handleAddLlmProvider,
+    onRemove: handleRemoveLlmProvider,
+    onCodexStatusChange: handleCodexStatusChange,
+  };
 
   return {
     apifyProviderId,
@@ -1111,18 +1495,13 @@ export function useOnboardingFlow() {
     instances,
     isBusy,
     isGeneratingSearchTerms,
-    isValidatingLlm,
     hasSavedSearchTermsInSession,
-    llmKeyHint,
-    claudeCodeTokenHint,
-
-    llmValidation,
+    llmStep,
     primaryLabel,
     progressValue,
     searchProfileForm,
     searchTermsSource,
     searchTermsStale,
-    selectedProvider,
     settings,
     settingsLoading,
     sourceEnabledIds: sourceEnabledIds ?? [],

@@ -119,14 +119,10 @@ export const OnboardingPage: React.FC = () => {
                     }
                     isBusy={flow.isBusy}
                     isGeneratingSearchTerms={flow.isGeneratingSearchTerms}
-                    isValidatingLlm={flow.isValidatingLlm}
-                    llmKeyHint={flow.llmKeyHint}
-                    claudeCodeTokenHint={flow.claudeCodeTokenHint}
-                    llmValidation={flow.llmValidation}
+                    llmStep={flow.llmStep}
                     personalBrief={flow.watch("personalBrief")}
                     searchTermsSource={flow.searchTermsSource}
                     searchTermsStale={flow.searchTermsStale}
-                    selectedProvider={flow.selectedProvider}
                     onBasicAuthChoiceChange={flow.setBasicAuthChoice}
                     onBasicAuthPasswordChange={(value) =>
                       flow.setValue("basicAuthPassword", value)

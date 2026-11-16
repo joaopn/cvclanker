@@ -17,9 +17,9 @@ export const STEP_COPY: Record<
 > = {
   llm: {
     eyebrow: "Step 1",
-    title: "Choose the LLM connection CV Clanker should use.",
+    title: "Add the LLM providers CV Clanker can use.",
     description:
-      "Pick the provider, confirm the endpoint, and validate the credentials this workspace will use for scoring and tailoring.",
+      "The first one you add runs scoring and tailoring. Test checks a connection; Add saves the provider.",
   },
   cvformat: {
     eyebrow: "Step 2",

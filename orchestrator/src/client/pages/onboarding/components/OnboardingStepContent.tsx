@@ -1,6 +1,5 @@
 import type { SourceConfigsExtractorEntry } from "@client/api";
 import type { EditorForm } from "@client/pages/profiles/ProfileConfigFields";
-import type { LlmProviderId } from "@client/pages/settings/utils";
 import type {
   AppSettings,
   CvDocument,
@@ -15,9 +14,9 @@ import type {
   BasicAuthChoice,
   CvChoice,
   CvFormatChoice,
+  LlmStepModel,
   OnboardingFormData,
   StepId,
-  ValidationState,
 } from "../types";
 import { CvFormatStep } from "./CvFormatStep";
 import { CvUploadStep } from "./CvUploadStep";
@@ -48,16 +47,11 @@ export const OnboardingStepContent: React.FC<{
   storedCvSourceFormat: CvSourceFormat | null;
   isBusy: boolean;
   isGeneratingSearchTerms: boolean;
-  isValidatingLlm: boolean;
   hasSavedSearchTermsInSession: boolean;
-  llmKeyHint: string | null;
-  claudeCodeTokenHint: string | null;
-
-  llmValidation: ValidationState;
+  llmStep: LlmStepModel;
   personalBrief: string;
   searchTermsSource: SearchTermsSuggestionResponse["source"] | null;
   searchTermsStale: boolean;
-  selectedProvider: LlmProviderId;
   onBasicAuthChoiceChange: (choice: BasicAuthChoice) => void;
   onBasicAuthPasswordChange: (value: string) => void;
   onBasicAuthUserChange: (value: string) => void;
@@ -75,13 +69,9 @@ export const OnboardingStepContent: React.FC<{
   if (props.currentStep === "llm") {
     return (
       <LlmConnectionStep
+        {...props.llmStep}
         control={props.control}
         isBusy={props.isBusy}
-        isValidatingLlm={props.isValidatingLlm}
-        llmKeyHint={props.llmKeyHint}
-        claudeCodeTokenHint={props.claudeCodeTokenHint}
-        selectedProvider={props.selectedProvider}
-        validation={props.llmValidation}
       />
     );
   }

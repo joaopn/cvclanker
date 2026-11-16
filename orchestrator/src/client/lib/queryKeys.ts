@@ -81,4 +81,10 @@ export const queryKeys = {
     list: () => [...queryKeys.userProfiles.all, "list"] as const,
     active: () => [...queryKeys.userProfiles.all, "active"] as const,
   },
+  llmProviderCredentials: {
+    all: ["llm-provider-credentials"] as const,
+  },
+  codexAuth: {
+    status: () => ["codex-auth", "status"] as const,
+  },
 } as const;

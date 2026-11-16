@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 
 type CodexAuthPanelProps = {
   isBusy: boolean;
+  onStatusChange?: (status: api.CodexAuthStatusResponse) => void;
 };
 
 const TWO_MINUTES_MS = 2 * 60 * 1000;
@@ -24,7 +25,10 @@ function formatRemaining(ms: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-export const CodexAuthPanel: React.FC<CodexAuthPanelProps> = ({ isBusy }) => {
+export const CodexAuthPanel: React.FC<CodexAuthPanelProps> = ({
+  isBusy,
+  onStatusChange,
+}) => {
   const [codexAuthStatus, setCodexAuthStatus] = useState<Awaited<
     ReturnType<typeof api.getCodexAuthStatus>
   > | null>(null);
@@ -137,6 +141,10 @@ export const CodexAuthPanel: React.FC<CodexAuthPanelProps> = ({ isBusy }) => {
   useEffect(() => {
     void refreshCodexAuthStatus();
   }, [refreshCodexAuthStatus]);
+
+  useEffect(() => {
+    if (codexAuthStatus) onStatusChange?.(codexAuthStatus);
+  }, [codexAuthStatus, onStatusChange]);
 
   useEffect(() => {
     if (!codexAuthStatus?.loginInProgress || codexAuthStatus.authenticated) {

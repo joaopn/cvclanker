@@ -1,4 +1,5 @@
 import * as api from "@client/api";
+import { queryKeys } from "@client/lib/queryKeys";
 import { toast } from "@client/lib/toast";
 import { SettingsSectionFrame } from "@client/pages/settings/components/SettingsSectionFrame";
 import {
@@ -16,13 +17,6 @@ import { Label } from "@/components/ui/label";
 
 type ProviderCredentialsSectionProps = {
   layoutMode?: "accordion" | "panel";
-  /** Replaces the Settings-specific blurb; the wizard needs its own framing. */
-  description?: React.ReactNode;
-  /**
-   * Drop the configured provider from the list. The onboarding step already has
-   * a key field for it, and two inputs for one provider read as a conflict.
-   */
-  excludeConfigured?: boolean;
   /** The configured provider, whose credential still lives in Models. */
   configuredProvider?: string | null;
 };
@@ -36,18 +30,13 @@ const CREDENTIAL_PROVIDERS = LLM_PROVIDERS.filter(
   (provider) => provider !== "claude_code" && provider !== "codex",
 );
 
-const CREDENTIALS_QUERY_KEY = ["llm-provider-credentials"] as const;
+const CREDENTIALS_QUERY_KEY = queryKeys.llmProviderCredentials.all;
 
 type DraftState = { apiKey: string; baseUrl: string };
 
 export const ProviderCredentialsSection: React.FC<
   ProviderCredentialsSectionProps
-> = ({
-  layoutMode,
-  configuredProvider,
-  description,
-  excludeConfigured = false,
-}) => {
+> = ({ layoutMode, configuredProvider }) => {
   const queryClient = useQueryClient();
   const { data: credentials, isLoading } = useQuery({
     queryKey: CREDENTIALS_QUERY_KEY,
@@ -91,31 +80,25 @@ export const ProviderCredentialsSection: React.FC<
 
   const isBusy = saveMutation.isPending || clearMutation.isPending;
 
-  const visibleProviders = excludeConfigured
-    ? CREDENTIAL_PROVIDERS.filter((provider) => provider !== configuredProvider)
-    : CREDENTIAL_PROVIDERS;
-
   return (
     <SettingsSectionFrame
       mode={layoutMode}
       value="provider-credentials"
       title="Provider Credentials"
     >
-      {description ?? (
-        <p className="text-sm text-muted-foreground">
-          Keys for providers other than the one the app runs on, so a model can
-          be benchmarked without switching provider first. The configured
-          provider's own key stays in Models. Keys are never shown again after
-          saving — a credential recorded here is used in place of the configured
-          one for that provider, and is never lent to any other.
-        </p>
-      )}
+      <p className="text-sm text-muted-foreground">
+        Keys for providers other than the one the app runs on, so a model can be
+        benchmarked without switching provider first. The configured provider's
+        own key stays in Models. Keys are never shown again after saving — a
+        credential recorded here is used in place of the configured one for that
+        provider, and is never lent to any other.
+      </p>
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
         <div className="space-y-4">
-          {visibleProviders.map((provider: LlmProviderId) => {
+          {CREDENTIAL_PROVIDERS.map((provider: LlmProviderId) => {
             const config = getLlmProviderConfig(provider);
             const saved = credentials?.find(
               (entry) => entry.provider === provider,
@@ -138,11 +121,9 @@ export const ProviderCredentialsSection: React.FC<
                     : {}),
                 },
               });
-            // The onboarding wizard hosts this inside its <form>, where Enter
-            // would otherwise implicitly submit and run the wizard's own save
-            // instead of this card's — writing settings the user never touched.
-            // preventDefault is unconditional (that is what suppresses the
-            // submit); only the write is gated.
+            // Enter saves this card. preventDefault is unconditional, so a host
+            // <form> never implicitly submits its own save instead; only the
+            // write is gated.
             const hasSomethingToSend =
               draft.apiKey.trim() !== "" ||
               (config.showBaseUrl && draft.baseUrl.trim() !== "");
