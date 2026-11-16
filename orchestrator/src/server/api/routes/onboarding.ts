@@ -1,8 +1,9 @@
 import { asyncRoute, ok } from "@infra/http";
 import { logger } from "@infra/logger";
-import { getSetting } from "@server/repositories/settings";
+import { resolveProviderCall } from "@server/services/llm/provider-credentials";
 import { LlmService } from "@server/services/llm/service";
 import { suggestOnboardingSearchTerms } from "@server/services/onboarding-search-terms";
+import { providerUsesBaseUrl } from "@shared/settings-registry";
 import { type Request, type Response, Router } from "express";
 
 export const onboardingRouter = Router();
@@ -22,54 +23,42 @@ function getDefaultValidationBaseUrl(
   return undefined;
 }
 
+/**
+ * Check a provider's connection. The stored key and base URL belong to the
+ * configured provider and are never lent to another: `resolveProviderCall`
+ * hands the configured provider its own (from the environment the settings
+ * save writes) and any other provider only its own credentials row. A key or
+ * a base URL the caller typed overrides that. The base URL is taken only for
+ * the providers whose endpoint the user chooses; an empty one means that
+ * provider's default.
+ */
 async function validateLlm(options: {
   apiKey?: string | null;
   provider?: string | null;
   baseUrl?: string | null;
 }): Promise<ValidationResponse> {
-  const [storedApiKey, storedProvider, storedBaseUrl] = await Promise.all([
-    getSetting("llmApiKey"),
-    getSetting("llmProvider"),
-    getSetting("llmBaseUrl"),
-  ]);
-
-  const normalizedProvider = normalizeLlmProviderValue(
-    options.provider?.trim() || storedProvider?.trim() || undefined,
-  );
-  const shouldUseBaseUrl =
-    normalizedProvider === "lmstudio" ||
-    normalizedProvider === "ollama" ||
-    normalizedProvider === "openai_compatible";
-  const hasExplicitBaseUrlOverride =
-    options.baseUrl !== undefined && options.baseUrl !== null;
-  const resolvedBaseUrl = shouldUseBaseUrl
-    ? hasExplicitBaseUrlOverride
-      ? options.baseUrl?.trim() ||
-        getDefaultValidationBaseUrl(normalizedProvider)
-      : storedBaseUrl?.trim() || undefined
-    : undefined;
-  const resolvedApiKey = options.apiKey?.trim() || storedApiKey?.trim() || null;
+  const resolved = await resolveProviderCall(options.provider);
+  const provider = resolved.provider;
+  const typedApiKey = options.apiKey?.trim() || null;
+  const typedBaseUrl =
+    providerUsesBaseUrl(provider) &&
+    options.baseUrl !== undefined &&
+    options.baseUrl !== null
+      ? options.baseUrl.trim() || getDefaultValidationBaseUrl(provider)
+      : undefined;
 
   logger.debug("LLM onboarding validation resolved config", {
-    provider: normalizedProvider ?? null,
-    usesBaseUrl: shouldUseBaseUrl,
-    hasBaseUrl: Boolean(resolvedBaseUrl),
-    hasApiKey: Boolean(resolvedApiKey),
+    provider,
+    hasTypedBaseUrl: Boolean(typedBaseUrl),
+    hasTypedApiKey: Boolean(typedApiKey),
   });
 
   const llm = new LlmService({
-    apiKey: resolvedApiKey,
-    provider: normalizedProvider,
-    baseUrl: resolvedBaseUrl,
+    ...resolved.options,
+    ...(typedApiKey ? { apiKey: typedApiKey } : {}),
+    ...(typedBaseUrl ? { baseUrl: typedBaseUrl } : {}),
   });
   return llm.validateCredentials();
-}
-
-function normalizeLlmProviderValue(
-  provider: string | undefined,
-): string | undefined {
-  if (!provider) return undefined;
-  return provider.toLowerCase().replace(/-/g, "_");
 }
 
 onboardingRouter.post(

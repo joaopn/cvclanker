@@ -419,26 +419,12 @@ export function useOnboardingFlow() {
   const draftBaseUrl = watch("llmBaseUrl").trim();
   const draftToken = watch("claudeCodeOauthToken").trim();
 
-  // Ollama and LM Studio take no key, and the check route then falls back to
-  // the stored key whatever the provider (B99's server half), sending it to
-  // the typed URL. So they are not tested while a key belongs to another
-  // provider.
-  const testDisabledReason =
-    addLlmProvider &&
-    addLlmConfig &&
-    !addLlmConfig.showApiKey &&
-    addLlmConfig.showBaseUrl &&
-    llmKeyHint &&
-    addLlmProvider !== appProvider
-      ? `Test is unavailable for ${addLlmConfig.label} while another provider's API key is saved: the check would send that key along.`
-      : null;
   // OpenAI-compatible with no URL would be checked against the server's
   // default endpoint, sending the typed token to OpenAI.
   const canTestLlm = Boolean(
     addLlmConfig &&
       (!addLlmConfig.showApiKey || draftApiKey) &&
-      (addLlmProvider !== "openai_compatible" || draftBaseUrl) &&
-      !testDisabledReason,
+      (addLlmProvider !== "openai_compatible" || draftBaseUrl),
   );
   let addLlmDisabledReason: string | null = null;
   if (!addLlmProvider || !addLlmConfig) {
@@ -692,10 +678,9 @@ export function useOnboardingFlow() {
   // Test checks what is typed and saves nothing — except a Claude Code token:
   // that check asks the CLI, which reads the token from the server's
   // environment, so the token is saved first or the check runs without it.
-  // The check route falls back to the stored key and URL when none is sent,
-  // so a key provider is only tested with a typed key, a base-URL provider
-  // always sends the typed URL (empty means the provider's default), and
-  // `testDisabledReason` covers Ollama and LM Studio, which send no key.
+  // What is tested is what is typed: a key provider needs a typed key, and a
+  // base-URL provider always sends the typed URL (empty means the provider's
+  // default) rather than leaving the server to pick one.
   const handleTestLlmProvider = useCallback(async () => {
     if (!addLlmProvider || !canTestLlm) return;
     const config = getLlmProviderConfig(addLlmProvider);
@@ -1462,7 +1447,6 @@ export function useOnboardingFlow() {
     addMakesAppProvider: !appProviderInUse,
     addDisabledReason: addLlmDisabledReason,
     canTest: canTestLlm,
-    testDisabledReason,
     claudeCodeTokenHint,
     codexSignedIn,
     configuredProviders: configuredLlmProviders,

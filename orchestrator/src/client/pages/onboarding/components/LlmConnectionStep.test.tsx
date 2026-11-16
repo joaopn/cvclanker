@@ -25,7 +25,6 @@ function makeModel(overrides: Partial<LlmStepModel> = {}): LlmStepModel {
     addMakesAppProvider: true,
     addDisabledReason: null,
     canTest: true,
-    testDisabledReason: null,
     claudeCodeTokenHint: null,
     codexSignedIn: false,
     configuredProviders: [],
@@ -183,23 +182,6 @@ describe("LlmConnectionStep", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Remove Codex" }));
     expect(model.onRemove).toHaveBeenCalledWith("codex");
-  });
-
-  it("says why Test is off when no typed key would explain it", () => {
-    render(
-      <Harness
-        model={makeModel({
-          addProvider: "ollama",
-          canTest: false,
-          testDisabledReason: "Test is unavailable for Ollama.",
-        })}
-      />,
-    );
-
-    expect(screen.getByRole("button", { name: "Test" })).toBeDisabled();
-    expect(
-      screen.getByText("Test is unavailable for Ollama."),
-    ).toBeInTheDocument();
   });
 
   it("remounts the Codex panel when the sign-in changes elsewhere, so it refreshes its own status", () => {

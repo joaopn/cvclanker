@@ -126,7 +126,6 @@ export const LlmConnectionStep: React.FC<
   addMakesAppProvider,
   addDisabledReason,
   canTest,
-  testDisabledReason,
   claudeCodeTokenHint,
   codexSignedIn,
   configuredProviders,
@@ -301,11 +300,6 @@ export const LlmConnectionStep: React.FC<
                   Add
                 </Button>
               </div>
-              {testDisabledReason ? (
-                <p className="text-xs text-muted-foreground">
-                  {testDisabledReason}
-                </p>
-              ) : null}
               {addDisabledReason ? (
                 <p className="text-xs text-muted-foreground">
                   {addDisabledReason}

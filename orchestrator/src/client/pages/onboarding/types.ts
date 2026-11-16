@@ -27,8 +27,6 @@ export type LlmStepModel = {
   addMakesAppProvider: boolean;
   addDisabledReason: string | null;
   canTest: boolean;
-  /** Why Test is off when a typed key would not explain it. */
-  testDisabledReason: string | null;
   claudeCodeTokenHint: string | null;
   codexSignedIn: boolean;
   configuredProviders: ConfiguredLlmProvider[];

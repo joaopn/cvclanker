@@ -172,6 +172,38 @@ describe("LlmService provider normalization", () => {
       expect(llm.getBaseUrl()).toBe("https://ambient.example.test");
     });
 
+    it("does not lend an OpenAI-compatible configuration served as LM Studio to a caller naming LM Studio", async () => {
+      // normalizeProvider serves openai_compatible at localhost:1234 as
+      // lmstudio, so comparing the REMAPPED names made the two look like one
+      // provider and lent the key to whatever URL the caller named.
+      process.env.LLM_PROVIDER = "openai_compatible";
+      process.env.LLM_BASE_URL = "http://localhost:1234/v1";
+      process.env.LLM_API_KEY = "compat-ambient-key";
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(new Response("{}", { status: 200 }));
+
+      await new LlmService({
+        provider: "lmstudio",
+        apiKey: null,
+        baseUrl: "http://typed.example.test:1234",
+      }).validateCredentials();
+
+      expect(fetchSpy).toHaveBeenCalled();
+      expect(JSON.stringify(fetchSpy.mock.calls)).not.toContain(
+        "compat-ambient-key",
+      );
+
+      // The configuration itself still gets its key, named or not.
+      for (const options of [{}, { provider: "openai_compatible" }]) {
+        fetchSpy.mockClear();
+        await new LlmService(options).validateCredentials();
+        expect(JSON.stringify(fetchSpy.mock.calls)).toContain(
+          "compat-ambient-key",
+        );
+      }
+    });
+
     it("keeps honouring the ambient base URL for a fixed-endpoint provider", () => {
       // LLM_BASE_URL is the operator's own configuration, at the same trust
       // level as the key beside it — an install pointing openai at a proxy

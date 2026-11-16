@@ -1092,20 +1092,22 @@ describe("useOnboardingFlow — the LLM step's Add provider and Configured provi
     expect(result.current.primaryLabel).toBe("Fix the provider to continue");
   });
 
-  it("does not Test Ollama while another provider's key is stored, since the check route would send it along", async () => {
+  it("Tests Ollama next to another provider sending only its own URL (the server lends no stored key)", async () => {
     const { result } = await renderWithOpenAiInUse();
     vi.mocked(validateLlm).mockClear();
 
     await act(async () => {
       result.current.llmStep.onSelectProvider("ollama");
     });
-    expect(result.current.llmStep.canTest).toBe(false);
-    expect(result.current.llmStep.testDisabledReason).not.toBeNull();
+    expect(result.current.llmStep.canTest).toBe(true);
     await act(async () => {
       await result.current.llmStep.onTest();
     });
 
-    expect(validateLlm).not.toHaveBeenCalled();
+    const [input] = vi.mocked(validateLlm).mock.calls.at(-1) ?? [];
+    expect(input?.provider).toBe("ollama");
+    expect(input?.baseUrl).toBe("");
+    expect(input?.apiKey).toBeUndefined();
   });
 
   it("making a keyless provider the app's clears the stored key and replaces its own credentials row", async () => {

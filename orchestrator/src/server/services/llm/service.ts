@@ -66,7 +66,14 @@ export class LlmService {
     const resolvedProvider = options.provider
       ? normalizeProvider(options.provider, explicitBaseUrl ?? envBaseUrl)
       : envProvider;
-    const inheritsEnv = resolvedProvider === envProvider;
+    // Compared as NAMED, before the base-URL remap: an openai_compatible
+    // configuration at localhost:1234 is served as lmstudio, but its key still
+    // belongs to openai_compatible, not to a caller naming lmstudio.
+    const inheritsEnv =
+      !options.provider ||
+      (providerName(options.provider) ?? "openrouter") ===
+        (providerName(toStringOrNull(process.env.LLM_PROVIDER)) ??
+          "openrouter");
 
     // A CALLER-supplied base URL is honoured only for the providers whose
     // endpoint the user chooses. For the rest it is fixed by the strategy, so an
@@ -867,12 +874,30 @@ function resolveRequestTimeoutMs(explicit?: number): number {
   return parsed;
 }
 
+/** The provider a name means, or null for an unknown or empty one. */
+function providerName(raw: string | null): LlmProvider | null {
+  const normalized = raw?.trim().toLowerCase().replace(/-/g, "_");
+  switch (normalized) {
+    case "openai_compatible":
+    case "openai":
+    case "gemini":
+    case "lmstudio":
+    case "ollama":
+    case "codex":
+    case "claude_code":
+    case "openrouter":
+      return normalized;
+    default:
+      return null;
+  }
+}
+
 function normalizeProvider(
   raw: string | null,
   baseUrl: string | null,
 ): LlmProvider {
-  const normalized = raw?.trim().toLowerCase().replace(/-/g, "_");
-  if (normalized === "openai_compatible") {
+  const name = providerName(raw);
+  if (name === "openai_compatible") {
     if (
       baseUrl?.includes("localhost:1234") ||
       baseUrl?.includes("127.0.0.1:1234")
@@ -881,13 +906,9 @@ function normalizeProvider(
     }
     return "openai_compatible";
   }
-  if (normalized === "openai") return "openai";
-  if (normalized === "gemini") return "gemini";
-  if (normalized === "lmstudio") return "lmstudio";
-  if (normalized === "ollama") return "ollama";
-  if (normalized === "codex") return "codex";
-  if (normalized === "claude_code") return "claude_code";
-  if (normalized && normalized !== "openrouter") {
+  if (name) return name;
+  const normalized = raw?.trim().toLowerCase().replace(/-/g, "_");
+  if (normalized) {
     logger.warn("Unknown LLM provider, defaulting to openrouter", {
       normalized,
     });
