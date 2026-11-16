@@ -8,7 +8,7 @@ import { useHotkeys } from "@client/hooks/useHotkeys";
 import { useSettings } from "@client/hooks/useSettings";
 import { cvDownloadTarget } from "@client/lib/cv-download";
 import { SHORTCUTS, isShortcutInScope } from "@client/lib/shortcut-map";
-import type { JobAction, JobListItem } from "@shared/types.js";
+import type { Job, JobAction, JobListItem } from "@shared/types.js";
 import { useCallback, useRef } from "react";
 import { toast } from "@client/lib/toast";
 import { buildDownloadFilename } from "@/lib/download-filename";
@@ -23,7 +23,7 @@ type UseKeyboardShortcutsArgs = {
   activeTab: FilterTab;
   activeJobs: JobListItem[];
   selectedJobId: string | null;
-  selectedJob: JobListItem | null;
+  selectedJob: Job | null;
   selectedJobIds: Set<string>;
   isDesktop: boolean;
   handleSelectJobId: (id: string | null) => void;
@@ -314,8 +314,9 @@ export function useKeyboardShortcuts(args: UseKeyboardShortcutsArgs): void {
       [SHORTCUTS.downloadPdf.key]: () => {
         if (!selectedJob) return;
         if (selectedJob.status !== "ready") return;
-        // Must track the Download button in ReadyPanel: on a Word profile the
-        // editable .docx is the artifact, and the PDF stays a view (`p`).
+        // Must track the Download button in ReadyPanel: on a Word or HTML
+        // profile the tailored source is the artifact, and the PDF stays a
+        // view (`p`).
         const { href, ext } = cvDownloadTarget(cvSourceFormat, selectedJob);
         const a = document.createElement("a");
         a.href = href;

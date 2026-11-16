@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { settingsState } = vi.hoisted(() => ({
   settingsState: {
-    cvSourceFormat: "latex" as "latex" | "docx",
+    cvSourceFormat: "latex" as "latex" | "docx" | "html",
     candidateName: null as string | null,
   },
 }));
@@ -52,6 +52,18 @@ describe("JobDocumentsPanel download name", () => {
     render(<JobDocumentsPanel job={job()} />);
 
     expect(downloadName()).toBe("resume_WU_Wien.docx");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cover Letter" }));
+    expect(downloadName()).toBe("cover_WU_Wien.pdf");
+  });
+
+  it("hands over an HTML CV's tailored zip, and the cover letter's PDF", () => {
+    settingsState.cvSourceFormat = "html";
+    render(
+      <JobDocumentsPanel job={{ ...job(), tailoredSourceShape: "bundle" }} />,
+    );
+
+    expect(downloadName()).toBe("resume_WU_Wien.zip");
 
     fireEvent.click(screen.getByRole("button", { name: "Cover Letter" }));
     expect(downloadName()).toBe("cover_WU_Wien.pdf");

@@ -52,9 +52,10 @@ export const JobDocumentsPanel: React.FC<JobDocumentsPanelProps> = ({
     ? `/pdfs/resume_${job.id}.pdf?v=${encodeURIComponent(job.updatedAt)}`
     : `/pdfs/cover_letter_${job.id}.pdf?v=${encodeURIComponent(job.updatedAt)}`;
 
-  // Download hands over the editable artifact — the .docx on a Word profile.
-  // Open and the iframe below keep the PDF: it's the view, and a .docx can't
-  // render in a frame. Cover letters are LaTeX-only, so they stay PDF.
+  // Download hands over the editable artifact — the tailored source on a Word
+  // or HTML profile. Open and the iframe below keep the PDF: it is the view
+  // (a .docx or zip cannot render in a frame, and /pdfs serves the tailored
+  // page only as an attachment). Cover letters are LaTeX-only, so they stay PDF.
   const download = isCv
     ? cvDownloadTarget(cvSourceFormat, job)
     : { href, ext: "pdf" as const };

@@ -254,7 +254,7 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
                     <AlertDialogDescription>
                       Each one is tailored from scratch against
                       {activeCvName ? ` "${activeCvName}"` : " the active CV"} —
-                      one AI call and one LaTeX compile per job, replacing
+                      one AI call and one PDF render per job, replacing
                       whatever tailored text and PDF{" "}
                       {retailorableCount === 1 ? "it has" : "they have"} now.
                       Pick this after changing your CV template; a plain

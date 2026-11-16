@@ -18,40 +18,50 @@ function renderStep(overrides?: {
       storedFormat={overrides?.storedFormat ?? null}
     />,
   );
-  // Anchored to the option title: in the blocked state the Word option's own
-  // helper text mentions "LaTeX", so an unanchored /LaTeX/ matches both radios.
+  // Anchored to the option title: in the blocked state the Word and HTML
+  // options' helper text mentions "LaTeX", so an unanchored /LaTeX/ matches
+  // several radios.
   return {
     onChoiceChange,
     latexRadio: screen.getByRole("radio", { name: /^LaTeX/ }),
     wordRadio: screen.getByRole("radio", { name: /^Word/ }),
+    htmlRadio: screen.getByRole("radio", { name: /^HTML/ }),
   };
 }
 
 describe("CvFormatStep", () => {
-  it("offers both formats on a fresh profile", () => {
-    const { latexRadio, wordRadio, onChoiceChange } = renderStep();
+  it("offers every format on a fresh profile", () => {
+    const { latexRadio, wordRadio, htmlRadio, onChoiceChange } = renderStep();
 
     expect(latexRadio).toBeEnabled();
     expect(wordRadio).toBeEnabled();
+    expect(htmlRadio).toBeEnabled();
 
     fireEvent.click(wordRadio);
-    expect(onChoiceChange).toHaveBeenCalledWith("docx");
+    expect(onChoiceChange).toHaveBeenLastCalledWith("docx");
+    fireEvent.click(htmlRadio);
+    expect(onChoiceChange).toHaveBeenLastCalledWith("html");
   });
 
-  it("disables Word when the profile already has a CV", () => {
-    // Mirrors the server's 409: a first write of "docx" is refused once
-    // cv_documents rows exist.
-    const { latexRadio, wordRadio, onChoiceChange } = renderStep({
+  it("disables Word and HTML when the profile already has a CV", () => {
+    // Mirrors the server's 409: a first write of any format but LaTeX is
+    // refused once cv_documents rows exist.
+    const { latexRadio, wordRadio, htmlRadio, onChoiceChange } = renderStep({
       hasExistingCv: true,
     });
 
     expect(wordRadio).toBeDisabled();
+    expect(htmlRadio).toBeDisabled();
     expect(latexRadio).toBeEnabled();
-    expect(
-      screen.getByText(/This profile already has a LaTeX CV/i),
-    ).toHaveTextContent(/to work in Word\./);
+    const warnings = screen.getAllByText(
+      /This profile already has a LaTeX CV/i,
+    );
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).toHaveTextContent(/to work in Word\./);
+    expect(warnings[1]).toHaveTextContent(/to work in HTML\./);
 
     fireEvent.click(wordRadio);
+    fireEvent.click(htmlRadio);
     expect(onChoiceChange).not.toHaveBeenCalled();
   });
 
@@ -66,10 +76,14 @@ describe("CvFormatStep", () => {
   });
 
   it("names an HTML profile's locked format", () => {
-    const { latexRadio, wordRadio } = renderStep({ storedFormat: "html" });
+    const { latexRadio, wordRadio, htmlRadio } = renderStep({
+      storedFormat: "html",
+    });
 
     expect(latexRadio).toBeDisabled();
     expect(wordRadio).toBeDisabled();
+    expect(htmlRadio).toBeDisabled();
+    expect(htmlRadio).toBeChecked();
     expect(latexRadio).not.toBeChecked();
     expect(wordRadio).not.toBeChecked();
     expect(screen.getByText(/Format locked to HTML/i)).toBeInTheDocument();

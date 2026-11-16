@@ -380,7 +380,8 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
     ? `/pdfs/cover_letter_${selectedJob.id}.pdf?v=${encodeURIComponent(selectedJob.updatedAt)}`
     : "#";
 
-  // Download hands over the editable artifact — the .docx on a Word profile.
+  // Download hands over the editable artifact — the tailored source on a Word
+  // or HTML profile.
   // selectedPdfHref stays the PDF: it feeds the views ("PDF" button, "View
   // PDF"). Cover letters are LaTeX-only.
   const selectedCvDownload = selectedJob

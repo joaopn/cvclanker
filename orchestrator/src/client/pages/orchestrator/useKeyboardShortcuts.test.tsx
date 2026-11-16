@@ -26,7 +26,7 @@ vi.mock("@client/hooks/queries/useJobMutations", () => ({
 }));
 const { settingsState } = vi.hoisted(() => ({
   settingsState: {
-    cvSourceFormat: "latex" as "latex" | "docx",
+    cvSourceFormat: "latex" as "latex" | "docx" | "html",
     candidateName: null as string | null,
   },
 }));
@@ -254,5 +254,15 @@ describe("the d shortcut", () => {
     setup({ activeTab: "tailoring", selectedJob: readyJob() });
 
     expect(pressAndCapture()).toEqual(["resume_WU_Wien.docx"]);
+  });
+
+  it("hands over an HTML CV's tailored page", () => {
+    settingsState.cvSourceFormat = "html";
+    setup({
+      activeTab: "tailoring",
+      selectedJob: { ...readyJob(), tailoredSourceShape: "file" },
+    });
+
+    expect(pressAndCapture()).toEqual(["resume_WU_Wien.html"]);
   });
 });

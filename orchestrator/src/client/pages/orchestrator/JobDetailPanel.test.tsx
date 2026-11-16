@@ -61,7 +61,7 @@ vi.mock("@client/hooks/queries/useJobMutations", () => ({
 }));
 const { settingsState } = vi.hoisted(() => ({
   settingsState: {
-    cvSourceFormat: "latex" as "latex" | "docx",
+    cvSourceFormat: "latex" as "latex" | "docx" | "html",
     candidateName: null as string | null,
   },
 }));
@@ -307,5 +307,12 @@ describe("the More-actions download items", () => {
     expect(downloadName("Download .docx")).toBe(
       "Doe_JQ_resume_Scientis_Search_Ltd.docx",
     );
+  });
+
+  it("names an HTML CV's tailored page with its own extension", () => {
+    settingsState.cvSourceFormat = "html";
+    renderPanel({ ...tailoredJob(), tailoredSourceShape: "file" });
+
+    expect(downloadName("Download CV")).toBe("resume_Scientis_Search_Ltd.html");
   });
 });

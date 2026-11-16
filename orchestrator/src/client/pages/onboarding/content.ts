@@ -25,7 +25,7 @@ export const STEP_COPY: Record<
     eyebrow: "Step 2",
     title: "Pick the format your CV is written in.",
     description:
-      "CV Clanker tailors your CV in the format you already work in — LaTeX or Word. This choice is fixed for this user profile: everything downstream (uploads, tailoring, the files you download) follows it. To work in the other format later, create a new user profile.",
+      "CV Clanker tailors your CV in the format you already work in — LaTeX, Word or HTML. This choice is fixed for this user profile: everything downstream (uploads, tailoring, the files you download) follows it. To work in another format later, create a new user profile.",
   },
   cv: {
     eyebrow: "Step 3",

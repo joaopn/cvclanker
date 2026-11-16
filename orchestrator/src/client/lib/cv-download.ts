@@ -1,4 +1,4 @@
-import type { CvSourceFormat } from "@shared/types";
+import type { CvSourceFormat, Job } from "@shared/types";
 import type { DownloadExtension } from "@/lib/download-filename";
 
 export interface CvDownloadTarget {
@@ -7,29 +7,36 @@ export interface CvDownloadTarget {
 }
 
 /**
- * What a job's CV download hands over: the tailored .docx on a Word profile,
- * else the PDF (an HTML profile's tailored page is not served yet). The PDF
- * views ("View PDF", the preview) are not this.
+ * What a job's CV download hands over: the tailored source on a Word or HTML
+ * profile (the .docx; the page, or the zip when the CV was uploaded as one),
+ * else the PDF. An HTML job whose source shape is unknown (a job read from a
+ * list) or absent (a job with no tailored HTML source) gets the PDF rather
+ * than a link that may 404. The PDF views ("View PDF", the preview) are not this.
  */
 export function cvDownloadTarget(
   format: CvSourceFormat,
-  job: { id: string; updatedAt: string },
+  job: Pick<Job, "id" | "updatedAt" | "tailoredSourceShape">,
 ): CvDownloadTarget {
-  const version = `?v=${encodeURIComponent(job.updatedAt)}`;
-  const pdf: CvDownloadTarget = {
-    href: `/pdfs/resume_${job.id}.pdf${version}`,
-    ext: "pdf",
-  };
+  const source = (ext: DownloadExtension): CvDownloadTarget => ({
+    href: `/pdfs/resume_${job.id}.${ext}?v=${encodeURIComponent(job.updatedAt)}`,
+    ext,
+  });
   switch (format) {
     case "latex":
-      return pdf;
+      return source("pdf");
     case "docx":
-      return { href: `/pdfs/resume_${job.id}.docx${version}`, ext: "docx" };
+      return source("docx");
     case "html":
-      // The tailored page is not served yet; the PDF until it is.
-      return pdf;
+      switch (job.tailoredSourceShape) {
+        case "file":
+          return source("html");
+        case "bundle":
+          return source("zip");
+        default:
+          return source("pdf");
+      }
     default:
       format satisfies never;
-      return pdf;
+      return source("pdf");
   }
 }

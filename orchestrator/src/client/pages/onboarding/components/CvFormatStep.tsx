@@ -27,6 +27,12 @@ const OPTIONS: {
     description:
       "A .docx file. Tailoring rewrites the text in place and hands you back a .docx — your layout, styles, and fonts are untouched.",
   },
+  {
+    value: "html",
+    title: "HTML",
+    description:
+      "A single .html page, or a .zip with the page and the files it uses. It must be self-contained: nothing loaded from the internet, no scripts. Tailoring rewrites the text in place and hands you back the page (or zip); its PDF is printed by Chromium.",
+  },
 ];
 
 interface CvFormatStepProps {
@@ -59,7 +65,7 @@ export const CvFormatStep: React.FC<CvFormatStepProps> = ({
             CV_SOURCE_FORMATS.find((format) => format === value) ?? null,
           )
         }
-        className="grid gap-4 lg:grid-cols-2"
+        className="grid gap-4 xl:grid-cols-3"
       >
         {OPTIONS.map((option) => {
           const selected = (locked ? storedFormat : choice) === option.value;

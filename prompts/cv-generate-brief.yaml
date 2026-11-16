@@ -14,7 +14,7 @@ variables:
     description: |
       The user's CV source as a single string: flattened LaTeX (post-`\input{}`
       resolution) on a LaTeX profile, the extracted document text on a Word
-      profile.
+      profile, the page's extracted text on an HTML profile.
 model:
   preferStructuredOutput: true
   temperature: 0.0

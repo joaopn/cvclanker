@@ -597,7 +597,7 @@ export function useOnboardingFlow() {
       {
         id: "cvformat",
         label: "CV format",
-        subtitle: "LaTeX or Word",
+        subtitle: "LaTeX, Word or HTML",
         complete: cvFormatComplete,
         disabled: false,
       },

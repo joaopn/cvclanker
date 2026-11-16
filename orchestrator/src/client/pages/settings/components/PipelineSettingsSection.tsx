@@ -782,14 +782,14 @@ export const PipelineSettingsSection: React.FC<
           <div className="text-xs text-muted-foreground">
             How long one tectonic run may take before it is killed. On a LaTeX
             profile the CV uploads, per-job renders and previews all spawn it; a
-            Word CV converts through LibreOffice instead. Cover letters are
-            LaTeX on either profile, so their uploads, renders and previews are
-            always bounded by this. The first compile on a fresh container also
-            downloads the LaTeX packages the document pulls in, so it is far
-            slower than every one after it — raise this if a cold upload fails
-            with a timeout rather than a LaTeX error. Applies per spawn, and a
-            gated upload compiles once for the original plus once per extraction
-            attempt.
+            Word CV converts through LibreOffice instead, and an HTML CV prints
+            through Chromium. Cover letters are LaTeX on every profile, so their
+            uploads, renders and previews are always bounded by this. The first
+            compile on a fresh container also downloads the LaTeX packages the
+            document pulls in, so it is far slower than every one after it —
+            raise this if a cold upload fails with a timeout rather than a LaTeX
+            error. Applies per spawn, and a gated upload compiles once for the
+            original plus once per extraction attempt.
           </div>
           <div className="text-xs text-muted-foreground">
             Current:{" "}

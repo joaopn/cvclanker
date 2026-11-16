@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { stub, settingsState } = vi.hoisted(() => ({
   stub: (name: string) => () => <div data-testid={name} />,
   settingsState: {
-    cvSourceFormat: "latex" as "latex" | "docx",
+    cvSourceFormat: "latex" as "latex" | "docx" | "html",
     candidateName: null as string | null,
   },
 }));
@@ -96,10 +96,8 @@ const readyJob = () =>
     coverLetterPdfPath: "cover_letter_j1.pdf",
   });
 
-const renderPanel = () =>
-  render(
-    <ReadyPanel job={readyJob()} onJobUpdated={vi.fn()} onJobMoved={vi.fn()} />,
-  );
+const renderPanel = (job = readyJob()) =>
+  render(<ReadyPanel job={job} onJobUpdated={vi.fn()} onJobMoved={vi.fn()} />);
 
 const downloadName = (label: string) =>
   screen.getByText(label).closest("a")?.getAttribute("download");
@@ -137,5 +135,16 @@ describe("ReadyPanel download names", () => {
     expect(downloadName("Download Cover")).toBe(
       "cover_Scientis_Search_Ltd.pdf",
     );
+  });
+
+  it("hands over an HTML CV's tailored zip under Download CV", () => {
+    settingsState.cvSourceFormat = "html";
+    renderPanel({ ...readyJob(), tailoredSourceShape: "bundle" });
+
+    const link = screen.getByText("Download CV").closest("a");
+    expect(link?.getAttribute("download")).toBe(
+      "resume_Scientis_Search_Ltd.zip",
+    );
+    expect(link?.getAttribute("href")).toMatch(/^\/pdfs\/resume_j1\.zip\?v=/);
   });
 });

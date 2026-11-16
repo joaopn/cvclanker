@@ -155,9 +155,9 @@ export const ReadyPanel: React.FC<ReadyPanelProps> = ({
     ? `/pdfs/cover_letter_${job.id}.pdf?v=${encodeURIComponent(job.updatedAt)}`
     : "#";
 
-  // On a Word profile the tailored .docx is the artifact you download; the PDF
-  // stays a view (the preview iframe and "View PDF"). Cover letters are
-  // LaTeX-only, so coverPdfHref is unconditional.
+  // On a Word or HTML profile the tailored source is the artifact you
+  // download; the PDF stays a view (the preview iframe and "View PDF"). Cover
+  // letters are LaTeX-only, so coverPdfHref is unconditional.
   const cvDownload = job ? cvDownloadTarget(cvSourceFormat, job) : null;
 
   const hasCoverPdf = Boolean(job?.coverLetterPdfPath);
