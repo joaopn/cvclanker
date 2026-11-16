@@ -1,5 +1,6 @@
 import { useHotkeys } from "@client/hooks/useHotkeys";
 import type { JobListItem } from "@shared/types.js";
+import { Loader2 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -43,23 +44,19 @@ interface JobCommandBarProps {
    * before the first.
    */
   results: JobCommandBarResults | null;
-  /** The search for the current text and lock failed. */
+  /** The submitted search, or its latest re-ask, failed. */
   searchFailed: boolean;
   /**
-   * A request for the current text and lock is in flight — including one
-   * re-asking a cached answer, as every reopen does.
+   * A request for the submitted search is in flight — including one re-asking
+   * a cached answer.
    */
   searchPending: boolean;
   /**
-   * Asks the parent to search: the trimmed query and the lock. Not called
-   * while a leading `@token` is being typed, which only offers locks. Called
-   * while closed too (the lock clears on close), so a reopened dialog asks
-   * for what it shows.
+   * Asks the parent to search: the trimmed query and the lock, on Enter or the
+   * Search button only — typing and picking a lock send nothing. `null` on
+   * close: nothing is submitted until the reopened dialog's first search.
    */
-  onSearchChange: (search: {
-    query: string;
-    lock: CommandBarLock | null;
-  }) => void;
+  onSearchChange: (search: CommandBarSearch | null) => void;
   onSelectJob: (tab: FilterTab, jobId: string) => void;
   /**
    * Close a still-open application as rejected, straight from a result row.
@@ -75,6 +72,13 @@ interface JobCommandBarProps {
   onOpenChange?: (open: boolean) => void;
   enabled?: boolean;
 }
+
+type CommandBarSearch = { query: string; lock: CommandBarLock | null };
+
+const describeSearch = ({ query, lock }: CommandBarSearch) => {
+  const scope = lock ? `@${lockLabel[lock]}` : "all jobs";
+  return query ? `${scope} for “${query}”` : scope;
+};
 
 const ROW_HEIGHT_ESTIMATES: Record<CommandBarRow["kind"], number> = {
   groupHeading: 28,
@@ -221,6 +225,7 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
   const [internalOpen, setInternalOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeLock, setActiveLock] = useState<CommandBarLock | null>(null);
+  const [submitted, setSubmitted] = useState<CommandBarSearch | null>(null);
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   // Rows whose rejection is still in flight. The press clears the query but
@@ -266,36 +271,55 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
 
   const leadingToken = extractLeadingAtToken(query);
   const searchQuery = query.trim();
-  const normalizedQuery = searchQuery.toLowerCase();
+  const normalizedQuery = submitted?.query.toLowerCase() ?? "";
 
-  useEffect(() => {
-    if (leadingToken !== null) return;
-    onSearchChange({ query: searchQuery, lock: activeLock });
-  }, [activeLock, leadingToken, onSearchChange, searchQuery]);
-
-  // The rows on screen may answer an earlier query or lock, or be a cached
-  // answer being asked again: they stay visible (no flicker per keystroke),
-  // but Enter does not select from them until a current answer lands, and an
-  // empty list says "Searching…" rather than "No jobs found.".
-  const answersCurrentSearch =
+  // Rows are shown only when they answer the submitted search: an answer to an
+  // earlier one gives way to a "Searching …" line rather than lingering. The
+  // submitted search being asked again (after a mutation, or a repeat press)
+  // keeps its rows, but Enter does not select from them until it lands.
+  const answersSubmitted =
+    submitted !== null &&
     results !== null &&
-    results.query === searchQuery &&
-    results.lock === activeLock;
-  const isSearching = !answersCurrentSearch || searchPending;
+    results.query === submitted.query &&
+    results.lock === submitted.lock;
+  const isSearching =
+    submitted !== null && (!answersSubmitted || searchPending);
+  // A retry of a failed search that already has an answer keeps react-query's
+  // error status while it runs; it is not "failed" again until it has.
+  const failed = searchFailed && !searchPending;
+  const showsBusy =
+    submitted !== null &&
+    (searchPending || (!answersSubmitted && !searchFailed));
+  const draftIsSubmitted =
+    submitted !== null &&
+    submitted.query === searchQuery &&
+    submitted.lock === activeLock;
+  const rowsLock = answersSubmitted ? results.lock : null;
+  const lockChanged =
+    answersSubmitted && leadingToken === null && rowsLock !== activeLock;
 
   const scopedJobs = useMemo(() => {
     // A leading `@token` offers locks only, as it always has.
-    if (leadingToken !== null || results === null) return [];
-    if (!activeLock) return results.jobs;
-    return results.jobs.filter((job) => jobMatchesLock(job, activeLock));
-  }, [activeLock, leadingToken, results]);
+    if (leadingToken !== null || !answersSubmitted || results === null) {
+      return [];
+    }
+    const lock = results.lock;
+    if (!lock) return results.jobs;
+    return results.jobs.filter((job) => jobMatchesLock(job, lock));
+  }, [answersSubmitted, leadingToken, results]);
 
   const showTruncationNote =
-    answersCurrentSearch &&
     results !== null &&
     scopedJobs.length > 0 &&
     results.total > results.jobs.length;
-  const showFailureNote = searchFailed && scopedJobs.length > 0;
+  const showFailureNote = failed && scopedJobs.length > 0;
+
+  const submitSearch = useCallback(() => {
+    if (extractLeadingAtToken(query) !== null) return;
+    const next = { query: query.trim(), lock: activeLock };
+    setSubmitted(next);
+    onSearchChange(next);
+  }, [activeLock, onSearchChange, query]);
 
   const groupedJobs = useMemo(
     () => groupJobsForCommandBar(scopedJobs, normalizedQuery),
@@ -468,7 +492,9 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
   useEffect(() => {
     if (isOpen) return;
     setActiveLock(null);
-  }, [isOpen]);
+    setSubmitted(null);
+    onSearchChange(null);
+  }, [isOpen, onSearchChange]);
 
   const moveActiveSelection = useCallback(
     (direction: 1 | -1) => {
@@ -516,6 +542,18 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
     ) {
       const token = extractLeadingAtToken(query);
       if (!token) {
+        // A changed text or lock is searched first, and a failed search is
+        // retried; once the rows answer what the box says, Enter opens the
+        // highlighted one.
+        if (
+          event.key === "Enter" &&
+          leadingToken === null &&
+          (!draftIsSubmitted || failed)
+        ) {
+          event.preventDefault();
+          submitSearch();
+          return;
+        }
         if (event.key === "Enter" && activeRowId) {
           const selectedRow = rows.find(
             (row): row is Extract<CommandBarRow, { kind: "option" }> =>
@@ -523,8 +561,9 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
           );
           if (selectedRow) {
             event.preventDefault();
-            // A job row from a stale answer is not what the text now asks
-            // for. Lock suggestions are local and stay selectable.
+            // The submitted search is being asked again, so the job's status
+            // (and the tab it opens) may have moved. Lock suggestions are
+            // local and stay selectable.
             if (selectedRow.optionKind === "job" && isSearching) return;
             selectRow(selectedRow);
           }
@@ -595,18 +634,44 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
     >
       <DialogTitle className="sr-only">Job Search</DialogTitle>
       <DialogDescription className="sr-only">
-        Search jobs across all states by job title or company name, and narrow
-        the results to one status or to every job you have applied for.
+        Search jobs across all states by job title or company name: press Enter
+        or the Search button to run it. Narrow the results to one status or to
+        every job you have applied for.
       </DialogDescription>
       <CommandInput
-        placeholder="Search jobs by job title or company name..."
+        placeholder="Search all jobs by title or company, then press Enter..."
         value={query}
         onValueChange={setQuery}
         onKeyDown={handleInputKeyDown}
+        // Room for the dialog's close button, which sits over this row.
+        wrapperClassName="pr-10"
         prefix={
           activeLock ? (
             <JobCommandBarLockBadge activeLock={activeLock} />
           ) : undefined
+        }
+        suffix={
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className={cn(CHIP_CLASS, "shrink-0 gap-1.5 border")}
+            disabled={leadingToken !== null}
+            aria-busy={showsBusy}
+            onClick={submitSearch}
+            // Same two guards as the Ever-applied chip below: keep the caret in
+            // the search box, and act on the Enter cmdk's root would swallow.
+            onMouseDown={(event) => event.preventDefault()}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              event.stopPropagation();
+              submitSearch();
+            }}
+          >
+            {showsBusy && <Loader2 className="animate-spin" />}
+            Search
+          </Button>
         }
         aria-controls={RESULTS_LIST_ID}
         aria-activedescendant={activeRowId ?? undefined}
@@ -651,9 +716,10 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
           id={FILTER_ROW_HINT_ID}
           className="text-[11px] text-muted-foreground"
         >
-          every job you applied for, however it ended — or type{" "}
-          <span className="font-mono">@</span> + a filter + Tab/Enter to lock
-          one. Backspace on an empty search clears the lock.
+          every job you applied for, however it ended. Enter or Search runs the
+          search across all jobs; type <span className="font-mono">@</span> + a
+          filter + Tab/Enter to narrow it. Backspace on an empty search clears
+          the filter.
         </span>
       </div>
 
@@ -661,11 +727,15 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
         <output className="block py-6 text-center text-sm" aria-live="polite">
           {leadingToken !== null
             ? "No jobs found."
-            : searchFailed
-              ? "Search failed."
-              : isSearching
-                ? "Searching…"
-                : "No jobs found."}
+            : submitted === null
+              ? activeLock || searchQuery
+                ? `Press Enter to search ${describeSearch({ query: searchQuery, lock: activeLock })}.`
+                : "Type and press Enter to search all jobs."
+              : failed
+                ? "Search failed."
+                : answersSubmitted
+                  ? "No jobs found."
+                  : `Searching ${describeSearch(submitted)}…`}
         </output>
       ) : (
         <div
@@ -676,7 +746,10 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
             240,
             Math.round(window.innerHeight * 0.65),
           )}
-          className="max-h-[65vh] overflow-y-auto overflow-x-hidden"
+          className={cn(
+            "max-h-[65vh] overflow-y-auto overflow-x-hidden transition-opacity",
+            lockChanged && "opacity-50",
+          )}
           role="listbox"
           aria-label="Job search results"
           onScroll={(event) => {
@@ -773,7 +846,7 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
                         isSelected={row.id === activeRowId}
                       />
                       {onMarkRejected &&
-                        activeLock === "ever_applied" &&
+                        rowsLock === "ever_applied" &&
                         canMarkClosed([row.job]) && (
                           <RejectRowButton
                             job={row.job}
@@ -789,6 +862,11 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
           </div>
         </div>
       )}
+      {lockChanged && (
+        <p className="border-t px-3 py-1.5 text-[11px] text-muted-foreground">
+          Filter changed — press Enter or Search to update.
+        </p>
+      )}
       {showFailureNote && (
         <p className="border-t px-3 py-1.5 text-[11px] text-muted-foreground">
           Search failed. These are the previous results.
@@ -797,7 +875,8 @@ export const JobCommandBar: React.FC<JobCommandBarProps> = ({
       {showTruncationNote && results && (
         <p className="border-t px-3 py-1.5 text-[11px] text-muted-foreground">
           Showing {results.jobs.length.toLocaleString()} of{" "}
-          {results.total.toLocaleString()} matches. Keep typing to narrow.
+          {results.total.toLocaleString()} matches. Search with more words to
+          narrow.
         </p>
       )}
     </CommandDialog>

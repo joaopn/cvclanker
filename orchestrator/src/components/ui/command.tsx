@@ -58,13 +58,14 @@ interface CommandInputProps
     "prefix"
   > {
   prefix?: React.ReactNode;
+  suffix?: React.ReactNode;
   wrapperClassName?: string;
 }
 
 const CommandInput = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.Input>,
   CommandInputProps
->(({ className, prefix, wrapperClassName, ...props }, ref) => (
+>(({ className, prefix, suffix, wrapperClassName, ...props }, ref) => (
   <div
     className={cn("flex items-center border-b px-3", wrapperClassName)}
     cmdk-input-wrapper=""
@@ -81,6 +82,9 @@ const CommandInput = React.forwardRef<
       )}
       {...props}
     />
+    {suffix ? (
+      <div className="ml-2 flex shrink-0 items-center">{suffix}</div>
+    ) : null}
   </div>
 ));
 
