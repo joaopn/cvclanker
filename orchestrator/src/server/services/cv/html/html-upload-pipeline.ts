@@ -1,15 +1,9 @@
-import { logger } from "@infra/logger";
 import type {
   CvField,
   CvFieldOverrides,
   CvUploadPipelineAttempt,
 } from "@shared/types";
-import {
-  HtmlBundleError,
-  openHtmlBundle,
-  openStoredHtmlBundle,
-  packHtmlBundle,
-} from "./bundle";
+import { HtmlBundleError, openHtmlBundle, packHtmlBundle } from "./bundle";
 import {
   checkHtmlBundleBounded,
   type PreparedHtmlBundle,
@@ -24,6 +18,7 @@ import {
 import { HtmlRejectError } from "./parse-html";
 import { RenderHtmlPdfError, renderHtmlToPdf } from "./render-html-pdf";
 import { SpliceError } from "./splice-markers";
+import { openStoredHtmlCvBundle } from "./stored-html-cv";
 
 /**
  * The HTML acceptance gate (the analog of docx-upload-pipeline.ts): open
@@ -346,18 +341,7 @@ function openUpload(args: HtmlUploadPipelineArgs) {
       maxExpandedBytes: args.maxExpandedBytes,
     });
   }
-  try {
-    return openStoredHtmlBundle(args.archive);
-  } catch (error) {
-    if (!(error instanceof HtmlBundleError)) throw error;
-    logger.error("Stored HTML CV archive cannot be opened", {
-      code: error.code,
-      message: error.message,
-    });
-    throw new Error(
-      `The stored CV archive cannot be opened (${error.code}); upload the CV again.`,
-    );
-  }
+  return openStoredHtmlCvBundle(args.archive);
 }
 
 const DIFF_CONTEXT = 80;

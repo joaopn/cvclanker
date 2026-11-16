@@ -26,6 +26,20 @@ import {
 } from "@server/services/cv/docx/render-docx";
 import { isInLatexComment } from "@server/services/cv/flatten-input";
 import { hasHtmlSignature } from "@server/services/cv/html/bundle";
+import { runHtmlUploadPipeline } from "@server/services/cv/html/html-upload-pipeline";
+import { getHtmlExtractionPromptDefault } from "@server/services/cv/html/llm-html-extract";
+import {
+  RenderHtmlPdfError,
+  renderHtmlToPdf,
+} from "@server/services/cv/html/render-html-pdf";
+import {
+  HtmlCvRenderError,
+  openStoredHtmlCvBundle,
+  readStoredHtmlTemplate,
+  renderHtmlCv,
+  StoredHtmlCvError,
+} from "@server/services/cv/html/stored-html-cv";
+import { looksLikeZip } from "@server/services/cv/html/zip-reader";
 import { RenderCvError, renderCv } from "@server/services/cv/render";
 import {
   extractMarkerIds,
@@ -46,6 +60,7 @@ import { runUploadPipeline } from "@server/services/cv/upload-pipeline";
 import { getEffectiveSettings } from "@server/services/settings";
 import {
   CV_SOURCE_FORMAT_NAMES,
+  type CvFieldOverrides,
   type CvSourceFormat,
   type CvUploadPipelineAttempt,
 } from "@shared/types";
@@ -140,6 +155,14 @@ interface ParsedUpload {
   fields: Record<string, string>;
 }
 
+type UploadPipelineResult = Awaited<
+  ReturnType<
+    | typeof runUploadPipeline
+    | typeof runDocxUploadPipeline
+    | typeof runHtmlUploadPipeline
+  >
+>;
+
 /** An upload in another format than the profile's; `recognised` names it. */
 function formatMismatch(format: CvSourceFormat, recognised: string): AppError {
   return unprocessableEntity(
@@ -147,10 +170,53 @@ function formatMismatch(format: CvSourceFormat, recognised: string): AppError {
   );
 }
 
-// HTML CVs are not wired into the routes yet; every HTML arm answers this
-// until the upload pipeline and the per-job render take it over.
-function htmlNotSupportedYet(): AppError {
-  return unprocessableEntity("HTML CVs cannot be uploaded or rendered yet.");
+/**
+ * The HTML CV rendered with its own defaults. Those are the server's values,
+ * and the upload rendered them, so a refusal of its values now (other than
+ * the render's budget, the caps on the values or the result, or a crashed
+ * worker) means the stored CV no longer renders as it did at upload —
+ * damaged, or checked more strictly by a newer build: a 500 asking for a
+ * re-extract or a re-upload. Chromium's own failures pass through.
+ */
+async function renderHtmlPreview(
+  cvDocumentId: string,
+  archive: Uint8Array,
+  templatedTex: string | undefined,
+  defaults: CvFieldOverrides,
+): Promise<Uint8Array> {
+  const { templatedHtml } = readStoredHtmlTemplate(templatedTex);
+  const bundle = openStoredHtmlCvBundle(archive);
+  try {
+    return (
+      await renderHtmlCv({ bundle, templatedHtml, defaults, overrides: {} })
+    ).pdf;
+  } catch (error) {
+    if (!(error instanceof HtmlCvRenderError)) throw error;
+    if (
+      error.code === "RENDER_TOO_COSTLY" ||
+      error.code === "PAGE_TOO_COMPLEX"
+    ) {
+      // It passed at upload and will keep failing now: worth a line.
+      logger.warn("Stored HTML CV is too costly to render", {
+        cvDocumentId,
+        code: error.code,
+      });
+      throw new HtmlCvRenderError(
+        "The CV is too large or complex to render.",
+        error.code,
+      );
+    }
+    if (error.code === "RENDER_WORKER_FAILED") throw error;
+    // The code and field only: the render's message can quote the CV.
+    logger.error("Stored HTML CV does not render with its defaults", {
+      cvDocumentId,
+      code: error.code,
+      fieldId: error.fieldId,
+    });
+    throw new StoredHtmlCvError(
+      `The stored CV does not render with its own values (${error.code}); re-extract the CV, or upload it again.`,
+    );
+  }
 }
 
 /** A stored format this build does not know, e.g. a database from a newer one. */
@@ -158,9 +224,9 @@ function unknownFormat(): AppError {
   return unprocessableEntity("Unknown CV format.");
 }
 
-// Both upload pipelines (LaTeX and docx) emit this exact failure shape —
-// the docx pipeline aliases its stages to the LaTeX vocabulary by contract
-// — so one mapper serves every call site. Quirk preserved deliberately: a
+// All three upload pipelines (LaTeX, Word, HTML) emit this exact failure
+// shape — the Word and HTML pipelines alias their stages to the LaTeX
+// vocabulary by contract — so one mapper serves every call site. Quirk preserved deliberately: a
 // compile-original failure is HTTP 502 with body-code UNPROCESSABLE_ENTITY.
 interface UploadPipelineFailureShape {
   stage: "flatten" | "compile-original" | "extract-loop";
@@ -248,27 +314,59 @@ cvRouter.post("/upload-template", async (req: Request, res: Response) => {
         }
         break;
       case "html":
-        return fail(res, htmlNotSupportedYet());
+        // A page with the signature, or any zip but a Word document: the
+        // pipeline opens the zip and says precisely what is wrong with it.
+        if (
+          !hasHtmlSignature(upload.bytes) &&
+          !(looksLikeZip(upload.bytes) && !looksLikeDocx(upload.bytes))
+        ) {
+          return fail(
+            res,
+            unprocessableEntity(
+              "This profile uses HTML CVs and this file is not recognised as one: it must be a page starting with <!doctype html> or <html> saved as UTF-8, or a zip containing one.",
+            ),
+          );
+        }
+        break;
       default:
         format satisfies never;
         return fail(res, unknownFormat());
     }
 
-    const result =
-      format === "docx"
-        ? await runDocxUploadPipeline({
-            archive: upload.bytes,
-            maxRetries,
-            extractionPrompt: extractionPromptRaw || undefined,
-            maxExpandedBytes: settings.maxExpandedLatexBytes.value,
-          })
-        : await runUploadPipeline({
-            archive: upload.bytes,
-            filename: upload.filename,
-            maxRetries,
-            extractionPrompt: extractionPromptRaw || undefined,
-            maxExpandedBytes: settings.maxExpandedLatexBytes.value,
-          });
+    let result: UploadPipelineResult;
+    // What is stored: the upload as is, or for HTML the cleaned bundle the
+    // pipeline checked.
+    let storedArchive = upload.bytes;
+    switch (format) {
+      case "latex":
+        result = await runUploadPipeline({
+          archive: upload.bytes,
+          filename: upload.filename,
+          maxRetries,
+          extractionPrompt: extractionPromptRaw || undefined,
+          maxExpandedBytes: settings.maxExpandedLatexBytes.value,
+        });
+        break;
+      case "docx":
+        result = await runDocxUploadPipeline({
+          archive: upload.bytes,
+          maxRetries,
+          extractionPrompt: extractionPromptRaw || undefined,
+          maxExpandedBytes: settings.maxExpandedLatexBytes.value,
+        });
+        break;
+      case "html": {
+        const html = await runHtmlUploadPipeline({
+          archive: upload.bytes,
+          maxRetries,
+          extractionPrompt: extractionPromptRaw || undefined,
+          maxExpandedBytes: settings.maxExpandedLatexBytes.value,
+        });
+        if (html.ok) storedArchive = html.originalArchive;
+        result = html;
+        break;
+      }
+    }
 
     if (!result.ok) {
       logger.warn("CV upload rejected", {
@@ -284,7 +382,7 @@ cvRouter.post("/upload-template", async (req: Request, res: Response) => {
         upload.fields.name?.trim() ||
         upload.filename.replace(/\.[^.]+$/, "") ||
         "CV",
-      originalArchive: upload.bytes,
+      originalArchive: storedArchive,
       flattenedTex: result.flattenedTex,
       fields: result.fields,
       personalBrief: result.personalBrief,
@@ -350,7 +448,8 @@ cvRouter.get(
           prompt = await getDocxExtractionPromptDefault();
           break;
         case "html":
-          return fail(res, htmlNotSupportedYet());
+          prompt = await getHtmlExtractionPromptDefault();
+          break;
         default:
           format satisfies never;
           return fail(res, unknownFormat());
@@ -420,8 +519,14 @@ cvRouter.get("/:id/render-preview", async (req: Request, res: Response) => {
 
     let pdf: Uint8Array;
     const format = resolveCvSourceFormat(settings);
-    if (format === "html") return fail(res, htmlNotSupportedYet());
-    if (format === "docx") {
+    if (format === "html") {
+      pdf = await renderHtmlPreview(
+        document.id,
+        new Uint8Array(archive),
+        document.templatedTex,
+        document.defaultFieldValues,
+      );
+    } else if (format === "docx") {
       // Defensive: docx rows only exist via the gated path, which always
       // persists a template envelope. A corrupt envelope (JSON.parse
       // throw) falls through to a 500 — invariant violation, same
@@ -612,9 +717,11 @@ cvRouter.put("/:id/template", async (req: Request, res: Response) => {
 });
 
 /**
- * Compile the unmodified `flattened_tex` so the user can compare the
- * 5e templated render against the original CV PDF in the verification
- * view ("Show original PDF" link).
+ * The CV as stored, before templating, so the user can compare the
+ * templated render against it in the verification view ("Show original
+ * PDF" link): the unmodified `flattened_tex` compiled (LaTeX), the stored
+ * .docx converted (Word), the stored bundle rendered (HTML — the upload as
+ * checked and cleaned).
  */
 cvRouter.get(
   "/:id/render-original-preview",
@@ -641,8 +748,14 @@ cvRouter.get(
         case "docx":
           pdf = await convertDocxToPdf({ docx: new Uint8Array(archive) });
           break;
-        case "html":
-          return fail(res, htmlNotSupportedYet());
+        case "html": {
+          const bundle = openStoredHtmlCvBundle(new Uint8Array(archive));
+          pdf = await renderHtmlToPdf({
+            files: bundle.files,
+            entry: bundle.entry,
+          });
+          break;
+        }
         default:
           format satisfies never;
           return fail(res, unknownFormat());
@@ -706,9 +819,11 @@ cvRouter.post(
       // No sniff here: the stored archive passed the F5 gate at upload,
       // so the setting alone dispatches.
       const format = resolveCvSourceFormat(settings);
-      let result: Awaited<
-        ReturnType<typeof runUploadPipeline | typeof runDocxUploadPipeline>
-      >;
+      let result: UploadPipelineResult;
+      // HTML stores the bundle as this build cleans and packs it (the same
+      // bytes, unless the clean-up or the packing has changed since upload);
+      // the other formats keep their archive.
+      let storedArchive: Uint8Array | undefined;
       switch (format) {
         case "latex":
           result = await runUploadPipeline({
@@ -727,8 +842,18 @@ cvRouter.post(
             maxExpandedBytes: settings.maxExpandedLatexBytes.value,
           });
           break;
-        case "html":
-          return fail(res, htmlNotSupportedYet());
+        case "html": {
+          const html = await runHtmlUploadPipeline({
+            archive: new Uint8Array(archive),
+            maxRetries,
+            extractionPrompt: effectivePrompt || undefined,
+            maxExpandedBytes: settings.maxExpandedLatexBytes.value,
+            stored: true,
+          });
+          if (html.ok) storedArchive = html.originalArchive;
+          result = html;
+          break;
+        }
         default:
           format satisfies never;
           return fail(res, unknownFormat());
@@ -747,6 +872,7 @@ cvRouter.post(
       // template/fields, but the brief is user-editable scratch and gets
       // its own regenerate-brief endpoint.
       const updated = await cvRepo.updateCvDocument(req.params.id, {
+        ...(storedArchive ? { originalArchive: storedArchive } : {}),
         flattenedTex: result.flattenedTex,
         fields: result.fields,
         templatedTex: result.templatedTex,
@@ -870,6 +996,32 @@ function parseUpload(
 }
 
 function handleCvError(res: Response, error: unknown): void {
+  // A StoredHtmlCvError (damage on the server's side) takes the fallback:
+  // a 500 carrying its message (re-extract, or upload the CV again).
+  if (error instanceof HtmlCvRenderError) {
+    fail(
+      res,
+      error.code === "RENDER_WORKER_FAILED"
+        ? new AppError({
+            status: 500,
+            code: "INTERNAL_ERROR",
+            message: error.message,
+            details: { code: error.code },
+          })
+        : unprocessableEntity(error.message, { code: error.code }),
+    );
+    return;
+  }
+  if (error instanceof RenderHtmlPdfError) {
+    fail(
+      res,
+      unprocessableEntity(error.message, {
+        code: error.code,
+        unansweredRequests: error.unansweredRequests,
+      }),
+    );
+    return;
+  }
   if (error instanceof RenderCvError) {
     fail(res, badRequest(error.message, { code: error.code }));
     return;

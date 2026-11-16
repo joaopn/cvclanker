@@ -4,13 +4,16 @@ import { simpleDoc } from "@server/services/cv/docx/test/fixture-builder";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startServer, stopServer } from "./test-utils";
 
-// Every format branch of the CV routes: the upload's format check, the HTML
-// arms (refused until HTML CVs are wired in) and the arm for a stored format
-// this build does not know.
+// Every format branch of the CV routes: the upload's format check per
+// profile and the arm for a stored format this build does not know. The HTML
+// arms' own behaviour is in cv.html.test.ts.
 
 // The pipelines transitively import the LLM stack, and none may run here.
 vi.mock("@server/services/cv/docx/docx-upload-pipeline", () => ({
   runDocxUploadPipeline: vi.fn(),
+}));
+vi.mock("@server/services/cv/html/html-upload-pipeline", () => ({
+  runHtmlUploadPipeline: vi.fn(),
 }));
 vi.mock("@server/services/cv/upload-pipeline", () => ({
   runUploadPipeline: vi.fn(),
@@ -82,6 +85,20 @@ describe.sequential("CV route format branches", () => {
     );
   });
 
+  it("refuses anything but an HTML page or a zip on an HTML profile", async () => {
+    await storeFormat("html");
+    for (const [bytes, name] of [
+      ["\\documentclass{article}", "cv.tex"],
+      [simpleDoc(), "cv.docx"],
+    ] as const) {
+      const res = await upload(bytes, name);
+      expect(res.status, name).toBe(422);
+      expect(await messageOf(res), name).toBe(
+        "This profile uses HTML CVs and this file is not recognised as one: it must be a page starting with <!doctype html> or <html> saved as UTF-8, or a zip containing one.",
+      );
+    }
+  });
+
   it("refuses anything but a Word document on a Word profile", async () => {
     await storeFormat("docx");
     const res = await upload("\\documentclass{article}", "cv.tex");
@@ -122,20 +139,6 @@ describe.sequential("CV route format branches", () => {
     }
     return results;
   }
-
-  it("refuses every HTML arm until HTML CVs are wired in", async () => {
-    const refused: [number, string] = [
-      422,
-      "HTML CVs cannot be uploaded or rendered yet.",
-    ];
-    expect(await answers("html")).toEqual({
-      upload: refused,
-      "extraction-prompt-default": refused,
-      "render-preview": refused,
-      "render-original-preview": refused,
-      "re-extract-template": refused,
-    });
-  });
 
   it("refuses a stored format this build does not know", async () => {
     const refused: [number, string] = [422, "Unknown CV format."];
