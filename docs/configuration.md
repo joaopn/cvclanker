@@ -32,7 +32,7 @@ tune expiry with `JWT_EXPIRY_SECONDS` or the UI.
 ## Profiles
 
 A **profile** is a self-contained job search, pinning a **CV** and **cover
-letter**, its **CV format** (LaTeX or Word — fixed for the profile's life), and
+letter**, its **CV format** (LaTeX, Word or HTML — fixed for the profile's life), and
 its **sources, search terms, and location/remote** preferences. Run different
 hunts side by side (e.g. "Backend, remote, Europe" vs. "Data, on-site"). Manage
 them on the **Profiles** page.

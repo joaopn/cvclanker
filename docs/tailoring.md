@@ -14,7 +14,7 @@ for Word).
   is instructed not to invent experience.
 - [Locked fields](cvs.md#locked-fields) are excluded from proposals.
 - Rendering: tailored LaTeX recompiles with Tectonic; tailored Word repackages a
-  `.docx`.
+  `.docx`; tailored HTML rewrites the page and prints it with Chromium.
 
 Tailoring is opt-in (enable it in Settings) and runs per job or in bulk. Failed
 tailors are kept so they can be retried.
@@ -42,7 +42,7 @@ Cover letters use a LaTeX cover-letter template you upload once (checked on
 upload the same way as a LaTeX CV). Use **Generate** on a job, edit the draft in
 the ghostwriter, and switch between the **Edit** and **PDF** tabs.
 
-Cover letters are always LaTeX, including for Word CV profiles.
+Cover letters are always LaTeX, including for Word and HTML CV profiles.
 
 ## Interview Q&A
 

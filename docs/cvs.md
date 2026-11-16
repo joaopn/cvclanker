@@ -1,10 +1,10 @@
-# CVs: LaTeX, Word & the personal brief
+# CVs: LaTeX, Word, HTML & the personal brief
 
 CV Clanker tailors a copy of a CV you upload; it edits the content of that
-document rather than generating a new one. The upload can be LaTeX or Word.
+document rather than generating a new one. The upload can be LaTeX, Word or HTML.
 
 You choose the format once per [profile](configuration.md#profiles), at
-onboarding. It's fixed for that profile (LaTeX and Word are handled differently
+onboarding. It's fixed for that profile (each format is handled differently
 internally), but you can keep multiple profiles.
 
 ## LaTeX CVs
@@ -46,14 +46,36 @@ Note: cover letters are LaTeX only. A Word profile tailors the Word CV, but its
 cover letters use the LaTeX substrate — see
 [Tailoring](tailoring.md#cover-letters).
 
-## LaTeX or Word?
+## HTML CVs
 
-| | LaTeX | Word |
-|---|---|---|
-| You download | PDF | `.docx` (plus PDF preview) |
-| Best if | You already have a `.tex` résumé | You work in Word / Google Docs and want an editable file to submit |
-| Cover letters | LaTeX | LaTeX |
-| Upload check | Recompile + `pdftotext` diff | Exact-text match + LibreOffice conversion |
+Meant for simple CVs written as a web page, such as the ones AI agents produce.
+Upload a single `.html` page, or a `.zip` with the page and every file it uses
+(stylesheets, fonts, images) linked by relative paths.
+
+The page must be self-contained: nothing loaded from the internet and no
+scripts. An upload that links a font, image or stylesheet on the web is
+rejected; put those files in a `.zip` with the page instead. Links that change
+nothing in the PDF (icons, preloads) are dropped, and so are OS junk files in a
+zip.
+
+On upload, CV Clanker has the LLM name the tailorable text and marks it in
+place, and accepts the page only if the marked-up page still holds exactly the
+same text as yours and it renders to PDF cleanly.
+
+Tailoring rewrites the marked text in place: a tailored value may only use the
+inline formatting (bold, italics, links and so on) your CV already uses. You
+download the tailored page in the shape you uploaded it — the `.html`, or the
+`.zip` with the page swapped in and every other file kept. The PDF is printed by
+Chromium, at A4 unless the page sets its own `@page` size.
+
+## Which format?
+
+| | LaTeX | Word | HTML |
+|---|---|---|---|
+| You download | PDF | `.docx` (plus PDF preview) | `.html` or `.zip` (plus PDF preview) |
+| Best if | You already have a `.tex` résumé | You work in Word / Google Docs and want an editable file to submit | Your CV is a web page, e.g. one an AI agent wrote |
+| Cover letters | LaTeX | LaTeX | LaTeX |
+| Upload check | Recompile + `pdftotext` diff | Exact-text match + LibreOffice conversion | Exact-text match + Chromium render |
 
 If you don't already have a LaTeX CV, Word is usually simpler.
 

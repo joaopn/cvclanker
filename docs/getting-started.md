@@ -31,7 +31,8 @@ The first build takes a few minutes. When it finishes, open
 
 The onboarding wizard walks you through:
 
-1. **Upload your CV** — a LaTeX `.tex`/`.zip` or a Word `.docx`. CV Clanker
+1. **Upload your CV** — a LaTeX `.tex`/`.zip`, a Word `.docx`, or an HTML
+   `.html`/`.zip`. CV Clanker
    verifies it can reproduce your document exactly before accepting it; see
    [CVs](cvs.md).
 2. **Write a personal brief** — first-person notes about your experience and
@@ -52,7 +53,8 @@ which is fixed per profile.
 2. **Triage** on the main list or the [swipe deck](job-lifecycle.md).
 3. Open a job and **tailor** it: review the CV edits and
    [ATS coverage](tailoring.md), accept what you like, generate a cover letter.
-4. **Download** the result (PDF for LaTeX, `.docx` for Word) and apply yourself.
+4. **Download** the result (PDF for LaTeX, `.docx` for Word, the page or `.zip`
+   for HTML) and apply yourself.
 
 ## Where your data lives
 

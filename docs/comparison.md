@@ -5,7 +5,7 @@ diverged at commit `01452b6` and intentionally independent since.
 
 JobOps is a broad application-tracking suite (Gmail integration, visa checks, a
 kanban pipeline, an optional paid cloud). CV Clanker keeps the scraping and CV
-tailoring, uses your own LaTeX or Word document instead of a fixed schema, and
+tailoring, uses your own LaTeX, Word or HTML document instead of a fixed schema, and
 drops the tracking, cloud, and telemetry features.
 
 Both are AGPLv3 + Commons Clause, self-hosted via Docker on port 3005, backed by
@@ -15,8 +15,8 @@ a single SQLite file, and **neither auto-applies**.
 
 | | **CV Clanker** | **JobOps** (upstream) |
 |---|---|---|
-| **CV output** | **LaTeX + real Word `.docx`**, plus PDF preview | PDF only (RxResume / LaTeX / Typst); `.docx` import-only |
-| **CV model** | Your own `.tex` / `.docx`, any shape, + a free-text brief | Fixed Reactive Resume v5 schema |
+| **CV output** | **LaTeX + real Word `.docx` + HTML**, plus PDF preview | PDF only (RxResume / LaTeX / Typst); `.docx` import-only |
+| **CV model** | Your own `.tex` / `.docx` / `.html`, any shape, + a free-text brief | Fixed Reactive Resume v5 schema |
 | **Tailoring** | Field-level edits over your real document + ATS coverage | Field-scoped (summary / headline / skills / projects) |
 | **Apify** | **Any actor + curated LinkedIn & Indeed templates** | Narrow (one hard-coded Seek actor) |
 | **Job sources** | Indeed, LinkedIn, Hiring Cafe, startup.jobs, Working Nomads, + Apify | ~13 boards incl. Adzuna, Gradcracker, UK Visa Jobs, Seek |
@@ -31,7 +31,7 @@ a single SQLite file, and **neither auto-applies**.
 
 ## Choosing between them
 
-- CV Clanker fits if your CV is LaTeX or Word and you want a local, self-hosted
+- CV Clanker fits if your CV is LaTeX, Word or HTML and you want a local, self-hosted
   tool without tracking or telemetry.
 - JobOps fits if you want application tracking (Gmail, kanban, visa checks), more
   region-specific boards, or a hosted option.

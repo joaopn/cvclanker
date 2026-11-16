@@ -31,10 +31,11 @@ via the Claude Code provider (or per-token via OpenRouter), any
 OpenAI-compatible endpoint, and local models via LM Studio or Ollama. See
 [LLM providers](llm-providers.md).
 
-### Should I use LaTeX or Word?
+### Should I use LaTeX, Word or HTML?
 
 LaTeX if you already have a `.tex` résumé; Word if you want an editable `.docx`
-to submit. See [CVs](cvs.md#latex-or-word).
+to submit; HTML if your CV is a self-contained web page. See
+[CVs](cvs.md#which-format).
 
 ### Why was my CV upload rejected?
 

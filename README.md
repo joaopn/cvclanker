@@ -6,16 +6,17 @@ CV and a cover letter for each one. It runs locally in Docker, stores everything
 in a single SQLite file, and does not submit applications for you.
 
 It's a fork of [JobOps](https://github.com/DaKheera47/job-ops), adapted to a
-LaTeX/Word CV workflow and with the parts that weren't needed for that removed
+LaTeX/Word/HTML CV workflow and with the parts that weren't needed for that removed
 (telemetry, hosted cloud, application tracking). It's a personal fork shared in
 case it's useful — there's no roadmap, hosted version, or support commitment.
 
 ## What it does
 
-- **CVs in LaTeX or Word.** You upload your own `.tex` or `.docx`. Tailoring
-  edits the content of that document rather than generating a new one from a
-  fixed template. LaTeX renders to PDF; Word is downloaded as a `.docx`, with a
-  PDF preview.
+- **CVs in LaTeX, Word or HTML.** You upload your own `.tex`, `.docx` or
+  `.html` page. Tailoring edits the content of that document rather than
+  generating a new one from a fixed template. LaTeX renders to PDF; Word is
+  downloaded as a `.docx` and HTML as the page (or `.zip`), each with a PDF
+  preview.
 - **Job scraping.** Built-in sources are LinkedIn and Indeed (via
   jobspy), Hiring Cafe, startup.jobs, and Working Nomads. [Apify](https://apify.com)
   actors can also be used as sources, with ready-made templates for LinkedIn and
@@ -47,7 +48,7 @@ start the app — you need one (or a local model) for the steps that call an LLM
 
 ## How it works
 
-1. Upload a CV (LaTeX or Word). The upload is accepted only if the app can
+1. Upload a CV (LaTeX, Word or HTML). The upload is accepted only if the app can
    reproduce your document exactly; see [docs/cvs.md](docs/cvs.md).
 2. Write a personal brief — context your CV doesn't include.
 3. Scrape jobs from the sources you enabled.
@@ -74,7 +75,7 @@ Fork of [JobOps](https://github.com/DaKheera47/job-ops), diverged at commit
 
 | | CV Clanker | JobOps |
 |---|---|---|
-| CV output | LaTeX and Word `.docx` | PDF only (`.docx` import-only) |
+| CV output | LaTeX, Word `.docx` and HTML | PDF only (`.docx` import-only) |
 | Apify | Any actor, plus templates | One hard-coded actor |
 | Telemetry | None | Umami (opt-out) |
 | Hosting | Self-host only | Self-host and paid cloud |
