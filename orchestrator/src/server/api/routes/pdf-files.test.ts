@@ -104,6 +104,77 @@ describe.sequential("GET /pdfs/:filename", () => {
     expect(res.status).toBe(404);
   });
 
+  describe("the tailored HTML source", () => {
+    const PAGE = Buffer.from("<!doctype html><p>Jane</p>", "utf8");
+    const ZIP = Buffer.from("PK\u0003\u0004 fake zip body", "latin1");
+
+    async function store(jobId: string, data: Buffer) {
+      const { upsertJobPdf } = await import("@server/repositories/job-pdfs");
+      await upsertJobPdf({ jobId, kind: "resume_html", data });
+    }
+
+    function sandboxed(res: Response) {
+      return {
+        disposition: res.headers.get("content-disposition"),
+        csp: res.headers.get("content-security-policy"),
+        nosniff: res.headers.get("x-content-type-options"),
+      };
+    }
+
+    it("serves a single page as a sandboxed attachment", async () => {
+      await store("job-h", PAGE);
+      const res = await fetch(`${baseUrl}/pdfs/resume_job-h.html?v=1`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+      expect(sandboxed(res)).toEqual({
+        disposition: "attachment",
+        csp: "sandbox",
+        nosniff: "nosniff",
+      });
+      expect(Buffer.from(await res.arrayBuffer())).toEqual(PAGE);
+    });
+
+    it("serves a zip as a sandboxed attachment", async () => {
+      await store("job-z", ZIP);
+      const res = await fetch(`${baseUrl}/pdfs/resume_job-z.zip`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("application/zip");
+      expect(sandboxed(res)).toEqual({
+        disposition: "attachment",
+        csp: "sandbox",
+        nosniff: "nosniff",
+      });
+      expect(Buffer.from(await res.arrayBuffer())).toEqual(ZIP);
+    });
+
+    it("404s the extension that does not match the stored shape", async () => {
+      await store("job-h", PAGE);
+      await store("job-z", ZIP);
+      expect((await fetch(`${baseUrl}/pdfs/resume_job-h.zip`)).status).toBe(
+        404,
+      );
+      expect((await fetch(`${baseUrl}/pdfs/resume_job-z.html`)).status).toBe(
+        404,
+      );
+    });
+
+    it("404s a cover-letter page, a missing row, and keeps the PDF a PDF", async () => {
+      await store("job-h", PAGE);
+      expect(
+        (await fetch(`${baseUrl}/pdfs/cover_letter_job-h.html`)).status,
+      ).toBe(404);
+      expect((await fetch(`${baseUrl}/pdfs/resume_nobody.html`)).status).toBe(
+        404,
+      );
+      const { upsertJobPdf } = await import("@server/repositories/job-pdfs");
+      await upsertJobPdf({ jobId: "job-h", kind: "resume", data: PDF_BYTES });
+      const pdf = await fetch(`${baseUrl}/pdfs/resume_job-h.pdf`);
+      expect(pdf.headers.get("content-type")).toBe("application/pdf");
+      expect(pdf.headers.get("content-security-policy")).toBeNull();
+      expect(Buffer.from(await pdf.arrayBuffer())).toEqual(PDF_BYTES);
+    });
+  });
+
   it("upsert replaces the stored bytes for the same job and kind", async () => {
     const { upsertJobPdf } = await import("@server/repositories/job-pdfs");
     await upsertJobPdf({ jobId: "job-3", kind: "resume", data: PDF_BYTES });

@@ -16,6 +16,8 @@ import {
   processJob,
   summarizeJob,
 } from "@server/pipeline/index";
+import { getJobPdfHead } from "@server/repositories/job-pdfs";
+import { looksLikeZip } from "@server/services/cv/html/zip-reader";
 import * as jobsRepo from "@server/repositories/jobs";
 import * as settingsRepo from "@server/repositories/settings";
 import { getActivePersonalBrief } from "@server/services/brief";
@@ -1778,7 +1780,17 @@ jobsRouter.get("/:id", async (req: Request, res: Response) => {
     if (!job) {
       return fail(res, notFound("Job not found"));
     }
-    ok(res, job);
+    // From the job's own stored copy (it outlives the CV), by the same zip
+    // test /pdfs uses to answer .html or .zip.
+    const head = await getJobPdfHead(job.id, "resume_html");
+    ok(res, {
+      ...job,
+      tailoredSourceShape: head
+        ? looksLikeZip(head)
+          ? "bundle"
+          : "file"
+        : null,
+    });
   } catch (error) {
     fail(res, toAppError(error));
   }

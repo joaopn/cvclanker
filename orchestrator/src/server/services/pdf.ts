@@ -12,6 +12,20 @@ import {
   zipDocxParts,
 } from "@server/services/cv/docx/render-docx";
 import {
+  type HtmlBundle,
+  packHtmlBundle,
+} from "@server/services/cv/html/bundle";
+import { renderHtmlPage } from "@server/services/cv/html/html-worker";
+import {
+  RenderHtmlPdfError,
+  renderHtmlToPdf,
+} from "@server/services/cv/html/render-html-pdf";
+import {
+  openStoredHtmlCvBundle,
+  readStoredHtmlTemplate,
+  StoredHtmlCvError,
+} from "@server/services/cv/html/stored-html-cv";
+import {
   RenderTemplateError,
   renderTemplate,
 } from "@server/services/cv/render-template";
@@ -57,12 +71,11 @@ export interface PdfResult {
  *
  * Every substrate shares everything except the middle: load the document,
  * merge defaults + overrides, refuse a no-op tailoring, then render and
- * persist (an HTML profile is refused until its render is wired in). On a
- * Word profile the artifact is a tailored `.docx` (persisted
- * as `resume_docx`) and the PDF is its unoserver-converted view (persisted
- * as `resume`) — which is why `pdfPath` keeps its `resume_<jobId>.pdf`
- * shape on the LaTeX and Word paths and every caller and client surface is
- * untouched.
+ * persist. On a Word profile the artifact is a tailored `.docx` (persisted
+ * as `resume_docx`), on an HTML profile the tailored page or zip (persisted
+ * as `resume_html`), and the PDF is its view (persisted as `resume`) — which
+ * is why `pdfPath` keeps its `resume_<jobId>.pdf` shape on every path and
+ * every caller and client surface is untouched.
  */
 export async function generatePdf(args: GeneratePdfArgs): Promise<PdfResult> {
   const document = await cvRepo.getCvDocumentById(args.cvDocumentId);
@@ -116,7 +129,14 @@ export async function generatePdf(args: GeneratePdfArgs): Promise<PdfResult> {
         pdfPath,
       });
     case "html":
-      return { success: false, error: "HTML CVs cannot be rendered yet." };
+      return renderHtmlJobPdf({
+        args,
+        document,
+        archive,
+        overrides,
+        overrideCount,
+        pdfPath,
+      });
     default:
       format satisfies never;
       return { success: false, error: "Unknown CV format." };
@@ -296,6 +316,159 @@ async function renderDocxJobPdf(input: DocxRenderArgs): Promise<PdfResult> {
     data: Buffer.from(pdfBytes),
   });
   return { success: true, pdfPath };
+}
+
+interface HtmlRenderArgs {
+  args: GeneratePdfArgs;
+  document: CvDocument;
+  archive: Buffer;
+  overrides: CvFieldOverrides;
+  overrideCount: number;
+  pdfPath: string;
+}
+
+/**
+ * The HTML arm: the tailored page (DOM substitution and value check in the
+ * worker), the no-op guard, then Chromium. Persists the tailored source in
+ * the uploaded shape (`resume_html`) and its PDF (`resume`). Every expected
+ * failure is a value, as on the other arms.
+ */
+async function renderHtmlJobPdf(input: HtmlRenderArgs): Promise<PdfResult> {
+  const { args, document, pdfPath } = input;
+
+  let bundle: HtmlBundle;
+  let templatedHtml: string;
+  try {
+    ({ templatedHtml } = readStoredHtmlTemplate(document.templatedTex));
+    bundle = openStoredHtmlCvBundle(new Uint8Array(input.archive));
+  } catch (error) {
+    if (error instanceof StoredHtmlCvError) {
+      return { success: false, error: error.message };
+    }
+    throw error;
+  }
+
+  const defaults = new Map(Object.entries(document.defaultFieldValues));
+  // The baseline is rendered, not read from the stored page, so the guard
+  // still catches a no-op after a parser or serialiser change — and only when
+  // the guard can fire.
+  const guarded = input.overrideCount > 0 && args.allowBaselineRender !== true;
+  const [rendered, baseline] = await Promise.all([
+    renderHtmlPage(
+      templatedHtml,
+      defaults,
+      new Map(Object.entries(input.overrides)),
+    ),
+    guarded ? renderHtmlPage(templatedHtml, defaults, new Map()) : null,
+  ]);
+  if (!rendered.ok) {
+    return {
+      success: false,
+      error: `Could not render the CV: ${rendered.message}`,
+    };
+  }
+  // A baseline that failed to render cannot clear a tailor as a change.
+  if (baseline && !baseline.ok) {
+    return {
+      success: false,
+      error: `Could not render the CV with its own values to compare against (${baseline.code}).`,
+    };
+  }
+  const identicalToBaseline =
+    baseline !== null && rendered.html === baseline.html;
+  logger.info("CV render result", {
+    jobId: args.jobId,
+    cvDocumentId: args.cvDocumentId,
+    format: "html",
+    overrideCount: input.overrideCount,
+    cvFieldCount: document.fields.length,
+    templatedTexLength: document.templatedTex.length,
+    renderedHtmlLength: rendered.html.length,
+    // Null when no baseline was rendered (the guard could not fire).
+    identicalToBaseline: baseline === null ? null : identicalToBaseline,
+  });
+
+  const baselineFailure = baselineGuardFailure({
+    args,
+    overrides: input.overrides,
+    overrideCount: input.overrideCount,
+    identicalToBaseline,
+    knownFieldIds: document.fields.map((f) => f.id),
+  });
+  if (baselineFailure) return baselineFailure;
+
+  const files = new Map(bundle.files);
+  files.set(bundle.entry, new TextEncoder().encode(rendered.html));
+  let pdfBytes: Uint8Array;
+  try {
+    pdfBytes = await renderPdfRetryingOnce({ files, entry: bundle.entry });
+  } catch (error) {
+    if (error instanceof RenderHtmlPdfError) {
+      return { success: false, error: renderFailure(error) };
+    }
+    throw error;
+  }
+
+  // The tailored source first, the PDF its view (the Word order); not one
+  // transaction — a crash between them leaves a stale preview the next
+  // render heals.
+  await upsertJobPdf({
+    jobId: args.jobId,
+    kind: "resume_html",
+    data: Buffer.from(packHtmlBundle({ ...bundle, files })),
+  });
+  await upsertJobPdf({
+    jobId: args.jobId,
+    kind: "resume",
+    data: Buffer.from(pdfBytes),
+  });
+  return { success: true, pdfPath };
+}
+
+/**
+ * A Chromium failure as a tailoring failure: a one-line summary every toast
+ * shows, and the rest as the (capped) detail. The unanswered requests are a
+ * list of any length, so they are counted in the summary and listed below.
+ */
+function renderFailure(error: RenderHtmlPdfError): string {
+  if (error.code === "UNANSWERED_REQUESTS") {
+    // A page can ask for the same missing file twice (an image and a CSS
+    // background, say).
+    const files = [...new Set(error.unansweredRequests)];
+    return composeTailoringFailure(
+      `PDF render failed (${error.code}): the page asked for ${files.length} file(s) the CV does not contain.`,
+      [
+        `Requests the CV could not answer (${files.length}):`,
+        ...formatIdList(files),
+      ].join("\n"),
+    );
+  }
+  const [firstLine, ...more] = error.message.split("\n");
+  const rest = more.join("\n").trim();
+  return composeTailoringFailure(
+    firstLine.trim()
+      ? `PDF render failed (${error.code}): ${firstLine}`
+      : `PDF render failed (${error.code}).`,
+    rest || null,
+  );
+}
+
+/**
+ * UNAVAILABLE is the shared browser, not this CV: another render's timeout
+ * restarted it, it was stopped or crashed, or it could not start. Try once
+ * more.
+ */
+async function renderPdfRetryingOnce(
+  args: Parameters<typeof renderHtmlToPdf>[0],
+): Promise<Uint8Array> {
+  try {
+    return await renderHtmlToPdf(args);
+  } catch (error) {
+    if (error instanceof RenderHtmlPdfError && error.code === "UNAVAILABLE") {
+      return renderHtmlToPdf(args);
+    }
+    throw error;
+  }
 }
 
 /**

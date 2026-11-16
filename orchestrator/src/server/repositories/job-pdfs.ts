@@ -51,6 +51,21 @@ export async function getJobPdf(
 }
 
 /**
+ * The first four bytes of a stored document (enough to tell a zip). Only
+ * those reach JS; SQLite still reads the value to take them.
+ */
+export async function getJobPdfHead(
+  jobId: string,
+  kind: JobPdfKind,
+): Promise<Buffer | null> {
+  const [row] = await db
+    .select({ head: sql<Buffer>`substr(${jobPdfs.data}, 1, 4)` })
+    .from(jobPdfs)
+    .where(and(eq(jobPdfs.jobId, jobId), eq(jobPdfs.kind, kind)));
+  return row?.head ?? null;
+}
+
+/**
  * Remove blob rows whose job no longer exists. Called after bulk job deletes
  * (and safe to call any time — also self-heals historical orphans).
  */

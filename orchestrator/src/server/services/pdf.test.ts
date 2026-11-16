@@ -134,11 +134,8 @@ afterEach(() => {
 });
 
 describe("generatePdf", () => {
-  it("returns a failure, rendering nothing, on an HTML or an unknown format", async () => {
-    for (const [format, error] of [
-      ["html", "HTML CVs cannot be rendered yet."],
-      ["bogus", "Unknown CV format."],
-    ]) {
+  it("returns a failure, rendering nothing, on an unknown format", async () => {
+    for (const [format, error] of [["bogus", "Unknown CV format."]]) {
       vi.mocked(getEffectiveSettings).mockResolvedValue(
         createAppSettings({ cvSourceFormat: format as never }),
       );
