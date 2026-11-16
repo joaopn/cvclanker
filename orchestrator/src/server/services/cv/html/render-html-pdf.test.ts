@@ -140,6 +140,23 @@ describe("renderHtmlToPdf", () => {
   );
 
   it(
+    "reads stylesheets as UTF-8 whatever their @charset says",
+    async () => {
+      const pdf = await renderHtmlToPdf({
+        files: bundle({
+          "index.html":
+            '<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="a.css"><p>Body</p>',
+          "a.css":
+            '@charset "iso-8859-1"; p::after { content: " caf\u00e9-css"; }',
+        }),
+        entry: "index.html",
+      });
+      expect(await pdfToText(pdf)).toContain("caf\u00e9-css");
+    },
+    RENDER_TEST_TIMEOUT_MS,
+  );
+
+  it(
     "resolves relative references against an entry in a subfolder",
     async () => {
       const pdf = await renderHtmlToPdf({

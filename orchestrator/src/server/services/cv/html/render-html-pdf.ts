@@ -54,8 +54,11 @@ const LAUNCH_ARGS = [
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
   html: "text/html; charset=utf-8",
   htm: "text/html; charset=utf-8",
-  css: "text/css",
-  svg: "image/svg+xml",
+  // UTF-8 stated outright, as the upload check decodes them: a stylesheet's
+  // own @charset (or an SVG's XML encoding) would otherwise make Chromium read
+  // different references than the check saw.
+  css: "text/css; charset=utf-8",
+  svg: "image/svg+xml; charset=utf-8",
   png: "image/png",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
