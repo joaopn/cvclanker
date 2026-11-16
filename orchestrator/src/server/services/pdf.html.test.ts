@@ -273,7 +273,6 @@ describe("generatePdf — HTML", () => {
         new RenderHtmlPdfError("missing x.png", "UNANSWERED_REQUESTS", [
           "http://cv.invalid/x.png",
           "http://cv.invalid/y.png",
-          "http://cv.invalid/x.png",
         ]),
       );
       const result = await tailor({ b1: "Built <b>Spark</b> jobs" });

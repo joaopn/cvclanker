@@ -30,6 +30,8 @@ import * as pipelineRepo from "../repositories/pipeline";
 import * as settingsRepo from "../repositories/settings";
 import { recordScrapeWatermarks } from "../repositories/source-scrape-watermarks";
 import { llmAdjustContent } from "../services/cv";
+import { resolveCvSourceFormat } from "../services/cv/cv-format";
+import { readStoredHtmlTemplate } from "../services/cv/html/stored-html-cv";
 import { getActiveCvDocument } from "../services/cv-active";
 import { generatePdf } from "../services/pdf";
 import { getEffectiveSettings } from "../services/settings";
@@ -498,12 +500,19 @@ export async function summarizeJob(
 
       const lockedFieldIds = job.cvFieldLocks ?? [];
       const previousOverrides = job.tailoredFields ?? {};
+      // On an HTML profile, the fields whose marker sits inside a link: their
+      // values may not carry one. A damaged template fails the tailor here.
+      const insideLinks =
+        resolveCvSourceFormat(await getEffectiveSettings()) === "html"
+          ? readStoredHtmlTemplate(cv.templatedTex).insideLinks
+          : undefined;
       const adjust = await llmAdjustContent({
         personalBrief: cv.personalBrief,
         jobDescription: job.jobDescription ?? "",
         currentFields: cv.fields,
         currentOverrides: previousOverrides,
         lockedFieldIds,
+        insideLinks,
         jobId: job.id,
         jobTitle: job.title,
         jobEmployer: job.employer,

@@ -172,7 +172,9 @@ export async function renderHtmlToPdf(
       const path = bundlePathForUrl(url);
       const body = path === null ? undefined : args.files.get(path);
       if (path === null || body === undefined) {
-        unanswered.push(url);
+        // Once each: Chromium may ask for one missing file more than once
+        // (seen under load), and the consumers count or list these.
+        if (!unanswered.includes(url)) unanswered.push(url);
         return route.abort();
       }
       return route.fulfill({

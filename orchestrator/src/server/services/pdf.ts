@@ -432,9 +432,7 @@ async function renderHtmlJobPdf(input: HtmlRenderArgs): Promise<PdfResult> {
  */
 function renderFailure(error: RenderHtmlPdfError): string {
   if (error.code === "UNANSWERED_REQUESTS") {
-    // A page can ask for the same missing file twice (an image and a CSS
-    // background, say).
-    const files = [...new Set(error.unansweredRequests)];
+    const files = error.unansweredRequests;
     return composeTailoringFailure(
       `PDF render failed (${error.code}): the page asked for ${files.length} file(s) the CV does not contain.`,
       [

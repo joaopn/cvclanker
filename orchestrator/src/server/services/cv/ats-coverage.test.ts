@@ -56,13 +56,29 @@ describe("buildCvText", () => {
   ];
 
   it("uses the source default when no override exists", () => {
-    expect(buildCvText(fields, {})).toBe("Ada Lovelace\nWrote algorithms");
+    expect(buildCvText(fields, {}, "latex")).toBe(
+      "Ada Lovelace\nWrote algorithms",
+    );
   });
 
   it("prefers the per-job override over the source default", () => {
-    const text = buildCvText(fields, {
-      "experience.0.bullet": "Shipped Kubernetes operators",
-    });
+    const text = buildCvText(
+      fields,
+      { "experience.0.bullet": "Shipped Kubernetes operators" },
+      "latex",
+    );
     expect(text).toBe("Ada Lovelace\nShipped Kubernetes operators");
+  });
+
+  it("reads an HTML value as text, and leaves other formats' values alone", () => {
+    const overrides = {
+      "experience.0.bullet": "<b>Apache</b> <b>Kafka</b> R&amp;D",
+    };
+    expect(buildCvText(fields, overrides, "html")).toBe(
+      "Ada Lovelace\nApache Kafka R&D",
+    );
+    expect(buildCvText(fields, overrides, "docx")).toBe(
+      "Ada Lovelace\n<b>Apache</b> <b>Kafka</b> R&amp;D",
+    );
   });
 });

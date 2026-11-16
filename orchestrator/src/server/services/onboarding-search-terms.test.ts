@@ -17,6 +17,11 @@ vi.mock("./cv-active", () => ({
   getActiveCvDocument: vi.fn(),
 }));
 
+const settingsMock = vi.hoisted(() => ({ cvSourceFormat: null as string | null }));
+vi.mock("./settings", () => ({
+  getEffectiveSettings: async () => ({ cvSourceFormat: settingsMock.cvSourceFormat }),
+}));
+
 vi.mock("./prompts", () => ({
   loadPrompt: vi.fn().mockResolvedValue({
     name: "onboarding-search-terms",
@@ -53,6 +58,32 @@ function makeCv(overrides: {
 describe("suggestOnboardingSearchTerms", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    settingsMock.cvSourceFormat = null;
+  });
+
+  it("reads an HTML CV's hints as text, so markup is never searched for", async () => {
+    settingsMock.cvSourceFormat = "html";
+    vi.mocked(getActiveCvDocument).mockResolvedValue(
+      makeCv({
+        fields: [
+          { id: "summary.0", role: "summary", value: "<b>Data</b> Engineer" },
+          { id: "skills.0", role: "skill", value: "Kafka &amp; Spark" },
+        ],
+      }),
+    );
+    callJsonMock.mockResolvedValue({ success: false, error: "down" });
+
+    expect(await suggestOnboardingSearchTerms()).toEqual({
+      terms: ["Data Engineer", "Kafka & Spark"],
+      source: "fallback",
+    });
+
+    // Another format's values are taken as they are.
+    settingsMock.cvSourceFormat = "latex";
+    expect((await suggestOnboardingSearchTerms()).terms).toEqual([
+      "<b>Data</b> Engineer",
+      "Kafka &amp; Spark",
+    ]);
   });
 
   it("returns sanitized AI terms when generation succeeds", async () => {

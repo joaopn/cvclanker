@@ -155,6 +155,53 @@ describe("generateCoverLetter", () => {
     });
   });
 
+  it("shows an HTML CV's values as text, leaves the letter's own fields alone, and passes another format's values through", async () => {
+    getEffectiveSettingsMock.mockResolvedValue(
+      createAppSettings({ cvSourceFormat: "html" }),
+    );
+    const job = createJob({
+      id: "job-1",
+      tailoredFields: { "summary.0": "Builds <b>Kafka</b> R&amp;D" },
+    });
+    getJobByIdMock.mockResolvedValue(job);
+    getActiveCvDocumentMock.mockResolvedValue(
+      buildCv({
+        fields: [
+          { id: "summary.0", role: "summary", value: "Builds <b>x</b>" },
+        ],
+      }),
+    );
+    getActiveCoverLetterDocumentMock.mockResolvedValue(
+      createCoverLetterDocument({
+        id: "cl-1",
+        fields: [{ id: BODY_FIELD_ID, role: "body", value: "R\\&D <b>body" }],
+      }),
+    );
+    callJsonMock.mockResolvedValue(
+      llmReply([{ fieldId: BODY_FIELD_ID, newValue: "Body." }]),
+    );
+
+    await generateCoverLetter({ jobId: "job-1" });
+
+    const vars = loadPromptMock.mock.calls[0][1] as Record<string, string>;
+    expect(JSON.parse(vars.tailoredCvFieldsJson)).toEqual([
+      { id: "summary.0", role: "summary", value: "Builds Kafka R&D" },
+    ]);
+    expect(JSON.parse(vars.coverLetterFieldsJson)[0].value).toBe(
+      "R\\&D <b>body",
+    );
+
+    // On another format the CV's values are shown as they are.
+    getEffectiveSettingsMock.mockResolvedValue(createAppSettings());
+    getJobByIdMock.mockResolvedValue(job);
+    loadPromptMock.mockClear();
+    await generateCoverLetter({ jobId: "job-1" });
+    const latexVars = loadPromptMock.mock.calls[0][1] as Record<string, string>;
+    expect(JSON.parse(latexVars.tailoredCvFieldsJson)[0].value).toBe(
+      "Builds <b>Kafka</b> R&amp;D",
+    );
+  });
+
   it("drops patches targeting unknown field ids", async () => {
     const job = createJob({ id: "job-1", coverLetterDocumentId: null });
     const cl = createCoverLetterDocument({

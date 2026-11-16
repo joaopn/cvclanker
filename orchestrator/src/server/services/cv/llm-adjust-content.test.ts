@@ -583,3 +583,104 @@ describe("llmAdjustContent", () => {
     }
   });
 });
+
+describe("llmAdjustContent — the value check on an HTML profile", () => {
+  const HTML_FIELDS: CvField[] = [
+    { id: "summary", role: "summary", value: "Builds <b>data</b> pipelines" },
+    {
+      id: "site",
+      role: "url",
+      value: '<a href="https://x.test/">site</a>',
+    },
+    { id: "project", role: "other", value: "Search engine" },
+  ];
+
+  function onProfile(format: string | null) {
+    settingsMock.mockResolvedValueOnce({
+      maxTailoredContentChars: {
+        value: 100_000,
+        default: 100_000,
+        override: null,
+      },
+      cvSourceFormat: format,
+    });
+  }
+
+  function proposes(patches: { fieldId: string; newValue: string }[]) {
+    callJsonMock.mockResolvedValue({
+      success: true,
+      data: { patchesJson: JSON.stringify(patches), matched: [], skipped: [] },
+    });
+  }
+
+  function tailor(insideLinks?: string[]) {
+    return llmAdjustContent({
+      personalBrief: "x",
+      jobDescription: "y",
+      currentFields: HTML_FIELDS,
+      currentOverrides: {},
+      insideLinks,
+    });
+  }
+
+  it("keeps values using the CV's own markup and drops the rest", async () => {
+    onProfile("html");
+    proposes([
+      { fieldId: "summary", newValue: "Builds <b>streaming</b> pipelines" },
+      { fieldId: "project", newValue: "Search <i>engine</i>" },
+    ]);
+    const result = await tailor(["site"]);
+    expect(result).toMatchObject({
+      success: true,
+      patches: [
+        { fieldId: "summary", newValue: "Builds <b>streaming</b> pipelines" },
+      ],
+    });
+  });
+
+  it("fails, naming each dropped field and its reason, when nothing survives", async () => {
+    onProfile("html");
+    proposes([
+      { fieldId: "summary", newValue: '<b style="x">a</b>' },
+      { fieldId: "project", newValue: "<b>unclosed" },
+    ]);
+    const result = await tailor(["site"]);
+    if (result.success) throw new Error("expected a failure");
+    const { summary, detail } = splitTailoringFailure(result.error);
+    expect(summary).toContain("2 change(s) used formatting the CV cannot take");
+    expect(detail).toContain(
+      "Changes dropped for their formatting (2):\n  summary (ATTRIBUTE_NOT_ALLOWED)\n  project (UNCLOSED_TAG)",
+    );
+  });
+
+  it("refuses a link in a field that sits inside one, and in every field without the link context", async () => {
+    const link = '<a href="https://x.test/">here</a>';
+    onProfile("html");
+    proposes([
+      { fieldId: "site", newValue: link },
+      { fieldId: "project", newValue: link },
+    ]);
+    expect(await tailor(["site"])).toMatchObject({
+      success: true,
+      patches: [{ fieldId: "project", newValue: link }],
+    });
+
+    onProfile("html");
+    const failClosed = await tailor(undefined);
+    if (failClosed.success) throw new Error("expected a failure");
+    expect(splitTailoringFailure(failClosed.error).detail).toContain(
+      "  site (NESTED_LINK)\n  project (NESTED_LINK)",
+    );
+  });
+
+  it("checks nothing on a LaTeX or Word profile", async () => {
+    for (const format of [null, "docx"]) {
+      onProfile(format);
+      proposes([{ fieldId: "project", newValue: "Search <i>engine</i>" }]);
+      expect(await tailor(), String(format)).toMatchObject({
+        success: true,
+        patches: [{ fieldId: "project", newValue: "Search <i>engine</i>" }],
+      });
+    }
+  });
+});

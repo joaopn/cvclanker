@@ -1,5 +1,7 @@
 import { logger } from "@infra/logger";
 import * as jobsRepo from "@server/repositories/jobs";
+import { resolveCvSourceFormat } from "@server/services/cv/cv-format";
+import { cvFieldText } from "@server/services/cv/html/field-text";
 import { getActiveCvDocument } from "@server/services/cv-active";
 import { LlmService } from "@server/services/llm/service";
 import type { JsonSchemaDefinition } from "@server/services/llm/types";
@@ -126,21 +128,25 @@ export async function generateCoverLetter(
   const cv = await getActiveCvDocument();
   const personalBrief = cv?.personalBrief ?? "";
 
-  const tailoredCvFields = buildFieldsView(
-    cv?.fields ?? [],
-    job.tailoredFields ?? {},
-  );
-
-  const coverLetterFieldsView = buildFieldsView(
-    coverLetter.fields,
-    job.coverLetterFieldOverrides ?? {},
-  );
-
   const [model, writingStyle, settings] = await Promise.all([
     resolveLlmModel("tailoring"),
     getWritingStyle(),
     getEffectiveSettings(),
   ]);
+
+  // The CV's values as text: the letter is LaTeX on every profile, so an
+  // HTML CV's markup must not cross into it. The letter's own fields stay
+  // as they are.
+  const cvFormat = resolveCvSourceFormat(settings);
+  const tailoredCvFields = buildFieldsView(
+    cv?.fields ?? [],
+    job.tailoredFields ?? {},
+  ).map((field) => ({ ...field, value: cvFieldText(field.value, cvFormat) }));
+
+  const coverLetterFieldsView = buildFieldsView(
+    coverLetter.fields,
+    job.coverLetterFieldOverrides ?? {},
+  );
 
   const styleVars = buildWritingStyleVars(writingStyle);
 

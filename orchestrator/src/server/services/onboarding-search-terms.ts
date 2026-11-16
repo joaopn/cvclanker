@@ -1,16 +1,23 @@
 import { conflict } from "@infra/errors";
 import { logger } from "@infra/logger";
 import { resolveLlmModel } from "@server/services/modelSelection";
-import type { CvField, SearchTermsSuggestionResponse } from "@shared/types";
+import type {
+  CvField,
+  CvSourceFormat,
+  SearchTermsSuggestionResponse,
+} from "@shared/types";
 import {
   MAX_SEARCH_TERM_LENGTH,
   MAX_SEARCH_TERMS,
   normalizeSearchTerms,
 } from "@shared/utils/search-terms";
+import { resolveCvSourceFormat } from "./cv/cv-format";
+import { cvFieldText } from "./cv/html/field-text";
 import { getActiveCvDocument } from "./cv-active";
 import { LlmService } from "./llm/service";
 import type { JsonSchemaDefinition } from "./llm/types";
 import { loadPrompt } from "./prompts";
+import { getEffectiveSettings } from "./settings";
 
 type SearchTermSuggestionModelResponse = {
   terms: string[];
@@ -55,22 +62,23 @@ function dedupe(
  * derived from the first summary-role field. Roles the LLM never tagged
  * are simply absent from the result.
  */
-function collectCvHints(fields: CvField[]): {
+function collectCvHints(
+  fields: CvField[],
+  format: CvSourceFormat,
+): {
   headline: string | undefined;
   positions: string[];
   projectNames: string[];
   skillNames: string[];
 } {
-  const headline = fields.find((field) => field.role === "summary")?.value;
-  const positions = fields
-    .filter((field) => field.role === "title")
-    .map((field) => field.value);
+  const text = (field: CvField) => cvFieldText(field.value, format);
+  const summary = fields.find((field) => field.role === "summary");
+  const headline = summary ? text(summary) : undefined;
+  const positions = fields.filter((field) => field.role === "title").map(text);
   const projectNames = fields
     .filter((field) => field.role === "publication")
-    .map((field) => field.value);
-  const skillNames = fields
-    .filter((field) => field.role === "skill")
-    .map((field) => field.value);
+    .map(text);
+  const skillNames = fields.filter((field) => field.role === "skill").map(text);
 
   return { headline, positions, projectNames, skillNames };
 }
@@ -140,7 +148,12 @@ export async function suggestOnboardingSearchTerms(): Promise<SearchTermsSuggest
     throw conflict("Resume must be configured before suggesting search terms.");
   }
 
-  const hints = collectCvHints(cv.fields);
+  // As text: an HTML CV's `<b>Data Engineer</b>` must not be searched for
+  // literally.
+  const hints = collectCvHints(
+    cv.fields,
+    resolveCvSourceFormat(await getEffectiveSettings()),
+  );
   const context: OnboardingSearchTermContext = {
     brief: cv.personalBrief ?? "",
     headline: hints.headline,

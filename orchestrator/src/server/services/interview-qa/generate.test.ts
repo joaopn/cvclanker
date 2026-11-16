@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { createJob } from "@shared/testing/factories";
+import { createAppSettings, createJob } from "@shared/testing/factories";
 import type { CvDocument } from "@shared/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -54,6 +54,12 @@ vi.mock("@server/services/cv-active", () => ({
   getActiveCvDocument: (...args: unknown[]) => getActiveCvDocumentMock(...args),
 }));
 
+const getEffectiveSettingsMock = vi.fn();
+vi.mock("@server/services/settings", () => ({
+  getEffectiveSettings: (...args: unknown[]) =>
+    getEffectiveSettingsMock(...args),
+}));
+
 vi.mock("@infra/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
@@ -66,6 +72,8 @@ beforeEach(() => {
   updateJobMock.mockReset();
   getActiveCvDocumentMock.mockReset();
   loadPromptMock.mockClear();
+  getEffectiveSettingsMock.mockReset();
+  getEffectiveSettingsMock.mockResolvedValue(createAppSettings());
 });
 
 describe("generateInterviewPrep", () => {
@@ -97,6 +105,41 @@ describe("generateInterviewPrep", () => {
     expect(updateJobMock).toHaveBeenCalledWith("job-1", {
       interviewPrep: "## Strategy\n\n- lead with X",
     });
+  });
+
+  it("shows an HTML CV's values as text, and other formats' as they are", async () => {
+    const fields = [
+      {
+        id: "summary.0",
+        role: "summary" as const,
+        value: "<b>Kafka</b> R&amp;D",
+      },
+    ];
+    for (const [format, expected] of [
+      ["html", "Kafka R&D"],
+      ["latex", "<b>Kafka</b> R&amp;D"],
+    ] as const) {
+      getEffectiveSettingsMock.mockResolvedValue(
+        createAppSettings({ cvSourceFormat: format }),
+      );
+      const job = createJob({ id: "job-1", status: "applied" });
+      getJobByIdMock
+        .mockResolvedValueOnce(job)
+        .mockResolvedValueOnce({ ...job, interviewPrep: "x" });
+      getActiveCvDocumentMock.mockResolvedValue(buildCv({ fields }));
+      callJsonMock.mockResolvedValue({
+        success: true,
+        data: { strategyMarkdown: "x" },
+      });
+      loadPromptMock.mockClear();
+
+      await generateInterviewPrep({ jobId: "job-1" });
+
+      const vars = loadPromptMock.mock.calls[0][1] as Record<string, string>;
+      expect(JSON.parse(vars.tailoredCvFieldsJson)[0].value, format).toBe(
+        expected,
+      );
+    }
   });
 
   it("forwards the steering text into the prompt vars", async () => {

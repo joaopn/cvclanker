@@ -21,6 +21,7 @@ import {
 } from "@shared/types";
 import { resolveCvSourceFormat } from "./cv-format";
 import { getCvFormatNote } from "./cv-format-note";
+import { checkMarkup, markupUsage } from "./html/inline-markup";
 
 /**
  * `patchesJson` is a JSON-encoded string instead of an array of objects —
@@ -73,6 +74,12 @@ export interface AdjustContentArgs {
    * and the server drops any patches that target a locked id post-LLM.
    */
   lockedFieldIds?: string[];
+  /**
+   * HTML profiles: the field ids whose marker sits inside a link (from the
+   * CV's template envelope). Without it every field counts as inside one, so
+   * a value carrying a link is dropped rather than failing the render.
+   */
+  insideLinks?: string[];
   /** Optional — used as the LLM-queue subject line and for diagnostic logging. */
   jobId?: string;
   jobTitle?: string;
@@ -127,7 +134,8 @@ export async function llmAdjustContent(
     getWritingStyle(),
     getEffectiveSettings(),
   ]);
-  const cvFormatNote = await getCvFormatNote(resolveCvSourceFormat(settings));
+  const format = resolveCvSourceFormat(settings);
+  const cvFormatNote = await getCvFormatNote(format);
 
   const lockedFieldIds = new Set(args.lockedFieldIds ?? []);
   // The LLM sees locked fields with their user-edited override (so it can
@@ -249,6 +257,17 @@ export async function llmAdjustContent(
   let droppedMalformed = 0;
   let droppedForbidden = 0;
   let droppedNoChange = 0;
+  // HTML values may hold only the markup the CV's own values use (their
+  // defaults), in their marker's link context — the render's own check,
+  // run here so one bad value is dropped instead of failing the whole render.
+  const markupCheck =
+    format === "html"
+      ? {
+          usage: markupUsage(args.currentFields.map((field) => field.value)),
+          insideLinks: args.insideLinks ? new Set(args.insideLinks) : null,
+        }
+      : null;
+  const droppedMarkup: string[] = [];
   for (const entry of parsed) {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
       droppedMalformed += 1;
@@ -277,6 +296,16 @@ export async function llmAdjustContent(
       droppedForbidden += 1;
       continue;
     }
+    if (markupCheck) {
+      const check = checkMarkup(newValue, {
+        usage: markupCheck.usage,
+        insideLink: markupCheck.insideLinks?.has(fieldId) ?? true,
+      });
+      if (!check.ok) {
+        droppedMarkup.push(`${fieldId} (${check.reason})`);
+        continue;
+      }
+    }
     const original = args.currentFields.find((f) => f.id === fieldId)?.value;
     if (original !== undefined && newValue === original) {
       droppedNoChange += 1;
@@ -296,6 +325,8 @@ export async function llmAdjustContent(
     lockedFieldCount: lockedFieldIds.size,
     droppedMalformed,
     droppedForbidden,
+    droppedMarkup: droppedMarkup.slice(0, 10),
+    droppedMarkupCount: droppedMarkup.length,
     droppedNoChange,
     knownFieldIdSample: Array.from(fieldIds).slice(0, 5),
     matchedCount: Array.isArray(matched) ? matched.length : 0,
@@ -333,6 +364,11 @@ export async function llmAdjustContent(
         `${droppedForbidden} change(s) contained forbidden LaTeX patterns`,
       );
     }
+    if (droppedMarkup.length > 0) {
+      reasons.push(
+        `${droppedMarkup.length} change(s) used formatting the CV cannot take`,
+      );
+    }
     if (droppedNoChange > 0) {
       reasons.push(
         `${droppedNoChange} change(s) re-emitted the original value`,
@@ -352,6 +388,12 @@ export async function llmAdjustContent(
       detail.push(
         `Proposed field ids that are locked (${droppedLockedFieldIds.length}):`,
         ...formatIdList(droppedLockedFieldIds),
+      );
+    }
+    if (droppedMarkup.length > 0) {
+      detail.push(
+        `Changes dropped for their formatting (${droppedMarkup.length}):`,
+        ...formatIdList(droppedMarkup),
       );
     }
     detail.push(

@@ -48,6 +48,7 @@ import {
   JobNotScoreableError,
   scoreJobSuitability,
 } from "@server/services/scorer";
+import { resolveCvSourceFormat } from "@server/services/cv/cv-format";
 import { getEffectiveSettings } from "@server/services/settings";
 import { extractExternalId } from "@shared/duplicate-identity";
 import { settingsRegistry } from "@shared/settings-registry";
@@ -1756,7 +1757,11 @@ jobsRouter.post("/:id/refresh-ats", async (req: Request, res: Response) => {
       );
     }
 
-    const cvText = buildCvText(cv.fields, job.tailoredFields ?? {});
+    const cvText = buildCvText(
+      cv.fields,
+      job.tailoredFields ?? {},
+      resolveCvSourceFormat(await getEffectiveSettings()),
+    );
     const { matched, skipped } = recomputeAtsCoverage(cvText, keywords);
 
     const updated = await jobsRepo.updateJob(job.id, {

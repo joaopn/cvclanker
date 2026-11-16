@@ -1,4 +1,5 @@
-import type { CvField, CvFieldOverrides } from "@shared/types";
+import type { CvField, CvFieldOverrides, CvSourceFormat } from "@shared/types";
+import { cvFieldText } from "./html/field-text";
 
 export interface AtsCoverageResult {
   matched: string[];
@@ -36,12 +37,16 @@ export function recomputeAtsCoverage(
 
 /**
  * The plain-text blob used for matching: each CV field's current value
- * (per-job override else source default), newline-joined. No LaTeX render —
- * substring matching only needs the raw field text.
+ * (per-job override else source default) as text, newline-joined. No render —
+ * substring matching only needs the field text (an HTML value's tags dropped
+ * and entities decoded, so `<b>Apache</b> <b>Kafka</b>` matches "Apache Kafka").
  */
 export function buildCvText(
   fields: CvField[],
   overrides: CvFieldOverrides,
+  format: CvSourceFormat,
 ): string {
-  return fields.map((field) => overrides[field.id] ?? field.value).join("\n");
+  return fields
+    .map((field) => cvFieldText(overrides[field.id] ?? field.value, format))
+    .join("\n");
 }

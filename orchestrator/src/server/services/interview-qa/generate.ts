@@ -1,10 +1,13 @@
 import { logger } from "@infra/logger";
 import * as jobsRepo from "@server/repositories/jobs";
+import { resolveCvSourceFormat } from "@server/services/cv/cv-format";
+import { cvFieldText } from "@server/services/cv/html/field-text";
 import { getActiveCvDocument } from "@server/services/cv-active";
 import { LlmService } from "@server/services/llm/service";
 import type { JsonSchemaDefinition } from "@server/services/llm/types";
 import { resolveLlmModel } from "@server/services/modelSelection";
 import { loadPrompt } from "@server/services/prompts";
+import { getEffectiveSettings } from "@server/services/settings";
 import type { CvField, CvFieldOverrides, Job } from "@shared/types";
 
 /**
@@ -78,10 +81,12 @@ export async function generateInterviewPrep(
 
   const cv = await getActiveCvDocument();
   const personalBrief = cv?.personalBrief ?? "";
+  // The CV's values as text (an HTML CV's markup dropped).
+  const cvFormat = resolveCvSourceFormat(await getEffectiveSettings());
   const tailoredCvFields = buildFieldsView(
     cv?.fields ?? [],
     job.tailoredFields ?? {},
-  );
+  ).map((field) => ({ ...field, value: cvFieldText(field.value, cvFormat) }));
 
   const model = await resolveLlmModel("tailoring");
 

@@ -251,6 +251,23 @@ describe("renderHtmlToPdf", () => {
   );
 
   it(
+    "names a missing file once, however often the page asks for it",
+    async () => {
+      const error = await renderError(
+        renderHtmlToPdf({
+          files: bundle({
+            "index.html":
+              '<!doctype html><style>p{background:url(x.png)}div{background:url(x.png)}</style><img src="x.png"><p>a</p><div>b</div><img src="x.png">',
+          }),
+          entry: "index.html",
+        }),
+      );
+      expect(error.unansweredRequests).toEqual(["http://cv.invalid/x.png"]);
+    },
+    RENDER_TEST_TIMEOUT_MS,
+  );
+
+  it(
     "fails naming a remote reference",
     async () => {
       const error = await renderError(
