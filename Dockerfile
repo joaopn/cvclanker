@@ -93,10 +93,7 @@ FROM build-base AS python-deps
 
 # Install Python dependencies with pip cache.
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip3 install --break-system-packages playwright python-jobspy
-
-# Install Firefox for Python Playwright.
-RUN python3 -m playwright install firefox
+    pip3 install --break-system-packages python-jobspy
 
 FROM build-base AS node-deps
 
@@ -113,13 +110,6 @@ COPY extractors/workingnomads/package*.json ./extractors/workingnomads/
 RUN --mount=type=cache,target=/root/.npm \
     npm install --workspaces --include-workspace-root --include=dev \
     --no-audit --no-fund --progress=false
-
-# Install the Firefox revision that the Node Playwright package version
-# expects (python-deps installs its own, in a disjoint firefox-<N>/ subdir).
-# Needed because Hiring Cafe's fallback, when its first page load under
-# Camoufox fails, calls firefox.launch() without an explicit executablePath;
-# manual job import launches Camoufox itself.
-RUN npx playwright install firefox
 
 # Fetch Camoufox binaries before copying source to keep the download cached.
 # Anonymous GitHub fetch — no token plumbing into the build by design.
@@ -199,12 +189,8 @@ FROM runtime-node-deps AS production
 # Copy production-only runtime assets from sibling stages.
 COPY --from=tectonic /usr/local/bin/tectonic /usr/local/bin/tectonic
 COPY --from=python-deps /usr/local/lib/python3.11/dist-packages /usr/local/lib/python3.11/dist-packages
-COPY --from=python-deps /ms-playwright /ms-playwright
-# Node Playwright's browsers: its Firefox revision (Hiring Cafe's fallback when
-# its first page load under Camoufox fails) and Chromium headless shell
-# (HTML-CV rendering).
-# They sit in their own subdirs, disjoint from python-deps' Firefox above, so
-# this COPY adds them without overwriting it.
+# Node Playwright's one browser, Chromium headless shell (HTML-CV rendering).
+# Hiring Cafe and manual job import drive Camoufox, from its own cache below.
 COPY --from=node-deps /ms-playwright /ms-playwright
 COPY --from=node-deps /root/.cache/camoufox /root/.cache/camoufox
 

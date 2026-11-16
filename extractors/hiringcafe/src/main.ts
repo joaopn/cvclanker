@@ -670,13 +670,15 @@ async function run(): Promise<void> {
     process.env.HIRING_CAFE_WORKPLACE_TYPES,
   );
 
-  let browser = await firefox.launch(
-    await launchOptions({
-      headless,
-      humanize: true,
-      geoip: true,
-    }),
-  );
+  const launchCamoufox = async () =>
+    firefox.launch(
+      await launchOptions({
+        headless,
+        humanize: true,
+        geoip: true,
+      }),
+    );
+  let browser = await launchCamoufox();
   let context = await browser.newContext();
   let page = await context.newPage();
 
@@ -697,11 +699,13 @@ async function run(): Promise<void> {
       await initializePage();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // Once, in a fresh Camoufox: the image's other browser, headless
+      // Chromium, is answered with the site's 403 challenge page.
       console.warn(
-        `Camoufox browser startup was unstable, retrying with vanilla Firefox: ${message}`,
+        `Camoufox's first page load failed, retrying once in a fresh Camoufox browser: ${message}`,
       );
       await browser.close();
-      browser = await firefox.launch({ headless });
+      browser = await launchCamoufox();
       context = await browser.newContext();
       page = await context.newPage();
       await initializePage();
