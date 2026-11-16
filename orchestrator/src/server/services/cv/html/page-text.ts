@@ -9,7 +9,7 @@ import {
   type TextNode,
 } from "./html-tree";
 
-// The text of an HTML-CV page: exactly (the gate compares it for equality),
+// The text of an HTML-CV page: exactly (visibleText, which tests compare),
 // and as segments — one per run of inline content between block boundaries,
 // whitespace collapsed — the text the LLM picks field spans from.
 

@@ -212,10 +212,9 @@ describe("the template and render tasks", () => {
     '<!doctype html><p>Built <b>Kafka</b> pipelines</p><p><a href="https://x.test/">Site</a></p>';
 
   it(
-    "prepares a page's text and segments, splices it and renders the defaults back to it",
+    "prepares a page's segments, splices it and renders the defaults back to it",
     async () => {
       const prepared = await checkHtmlBundleBounded(single(upload));
-      expect(prepared.text).toBe("Built Kafka pipelinesSite");
       expect(prepared.segments).toEqual([
         { segmentId: 0, text: "Built Kafka pipelines" },
         { segmentId: 1, text: "Site" },
@@ -233,7 +232,6 @@ describe("the template and render tasks", () => {
       expect(templated.rendered).toEqual({
         ok: true,
         html: prepared.entryHtml,
-        text: prepared.text,
       });
 
       expect(

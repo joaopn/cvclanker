@@ -100,6 +100,12 @@ describe("renderPage", () => {
     );
   });
 
+  it("substitutes a dotted field id", () => {
+    const result = render(page("<p>⟦skills.0⟧ x</p>"), { "skills.0": "Kafka" });
+    if (!result.ok) throw new Error(result.message);
+    expect(bodyOf(result.html)).toBe("<p>Kafka x</p>");
+  });
+
   it("keeps the text around a marker, and several markers in one text node", () => {
     const result = render(page("<p>a ⟦x⟧ b ⟦y⟧c</p>"), { x: "X", y: "Y" });
     if (!result.ok) throw new Error(result.message);

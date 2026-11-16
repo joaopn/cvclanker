@@ -6,6 +6,7 @@ import {
   hasHtmlSignature,
   type OpenHtmlBundleOptions,
   openHtmlBundle,
+  openStoredHtmlBundle,
   packHtmlBundle,
 } from "./bundle";
 import { buildZip, type ZipBuilderEntry } from "./test/zip-builder";
@@ -437,6 +438,41 @@ describe("packHtmlBundle", () => {
         ]),
       ),
     ).toEqual({ "index.html": PAGE, "css/a.css": "p{}" });
+  });
+
+  it("packs a zip that opens as stored to the same entry and files, however deep", () => {
+    // The upload strips the single top folder `outer/`; opening the packed
+    // zip as an upload again would strip `inner/` too.
+    const original = open([
+      { name: "outer/inner/index.html", data: PAGE },
+      { name: "outer/inner/css/a.css", data: "p{}" },
+    ]);
+    expect(original.entry).toBe("inner/index.html");
+    const stored = openStoredHtmlBundle(packHtmlBundle(original));
+    expect(stored.shape).toBe("bundle");
+    expect(stored.entry).toBe("inner/index.html");
+    expect([...stored.files.keys()].sort()).toEqual([
+      "inner/css/a.css",
+      "inner/index.html",
+    ]);
+    expect(openHtmlBundle(packHtmlBundle(original), OPTS).entry).toBe(
+      "index.html",
+    );
+  });
+
+  it("opens a stored zip past the upload's size cap, and a stored page", () => {
+    const original = open([
+      { name: "index.html", data: PAGE },
+      { name: "a.css", data: "p{}".repeat(100) },
+    ]);
+    const packed = packHtmlBundle(original);
+    expect(
+      bundleError(() => openHtmlBundle(packed, { maxExpandedBytes: 10 })).code,
+    ).toBe("ZIP_BOMB");
+    expect(openStoredHtmlBundle(packed).files.size).toBe(2);
+    expect(openStoredHtmlBundle(utf8(PAGE))).toEqual(
+      openHtmlBundle(utf8(PAGE), OPTS),
+    );
   });
 
   it("packs to the same bytes in every time zone", () => {

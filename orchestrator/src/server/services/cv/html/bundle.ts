@@ -142,6 +142,35 @@ export function openHtmlBundle(
   bytes: Uint8Array,
   opts: OpenHtmlBundleOptions,
 ): HtmlBundle {
+  return openBundle(bytes, {
+    maxEntries: opts.maxEntries ?? DEFAULT_MAX_PART_COUNT,
+    maxExpandedBytes: opts.maxExpandedBytes,
+    stripTopFolder: true,
+  });
+}
+
+/**
+ * Opens an archive this server stored (packHtmlBundle of a checked upload)
+ * as it was packed: its single top folder was stripped once at upload, so
+ * stripping again would move every path (and the entry) under the page's
+ * root-relative references; and its size was bounded at upload, while the
+ * cleaned page it holds may be a little larger than the uploaded one.
+ */
+export function openStoredHtmlBundle(bytes: Uint8Array): HtmlBundle {
+  return openBundle(bytes, {
+    maxEntries: DEFAULT_MAX_PART_COUNT,
+    maxExpandedBytes: Number.POSITIVE_INFINITY,
+    stripTopFolder: false,
+  });
+}
+
+interface OpenBundleRules {
+  maxEntries: number;
+  maxExpandedBytes: number;
+  stripTopFolder: boolean;
+}
+
+function openBundle(bytes: Uint8Array, rules: OpenBundleRules): HtmlBundle {
   if (!looksLikeZip(bytes)) {
     if (!hasHtmlSignature(bytes)) {
       throw new HtmlBundleError(
@@ -156,7 +185,7 @@ export function openHtmlBundle(
     };
   }
   try {
-    return openZipBundle(bytes, opts);
+    return openZipBundle(bytes, rules);
   } catch (error) {
     if (error instanceof ZipReadError) {
       throw new HtmlBundleError(error.message, error.code);
@@ -187,13 +216,8 @@ export function packHtmlBundle(bundle: HtmlBundle): Uint8Array {
   );
 }
 
-function openZipBundle(
-  bytes: Uint8Array,
-  opts: OpenHtmlBundleOptions,
-): HtmlBundle {
-  const entries = listZipEntries(bytes, {
-    maxEntries: opts.maxEntries ?? DEFAULT_MAX_PART_COUNT,
-  });
+function openZipBundle(bytes: Uint8Array, rules: OpenBundleRules): HtmlBundle {
+  const entries = listZipEntries(bytes, { maxEntries: rules.maxEntries });
 
   const kept: { path: string; entry: ZipEntry }[] = [];
   // Keyed by the NFC-normalised, lower-cased name: the tailored zip goes back
@@ -238,16 +262,18 @@ function openZipBundle(
       );
     }
   }
-  if (declaredTotal > opts.maxExpandedBytes) {
+  if (declaredTotal > rules.maxExpandedBytes) {
     throw new HtmlBundleError(
-      `The zip's files add up to ${declaredTotal} bytes (limit ${opts.maxExpandedBytes}).`,
+      `The zip's files add up to ${declaredTotal} bytes (limit ${rules.maxExpandedBytes}).`,
       "ZIP_BOMB",
     );
   }
 
   // readZipEntry returns exactly the declared size or refuses the entry, so
   // the declared total checked above bounds what is inflated.
-  const prefix = commonTopFolder(kept.map((k) => k.path));
+  const prefix = rules.stripTopFolder
+    ? commonTopFolder(kept.map((k) => k.path))
+    : "";
   const files = new Map<string, Uint8Array>();
   for (const { path, entry } of kept) {
     files.set(path.slice(prefix.length), readZipEntry(bytes, entry));

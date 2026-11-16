@@ -64,8 +64,6 @@ export interface HtmlTaskOptions {
 }
 
 export interface PreparedHtmlBundle extends CheckedHtmlBundle {
-  /** The cleaned entry page's visible text (the gate's T0). */
-  text: string;
   /** The page's segments, as the LLM is shown them. */
   segments: PreparedPage["segments"];
 }
@@ -85,8 +83,8 @@ export type HtmlRenderResult =
     };
 
 /**
- * The upload check (checkHtmlBundleUnbounded) plus the cleaned page's text
- * and segments, bounded in time and memory. Rejects with the check's own
+ * The upload check (checkHtmlBundleUnbounded) plus the cleaned page's
+ * segments, bounded in time and memory. Rejects with the check's own
  * HtmlRejectError, with CHECK_TOO_COSTLY when the page could not be checked
  * within the budget, or with a plain Error when the worker itself fails (a
  * bug, not the page).
@@ -105,7 +103,6 @@ export async function checkHtmlBundleBounded(
   return {
     bundle: { ...bundle, files },
     entryHtml: prepared.entryHtml,
-    text: prepared.text,
     segments: prepared.segments,
   };
 }

@@ -25,7 +25,9 @@ prompts/
   cover-letter-generate.yaml      # draft cover-letter field values for a JD
   coverletter-template-extract.yaml  # extract template+fields from an uploaded cover letter
   cv-adjust.yaml                  # tailor CV field values to a JD (ATS pass)
+  cv-docx-extract.yaml            # select the tailorable spans of an uploaded Word CV
   cv-generate-brief.yaml          # generate the personal brief from a CV
+  cv-html-extract.yaml            # select the tailorable spans of an uploaded HTML CV
   cv-template-extract.yaml        # extract template+fields from an uploaded CV
   ghostwriter-system.yaml         # per-job ghostwriter chat system prompt
   interview-qa-generate.yaml      # interview strategy + Q&A for a job

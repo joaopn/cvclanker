@@ -68,7 +68,8 @@ export interface SplicedPage {
   insideLinks: string[];
 }
 
-const FIELD_ID = /^[A-Za-z0-9_-]+$/;
+// Dotted, like the LaTeX and Word extractors' ids (`experience.0.bullet.2`).
+const FIELD_ID = /^[A-Za-z0-9_.-]+$/;
 
 /**
  * One end of a field's range, as a child of the range's parent: inside a
@@ -105,7 +106,7 @@ export function spliceMarkers(
   for (const field of fields) {
     if (!FIELD_ID.test(field.id)) {
       throw new SpliceError(
-        `Field id ${JSON.stringify(field.id)} is invalid: use only letters, digits, "_" and "-".`,
+        `Field id ${JSON.stringify(field.id)} is invalid: use only ASCII letters and digits, ".", "_" and "-".`,
         "FIELD_ID_INVALID",
         field.id,
       );

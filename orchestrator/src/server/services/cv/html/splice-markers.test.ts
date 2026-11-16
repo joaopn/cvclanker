@@ -251,9 +251,15 @@ describe("spliceMarkers", () => {
     });
   });
 
+  it("accepts dotted field ids", () => {
+    expect(
+      splice("<p>Kafka and Spark</p>", [f("skills.0.name", "Kafka")]).body,
+    ).toBe("<p>⟦skills.0.name⟧ and Spark</p>");
+  });
+
   it("refuses invalid and repeated field ids", () => {
     const body = "<p>Kafka and Spark</p>";
-    for (const id of ["", "a b", "a.b", "⟦x⟧"]) {
+    for (const id of ["", "a b", "a/b", "⟦x⟧"]) {
       expect(spliceError(body, [f(id, "Kafka")]).code, id).toBe(
         "FIELD_ID_INVALID",
       );

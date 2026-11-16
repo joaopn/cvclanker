@@ -50,7 +50,7 @@ export type RenderPageResult =
     }
   | RenderPageFailure;
 
-const MARKER = /⟦([A-Za-z0-9_-]+)⟧/g;
+const MARKER = /⟦([A-Za-z0-9_.-]+)⟧/g;
 const MARKER_CHARS = /[⟦⟧]/;
 
 const REUPLOAD =

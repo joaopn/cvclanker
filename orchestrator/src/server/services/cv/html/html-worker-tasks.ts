@@ -1,7 +1,7 @@
 import type { HtmlBundle } from "./bundle";
 import { parsePage } from "./html-tree";
 import type { MarkupRefusal } from "./inline-markup";
-import { segmentsOf, visibleText } from "./page-text";
+import { segmentsOf } from "./page-text";
 import {
   checkHtmlBundleUnbounded,
   type HtmlRejectCode,
@@ -39,8 +39,6 @@ export interface SegmentText {
 export interface PreparedPage {
   /** The cleaned entry page. */
   entryHtml: string;
-  /** Its visible text (the gate's T0). */
-  text: string;
   segments: SegmentText[];
 }
 
@@ -50,8 +48,8 @@ export interface TemplatedPage {
   templatedHtml: string;
   defaults: Map<string, string>;
   insideLinks: string[];
-  /** The template rendered with its defaults, and that page's visible text (T1). */
-  rendered: { ok: true; html: string; text: string } | RenderPageFailure;
+  /** The template rendered with its defaults (the upload gate compares it). */
+  rendered: RenderedPage;
 }
 
 export type HtmlTaskError =
@@ -86,7 +84,6 @@ function run(task: HtmlTask): PreparedPage | TemplatedPage | RenderedPage {
       const document = checked.page.document;
       return {
         entryHtml: checked.entryHtml,
-        text: visibleText(document),
         segments: segmentsOf(document).map(({ segmentId, text }) => ({
           segmentId,
           text,
@@ -104,13 +101,7 @@ function run(task: HtmlTask): PreparedPage | TemplatedPage | RenderedPage {
         templatedHtml: spliced.templatedHtml,
         defaults: spliced.defaults,
         insideLinks: spliced.insideLinks,
-        rendered: rendered.ok
-          ? {
-              ok: true,
-              html: rendered.html,
-              text: visibleText(rendered.page.document),
-            }
-          : rendered,
+        rendered: rendered.ok ? { ok: true, html: rendered.html } : rendered,
       };
     }
     case "render": {
