@@ -16,6 +16,15 @@ const LEGACY_JOB_PDFS_DDL = `CREATE TABLE job_pdfs (
    PRIMARY KEY (job_id, kind)
  )`;
 
+// The shape every DB had between the Word and the HTML widenings.
+const DOCX_JOB_PDFS_DDL = `CREATE TABLE job_pdfs (
+   job_id TEXT NOT NULL,
+   kind TEXT NOT NULL CHECK (kind IN ('resume','cover_letter','resume_docx')),
+   data BLOB NOT NULL,
+   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+   PRIMARY KEY (job_id, kind)
+ )`;
+
 describe.sequential("job_pdfs kind-constraint rebuild", () => {
   let tempDir: string;
 
@@ -68,17 +77,49 @@ describe.sequential("job_pdfs kind-constraint rebuild", () => {
       expect(row.data.toString()).toBe("bytes-resume");
 
       insertPdf(db, "job-1", "resume_docx");
+      insertPdf(db, "job-1", "resume_html");
     } finally {
       db.close();
     }
   });
 
-  it("fresh DBs accept resume_docx directly", async () => {
+  it("widens a table that already holds resume_docx, keeping its rows", async () => {
+    const before = openDb();
+    before.exec(DOCX_JOB_PDFS_DDL);
+    insertPdf(before, "job-1", "resume");
+    insertPdf(before, "job-1", "resume_docx");
+    expect(() => insertPdf(before, "job-1", "resume_html")).toThrow();
+    before.close();
+
     await boot();
 
     const db = openDb();
     try {
+      const kinds = db
+        .prepare("SELECT kind, data FROM job_pdfs ORDER BY kind")
+        .all() as { kind: string; data: Buffer }[];
+      expect(kinds.map(({ kind, data }) => [kind, data.toString()])).toEqual([
+        ["resume", "bytes-resume"],
+        ["resume_docx", "bytes-resume_docx"],
+      ]);
+      insertPdf(db, "job-1", "resume_html");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("fresh DBs accept resume_docx and resume_html directly, with no rebuild", async () => {
+    const log = vi.spyOn(console, "log");
+    await boot();
+    expect(
+      log.mock.calls.some((call) => String(call[0]).includes("widened")),
+    ).toBe(false);
+    log.mockRestore();
+
+    const db = openDb();
+    try {
       insertPdf(db, "job-2", "resume_docx");
+      insertPdf(db, "job-2", "resume_html");
     } finally {
       db.close();
     }

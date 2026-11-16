@@ -11,6 +11,7 @@ import type { CvSourceFormat } from "@shared/types";
 const FRAGMENT_BY_FORMAT: Record<CvSourceFormat, string> = {
   latex: "cv-format-latex",
   docx: "cv-format-docx",
+  html: "cv-format-html",
 };
 
 export async function getCvFormatNote(format: CvSourceFormat): Promise<string> {

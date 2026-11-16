@@ -1,6 +1,6 @@
 import type { CodexAuthStatusResponse } from "@client/api";
 import type { LlmProviderId } from "@client/pages/settings/utils";
-import type { ValidationResult } from "@shared/types.js";
+import type { CvSourceFormat, ValidationResult } from "@shared/types.js";
 
 export type ValidationState = ValidationResult & {
   checked: boolean;
@@ -66,7 +66,7 @@ export type StepId =
   | "finalize";
 export type BasicAuthChoice = "enable" | "skip" | null;
 export type CvChoice = "upload" | "skip" | null;
-export type CvFormatChoice = "latex" | "docx" | null;
+export type CvFormatChoice = CvSourceFormat | null;
 
 export type OnboardingStep = {
   id: StepId;

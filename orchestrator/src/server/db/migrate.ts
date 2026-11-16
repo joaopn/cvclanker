@@ -629,7 +629,7 @@ const postRebuildMigrations: string[] = [
   // in a guarded JS block near the bottom of this file.
   `CREATE TABLE IF NOT EXISTS job_pdfs (
      job_id TEXT NOT NULL,
-     kind TEXT NOT NULL CHECK (kind IN ('resume','cover_letter','resume_docx')),
+     kind TEXT NOT NULL CHECK (kind IN ('resume','cover_letter','resume_docx','resume_html')),
      data BLOB NOT NULL,
      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
      PRIMARY KEY (job_id, kind)
@@ -1122,15 +1122,17 @@ try {
   process.exit(1);
 }
 
-// job_pdfs CHECK-constraint widening (adds the 'resume_docx' kind) — guarded.
+// job_pdfs CHECK-constraint widening (adds the 'resume_docx' and
+// 'resume_html' kinds) — guarded.
 //
 // The kind column carries a CHECK constraint, and SQLite offers no ALTER for
 // it — the only way to see the current constraint text is the table's own
 // CREATE statement in sqlite_master, and the only way to change it is a
-// rebuild. Only rebuilds when the stored SQL predates the widening (no
-// 'resume_docx' in it); afterwards the block no-ops forever. Runs before the
-// blob backfill below purely for locality — the backfill inserts only
-// resume/cover_letter rows, valid under both constraint shapes.
+// rebuild. Only rebuilds when the stored SQL predates the latest widening (no
+// 'resume_html' in it, which no earlier shape has); afterwards the block
+// no-ops forever. Runs before the blob backfill below purely for locality —
+// the backfill inserts only resume/cover_letter rows, valid under every
+// constraint shape.
 try {
   const jobPdfsMaster = sqlite
     .prepare(
@@ -1138,12 +1140,12 @@ try {
     )
     .get() as { sql: string } | undefined;
 
-  if (jobPdfsMaster && !jobPdfsMaster.sql.includes("resume_docx")) {
+  if (jobPdfsMaster && !jobPdfsMaster.sql.includes("resume_html")) {
     sqlite.exec("PRAGMA foreign_keys = OFF");
     sqlite.exec("DROP TABLE IF EXISTS job_pdfs_new");
     sqlite.exec(`CREATE TABLE job_pdfs_new (
       job_id TEXT NOT NULL,
-      kind TEXT NOT NULL CHECK (kind IN ('resume','cover_letter','resume_docx')),
+      kind TEXT NOT NULL CHECK (kind IN ('resume','cover_letter','resume_docx','resume_html')),
       data BLOB NOT NULL,
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       PRIMARY KEY (job_id, kind)
@@ -1153,7 +1155,9 @@ try {
     sqlite.exec("DROP TABLE job_pdfs");
     sqlite.exec("ALTER TABLE job_pdfs_new RENAME TO job_pdfs");
     sqlite.exec("PRAGMA foreign_keys = ON");
-    console.log("✅ job_pdfs kind constraint widened to include resume_docx");
+    console.log(
+      "✅ job_pdfs kind constraint widened to include resume_docx and resume_html",
+    );
   }
 } catch (error) {
   console.error("❌ job_pdfs kind-constraint rebuild failed:", error);

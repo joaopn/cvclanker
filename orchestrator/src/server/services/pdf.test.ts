@@ -134,6 +134,26 @@ afterEach(() => {
 });
 
 describe("generatePdf", () => {
+  it("returns a failure, rendering nothing, on an HTML or an unknown format", async () => {
+    for (const [format, error] of [
+      ["html", "HTML CVs cannot be rendered yet."],
+      ["bogus", "Unknown CV format."],
+    ]) {
+      vi.mocked(getEffectiveSettings).mockResolvedValue(
+        createAppSettings({ cvSourceFormat: format as never }),
+      );
+      const result = await generatePdf({
+        jobId: "job-42",
+        cvDocumentId: "cv-1",
+        overrides: { "basics.name": "Ada King" },
+      });
+      expect(result, format).toEqual({ success: false, error });
+    }
+    expect(runTectonic).not.toHaveBeenCalled();
+    expect(convertDocxToPdf).not.toHaveBeenCalled();
+    expect(upsertJobPdf).not.toHaveBeenCalled();
+  });
+
   it("renders the templated CV with default field values when no overrides are supplied", async () => {
     const result = await generatePdf({
       jobId: "job-42",

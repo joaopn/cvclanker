@@ -25,4 +25,11 @@ describe("getCvFormatNote", () => {
     );
     expect(renderFragment).toHaveBeenCalledWith("cv-format-docx");
   });
+
+  it("renders the HTML fragment for an html profile", async () => {
+    await expect(getCvFormatNote("html")).resolves.toBe(
+      "rendered:cv-format-html",
+    );
+    expect(renderFragment).toHaveBeenCalledWith("cv-format-html");
+  });
 });

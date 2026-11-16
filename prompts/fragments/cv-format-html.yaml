@@ -1,0 +1,37 @@
+name: cv-format-html
+description: |
+  Partial: the CV-format rules for an HTML profile.
+
+  Not spliced with `{{> ...}}`. The server renders whichever format fragment
+  matches the User Profile's CV source format and passes the result in as the
+  `{{cvFormatNote}}` variable. Only `cv-adjust` and `ghostwriter-system` are
+  given that variable — referencing `{{cvFormatNote}}` from any other prompt
+  throws at render time.
+
+  Because it is rendered on its own, no prompt variables are available inside
+  it beyond the loader defaults (`appVersion`, `outputLanguage`,
+  `writingStyle`). Referencing any other `{{var}}` here — `{{tone}}`, say —
+  saves fine but then fails every tailoring and ghostwriter call until you
+  Reset to default.
+
+  When the CV renders, the server refuses a value that uses a tag, class,
+  attribute or link address the CV's own values do not, a block element or
+  `<br>`, a `style` attribute, a comment, an unclosed or misordered tag, a
+  link inside a link, or ⟦ or ⟧; the other rules are guidance.
+template: |
+  CV format — HTML:
+    - CV field values are HTML inline markup: text, plus inline tags such as
+      `<b>`, `<strong>`, `<i>`, `<em>`, `<code>`, `<span>` and `<a>`. Keep a
+      value's element structure — if the original wraps a word in `<b>` or a
+      `<span class="...">`, wrap the rewritten text the same way.
+    - Use only the tags, classes, attributes and link addresses that the CV's
+      own field values already use. A new tag, class, attribute value or link
+      address is refused.
+    - Write `&` as `&amp;`, `<` as `&lt;` and `>` as `&gt;` in text. Close every
+      tag you open, in order.
+    - No line breaks, `<br>`, paragraphs, lists or other block elements, no
+      `style` attributes, no comments, and no link inside a link. Never use the
+      characters ⟦ or ⟧.
+    - No LaTeX: `\textbf{...}`, `\&` and the like would appear literally.
+    - Fonts, colours, spacing and layout belong to the page's stylesheet and
+      are the server's business — never encode them in a field value.

@@ -25,6 +25,7 @@ import {
   renderDocx,
 } from "@server/services/cv/docx/render-docx";
 import { isInLatexComment } from "@server/services/cv/flatten-input";
+import { hasHtmlSignature } from "@server/services/cv/html/bundle";
 import { RenderCvError, renderCv } from "@server/services/cv/render";
 import {
   extractMarkerIds,
@@ -43,7 +44,11 @@ import {
 import { getExtractionPromptDefault } from "@server/services/cv/llm-template-extract";
 import { runUploadPipeline } from "@server/services/cv/upload-pipeline";
 import { getEffectiveSettings } from "@server/services/settings";
-import type { CvSourceFormat, CvUploadPipelineAttempt } from "@shared/types";
+import {
+  CV_SOURCE_FORMAT_NAMES,
+  type CvSourceFormat,
+  type CvUploadPipelineAttempt,
+} from "@shared/types";
 import busboy from "busboy";
 import type { Request, Response } from "express";
 import { Router } from "express";
@@ -135,12 +140,22 @@ interface ParsedUpload {
   fields: Record<string, string>;
 }
 
-function formatMismatch(format: CvSourceFormat): AppError {
+/** An upload in another format than the profile's; `recognised` names it. */
+function formatMismatch(format: CvSourceFormat, recognised: string): AppError {
   return unprocessableEntity(
-    format === "latex"
-      ? "This profile uses LaTeX CVs; to work with Word CVs, create a user profile for them."
-      : "This profile uses Word CVs; to work with LaTeX CVs, create a user profile for them.",
+    `This profile uses ${CV_SOURCE_FORMAT_NAMES[format]} CVs and this is ${recognised}; to work with another format, create a user profile for it.`,
   );
+}
+
+// HTML CVs are not wired into the routes yet; every HTML arm answers this
+// until the upload pipeline and the per-job render take it over.
+function htmlNotSupportedYet(): AppError {
+  return unprocessableEntity("HTML CVs cannot be uploaded or rendered yet.");
+}
+
+/** A stored format this build does not know, e.g. a database from a newer one. */
+function unknownFormat(): AppError {
+  return unprocessableEntity("Unknown CV format.");
 }
 
 // Both upload pipelines (LaTeX and docx) emit this exact failure shape —
@@ -213,8 +228,30 @@ cvRouter.post("/upload-template", async (req: Request, res: Response) => {
     // F5 hard gate: the sniff only enforces format-vs-setting agreement;
     // it never selects a pipeline — dispatch is by the setting.
     const format = resolveCvSourceFormat(settings);
-    if (looksLikeDocx(upload.bytes) !== (format === "docx")) {
-      return fail(res, formatMismatch(format));
+    switch (format) {
+      case "latex":
+        if (looksLikeDocx(upload.bytes)) {
+          return fail(res, formatMismatch(format, "a Word document"));
+        }
+        if (hasHtmlSignature(upload.bytes)) {
+          return fail(res, formatMismatch(format, "an HTML page"));
+        }
+        break;
+      case "docx":
+        if (!looksLikeDocx(upload.bytes)) {
+          return fail(
+            res,
+            unprocessableEntity(
+              "This profile uses Word CVs and this is not a .docx file, or is a password-protected one. Save it as an unprotected .docx (an older .doc will not do), or create a user profile for another format.",
+            ),
+          );
+        }
+        break;
+      case "html":
+        return fail(res, htmlNotSupportedYet());
+      default:
+        format satisfies never;
+        return fail(res, unknownFormat());
     }
 
     const result =
@@ -303,10 +340,21 @@ cvRouter.get(
   async (_req: Request, res: Response) => {
     try {
       const settings = await getEffectiveSettings();
-      const prompt =
-        resolveCvSourceFormat(settings) === "docx"
-          ? await getDocxExtractionPromptDefault()
-          : await getExtractionPromptDefault();
+      const format = resolveCvSourceFormat(settings);
+      let prompt: string;
+      switch (format) {
+        case "latex":
+          prompt = await getExtractionPromptDefault();
+          break;
+        case "docx":
+          prompt = await getDocxExtractionPromptDefault();
+          break;
+        case "html":
+          return fail(res, htmlNotSupportedYet());
+        default:
+          format satisfies never;
+          return fail(res, unknownFormat());
+      }
       ok(res, { prompt });
     } catch (error) {
       fail(res, toAppError(error));
@@ -371,7 +419,9 @@ cvRouter.get("/:id/render-preview", async (req: Request, res: Response) => {
     }
 
     let pdf: Uint8Array;
-    if (resolveCvSourceFormat(settings) === "docx") {
+    const format = resolveCvSourceFormat(settings);
+    if (format === "html") return fail(res, htmlNotSupportedYet());
+    if (format === "docx") {
       // Defensive: docx rows only exist via the gated path, which always
       // persists a template envelope. A corrupt envelope (JSON.parse
       // throw) falls through to a 500 — invariant violation, same
@@ -391,7 +441,7 @@ cvRouter.get("/:id/render-preview", async (req: Request, res: Response) => {
         effectiveValues: document.defaultFieldValues,
       });
       pdf = await convertDocxToPdf({ docx: rendered });
-    } else {
+    } else if (format === "latex") {
       // 5e CVs render via marker-replace against `defaultFieldValues`.
       // 5d CVs (no `templatedTex`) render their flattened source as is.
       // Cutover to single substrate happens in 5e.4.
@@ -403,6 +453,9 @@ cvRouter.get("/:id/render-preview", async (req: Request, res: Response) => {
         archive: new Uint8Array(archive),
       });
       pdf = result.pdf;
+    } else {
+      format satisfies never;
+      return fail(res, unknownFormat());
     }
 
     res.setHeader("Content-Type", "application/pdf");
@@ -428,12 +481,10 @@ cvRouter.put("/:id/template", async (req: Request, res: Response) => {
   try {
     const { templatedTex } = updateTemplateSchema.parse(req.body ?? {});
     const settings = await getEffectiveSettings();
-    if (resolveCvSourceFormat(settings) === "docx") {
+    if (resolveCvSourceFormat(settings) !== "latex") {
       return fail(
         res,
-        unprocessableEntity(
-          "This profile uses Word CVs; only LaTeX templates can be edited.",
-        ),
+        unprocessableEntity("Only LaTeX CV templates can be edited."),
       );
     }
 
@@ -577,14 +628,24 @@ cvRouter.get(
       }
 
       let pdf: Uint8Array;
-      if (resolveCvSourceFormat(settings) === "docx") {
-        pdf = await convertDocxToPdf({ docx: new Uint8Array(archive) });
-      } else {
-        const result = await runTectonic({
-          renderedTex: document.flattenedTex,
-          archive: new Uint8Array(archive),
-        });
-        pdf = result.pdf;
+      const format = resolveCvSourceFormat(settings);
+      switch (format) {
+        case "latex": {
+          const result = await runTectonic({
+            renderedTex: document.flattenedTex,
+            archive: new Uint8Array(archive),
+          });
+          pdf = result.pdf;
+          break;
+        }
+        case "docx":
+          pdf = await convertDocxToPdf({ docx: new Uint8Array(archive) });
+          break;
+        case "html":
+          return fail(res, htmlNotSupportedYet());
+        default:
+          format satisfies never;
+          return fail(res, unknownFormat());
       }
 
       res.setHeader("Content-Type", "application/pdf");
@@ -644,21 +705,34 @@ cvRouter.post(
 
       // No sniff here: the stored archive passed the F5 gate at upload,
       // so the setting alone dispatches.
-      const result =
-        resolveCvSourceFormat(settings) === "docx"
-          ? await runDocxUploadPipeline({
-              archive: new Uint8Array(archive),
-              maxRetries,
-              extractionPrompt: effectivePrompt || undefined,
-              maxExpandedBytes: settings.maxExpandedLatexBytes.value,
-            })
-          : await runUploadPipeline({
-              archive: new Uint8Array(archive),
-              filename: existing.name,
-              maxRetries,
-              extractionPrompt: effectivePrompt || undefined,
-              maxExpandedBytes: settings.maxExpandedLatexBytes.value,
-            });
+      const format = resolveCvSourceFormat(settings);
+      let result: Awaited<
+        ReturnType<typeof runUploadPipeline | typeof runDocxUploadPipeline>
+      >;
+      switch (format) {
+        case "latex":
+          result = await runUploadPipeline({
+            archive: new Uint8Array(archive),
+            filename: existing.name,
+            maxRetries,
+            extractionPrompt: effectivePrompt || undefined,
+            maxExpandedBytes: settings.maxExpandedLatexBytes.value,
+          });
+          break;
+        case "docx":
+          result = await runDocxUploadPipeline({
+            archive: new Uint8Array(archive),
+            maxRetries,
+            extractionPrompt: effectivePrompt || undefined,
+            maxExpandedBytes: settings.maxExpandedLatexBytes.value,
+          });
+          break;
+        case "html":
+          return fail(res, htmlNotSupportedYet());
+        default:
+          format satisfies never;
+          return fail(res, unknownFormat());
+      }
 
       if (!result.ok) {
         logger.warn("CV re-extract-template rejected", {

@@ -5,6 +5,7 @@ import * as settingsRepo from "@server/repositories/settings";
 import { applyEnvValue, normalizeEnvInput } from "@server/services/envSettings";
 import { settingsRegistry } from "@shared/settings-registry";
 import type { UpdateSettingsInput } from "@shared/settings-schema";
+import { CV_SOURCE_FORMAT_NAMES } from "@shared/types";
 
 export type DeferredSideEffect = never;
 
@@ -99,14 +100,6 @@ for (const [key, def] of Object.entries(settingsRegistry)) {
   };
 }
 
-// Write-once guard for cvSourceFormat: the CV substrate format is an
-// IMMUTABLE per-User-Profile decision (word-cv design). This guard is the
-// real server-side mechanism behind "server-managed" — the generic settings
-// PATCH can write every registry key. Rejected writes throw during the
-// collect phase, before ANY action of the batch persists.
-//
-// Once a value is stored, EVERY differing write is rejected — including a
-
 // The scheduler's pause latch is SERVER-MANAGED and deliberately has exactly
 // ONE clear path: `POST /api/schedules/resume`. The generic PATCH registers a
 // handler for every non-virtual registry key, which made the latch both
@@ -126,12 +119,21 @@ settingsUpdateRegistry.schedulingPausedReason = async () => {
   );
 };
 
-// null clear: clearing a stored "docx" is itself an effective-format flip
+// Write-once guard for cvSourceFormat: the CV substrate format is an
+// IMMUTABLE per-User-Profile decision (word-cv design). This guard is the
+// real server-side mechanism behind "server-managed" — the generic settings
+// PATCH can write every registry key. Rejected writes throw during the
+// collect phase, before ANY action of the batch persists.
+//
+// Once a value is stored, EVERY differing write is rejected — including a
+// null clear: clearing a stored format is itself an effective-format flip
 // (back to the "latex" default), and permitting clears would make the
-// write-once rule two-step launderable (clear, then first-write the other
+// write-once rule two-step launderable (clear, then first-write another
 // value). While unset (effective "latex"), the first write may not change
 // the effective format over existing CV documents: they were all accepted as
-// LaTeX, and re-dispatching them as docx would misinterpret every row.
+// LaTeX, and re-dispatching them as another format would misinterpret every
+// row. A first write of "latex" or null keeps the effective format, so it is
+// allowed whatever exists (an absent value too, as the generic PATCH sees it).
 const genericCvSourceFormatHandler = settingsUpdateRegistry.cvSourceFormat;
 settingsUpdateRegistry.cvSourceFormat = async ({ key, value, context }) => {
   const stored = await settingsRepo.getSetting("cvSourceFormat");
@@ -142,9 +144,14 @@ settingsUpdateRegistry.cvSourceFormat = async ({ key, value, context }) => {
         "CV format is fixed per user profile once set; create a new user profile to use a different format.",
       );
     }
-  } else if (value === "docx" && (await hasCvDocuments())) {
+  } else if (
+    value !== undefined &&
+    value !== null &&
+    value !== "latex" &&
+    (await hasCvDocuments())
+  ) {
     throw conflict(
-      "Cannot set the CV format to Word while CV documents already exist in this profile.",
+      `Cannot set the CV format to ${CV_SOURCE_FORMAT_NAMES[value]} while CV documents already exist in this profile.`,
     );
   }
 

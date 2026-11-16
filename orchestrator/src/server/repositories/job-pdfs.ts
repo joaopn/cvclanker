@@ -12,7 +12,11 @@ import { db, schema } from "../db/index";
 
 const { jobPdfs, jobs } = schema;
 
-export type JobPdfKind = "resume" | "cover_letter" | "resume_docx";
+export type JobPdfKind =
+  | "resume"
+  | "cover_letter"
+  | "resume_docx"
+  | "resume_html";
 
 export async function upsertJobPdf(input: {
   jobId: string;

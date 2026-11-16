@@ -48,7 +48,14 @@ export interface DemoInfoResponse {
   baselineName: string | null;
 }
 
-export type CvSourceFormat = "latex" | "docx";
+export const CV_SOURCE_FORMATS = ["latex", "docx", "html"] as const;
+export type CvSourceFormat = (typeof CV_SOURCE_FORMATS)[number];
+/** Each format's name as users see it. */
+export const CV_SOURCE_FORMAT_NAMES: Record<CvSourceFormat, string> = {
+  latex: "LaTeX",
+  docx: "Word",
+  html: "HTML",
+};
 
 export type Resolved<T> = { value: T; default: T; override: T | null };
 export type ModelResolved = { value: string; override: string | null };

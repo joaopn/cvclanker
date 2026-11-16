@@ -7,7 +7,8 @@ variables:
   - name: cvFormatNote
     description: |
       Format-specific rules for the CV's source format, rendered by the
-      server from `fragments/cv-format-latex` or `fragments/cv-format-docx`.
+      server from `fragments/cv-format-latex`, `fragments/cv-format-docx` or
+      `fragments/cv-format-html`.
   - name: outputLanguage
   - name: tone
   - name: formality

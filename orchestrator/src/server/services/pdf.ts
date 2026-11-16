@@ -55,12 +55,14 @@ export interface PdfResult {
 /**
  * Render a job's tailored CV and persist it.
  *
- * Both substrates share everything except the middle: load the document,
+ * Every substrate shares everything except the middle: load the document,
  * merge defaults + overrides, refuse a no-op tailoring, then render and
- * persist. On a Word profile the artifact is a tailored `.docx` (persisted
+ * persist (an HTML profile is refused until its render is wired in). On a
+ * Word profile the artifact is a tailored `.docx` (persisted
  * as `resume_docx`) and the PDF is its unoserver-converted view (persisted
  * as `resume`) — which is why `pdfPath` keeps its `resume_<jobId>.pdf`
- * shape on both paths and every caller and client surface is untouched.
+ * shape on the LaTeX and Word paths and every caller and client surface is
+ * untouched.
  */
 export async function generatePdf(args: GeneratePdfArgs): Promise<PdfResult> {
   const document = await cvRepo.getCvDocumentById(args.cvDocumentId);
@@ -100,16 +102,24 @@ export async function generatePdf(args: GeneratePdfArgs): Promise<PdfResult> {
   // same `resume` kind, so every consumer keeps working.
   const pdfPath = `resume_${args.jobId}.pdf`;
 
-  if (format === "docx") {
-    return renderDocxJobPdf({
-      args,
-      document,
-      archive,
-      effectiveValues,
-      overrides,
-      overrideCount,
-      pdfPath,
-    });
+  switch (format) {
+    case "latex":
+      break;
+    case "docx":
+      return renderDocxJobPdf({
+        args,
+        document,
+        archive,
+        effectiveValues,
+        overrides,
+        overrideCount,
+        pdfPath,
+      });
+    case "html":
+      return { success: false, error: "HTML CVs cannot be rendered yet." };
+    default:
+      format satisfies never;
+      return { success: false, error: "Unknown CV format." };
   }
 
   let renderedTex: string;

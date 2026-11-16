@@ -9,6 +9,7 @@ import {
   CHAT_STYLE_MANUAL_LANGUAGE_VALUES,
   type ChatStyleLanguageMode,
   type ChatStyleManualLanguage,
+  CV_SOURCE_FORMATS,
 } from "./types/settings";
 
 function parseNonEmptyStringOrNull(raw: string | undefined): string | null {
@@ -939,7 +940,7 @@ export const settingsRegistry = {
   // "latex", which also makes every pre-feature DB correctly LaTeX.
   cvSourceFormat: {
     kind: "string" as const,
-    schema: z.enum(["latex", "docx"]),
+    schema: z.enum(CV_SOURCE_FORMATS),
   },
   // Reasoning-effort level passed to the Claude Code CLI as `--effort` on
   // every call (claude_code provider only). Unset means the CLI's own default.

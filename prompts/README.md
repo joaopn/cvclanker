@@ -35,6 +35,7 @@ prompts/
   onboarding-search-terms.yaml    # suggest search terms from the resume
   fragments/
     cv-format-docx.yaml           # CV-format rules for a Word (.docx) profile
+    cv-format-html.yaml           # CV-format rules for an HTML profile
     cv-format-latex.yaml          # CV-format rules for a LaTeX profile
     output-language.yaml          # partial: "always respond in <lang>"
     writing-style.yaml            # partial: tone / formality / constraints
@@ -99,15 +100,17 @@ Per-prompt variables are documented in each YAML's `variables` block.
 
 ## The CV format note
 
-The CV substrate is LaTeX or Word (`.docx`), fixed per User Profile. The two
+The CV substrate is LaTeX, Word (`.docx`) or HTML, fixed per User Profile. The
 prompts that rewrite CV field values — `cv-adjust` and `ghostwriter-system` —
 must therefore speak the right format: LaTeX values keep their commands and
-escapes, Word values are plain text and would show a stray `\&` literally.
+escapes, Word values are plain text and would show a stray `\&` literally,
+and HTML values are inline markup limited to what the CV already uses.
 
-Rather than two copies of each prompt, the server renders the matching
-fragment (`fragments/cv-format-latex` or `fragments/cv-format-docx`) at call
-time and passes the text in as `{{cvFormatNote}}`. `services/cv/cv-format-note.ts`
-owns that mapping; tune either format's rules by editing its fragment.
+Rather than a copy of each prompt per format, the server renders the matching
+fragment (`fragments/cv-format-latex`, `fragments/cv-format-docx` or
+`fragments/cv-format-html`) at call time and passes the text in as
+`{{cvFormatNote}}`. `services/cv/cv-format-note.ts` owns that mapping; tune a
+format's rules by editing its fragment.
 
 Three consequences worth knowing:
 
@@ -120,8 +123,8 @@ Three consequences worth knowing:
   cleanly and then fails every tailoring call until you Reset it.
 - If you have **edited** `cv-adjust` or `ghostwriter-system`, your copy is kept
   as-is and does not gain the `{{cvFormatNote}}` placeholder — the extra
-  variable is silently ignored, so nothing breaks, but a Word profile keeps
-  getting LaTeX-flavoured instructions. "Reset to default" picks the note up.
+  variable is silently ignored, so nothing breaks, but a Word or HTML profile
+  keeps getting LaTeX-flavoured instructions. "Reset to default" picks the note up.
 
 ## Caching and reload
 

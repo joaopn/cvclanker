@@ -57,6 +57,48 @@ describe("cvSourceFormat write-once guard", () => {
     expect(setSettingMock).not.toHaveBeenCalled();
   });
 
+  it("allows the first write of html when no CV documents exist", async () => {
+    await applySettingsUpdates({ cvSourceFormat: "html" });
+    expect(setSettingMock).toHaveBeenCalledWith("cvSourceFormat", "html");
+  });
+
+  it("rejects the first write of html when CV documents exist, naming it", async () => {
+    hasCvDocumentsMock.mockResolvedValue(true);
+    await expect(
+      applySettingsUpdates({ cvSourceFormat: "html" }),
+    ).rejects.toMatchObject({
+      ...CONFLICT_SHAPE,
+      message:
+        "Cannot set the CV format to HTML while CV documents already exist in this profile.",
+    });
+    expect(setSettingMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects html over a stored format, and another format over html", async () => {
+    getSettingMock.mockResolvedValue("docx");
+    await expect(
+      applySettingsUpdates({ cvSourceFormat: "html" }),
+    ).rejects.toMatchObject(CONFLICT_SHAPE);
+    getSettingMock.mockResolvedValue("html");
+    await expect(
+      applySettingsUpdates({ cvSourceFormat: "latex" }),
+    ).rejects.toMatchObject(CONFLICT_SHAPE);
+    expect(setSettingMock).not.toHaveBeenCalled();
+  });
+
+  it("allows a null write while unset even when documents exist", async () => {
+    hasCvDocumentsMock.mockResolvedValue(true);
+    await applySettingsUpdates({ cvSourceFormat: null });
+    expect(setSettingMock).toHaveBeenCalledWith("cvSourceFormat", null);
+  });
+
+  it("lets an absent value through while unset, as before HTML", async () => {
+    hasCvDocumentsMock.mockResolvedValue(true);
+    await expect(
+      applySettingsUpdates({ cvSourceFormat: undefined }),
+    ).resolves.toEqual({});
+  });
+
   it("allows an idempotent re-write of the stored value", async () => {
     getSettingMock.mockResolvedValue("latex");
     await applySettingsUpdates({ cvSourceFormat: "latex" });
