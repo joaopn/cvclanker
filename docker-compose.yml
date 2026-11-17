@@ -4,10 +4,13 @@
 
 services:
   cvclanker:
+    # `docker compose up -d` pulls the published image when it is not present
+    # locally (`docker compose pull` updates it); `--build` builds it from this
+    # checkout instead and tags the local build with the same name.
     build:
       context: .
       dockerfile: Dockerfile
-    image: cvclanker:local
+    image: ghcr.io/joaopn/cvclanker:latest
     container_name: cvclanker
     # Least-privilege hardening. The app runs an agentic `claude -p` subprocess
     # over internet-scraped text and drives content parsers (tectonic,

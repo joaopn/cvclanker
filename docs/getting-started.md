@@ -9,23 +9,44 @@ CV Clanker runs as a single Docker container on your own machine.
   model via LM Studio / Ollama, which needs no key. See
   [LLM providers](llm-providers.md).
 
-The image bundles everything else it needs (Tectonic for LaTeX, LibreOffice for
-Word, headless browsers, the Claude Code CLI) and builds locally — nothing is
-pulled from a registry. The Codex CLI is not bundled: install it in-app when
+The image, `ghcr.io/joaopn/cvclanker`, bundles everything else it needs
+(Tectonic for LaTeX, LibreOffice for Word, headless browsers, the Claude Code
+CLI). The Codex CLI is not bundled: install it in-app when
 you pick the Codex provider; it lives in `data/` and updates independently of
 the image.
 
 ## Install & run
 
 ```bash
+mkdir cvclanker && cd cvclanker
+curl -fsSLO https://raw.githubusercontent.com/joaopn/cvclanker/main/docker-compose.yml
+docker compose up -d
+```
+
+The first start downloads the image. When it is up, open
+**http://localhost:3005**. To change the port, edit the `ports` mapping in
+`docker-compose.yml`.
+
+Without Compose, the same image runs with `docker run`; keep the data in a
+volume, or it is lost when the container is removed:
+
+```bash
+docker run -d --name cvclanker -p 3005:3001 -e HOST_PORT=3005 \
+  -v cvclanker-data:/app/data --restart unless-stopped \
+  ghcr.io/joaopn/cvclanker:latest
+```
+
+Add `--env-file .env` to pass [environment variables](configuration.md#environment-variables).
+Compose also applies hardening this line leaves out (`cap_drop: ALL`,
+`no-new-privileges`).
+
+To build the image from source instead, clone the repo and build it:
+
+```bash
 git clone https://github.com/joaopn/cvclanker.git
 cd cvclanker
 docker compose up -d --build
 ```
-
-The first build takes a few minutes. When it finishes, open
-**http://localhost:3005**. To change the port, edit the `ports` mapping in
-`docker-compose.yml`.
 
 ## First run
 
@@ -68,11 +89,13 @@ and you've backed up your whole install.
 ```bash
 docker compose logs -f --tail=200 cvclanker   # watch logs
 docker compose down                           # stop
-git pull && docker compose up -d --build      # update and rebuild
+docker compose pull && docker compose up -d   # update to the latest image
 
 # Wipe everything (destructive: deletes all jobs, CVs, PDFs)
-docker compose down && rm -rf data/ && docker compose up -d --build
+docker compose down && rm -rf data/ && docker compose up -d
 ```
+
+From a source checkout, update with `git pull && docker compose up -d --build`.
 
 ## Running from source
 

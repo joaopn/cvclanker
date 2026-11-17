@@ -5,7 +5,12 @@ are environment variables.
 
 ## Environment variables
 
-Copy `.env.example` to `.env` and fill in what you need — all optional.
+Create a `.env` next to `docker-compose.yml` (with `docker run`, in the directory
+you run it from) and fill in what you need — all optional. [`.env.example`](../.env.example) lists them:
+
+```bash
+curl -fsSL -o .env https://raw.githubusercontent.com/joaopn/cvclanker/main/.env.example
+```
 
 | Variable | Default | What it does |
 |---|---|---|
@@ -63,7 +68,7 @@ secret.
 Wipe and start over:
 
 ```bash
-docker compose down && rm -rf data/ && docker compose up -d --build
+docker compose down && rm -rf data/ && docker compose up -d
 ```
 
 ## Ports

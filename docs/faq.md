@@ -45,8 +45,8 @@ compiles with Tectonic and that any `\input{}` files are in the `.zip`. See
 
 ### What do I need to run it?
 
-Just Docker — the image bundles LaTeX, LibreOffice, and browsers. The first build
-takes a few minutes.
+Just Docker — the image bundles LaTeX, LibreOffice, and browsers. The first start
+downloads the image.
 
 ### Does it work offline?
 

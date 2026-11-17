@@ -27,7 +27,7 @@ a single SQLite file, and **neither auto-applies**.
 | **Telemetry** | **None** | Umami (opt-out) + analytics dashboard |
 | **LLM providers** | OpenAI, Gemini, OpenRouter, Codex, Claude Code, OpenAI-compatible, LM Studio, Ollama | Similar, plus a dedicated GLM path |
 | **Themes** | 8 palettes (4 light + 4 dark) | Minimal / undocumented |
-| **Hosting** | Self-host only, local build | Self-host (GHCR image) **+ paid cloud** |
+| **Hosting** | Self-host only (GHCR image or local build) | Self-host (GHCR image) **+ paid cloud** |
 
 ## Choosing between them
 
