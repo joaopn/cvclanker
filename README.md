@@ -29,41 +29,46 @@ case it's useful — there's no roadmap, hosted version, or support commitment.
 - **Local.** No accounts and no telemetry; the only outbound calls are to the LLM
   and the job sources you configure.
 
-## Requirements
+## Install
 
-[Docker](https://docs.docker.com/get-docker/) with Compose. The image
+You need [Docker](https://docs.docker.com/get-docker/). The image
 (`ghcr.io/joaopn/cvclanker`) bundles the rest (Tectonic for LaTeX, LibreOffice
 for Word, headless browsers).
 
-## Install
+**Release** — run the published image; your data is kept in a Docker volume
+named `cvclanker-data`:
 
 ```bash
-mkdir cvclanker && cd cvclanker
-curl -fsSLO https://raw.githubusercontent.com/joaopn/cvclanker/main/docker-compose.yml
-docker compose up -d
+docker run -d --name cvclanker -p 3005:3001 -e HOST_PORT=3005 --cap-drop ALL --security-opt no-new-privileges -v cvclanker-data:/app/data --restart unless-stopped ghcr.io/joaopn/cvclanker:latest
 ```
 
 Then open http://localhost:3005. The onboarding wizard covers uploading a CV,
-writing a brief, choosing an LLM, and picking sources. No API key is needed to
-start the app — you need one (or a local model) for the steps that call an LLM.
-Your data lives in `./data` next to the compose file.
+writing a brief, choosing an LLM, and picking sources. Everything is set inside
+the app. No API key is needed to start it — you need one (or a local model) for
+the steps that call an LLM.
 
-Update with `docker compose pull && docker compose up -d`.
-
-Without Compose:
+To update, paste these three lines (the last is the same command as above, so
+your data volume is reattached):
 
 ```bash
-docker run -d --name cvclanker -p 3005:3001 -e HOST_PORT=3005 \
-  -v cvclanker-data:/app/data --restart unless-stopped \
-  ghcr.io/joaopn/cvclanker:latest
+docker pull ghcr.io/joaopn/cvclanker:latest
+docker rm -f cvclanker
+docker run -d --name cvclanker -p 3005:3001 -e HOST_PORT=3005 --cap-drop ALL --security-opt no-new-privileges -v cvclanker-data:/app/data --restart unless-stopped ghcr.io/joaopn/cvclanker:latest
 ```
 
-Add `--env-file .env` to pass [environment variables](docs/configuration.md#environment-variables).
-Compose also applies hardening this line leaves out (`cap_drop: ALL`,
-`no-new-privileges`).
+**Dev** — build from source with git and Docker Compose:
 
-To build from source instead, clone the repo and run
-`docker compose up -d --build`.
+```bash
+git clone https://github.com/joaopn/cvclanker.git
+cd cvclanker
+docker compose up -d --build
+```
+
+Update with `git pull && docker compose down && docker compose up -d --build`
+(Linux or macOS shell).
+
+Stopping, logs, backups and starting over are in
+[Getting started](docs/getting-started.md).
 
 ## How it works
 

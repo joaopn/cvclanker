@@ -1,20 +1,28 @@
 # Configuration
 
-Most settings live in the **Settings** page (stored in your database); a handful
-are environment variables.
+Everything is set in the app, on the **Settings** page, and stored in your
+database. Nothing needs to be configured before the first start.
 
 ## Environment variables
 
-Create a `.env` next to `docker-compose.yml` (with `docker run`, in the directory
-you run it from) and fill in what you need — all optional. [`.env.example`](../.env.example) lists them:
+Optional, for advanced setups. Where a variable has a matching setting, a value
+saved on the Settings page wins over it, and clearing the setting falls back to
+the variable — so a login set with `BASIC_AUTH_*` can't be switched off from
+Settings. `JWT_SECRET`, when set, wins over the secret stored in the database.
 
-```bash
-curl -fsSL -o .env https://raw.githubusercontent.com/joaopn/cvclanker/main/.env.example
-```
+To pass one on the release path, add `-e NAME=value` to the `docker run` line
+before the image name, recreate the container the way the
+[update steps](getting-started.md#release-run-the-published-image) do, and keep
+it on that line in every later update.
+On the dev path, put it in a `.env` file next to `docker-compose.yml`.
 
 | Variable | Default | What it does |
 |---|---|---|
 | `MODEL` | `google/gemini-3-flash-preview` | The LLM to use, as `provider/model-name`. See [LLM providers](llm-providers.md). |
+| `LLM_PROVIDER` | `openrouter` | The LLM provider: `gemini`, `openai`, `openrouter`, `openai_compatible`, `lmstudio`, `ollama`, `codex` or `claude_code`. |
+| `LLM_API_KEY` | *(unset)* | API key for that provider. |
+| `LLM_BASE_URL` | *(provider default)* | The provider's endpoint. For `openai_compatible`, `lmstudio` and `ollama` it is the URL you point at (also settable in Settings). For `openai`, `gemini` and `openrouter` it replaces the vendor's endpoint (e.g. a proxy). |
+| `APIFY_API_TOKEN` | *(unset)* | Token for [Apify](apify.md) sources. |
 | `BASIC_AUTH_USER` | *(unset)* | Username for optional login. |
 | `BASIC_AUTH_PASSWORD` | *(unset)* | Password for optional login. |
 | `JWT_SECRET` | *(DB-managed)* | Pin the session-signing secret externally (≥32 chars). If unset, it's managed in the database. |
@@ -23,9 +31,6 @@ curl -fsSL -o .env https://raw.githubusercontent.com/joaopn/cvclanker/main/.env.
 | `LATEX_COMPILE_TIMEOUT_MS` | `600000` | Baseline ceiling on one LaTeX (tectonic) compile (10 min). The first compile on a fresh container also downloads the packages the document pulls in, so it is far slower than every one after it; the Settings UI overrides it. |
 | `JOBSPY_IS_REMOTE` | `0` | Set `1` to filter jobspy sources (Indeed/LinkedIn) to remote-only. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | *(unset)* | Token for the Claude Code provider, minted with `claude setup-token`. The Settings UI value overrides it. |
-
-Provider API keys can go here too, but the Settings UI is easier — both are
-stored in the database and the UI wins.
 
 ## Authentication
 
@@ -54,24 +59,42 @@ choice is remembered in the browser.
 
 ## Data, backups & restore
 
-Your whole installation is one SQLite file at **`./data/jobs.db`** — jobs,
-settings, CV/cover-letter archives, generated PDFs, prompts, and the session
-secret.
+Each **user profile** (Settings → User Profiles) is one SQLite database — jobs, settings,
+CV/cover-letter archives, generated PDFs, prompts, and the session secret. They
+live in the `cvclanker-data` Docker volume (release) or under `./data` (dev; the
+active one is `./data/jobs.db`).
 
-- **Back up** by copying `data/` while stopped, or use the in-app **snapshot
-  export**.
-- **Restore** by dropping the file back, or via snapshot restore. The session
-  secret lives in the DB, so a restore keeps you logged in.
-- Codex auth, if used, lives under `data/codex-home/` — a `data/` copy carries
-  it along.
+- **Back up** with **Export** on a profile's card in **Settings → User
+  Profiles**; with several user profiles, export each one. Tick **Include API keys &
+  secrets in exports** first if the backup should keep your API keys and login
+  password; the file then holds them in plain text, so store it safely. On the
+  dev path, copying `data/` while stopped works too.
+- **Restore** with **Import profile** on the same page, then **Activate** the
+  imported profile; your current data is kept as another profile, not
+  overwritten. On a fresh install, **Import database** in the onboarding wizard
+  does both steps. Expect to sign in again after a restore. An export made
+  without secrets also drops the login password, so login is off afterwards
+  unless `BASIC_AUTH_USER`/`BASIC_AUTH_PASSWORD` are set as environment
+  variables.
+- Codex auth, if used, lives in the data directory under `codex-home/`; a copy
+  of the volume or of `data/` carries it along, the export does not.
 
-Wipe and start over:
+To wipe everything and start over on the release path, run these two lines,
+then the install command again:
 
 ```bash
-docker compose down && rm -rf data/ && docker compose up -d
+docker rm -f cvclanker
+docker volume rm cvclanker-data
+```
+
+On the dev path (Linux or macOS shell):
+
+```bash
+docker compose down && sudo rm -rf data/ && docker compose up -d --build
 ```
 
 ## Ports
 
-CV Clanker serves on **http://localhost:3005** by default; change the `ports`
-mapping in `docker-compose.yml` (left side is the host port).
+CV Clanker serves on **http://localhost:3005** by default. To change it, edit the
+first number in `-p 3005:3001` on the `docker run` line (and `HOST_PORT` to
+match), or the left side of the `ports` mapping in `docker-compose.yml`.

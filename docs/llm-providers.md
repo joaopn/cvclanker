@@ -9,12 +9,12 @@ or local, and you can edit the prompts.
 | Provider | Notes |
 |---|---|
 | **OpenAI** | GPT models via the OpenAI API. |
-| **Google Gemini** | The default. |
-| **OpenRouter** | One key, many models, including **Claude**. Reaches models not listed here directly. |
+| **Google Gemini** | Gemini models via Google's API. |
+| **OpenRouter** | The default, with a Gemini model. One key, many models, including **Claude**. Reaches models not listed here directly. |
 | **OpenAI-compatible** | Any endpoint that speaks the OpenAI API. |
 | **LM Studio** | A model running locally. |
 | **Ollama** | A model running locally with [Ollama](https://ollama.com). |
-| **Codex** | Local Codex app-server. Not bundled — install it in-app (Settings or the wizard → Install Codex); it lives in `data/` and updates independently of the app image. Sign-in session persists under `data/codex-home/`. |
+| **Codex** | Local Codex app-server. Not bundled — install it in-app (Settings or the wizard → Install Codex); it is stored with your data and updates independently of the app image, and its sign-in session persists there too. |
 | **Claude Code** | Headless `claude -p` runs using a Claude subscription. Mint a token with `claude setup-token` and paste it into Settings (or set `CLAUDE_CODE_OAUTH_TOKEN`). |
 
 **Claude Code** is the dedicated Claude path — it bills your Claude
@@ -30,12 +30,9 @@ call. Output depends on the local model you can run.
 
 ## Choosing a model
 
-Set the model with the `MODEL` environment variable (or in Settings, which
-overrides it), as `provider/model-name`:
-
-```env
-MODEL=google/gemini-3-flash-preview   # the default
-```
+Set the model in **Settings** (or with the optional `MODEL` environment
+variable, which Settings overrides), as `provider/model-name` — the default is
+`google/gemini-3-flash-preview`.
 
 Provider, model, and keys are changeable in **Settings** with no restart; keys
 are stored locally.

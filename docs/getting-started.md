@@ -4,7 +4,8 @@ CV Clanker runs as a single Docker container on your own machine.
 
 ## Prerequisites
 
-- **[Docker](https://docs.docker.com/get-docker/)** with Compose.
+- **[Docker](https://docs.docker.com/get-docker/)**. The dev path also needs git
+  and Docker Compose (included with Docker Desktop).
 - An **LLM API key** (OpenAI, Gemini, or OpenRouter are easiest) — or a **local**
   model via LM Studio / Ollama, which needs no key. See
   [LLM providers](llm-providers.md).
@@ -12,41 +13,70 @@ CV Clanker runs as a single Docker container on your own machine.
 The image, `ghcr.io/joaopn/cvclanker`, bundles everything else it needs
 (Tectonic for LaTeX, LibreOffice for Word, headless browsers, the Claude Code
 CLI). The Codex CLI is not bundled: install it in-app when
-you pick the Codex provider; it lives in `data/` and updates independently of
-the image.
+you pick the Codex provider; it is stored with your data and updates
+independently of the image.
 
-## Install & run
+The published image is built for x86-64 (amd64) machines; on an Apple Silicon
+Mac or another ARM machine it may not start, or run slowly under emulation. The
+dev path builds the image for your own machine instead (not yet tested on ARM).
+
+There are two ways to run it. Pick one: they keep their data in different
+places, so switching later starts with an empty app (move your data across with
+the export and import below).
+
+## Release: run the published image
 
 ```bash
-mkdir cvclanker && cd cvclanker
-curl -fsSLO https://raw.githubusercontent.com/joaopn/cvclanker/main/docker-compose.yml
-docker compose up -d
+docker run -d --name cvclanker -p 3005:3001 -e HOST_PORT=3005 --cap-drop ALL --security-opt no-new-privileges -v cvclanker-data:/app/data --restart unless-stopped ghcr.io/joaopn/cvclanker:latest
 ```
 
 The first start downloads the image. When it is up, open
-**http://localhost:3005**. To change the port, edit the `ports` mapping in
-`docker-compose.yml`.
+**http://localhost:3005**. Your data lives in a Docker volume named
+`cvclanker-data`, which survives updates and container removal.
 
-Without Compose, the same image runs with `docker run`; keep the data in a
-volume, or it is lost when the container is removed:
+| To | Run |
+|---|---|
+| Stop | `docker stop cvclanker` |
+| Start again | `docker start cvclanker` |
+| Watch the logs | `docker logs -f --tail=200 cvclanker` |
+| Wipe everything (deletes all jobs, CVs, PDFs) | `docker rm -f cvclanker`, then `docker volume rm cvclanker-data`, then the install command again |
+
+To update, paste these three lines. The last one is the same command as above,
+so your data volume is reattached — if you retype it, keep the
+`-v cvclanker-data:/app/data` part, or the app starts empty. If you added any
+`-e` options, add them to the last line too:
 
 ```bash
-docker run -d --name cvclanker -p 3005:3001 -e HOST_PORT=3005 \
-  -v cvclanker-data:/app/data --restart unless-stopped \
-  ghcr.io/joaopn/cvclanker:latest
+docker pull ghcr.io/joaopn/cvclanker:latest
+docker rm -f cvclanker
+docker run -d --name cvclanker -p 3005:3001 -e HOST_PORT=3005 --cap-drop ALL --security-opt no-new-privileges -v cvclanker-data:/app/data --restart unless-stopped ghcr.io/joaopn/cvclanker:latest
 ```
 
-Add `--env-file .env` to pass [environment variables](configuration.md#environment-variables).
-Compose also applies hardening this line leaves out (`cap_drop: ALL`,
-`no-new-privileges`).
+To use a different port, change the first number in `-p 3005:3001` (and
+`HOST_PORT` to match).
 
-To build the image from source instead, clone the repo and build it:
+## Dev: build from source
 
 ```bash
 git clone https://github.com/joaopn/cvclanker.git
 cd cvclanker
 docker compose up -d --build
 ```
+
+The build takes several minutes. Your data lives in `./data` inside the clone.
+These commands are for a Linux or macOS shell.
+
+| To | Run |
+|---|---|
+| Update | `git pull && docker compose down && docker compose up -d --build` |
+| Stop | `docker compose down` |
+| Start again | `docker compose up -d` |
+| Watch the logs | `docker compose logs -f --tail=200 cvclanker` |
+| Wipe everything (deletes all jobs, CVs, PDFs) | `docker compose down && sudo rm -rf data/ && docker compose up -d --build` |
+
+Don't run both paths on one machine: they use the same container name and port,
+and the dev build is tagged with the release image's name, so a later
+`docker run` would start your dev build instead of the release.
 
 ## First run
 
@@ -79,23 +109,18 @@ which is fixed per profile.
 
 ## Where your data lives
 
-Everything is one SQLite file: **`./data/jobs.db`**, mounted into the container —
+Everything is one SQLite database per user profile (Settings → User Profiles) —
 jobs, settings, CV/cover-letter archives, generated PDFs, prompts, and the
-session secret. Back up the `data/` folder (or use the in-app snapshot export)
-and you've backed up your whole install.
+session secret. It lives in the
+`cvclanker-data` volume (release) or under `./data` (dev).
 
-## Everyday operations
-
-```bash
-docker compose logs -f --tail=200 cvclanker   # watch logs
-docker compose down                           # stop
-docker compose pull && docker compose up -d   # update to the latest image
-
-# Wipe everything (destructive: deletes all jobs, CVs, PDFs)
-docker compose down && rm -rf data/ && docker compose up -d
-```
-
-From a source checkout, update with `git pull && docker compose up -d --build`.
+To back up, open **Settings → User Profiles** and click **Export** on a
+profile to download it (with several user profiles, export each one). Tick **Include
+API keys & secrets in exports** first if the backup should keep your API keys
+(the file then holds them in plain text). To restore, use **Import profile** on
+the same page, then **Activate** the imported profile; your current data is kept
+as another profile, not overwritten. On a fresh install, **Import database** in
+the onboarding wizard does both steps. Expect to sign in again after a restore.
 
 ## Running from source
 
