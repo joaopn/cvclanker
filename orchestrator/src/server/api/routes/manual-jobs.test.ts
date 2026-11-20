@@ -191,6 +191,76 @@ describe.sequential("detached batch URL import", () => {
     expect(res.status).toBe(404);
   });
 
+  it("answers duplicate for a URL that differs from a saved job's only by tracking parameters", async () => {
+    const jobsRepo = await import("@server/repositories/jobs");
+    const existing = await jobsRepo.createJob({
+      source: "manual",
+      title: "Backend Engineer",
+      employer: "Acme",
+      jobUrl: "https://example.com/jobs/1",
+      jobDescription: "Existing role",
+    });
+    const { fetchJobDraft } = await import("@server/services/manualJob");
+    vi.mocked(fetchJobDraft).mockResolvedValueOnce({
+      job: {
+        title: "Backend Engineer",
+        employer: "Acme",
+        jobDescription: "Existing role",
+      },
+      usage: null,
+      warning: null,
+    });
+    const { scoreJobSuitability } = await import("@server/services/scorer");
+    vi.mocked(scoreJobSuitability).mockClear();
+
+    await start(["https://example.com/jobs/1?utm_source=newsletter"]);
+    const batch = await waitForTerminal();
+
+    expect(batch.results).toHaveLength(1);
+    expect(batch.results[0]).toMatchObject({
+      ok: true,
+      status: "duplicate",
+      jobId: existing.id,
+    });
+    expect(batch.duplicates).toBe(1);
+    expect(batch.succeeded).toBe(0);
+    expect(vi.mocked(scoreJobSuitability)).not.toHaveBeenCalled();
+  });
+
+  // Rows stored before URLs were canonicalized keep their raw URL; looking up
+  // only the canonical form would miss them and insert a second copy.
+  it("still answers duplicate for a row stored under a raw, uncanonicalized URL", async () => {
+    const rawUrl = "https://example.com/jobs/2?utm_source=newsletter";
+    const { db, schema } = await import("@server/db/index");
+    await db.insert(schema.jobs).values({
+      id: "legacy-raw",
+      source: "manual",
+      title: "Backend Engineer",
+      employer: "Acme",
+      jobUrl: rawUrl,
+      status: "discovered",
+    });
+    const { fetchJobDraft } = await import("@server/services/manualJob");
+    vi.mocked(fetchJobDraft).mockResolvedValueOnce({
+      job: {
+        title: "Backend Engineer",
+        employer: "Acme",
+        jobDescription: "Existing role",
+      },
+      usage: null,
+      warning: null,
+    });
+
+    await start([rawUrl]);
+    const batch = await waitForTerminal();
+
+    expect(batch.results[0]).toMatchObject({
+      ok: true,
+      status: "duplicate",
+      jobId: "legacy-raw",
+    });
+  });
+
   it("streams a snapshot on connect", async () => {
     await start(["https://example.com/a"]);
     await waitForTerminal();

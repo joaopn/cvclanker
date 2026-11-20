@@ -29,6 +29,7 @@ import {
   startUrlImportBatch,
   subscribeToUrlImportBatch,
 } from "@server/services/url-import/batch-store";
+import { canonicalizeJobUrl } from "@shared/job-url";
 import { tailoringFailureSummary } from "@shared/tailoring-failure";
 import {
   BATCH_URL_IMPORT_MAX_URLS,
@@ -276,11 +277,22 @@ async function importSingleUrl(
     };
   }
 
-  const canonicalUrl =
+  const requestedJobUrl =
     cleanOptional(draft.jobUrl) || cleanOptional(draft.applicationLink) || url;
+  // Canonicalized here, not only inside `createJob`: the duplicate lookup must
+  // see the URL the row would be stored under, or a variant that
+  // canonicalization folds (tracking parameters, fragment, host case) misses
+  // it and `createJob` hands back the existing row as if it were new.
+  const canonicalUrl = canonicalizeJobUrl(requestedJobUrl);
 
   try {
-    const existing = await jobsRepo.getJobByUrl(canonicalUrl);
+    // Rows stored before URLs were canonicalized keep their raw URL, so the
+    // raw form is looked up too.
+    const existing =
+      (await jobsRepo.getJobByUrl(canonicalUrl)) ??
+      (requestedJobUrl === canonicalUrl
+        ? null
+        : await jobsRepo.getJobByUrl(requestedJobUrl));
     if (existing) {
       return {
         ok: true,
