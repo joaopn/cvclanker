@@ -27,6 +27,10 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  ManualUrlImportDialog,
+  type ManualUrlImportTarget,
+} from "./ManualUrlImportDialog";
 
 // No `in_flight`: the snapshot says which URLs have SETTLED, not which of the
 // three concurrent fetches are in the air right now. Unsettled rows all render
@@ -141,6 +145,8 @@ export const BatchUrlImportSheet: React.FC<BatchUrlImportSheetProps> = ({
   const [myBatchId, setMyBatchId] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [manualTarget, setManualTarget] =
+    useState<ManualUrlImportTarget | null>(null);
   const onCompletedRef = useRef(onCompleted);
   onCompletedRef.current = onCompleted;
   // Terminal is REPORTED only for a transition this tab watched. The finished
@@ -270,6 +276,27 @@ export const BatchUrlImportSheet: React.FC<BatchUrlImportSheetProps> = ({
       setStarting(false);
     }
   }, []);
+
+  // A row finished by hand never passes through the running→finished
+  // transition the completion effect watches, so the jobs list is reloaded
+  // here instead.
+  const handleManualSaved = useCallback(() => {
+    void Promise.resolve(onCompletedRef.current()).catch(() => {});
+  }, []);
+
+  // The sheet stays mounted when closed, so a form left open would otherwise
+  // pop back up the next time the sheet opens.
+  useEffect(() => {
+    if (!open) setManualTarget(null);
+  }, [open]);
+
+  const batchId = batch?.batchId ?? null;
+  const openManual = useCallback(
+    (url: string) => {
+      if (batchId) setManualTarget({ batchId, url });
+    },
+    [batchId],
+  );
 
   const handleStop = useCallback(() => {
     void cancelUrlImportBatch().catch(() => {
@@ -418,7 +445,7 @@ export const BatchUrlImportSheet: React.FC<BatchUrlImportSheetProps> = ({
               <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border/60">
                 <ul className="divide-y divide-border/60">
                   {rows.map((row) => (
-                    <UrlRowView key={row.url} row={row} />
+                    <UrlRowView key={row.url} row={row} onManual={openManual} />
                   ))}
                 </ul>
               </div>
@@ -461,12 +488,20 @@ export const BatchUrlImportSheet: React.FC<BatchUrlImportSheetProps> = ({
             </div>
           )}
         </div>
+        <ManualUrlImportDialog
+          target={manualTarget}
+          onClose={() => setManualTarget(null)}
+          onSaved={handleManualSaved}
+        />
       </SheetContent>
     </Sheet>
   );
 };
 
-const UrlRowView: React.FC<{ row: UrlRow }> = ({ row }) => {
+const UrlRowView: React.FC<{
+  row: UrlRow;
+  onManual: (url: string) => void;
+}> = ({ row, onManual }) => {
   const copyUrl = () => {
     void navigator.clipboard.writeText(row.url).then(
       () => toast.success("URL copied"),
@@ -516,6 +551,16 @@ const UrlRowView: React.FC<{ row: UrlRow }> = ({ row }) => {
           </div>
         )}
       </div>
+      {row.status === "failed" && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-6 shrink-0 px-2 text-xs"
+          onClick={() => onManual(row.url)}
+        >
+          Manual
+        </Button>
+      )}
       <Badge variant={STATUS_VARIANT[row.status]} className="shrink-0">
         {STATUS_LABEL[row.status]}
       </Badge>

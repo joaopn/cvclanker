@@ -7,6 +7,7 @@ import type { UpdateSettingsInput } from "@shared/settings-schema";
 import type {
   ApiResponse,
   AppSettings,
+  BatchUrlImportItemResult,
   BenchRun,
   BranchInfo,
   ClaudeCodeCliStatus,
@@ -1330,6 +1331,31 @@ export async function cancelUrlImportBatch(): Promise<void> {
   await fetchApi<{ cancelled: boolean }>("/manual-jobs/import-batch/cancel", {
     method: "POST",
   });
+}
+
+export async function getUrlImportDraft(
+  batchId: string,
+  url: string,
+): Promise<ManualJobDraft | null> {
+  const params = new URLSearchParams({ batchId, url });
+  const { draft } = await fetchApi<{ draft: ManualJobDraft | null }>(
+    `/manual-jobs/import-batch/draft?${params.toString()}`,
+  );
+  return draft;
+}
+
+export async function saveManualUrlImport(input: {
+  batchId: string;
+  url: string;
+  job: ManualJobDraft;
+}): Promise<BatchUrlImportItemResult> {
+  return fetchApi<BatchUrlImportItemResult>(
+    "/manual-jobs/import-batch/manual",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 // Settings & Profile API

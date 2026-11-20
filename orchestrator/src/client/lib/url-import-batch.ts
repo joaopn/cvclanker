@@ -10,6 +10,8 @@
 import * as api from "@client/api/client";
 import { createLazyEventStream } from "@client/lib/batch-stream";
 import type {
+  BatchUrlImportItemResult,
+  ManualJobDraft,
   UrlImportBatchSnapshot,
   UrlImportBatchStreamEvent,
 } from "@shared/types";
@@ -83,6 +85,30 @@ export async function startUrlImportBatch(urls: string[]): Promise<string> {
 
 export async function cancelUrlImportBatch(): Promise<void> {
   await api.cancelUrlImportBatch();
+}
+
+/** What the fetch read for a failed row, to pre-fill the manual form. */
+export async function getUrlImportDraft(
+  batchId: string,
+  url: string,
+): Promise<ManualJobDraft | null> {
+  return api.getUrlImportDraft(batchId, url);
+}
+
+/**
+ * Save a failed row's job by hand, then re-read the record. The stream is
+ * closed once an import is finished — which is when a row is usually finished
+ * by hand — so the server's emit reaches no tab and the re-read is what turns
+ * the row saved here.
+ */
+export async function saveManualUrlImport(input: {
+  batchId: string;
+  url: string;
+  job: ManualJobDraft;
+}): Promise<BatchUrlImportItemResult> {
+  const result = await api.saveManualUrlImport(input);
+  await refreshUrlImportBatch().catch(() => {});
+  return result;
 }
 
 /** Test-only: drop every trace so files don't leak imports into each other. */
