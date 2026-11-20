@@ -7,7 +7,6 @@
 A self-hosted workspace for a job search.<br>
 It scrapes job boards, scores each posting against you, and tailors your own CV and a cover letter for each one.
 
-[![License: AGPL-3.0 + Commons Clause](https://img.shields.io/badge/license-AGPL--3.0%20%2B%20Commons%20Clause-blue)](LICENSE)
 [![Docker image](https://img.shields.io/badge/docker-ghcr.io%2Fjoaopn%2Fcvclanker-2496ED?logo=docker&logoColor=white)](https://github.com/joaopn/cvclanker/pkgs/container/cvclanker)
 ![Self-hosted](https://img.shields.io/badge/self--hosted-yes-5E81AC)
 ![Telemetry: none](https://img.shields.io/badge/telemetry-none-brightgreen)
@@ -76,15 +75,19 @@ Logs, backups and starting over: [Getting started](docs/getting-started.md).
 
 <img src="docs/assets/profile.png" alt="A search profile with terms and location" width="720">
 
-**3\.** Run the pipeline. It scrapes the sources you picked and scores every new posting.
+**3\.** Optionally, add [Apify](https://apify.com) actors as paid extra sources, starting from a ready-made template or any actor you name ([details](docs/apify.md)).
+
+<img src="docs/assets/apify.png" alt="An Apify actor configured from a template" width="720">
+
+**4\.** Run the pipeline. It scrapes the sources you picked and scores every new posting.
 
 <img src="docs/assets/run.png" alt="The run menu with its sources" width="720">
 
-**4\.** Triage, at the desk or by swiping on your phone.
+**5\.** Triage, at the desk or by swiping on your phone.
 
 <img src="docs/assets/swipe.png" alt="The swipe deck on a phone" width="300">
 
-**5\.** Tailor. Review each edited field, ask the chat about the job, and download the CV and cover letter.
+**6\.** Tailor. Review each edited field, ask the chat about the job, and download the CV and cover letter.
 
 <img src="docs/assets/tailor.png" alt="The tailoring panel with edited fields and the chat" width="720">
 
