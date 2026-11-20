@@ -54,18 +54,18 @@ describe("buildDownloadFilename", () => {
       buildDownloadFilename({
         candidateName: "Jane Q. Doe",
         kind: "resume",
-        employer: "Scientis Search Ltd",
+        employer: "Acme Corp Ltd",
         ext: "pdf",
       }),
-    ).toBe("Doe_JQ_resume_Scientis_Search_Ltd.pdf");
+    ).toBe("Doe_JQ_resume_Acme_Corp_Ltd.pdf");
     expect(
       buildDownloadFilename({
         candidateName: "Jane Q. Doe",
         kind: "cover",
-        employer: "WU Wien",
+        employer: "Example Uni",
         ext: "pdf",
       }),
-    ).toBe("Doe_JQ_cover_WU_Wien.pdf");
+    ).toBe("Doe_JQ_cover_Example_Uni.pdf");
   });
 
   it("keeps the Word extension", () => {
@@ -84,18 +84,18 @@ describe("buildDownloadFilename", () => {
       buildDownloadFilename({
         candidateName: null,
         kind: "resume",
-        employer: "Scientis Search Ltd",
+        employer: "Acme Corp Ltd",
         ext: "pdf",
       }),
-    ).toBe("resume_Scientis_Search_Ltd.pdf");
+    ).toBe("resume_Acme_Corp_Ltd.pdf");
     expect(
       buildDownloadFilename({
         candidateName: "  ",
         kind: "cover",
-        employer: "WU Wien",
+        employer: "Example Uni",
         ext: "pdf",
       }),
-    ).toBe("cover_WU_Wien.pdf");
+    ).toBe("cover_Example_Uni.pdf");
   });
 
   it("folds accents in the company and keeps today's rule for the rest", () => {

@@ -226,7 +226,7 @@ describe("the Tailor shortcut with no selection", () => {
 
 describe("the d shortcut", () => {
   const readyJob = () =>
-    createJob({ id: "j9", employer: "WU Wien", status: "ready" });
+    createJob({ id: "j9", employer: "Example Uni", status: "ready" });
   const pressAndCapture = () => {
     const downloads: string[] = [];
     const click = vi
@@ -246,14 +246,14 @@ describe("the d shortcut", () => {
     settingsState.candidateName = "Jane Q. Doe";
     setup({ activeTab: "tailoring", selectedJob: readyJob() });
 
-    expect(pressAndCapture()).toEqual(["Doe_JQ_resume_WU_Wien.pdf"]);
+    expect(pressAndCapture()).toEqual(["Doe_JQ_resume_Example_Uni.pdf"]);
   });
 
   it("drops the name part when no name is set, keeping the Word extension", () => {
     settingsState.cvSourceFormat = "docx";
     setup({ activeTab: "tailoring", selectedJob: readyJob() });
 
-    expect(pressAndCapture()).toEqual(["resume_WU_Wien.docx"]);
+    expect(pressAndCapture()).toEqual(["resume_Example_Uni.docx"]);
   });
 
   it("hands over an HTML CV's tailored page", () => {
@@ -263,6 +263,6 @@ describe("the d shortcut", () => {
       selectedJob: { ...readyJob(), tailoredSourceShape: "file" },
     });
 
-    expect(pressAndCapture()).toEqual(["resume_WU_Wien.html"]);
+    expect(pressAndCapture()).toEqual(["resume_Example_Uni.html"]);
   });
 });

@@ -270,7 +270,7 @@ describe("the More-actions download items", () => {
   const tailoredJob = () =>
     createJob({
       id: "j4",
-      employer: "Scientis Search Ltd",
+      employer: "Acme Corp Ltd",
       status: "backlog",
       pdfPath: "resume_j4.pdf",
       coverLetterPdfPath: "cover_letter_j4.pdf",
@@ -282,21 +282,17 @@ describe("the More-actions download items", () => {
     settingsState.candidateName = "Jane Q. Doe";
     renderPanel(tailoredJob());
 
-    expect(downloadName("Download CV")).toBe(
-      "Doe_JQ_resume_Scientis_Search_Ltd.pdf",
-    );
+    expect(downloadName("Download CV")).toBe("Doe_JQ_resume_Acme_Corp_Ltd.pdf");
     expect(downloadName("Download Cover")).toBe(
-      "Doe_JQ_cover_Scientis_Search_Ltd.pdf",
+      "Doe_JQ_cover_Acme_Corp_Ltd.pdf",
     );
   });
 
   it("drops the name part when no name is set", () => {
     renderPanel(tailoredJob());
 
-    expect(downloadName("Download CV")).toBe("resume_Scientis_Search_Ltd.pdf");
-    expect(downloadName("Download Cover")).toBe(
-      "cover_Scientis_Search_Ltd.pdf",
-    );
+    expect(downloadName("Download CV")).toBe("resume_Acme_Corp_Ltd.pdf");
+    expect(downloadName("Download Cover")).toBe("cover_Acme_Corp_Ltd.pdf");
   });
 
   it("names the Word CV with its own extension", () => {
@@ -305,7 +301,7 @@ describe("the More-actions download items", () => {
     renderPanel(tailoredJob());
 
     expect(downloadName("Download .docx")).toBe(
-      "Doe_JQ_resume_Scientis_Search_Ltd.docx",
+      "Doe_JQ_resume_Acme_Corp_Ltd.docx",
     );
   });
 
@@ -313,6 +309,6 @@ describe("the More-actions download items", () => {
     settingsState.cvSourceFormat = "html";
     renderPanel({ ...tailoredJob(), tailoredSourceShape: "file" });
 
-    expect(downloadName("Download CV")).toBe("resume_Scientis_Search_Ltd.html");
+    expect(downloadName("Download CV")).toBe("resume_Acme_Corp_Ltd.html");
   });
 });

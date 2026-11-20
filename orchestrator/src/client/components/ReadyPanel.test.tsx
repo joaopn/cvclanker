@@ -90,7 +90,7 @@ import { ReadyPanel } from "./ReadyPanel";
 const readyJob = () =>
   createJob({
     id: "j1",
-    employer: "Scientis Search Ltd",
+    employer: "Acme Corp Ltd",
     status: "ready",
     pdfPath: "resume_j1.pdf",
     coverLetterPdfPath: "cover_letter_j1.pdf",
@@ -117,11 +117,9 @@ describe("ReadyPanel download names", () => {
     settingsState.candidateName = "Jane Q. Doe";
     renderPanel();
 
-    expect(downloadName("Download CV")).toBe(
-      "Doe_JQ_resume_Scientis_Search_Ltd.pdf",
-    );
+    expect(downloadName("Download CV")).toBe("Doe_JQ_resume_Acme_Corp_Ltd.pdf");
     expect(downloadName("Download Cover")).toBe(
-      "Doe_JQ_cover_Scientis_Search_Ltd.pdf",
+      "Doe_JQ_cover_Acme_Corp_Ltd.pdf",
     );
   });
 
@@ -129,12 +127,8 @@ describe("ReadyPanel download names", () => {
     settingsState.cvSourceFormat = "docx";
     renderPanel();
 
-    expect(downloadName("Download .docx")).toBe(
-      "resume_Scientis_Search_Ltd.docx",
-    );
-    expect(downloadName("Download Cover")).toBe(
-      "cover_Scientis_Search_Ltd.pdf",
-    );
+    expect(downloadName("Download .docx")).toBe("resume_Acme_Corp_Ltd.docx");
+    expect(downloadName("Download Cover")).toBe("cover_Acme_Corp_Ltd.pdf");
   });
 
   it("hands over an HTML CV's tailored zip under Download CV", () => {
@@ -142,9 +136,7 @@ describe("ReadyPanel download names", () => {
     renderPanel({ ...readyJob(), tailoredSourceShape: "bundle" });
 
     const link = screen.getByText("Download CV").closest("a");
-    expect(link?.getAttribute("download")).toBe(
-      "resume_Scientis_Search_Ltd.zip",
-    );
+    expect(link?.getAttribute("download")).toBe("resume_Acme_Corp_Ltd.zip");
     expect(link?.getAttribute("href")).toMatch(/^\/pdfs\/resume_j1\.zip\?v=/);
   });
 });

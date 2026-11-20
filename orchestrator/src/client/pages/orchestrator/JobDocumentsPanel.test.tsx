@@ -20,7 +20,7 @@ import { JobDocumentsPanel } from "./JobDocumentsPanel";
 const job = () =>
   createJob({
     id: "j1",
-    employer: "WU Wien",
+    employer: "Example Uni",
     status: "applied",
     pdfPath: "resume_j1.pdf",
     coverLetterPdfPath: "cover_letter_j1.pdf",
@@ -41,20 +41,20 @@ describe("JobDocumentsPanel download name", () => {
     settingsState.candidateName = "Jane Q. Doe";
     render(<JobDocumentsPanel job={job()} />);
 
-    expect(downloadName()).toBe("Doe_JQ_resume_WU_Wien.pdf");
+    expect(downloadName()).toBe("Doe_JQ_resume_Example_Uni.pdf");
 
     fireEvent.click(screen.getByRole("button", { name: "Cover Letter" }));
-    expect(downloadName()).toBe("Doe_JQ_cover_WU_Wien.pdf");
+    expect(downloadName()).toBe("Doe_JQ_cover_Example_Uni.pdf");
   });
 
   it("drops the name part when no name is set, keeping the Word extension", () => {
     settingsState.cvSourceFormat = "docx";
     render(<JobDocumentsPanel job={job()} />);
 
-    expect(downloadName()).toBe("resume_WU_Wien.docx");
+    expect(downloadName()).toBe("resume_Example_Uni.docx");
 
     fireEvent.click(screen.getByRole("button", { name: "Cover Letter" }));
-    expect(downloadName()).toBe("cover_WU_Wien.pdf");
+    expect(downloadName()).toBe("cover_Example_Uni.pdf");
   });
 
   it("hands over an HTML CV's tailored zip, and the cover letter's PDF", () => {
@@ -63,9 +63,9 @@ describe("JobDocumentsPanel download name", () => {
       <JobDocumentsPanel job={{ ...job(), tailoredSourceShape: "bundle" }} />,
     );
 
-    expect(downloadName()).toBe("resume_WU_Wien.zip");
+    expect(downloadName()).toBe("resume_Example_Uni.zip");
 
     fireEvent.click(screen.getByRole("button", { name: "Cover Letter" }));
-    expect(downloadName()).toBe("cover_WU_Wien.pdf");
+    expect(downloadName()).toBe("cover_Example_Uni.pdf");
   });
 });
