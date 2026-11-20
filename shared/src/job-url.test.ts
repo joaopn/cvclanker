@@ -4,12 +4,12 @@ import { canonicalizeJobUrl } from "./job-url";
 describe("canonicalizeJobUrl", () => {
   it("collapses LinkedIn URLs that differ only by tracking params", () => {
     const a =
-      "https://www.linkedin.com/jobs/view/senior-machine-learning-engineer-multimodal-data-at-canva-4395318810/?refId=1WX%2B%2B6JQbWdrutKKE6rfMw%3D%3D&trackingId=S5LBDTKGYvVxuLiz2AO9Hw%3D%3D";
+      "https://www.linkedin.com/jobs/view/senior-engineer-at-example-2000005810/?refId=Ex1%2B%2BampleRefIdAAAAw%3D%3D&trackingId=ExampleTrackingIdAAAAw%3D%3D";
     const b =
-      "https://www.linkedin.com/jobs/view/senior-machine-learning-engineer-multimodal-data-at-canva-4395318810/?refId=JT%2FTmiNA3hPe87bC%2FJOWGw%3D%3D&trackingId=bZwfipC%2BYOgdGP8Jor0vfQ%3D%3D";
+      "https://www.linkedin.com/jobs/view/senior-engineer-at-example-2000005810/?refId=Ex%2FampleRefIdBB%2FBBBBw%3D%3D&trackingId=ExampleT%2BrackingIdBBBBw%3D%3D";
     expect(canonicalizeJobUrl(a)).toBe(canonicalizeJobUrl(b));
     expect(canonicalizeJobUrl(a)).toBe(
-      "https://www.linkedin.com/jobs/view/senior-machine-learning-engineer-multimodal-data-at-canva-4395318810/",
+      "https://www.linkedin.com/jobs/view/senior-engineer-at-example-2000005810/",
     );
   });
 

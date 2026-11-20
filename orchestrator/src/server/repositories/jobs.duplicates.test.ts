@@ -65,7 +65,7 @@ describe.sequential("jobs repository duplicate groups", () => {
       id: "a1",
       title: "Senior Data Architect",
       status: "discovered",
-      jobUrl: "https://www.linkedin.com/jobs/view/4383993915",
+      jobUrl: "https://www.linkedin.com/jobs/view/2000003915",
     });
     await insert({
       id: "a2",
@@ -73,12 +73,12 @@ describe.sequential("jobs repository duplicate groups", () => {
       status: "ready",
       source: "apify:17217e9c",
       jobUrl:
-        "https://at.linkedin.com/jobs/view/senior-data-architect-at-nagarro-4383993915",
+        "https://at.linkedin.com/jobs/view/senior-data-architect-at-example-consulting-2000003915",
     });
 
     const groups = await jobsRepo.getDuplicateGroups();
     expect(groups).toHaveLength(1);
-    expect(groups[0].key).toBe("linkedin:4383993915");
+    expect(groups[0].key).toBe("linkedin:2000003915");
     expect(groups[0].jobs.map((j) => j.id).sort()).toEqual(["a1", "a2"]);
     expect(groups[0].bulkSafe).toBe(true);
   });
@@ -136,18 +136,18 @@ describe.sequential("jobs repository duplicate groups", () => {
     await insert({
       id: "d1",
       title: "Senior Machine Learning Scientist - Marketplace",
-      employer: "Booking.com",
+      employer: "Example.com",
       status: "discovered",
-      jobUrl: "https://www.linkedin.com/jobs/view/4435122980",
+      jobUrl: "https://www.linkedin.com/jobs/view/2000008980",
     });
     await insert({
       id: "d2",
       title: "Machine Learning Science - IC - G - I",
-      employer: "Booking.com",
+      employer: "Example.com",
       status: "discovered",
       source: "apify:17217e9c",
       jobUrl:
-        "https://nl.linkedin.com/jobs/view/machine-learning-science-ic-g-i-at-booking-com-4435122980",
+        "https://nl.linkedin.com/jobs/view/machine-learning-science-ic-g-i-at-example-com-2000008980",
     });
 
     const groups = await jobsRepo.getDuplicateGroups();
@@ -160,19 +160,19 @@ describe.sequential("jobs repository duplicate groups", () => {
       id: "e1",
       title: "Backend Engineer",
       status: "discovered",
-      jobUrl: "https://www.linkedin.com/jobs/view/4400000001",
+      jobUrl: "https://www.linkedin.com/jobs/view/2000006001",
     });
     await insert({
       id: "e2",
       title: "Backend Engineer",
       status: "closed",
-      jobUrl: "https://uk.linkedin.com/jobs/view/backend-engineer-4400000001",
+      jobUrl: "https://uk.linkedin.com/jobs/view/backend-engineer-2000006001",
     });
     await insert({
       id: "e3",
       title: "Platform Engineer",
       status: "ready",
-      jobUrl: "https://www.linkedin.com/jobs/view/4400000002",
+      jobUrl: "https://www.linkedin.com/jobs/view/2000006002",
     });
 
     expect(await jobsRepo.getDuplicateGroups()).toHaveLength(0);
@@ -263,7 +263,7 @@ describe.sequential("jobs repository duplicate groups", () => {
       title: "Senior Data Architect",
       status: "discovered",
       appliedAt: "2026-04-02T00:00:00.000Z",
-      jobUrl: "https://www.linkedin.com/jobs/view/4383993999",
+      jobUrl: "https://www.linkedin.com/jobs/view/2000003999",
     });
     await insert({
       id: "ap2",
@@ -271,7 +271,7 @@ describe.sequential("jobs repository duplicate groups", () => {
       status: "ready",
       source: "apify:17217e9c",
       jobUrl:
-        "https://at.linkedin.com/jobs/view/senior-data-architect-at-nagarro-4383993999",
+        "https://at.linkedin.com/jobs/view/senior-data-architect-at-example-consulting-2000003999",
     });
 
     // One row left in scope is not a group, so nothing is proposed to close.
@@ -283,7 +283,7 @@ describe.sequential("jobs repository duplicate groups", () => {
       id: "np1",
       title: "Senior Data Architect",
       status: "discovered",
-      jobUrl: "https://www.linkedin.com/jobs/view/4383993998",
+      jobUrl: "https://www.linkedin.com/jobs/view/2000003998",
     });
     await insert({
       id: "np2",
@@ -291,7 +291,7 @@ describe.sequential("jobs repository duplicate groups", () => {
       status: "ready",
       source: "apify:17217e9c",
       jobUrl:
-        "https://at.linkedin.com/jobs/view/senior-data-architect-at-nagarro-4383993998",
+        "https://at.linkedin.com/jobs/view/senior-data-architect-at-example-consulting-2000003998",
     });
 
     expect(await jobsRepo.getDuplicateGroups()).toHaveLength(1);

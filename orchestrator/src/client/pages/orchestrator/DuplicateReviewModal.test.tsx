@@ -49,7 +49,7 @@ function jobItem(overrides: Partial<JobListItem> & { id: string }): JobListItem 
 }
 
 const group = (): DuplicateJobGroup => ({
-  key: "linkedin:4383993915",
+  key: "linkedin:2000003915",
   bulkSafe: true,
   title: "Senior Data Engineer",
   employer: "Acme Corp",
@@ -264,7 +264,7 @@ describe("DuplicateReviewModal", () => {
     // the group needing a decision rather than past it.
     const reviewOnly: DuplicateJobGroup = {
       ...group(),
-      key: "linkedin:4435122980",
+      key: "linkedin:2000008980",
       bulkSafe: false,
       jobs: [
         jobItem({ id: "r1", title: "Senior ML Scientist - Marketplace" }),
@@ -301,7 +301,7 @@ describe("DuplicateReviewModal", () => {
     // status guard.
     const reviewOnly: DuplicateJobGroup = {
       ...otherGroup(),
-      key: "linkedin:4435122980",
+      key: "linkedin:2000008980",
       bulkSafe: false,
     };
     const third: DuplicateJobGroup = {

@@ -202,7 +202,7 @@ describe("jobActions", () => {
       });
       const slugged = createJob({
         id: "2",
-        jobUrl: "https://uk.linkedin.com/jobs/view/data-engineer-4383993915",
+        jobUrl: "https://uk.linkedin.com/jobs/view/data-engineer-2000003915",
       });
       expect(canFetchLiveStatus([bare, slugged])).toBe(true);
     });

@@ -209,7 +209,7 @@ describe("compareJobs applicants", () => {
     const slugCounted = createJob({
       id: "slug-counted",
       jobUrl: "https://www.linkedin.com/jobs/view/senior-engineer-at-acme",
-      sourceJobId: "li-4383255214",
+      sourceJobId: "li-2000001214",
       liveClosed: false,
       liveApplicants: "9 applicants",
       liveStatusCheckedAt: "2026-08-24T10:00:00.000Z",
@@ -217,7 +217,7 @@ describe("compareJobs applicants", () => {
     const slugClosed = createJob({
       id: "slug-closed",
       jobUrl: "https://www.linkedin.com/jobs/view/senior-engineer-at-acme",
-      sourceJobId: "li-4383255214",
+      sourceJobId: "li-2000001214",
       liveClosed: true,
       liveApplicants: null,
       liveStatusCheckedAt: "2026-08-24T10:00:00.000Z",
@@ -393,7 +393,7 @@ describe("compareJobs easyApplyApplicants", () => {
     const slugEasy = createJob({
       id: "7000000009",
       jobUrl: "https://www.linkedin.com/jobs/view/senior-engineer-at-acme",
-      sourceJobId: "li-4383255214",
+      sourceJobId: "li-2000001214",
       liveStatusCheckedAt: "2026-08-24T10:00:00.000Z",
       liveClosed: false,
       liveEasyApply: true,

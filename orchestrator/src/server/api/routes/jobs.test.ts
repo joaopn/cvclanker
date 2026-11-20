@@ -661,19 +661,19 @@ describe.sequential("POST /api/jobs/actions — 5g action variants", () => {
     await seedJob({
       id: "dups-a",
       status: "discovered",
-      jobUrl: "https://www.linkedin.com/jobs/view/4383993915",
+      jobUrl: "https://www.linkedin.com/jobs/view/2000003915",
     });
     await seedJob({
       id: "dups-b",
       status: "ready",
-      jobUrl: "https://uk.linkedin.com/jobs/view/data-engineer-4383993915",
+      jobUrl: "https://uk.linkedin.com/jobs/view/data-engineer-2000003915",
     });
     // A terminal row with the same identity must NOT join the group.
     await seedJob({
       id: "dups-c",
       status: "closed",
       outcome: "rejected",
-      jobUrl: "https://ie.linkedin.com/jobs/view/de-4383993915",
+      jobUrl: "https://ie.linkedin.com/jobs/view/de-2000003915",
     });
 
     const res = await fetch(`${baseUrl}/api/jobs/duplicates`);

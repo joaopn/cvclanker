@@ -49,7 +49,7 @@ export function extractBoard(jobUrl: string | null | undefined): string | null {
 
 /**
  * LinkedIn puts the job id at the END of the path, either bare
- * (`/jobs/view/4383993915`) or after a slug (`/jobs/view/senior-…-4383993915`).
+ * (`/jobs/view/2000003915`) or after a slug (`/jobs/view/senior-…-2000003915`).
  *
  * ANCHORED on purpose. An unanchored `(?:.*?-)?(\d+)` captures the first number
  * in the slug instead: a real implementation of that mistake merged seven
@@ -74,7 +74,7 @@ const LINKEDIN_SOURCE_JOB_ID = /^(?:li-)?(\d{6,})$/;
  *
  * The URL path is the primary source and `source_job_id` the fallback: the id
  * is always in the path of a job-view URL, whereas `source_job_id` is null on
- * some rows and prefixed (`li-4383255214`) on others depending on which
+ * some rows and prefixed (`li-2000001214`) on others depending on which
  * scraper produced it. Where both exist they agree — measured across every row
  * of a real database, zero disagreed — but the precedence still has to be
  * stated, or two implementations could pick differently.
@@ -103,7 +103,7 @@ export function extractExternalId(args: {
   const fromPath = LINKEDIN_PATH_ID.exec(pathname);
   if (fromPath) return fromPath[1] ?? fromPath[2] ?? null;
 
-  // `li-4383255214` and `4383255214` are the same id written two ways.
+  // `li-2000001214` and `2000001214` are the same id written two ways.
   const fromSourceId = LINKEDIN_SOURCE_JOB_ID.exec(
     (args.sourceJobId ?? "").trim(),
   );

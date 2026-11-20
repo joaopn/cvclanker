@@ -236,9 +236,9 @@ describe("rewriteUrlForFetch", () => {
     const { rewriteUrlForFetch } = await import("./manualJob");
 
     // LinkedIn's share/copy appends these, so it is a shape users routinely
-    // paste (live-captured examples: shared/src/job-url.test.ts). It works
-    // because the rule reads `.pathname`; a rule written against the raw URL
-    // string would break here and nowhere else in this block.
+    // paste (examples shaped like live captures: shared/src/job-url.test.ts).
+    // It works because the rule reads `.pathname`; a rule written against the
+    // raw URL string would break here and nowhere else in this block.
     expect(
       rewriteUrlForFetch(
         `${SLUGGED}?position=1&pageNum=0&refId=abc%3D%3D&trackingId=xyz%3D%3D`,

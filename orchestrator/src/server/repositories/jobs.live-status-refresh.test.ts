@@ -124,21 +124,21 @@ describe.sequential("getJobsForLiveStatusRefresh", () => {
 
   it("keeps only rows carrying a LinkedIn posting id", async () => {
     await insert("bare", {
-      jobUrl: "https://www.linkedin.com/jobs/view/4383993915",
+      jobUrl: "https://www.linkedin.com/jobs/view/2000003915",
     });
     await insert("slug", {
       jobUrl:
-        "https://uk.linkedin.com/jobs/view/senior-engineer-at-acme-4383993916",
+        "https://uk.linkedin.com/jobs/view/senior-engineer-at-acme-2000003916",
     });
     await insert("from-source-id", {
       jobUrl: "https://www.linkedin.com/jobs/view/senior-engineer-at-acme",
-      sourceJobId: "li-4383993917",
+      sourceJobId: "li-2000003917",
     });
     await insert("other-board", {
-      jobUrl: "https://boards.greenhouse.io/acme/jobs/4383993918",
+      jobUrl: "https://boards.greenhouse.io/acme/jobs/2000003918",
     });
     await insert("linkedin-not-a-job", {
-      jobUrl: "https://www.linkedin.com/in/someone-4383993919",
+      jobUrl: "https://www.linkedin.com/in/someone-2000003919",
     });
 
     const ids = await idsFor(50);

@@ -55,15 +55,15 @@ describe("extractExternalId", () => {
   it("reads the id from a bare path and from a slug path", () => {
     expect(
       extractExternalId({
-        jobUrl: "https://www.linkedin.com/jobs/view/4383993915",
+        jobUrl: "https://www.linkedin.com/jobs/view/2000003915",
       }),
-    ).toBe("4383993915");
+    ).toBe("2000003915");
     expect(
       extractExternalId({
         jobUrl:
-          "https://at.linkedin.com/jobs/view/senior-data-architect-at-nagarro-4383993915",
+          "https://at.linkedin.com/jobs/view/senior-data-architect-at-example-consulting-2000003915",
       }),
-    ).toBe("4383993915");
+    ).toBe("2000003915");
   });
 
   it("is ANCHORED — a 6+ digit number inside the slug is not the job id", () => {
@@ -84,9 +84,9 @@ describe("extractExternalId", () => {
     // hold under the same id without the slash.
     expect(
       extractExternalId({
-        jobUrl: "https://www.linkedin.com/jobs/view/4402898413/",
+        jobUrl: "https://www.linkedin.com/jobs/view/2000007413/",
       }),
-    ).toBe("4402898413");
+    ).toBe("2000007413");
   });
 
   it("ignores LinkedIn URLs that are not job views", () => {
@@ -128,9 +128,9 @@ describe("extractExternalId", () => {
     expect(
       extractExternalId({
         jobUrl:
-          "https://uk.linkedin.com/jobs/view/engineer-170-000-at-hunter-bond-4400000001",
+          "https://uk.linkedin.com/jobs/view/engineer-170-000-at-example-recruiting-2000006001",
       }),
-    ).toBe("4400000001");
+    ).toBe("2000006001");
     expect(
       extractExternalId({
         jobUrl: "https://uk.linkedin.com/jobs/view/dev-100-remoto-at-acme",
@@ -147,15 +147,15 @@ describe("extractExternalId", () => {
     expect(
       extractExternalId({
         jobUrl: "https://www.linkedin.com/jobs/view/apply",
-        sourceJobId: "li-4383255214",
+        sourceJobId: "li-2000001214",
       }),
-    ).toBe("4383255214");
+    ).toBe("2000001214");
     expect(
       extractExternalId({
         jobUrl: "https://www.linkedin.com/jobs/view/apply",
-        sourceJobId: "4383255214",
+        sourceJobId: "2000001214",
       }),
-    ).toBe("4383255214");
+    ).toBe("2000001214");
     expect(
       extractExternalId({
         jobUrl: "https://www.linkedin.com/jobs/view/apply",
@@ -167,10 +167,10 @@ describe("extractExternalId", () => {
   it("prefers the path over a disagreeing source_job_id", () => {
     expect(
       extractExternalId({
-        jobUrl: "https://www.linkedin.com/jobs/view/4383993915",
+        jobUrl: "https://www.linkedin.com/jobs/view/2000003915",
         sourceJobId: "li-9999999999",
       }),
-    ).toBe("4383993915");
+    ).toBe("2000003915");
   });
 
   it("yields no id for a board we do not key on", () => {
@@ -186,16 +186,16 @@ describe("extractExternalId", () => {
 describe("externalIdKey", () => {
   it("keys one posting identically across country subdomains and scrapers", () => {
     const viaLinkedIn = externalIdKey({
-      jobUrl: "https://www.linkedin.com/jobs/view/4383993915",
-      sourceJobId: "li-4383993915",
+      jobUrl: "https://www.linkedin.com/jobs/view/2000003915",
+      sourceJobId: "li-2000003915",
     });
     const viaApify = externalIdKey({
       jobUrl:
-        "https://at.linkedin.com/jobs/view/senior-data-architect-at-nagarro-4383993915",
-      sourceJobId: "4383993915",
+        "https://at.linkedin.com/jobs/view/senior-data-architect-at-example-consulting-2000003915",
+      sourceJobId: "2000003915",
     });
 
-    expect(viaLinkedIn).toBe("linkedin:4383993915");
+    expect(viaLinkedIn).toBe("linkedin:2000003915");
     expect(viaApify).toBe(viaLinkedIn);
   });
 
@@ -376,10 +376,10 @@ describe("hasConflictingExternalIds", () => {
   it("reports no conflict when the ids agree across subdomains", () => {
     expect(
       hasConflictingExternalIds(
-        { jobUrl: "https://www.linkedin.com/jobs/view/4383993915" },
+        { jobUrl: "https://www.linkedin.com/jobs/view/2000003915" },
         {
           jobUrl:
-            "https://at.linkedin.com/jobs/view/senior-data-architect-4383993915",
+            "https://at.linkedin.com/jobs/view/senior-data-architect-2000003915",
         },
       ),
     ).toBe(false);
