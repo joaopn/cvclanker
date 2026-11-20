@@ -68,15 +68,15 @@ describe("extractExternalId", () => {
 
   it("is ANCHORED — a 6+ digit number inside the slug is not the job id", () => {
     // THE discriminating case: without the `$`, this captures 191492 out of
-    // the slug and merges three unrelated Harnham requisitions. The cases
-    // below it are rejected by the length bound alone and would pass with the
-    // anchor deleted, so this one is what protects the anchor.
+    // the slug and merges three unrelated requisitions from one recruiter.
+    // The cases below it are rejected by the length bound alone and would
+    // pass with the anchor deleted, so this one is what protects the anchor.
     expect(
       extractExternalId({
         jobUrl:
-          "https://uk.linkedin.com/jobs/view/lead-ai-engineer-191492-at-harnham-4455252869",
+          "https://uk.linkedin.com/jobs/view/lead-ai-engineer-191492-at-example-recruiting-1000000002",
       }),
-    ).toBe("4455252869");
+    ).toBe("1000000002");
   });
 
   it("tolerates a trailing slash", () => {

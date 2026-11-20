@@ -156,22 +156,22 @@ describe("readSettledPageContent", () => {
 describe("rewriteUrlForFetch", () => {
   const GUEST = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting";
 
-  // The reported URL, verbatim from LinkedIn's own copy-link (B56). The
+  // Shaped like the reported URL from LinkedIn's own copy-link (B56): the
   // trademark sign arrives percent-encoded and the path ends in a slash.
   const SLUGGED =
-    "https://www.linkedin.com/jobs/view/data-scientist-onsite-london-phd-preferred-at-welltower%E2%84%A2-inc-nyse-well-4460359035/";
+    "https://www.linkedin.com/jobs/view/analyst-hybrid-at-example%E2%84%A2-holdings-1000000001/";
 
   it("rewrites a slugged job URL to the guest endpoint", async () => {
     const { rewriteUrlForFetch } = await import("./manualJob");
 
-    expect(rewriteUrlForFetch(SLUGGED)).toBe(`${GUEST}/4460359035`);
+    expect(rewriteUrlForFetch(SLUGGED)).toBe(`${GUEST}/1000000001`);
   });
 
   it("rewrites both URL shapes for one posting to the same guest URL", async () => {
     const { rewriteUrlForFetch } = await import("./manualJob");
 
-    const bare = "https://www.linkedin.com/jobs/view/4460359035/";
-    expect(rewriteUrlForFetch(bare)).toBe(`${GUEST}/4460359035`);
+    const bare = "https://www.linkedin.com/jobs/view/1000000001/";
+    expect(rewriteUrlForFetch(bare)).toBe(`${GUEST}/1000000001`);
     expect(rewriteUrlForFetch(SLUGGED)).toBe(rewriteUrlForFetch(bare));
   });
 
@@ -179,8 +179,8 @@ describe("rewriteUrlForFetch", () => {
     const { rewriteUrlForFetch } = await import("./manualJob");
 
     expect(
-      rewriteUrlForFetch("https://www.linkedin.com/jobs/view/4460359035"),
-    ).toBe(`${GUEST}/4460359035`);
+      rewriteUrlForFetch("https://www.linkedin.com/jobs/view/1000000001"),
+    ).toBe(`${GUEST}/1000000001`);
   });
 
   it("rewrites a country-subdomain job URL", async () => {
@@ -188,9 +188,9 @@ describe("rewriteUrlForFetch", () => {
 
     expect(
       rewriteUrlForFetch(
-        "https://uk.linkedin.com/jobs/view/senior-engineer-at-acme-4460359035",
+        "https://uk.linkedin.com/jobs/view/senior-engineer-at-acme-1000000001",
       ),
-    ).toBe(`${GUEST}/4460359035`);
+    ).toBe(`${GUEST}/1000000001`);
   });
 
   it("takes the id anchored at the end, not the first number in the slug", async () => {
@@ -200,9 +200,9 @@ describe("rewriteUrlForFetch", () => {
     // this posting under a different job's identity.
     expect(
       rewriteUrlForFetch(
-        "https://www.linkedin.com/jobs/view/engineer-170000-gbp-at-acme-4460359035",
+        "https://www.linkedin.com/jobs/view/engineer-170000-gbp-at-acme-1000000001",
       ),
-    ).toBe(`${GUEST}/4460359035`);
+    ).toBe(`${GUEST}/1000000001`);
   });
 
   it("leaves a LinkedIn URL that is not a job view untouched", async () => {
@@ -215,14 +215,14 @@ describe("rewriteUrlForFetch", () => {
   it("leaves a lookalike host untouched", async () => {
     const { rewriteUrlForFetch } = await import("./manualJob");
 
-    const lookalike = "https://notlinkedin.com/jobs/view/4460359035";
+    const lookalike = "https://notlinkedin.com/jobs/view/1000000001";
     expect(rewriteUrlForFetch(lookalike)).toBe(lookalike);
   });
 
   it("leaves a non-LinkedIn job URL untouched", async () => {
     const { rewriteUrlForFetch } = await import("./manualJob");
 
-    const other = "https://boards.greenhouse.io/acme/jobs/4460359035";
+    const other = "https://boards.greenhouse.io/acme/jobs/1000000001";
     expect(rewriteUrlForFetch(other)).toBe(other);
   });
 
@@ -243,7 +243,7 @@ describe("rewriteUrlForFetch", () => {
       rewriteUrlForFetch(
         `${SLUGGED}?position=1&pageNum=0&refId=abc%3D%3D&trackingId=xyz%3D%3D`,
       ),
-    ).toBe(`${GUEST}/4460359035`);
+    ).toBe(`${GUEST}/1000000001`);
   });
 
   it("does not rewrite a job path whose id is too short to be a posting id", async () => {
@@ -269,8 +269,8 @@ describe("rewriteUrlForFetch", () => {
     // trailing number would be the posting id there, is NOT established here.
     expect(
       rewriteUrlForFetch(
-        "https://www.linkedin.com/jobs/view/someSubPath/4460359035",
+        "https://www.linkedin.com/jobs/view/someSubPath/1000000001",
       ),
-    ).toBe(`${GUEST}/4460359035`);
+    ).toBe(`${GUEST}/1000000001`);
   });
 });

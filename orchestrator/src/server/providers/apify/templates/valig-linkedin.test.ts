@@ -169,13 +169,13 @@ describe("valigLinkedinTemplate.termRunInputs", () => {
 
 describe("valigLinkedinTemplate.mapItem", () => {
   const row = {
-    id: "4474330420",
-    url: "https://uk.linkedin.com/jobs/view/data-scientist-at-harnham-4474330420",
+    id: "1000000003",
+    url: "https://uk.linkedin.com/jobs/view/data-scientist-at-example-recruiting-1000000003",
     title: "Data Scientist",
     location: "London, England, United Kingdom",
     postedDate: "2026-10-01T00:00:00.000Z",
-    companyName: "Harnham",
-    companyUrl: "https://uk.linkedin.com/company/harnham",
+    companyName: "Example Recruiting",
+    companyUrl: "https://uk.linkedin.com/company/example-recruiting",
     experienceLevel: "Mid-Senior level",
     contractType: "Full-time",
     workType: "Financial Services",
@@ -193,10 +193,10 @@ describe("valigLinkedinTemplate.mapItem", () => {
     ).toEqual({
       source: "apify:instance-v",
       title: "Data Scientist",
-      employer: "Harnham",
+      employer: "Example Recruiting",
       jobUrl: row.url,
-      sourceJobId: "4474330420",
-      employerUrl: "https://uk.linkedin.com/company/harnham",
+      sourceJobId: "1000000003",
+      employerUrl: "https://uk.linkedin.com/company/example-recruiting",
       location: "London, England, United Kingdom",
       jobDescription: "First paragraph.\n\nSecond paragraph.",
       datePosted: "2026-10-01T00:00:00.000Z",
