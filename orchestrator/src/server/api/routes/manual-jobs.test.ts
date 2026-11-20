@@ -261,6 +261,185 @@ describe.sequential("detached batch URL import", () => {
     });
   });
 
+  describe("a failed row finished by hand", () => {
+    // A created job starts a fire-and-forget scoring run; let it finish before
+    // the outer teardown closes the DB (same allowance as the `/import` test).
+    afterEach(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
+
+    const rowUrl = "https://example.com/jobs/image-posting";
+    const usage = {
+      promptTokens: 4259,
+      completionTokens: 584,
+      totalTokens: 4843,
+      totalMillions: 0.004843,
+    };
+
+    async function importOneParseFailure() {
+      const { fetchJobDraft } = await import("@server/services/manualJob");
+      vi.mocked(fetchJobDraft).mockResolvedValueOnce({
+        job: { title: "Data Engineer", location: "Vienna" },
+        usage,
+        warning: null,
+      });
+      await start([rowUrl]);
+      const batch = await waitForTerminal();
+      expect(batch.results[0]).toMatchObject({ code: "PARSE_FAILED" });
+      return batch.batchId as string;
+    }
+
+    const getDraft = (batchId: string, url: string) =>
+      fetch(
+        `${baseUrl}/api/manual-jobs/import-batch/draft?${new URLSearchParams({ batchId, url })}`,
+      );
+
+    const save = (body: unknown) =>
+      fetch(`${baseUrl}/api/manual-jobs/import-batch/manual`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+    const completeJob = {
+      title: "Data Engineer",
+      employer: "Acme",
+      jobDescription: "Typed in by hand",
+      location: "Vienna",
+    };
+
+    it("serves what the fetch read, and nothing for another import", async () => {
+      const batchId = await importOneParseFailure();
+      const res = await getDraft(batchId, rowUrl);
+      expect((await res.json()).data.draft).toEqual({
+        title: "Data Engineer",
+        location: "Vienna",
+      });
+      const other = await getDraft("another-import", rowUrl);
+      expect((await other.json()).data.draft).toBeNull();
+      const bad = await fetch(`${baseUrl}/api/manual-jobs/import-batch/draft`);
+      expect(bad.status).toBe(400);
+    });
+
+    it("creates the job, scores it and turns the row saved", async () => {
+      const batchId = await importOneParseFailure();
+      const { scoreJobSuitability } = await import("@server/services/scorer");
+      vi.mocked(scoreJobSuitability).mockClear();
+
+      const res = await save({ batchId, url: rowUrl, job: completeJob });
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.data).toMatchObject({ ok: true, status: "created" });
+
+      const jobsRepo = await import("@server/repositories/jobs");
+      const job = await jobsRepo.getJobById(body.data.jobId);
+      expect(job).toMatchObject({
+        source: "manual",
+        status: "discovered",
+        title: "Data Engineer",
+        employer: "Acme",
+        jobDescription: "Typed in by hand",
+        location: "Vienna",
+        jobUrl: rowUrl,
+      });
+      await vi.waitFor(() =>
+        expect(vi.mocked(scoreJobSuitability)).toHaveBeenCalledTimes(1),
+      );
+
+      const listed = await fetch(`${baseUrl}/api/manual-jobs/import-batch`);
+      const { batch } = (await listed.json()).data;
+      expect(batch).toMatchObject({ succeeded: 1, failed: 0 });
+      expect(batch.results[0]).toMatchObject({
+        ok: true,
+        status: "created",
+        jobId: body.data.jobId,
+        usage,
+      });
+    });
+
+    it("answers duplicate for a job already saved, and counts a second save once", async () => {
+      const batchId = await importOneParseFailure();
+      const first = await save({ batchId, url: rowUrl, job: completeJob });
+      const firstId = (await first.json()).data.jobId;
+
+      const second = await save({ batchId, url: rowUrl, job: completeJob });
+      expect((await second.json()).data).toMatchObject({
+        status: "duplicate",
+        jobId: firstId,
+      });
+
+      const listed = await fetch(`${baseUrl}/api/manual-jobs/import-batch`);
+      expect((await listed.json()).data.batch).toMatchObject({
+        succeeded: 1,
+        duplicates: 0,
+        failed: 0,
+      });
+    });
+
+    it("falls back to the row's URL when the job URL is cleared or malformed", async () => {
+      const batchId = await importOneParseFailure();
+      const res = await save({
+        batchId,
+        url: rowUrl,
+        job: { ...completeJob, jobUrl: "not a url" },
+      });
+      const jobsRepo = await import("@server/repositories/jobs");
+      const job = await jobsRepo.getJobById((await res.json()).data.jobId);
+      expect(job?.jobUrl).toBe(rowUrl);
+    });
+
+    it("refuses a job missing a required field", async () => {
+      const batchId = await importOneParseFailure();
+      for (const field of ["title", "employer", "jobDescription"] as const) {
+        const res = await save({
+          batchId,
+          url: rowUrl,
+          job: { ...completeJob, [field]: "   " },
+        });
+        expect(res.status).toBe(400);
+      }
+    });
+
+    // Long fetched descriptions must not be refused: the batch import takes
+    // them, and the form is pre-filled from what it took.
+    it("accepts a description longer than the single-job import allows", async () => {
+      const batchId = await importOneParseFailure();
+      const res = await save({
+        batchId,
+        url: rowUrl,
+        job: { ...completeJob, jobDescription: "x".repeat(60000) },
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("saves against a replaced import but leaves the newer one alone", async () => {
+      const batchId = await importOneParseFailure();
+      // The newer import holds the SAME url, failed — so only the import-id
+      // check keeps the save from resolving the newer row.
+      const newerBatchId = await importOneParseFailure();
+      expect(newerBatchId).not.toBe(batchId);
+
+      const res = await save({ batchId, url: rowUrl, job: completeJob });
+      expect((await res.json()).data).toMatchObject({ status: "created" });
+
+      const listed = await fetch(`${baseUrl}/api/manual-jobs/import-batch`);
+      const { batch } = (await listed.json()).data;
+      expect(batch.batchId).toBe(newerBatchId);
+      expect(batch).toMatchObject({ succeeded: 0, failed: 1 });
+      expect(batch.results[0]).toMatchObject({ status: "failed" });
+    });
+
+    it("refuses a row URL that is not http(s)", async () => {
+      const batchId = await importOneParseFailure();
+      const res = await save({
+        batchId,
+        url: "javascript:alert(1)",
+        job: completeJob,
+      });
+      expect(res.status).toBe(400);
+    });
+  });
+
   it("streams a snapshot on connect", async () => {
     await start(["https://example.com/a"]);
     await waitForTerminal();

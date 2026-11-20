@@ -20,6 +20,7 @@ import { runBatchItems } from "@server/services/batches/run-batch-items";
 import type {
   BatchUrlImportItemResult,
   JobActionBatchStatus,
+  ManualJobDraft,
   UrlImportBatchSnapshot,
 } from "@shared/types";
 
@@ -31,6 +32,12 @@ interface BatchRecord {
   urls: string[];
   /** Keyed by url so the snapshot can be rebuilt in REQUEST order. */
   resultsByUrl: Map<string, BatchUrlImportItemResult>;
+  /**
+   * What the fetch read for a URL that failed, to pre-fill the manual form.
+   * Kept beside the results rather than in them: the snapshot is sent whole on
+   * every settled URL, and descriptions run to tens of KB each.
+   */
+  draftsByUrl: Map<string, ManualJobDraft>;
   succeeded: number;
   duplicates: number;
   failed: number;
@@ -103,10 +110,16 @@ export function cancelUrlImportBatch(): boolean {
   return true;
 }
 
+export interface UrlImportOutcome {
+  result: BatchUrlImportItemResult;
+  /** Partial fields read off a page that failed; kept only for failures. */
+  draft?: ManualJobDraft | null;
+}
+
 export interface StartUrlImportInput {
   urls: string[];
   concurrency: number;
-  importUrl: (url: string) => Promise<BatchUrlImportItemResult>;
+  importUrl: (url: string) => Promise<UrlImportOutcome>;
 }
 
 /**
@@ -126,6 +139,7 @@ export function startUrlImportBatch(
     status: "running",
     urls: [...input.urls],
     resultsByUrl: new Map(),
+    draftsByUrl: new Map(),
     succeeded: 0,
     duplicates: 0,
     failed: 0,
@@ -142,8 +156,9 @@ export function startUrlImportBatch(
       concurrency: input.concurrency,
       isCancelled: () => record.cancelRequested,
       runItem: async (url) => {
-        const result = await input.importUrl(url);
+        const { result, draft } = await input.importUrl(url);
         record.resultsByUrl.set(url, result);
+        if (!result.ok && draft) record.draftsByUrl.set(url, draft);
         if (result.ok && result.status === "created") record.succeeded += 1;
         else if (result.ok && result.status === "duplicate")
           record.duplicates += 1;
@@ -163,6 +178,41 @@ export function startUrlImportBatch(
   })();
 
   return { batchId: record.id, done };
+}
+
+/**
+ * The draft kept for a failed URL of the retained import, or null — also when
+ * the import named is no longer the retained one.
+ */
+export function getUrlImportDraft(
+  batchId: string,
+  url: string,
+): ManualJobDraft | null {
+  if (!current || current.id !== batchId) return null;
+  return current.draftsByUrl.get(url) ?? null;
+}
+
+/**
+ * A failed row finished by hand. Replaces that row's result and moves the
+ * counters — only when the import is still the retained one AND the row is
+ * still failed, so a second save of the same row (a double click, another
+ * device) cannot count it twice. The fetch's token usage stays on the row.
+ */
+export function resolveUrlImportItem(
+  batchId: string,
+  url: string,
+  result: Extract<BatchUrlImportItemResult, { ok: true }>,
+): boolean {
+  if (!current || current.id !== batchId) return false;
+  const previous = current.resultsByUrl.get(url);
+  if (!previous || previous.ok) return false;
+  current.resultsByUrl.set(url, { ...result, usage: previous.usage ?? null });
+  current.draftsByUrl.delete(url);
+  current.failed -= 1;
+  if (result.status === "created") current.succeeded += 1;
+  else current.duplicates += 1;
+  emit(current);
+  return true;
 }
 
 /** Test-only: drop all state so files don't leak imports into each other. */

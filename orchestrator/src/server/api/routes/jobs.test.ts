@@ -1423,7 +1423,9 @@ describe.sequential("detached job action batches", () => {
       concurrency: 1,
       importUrl: async (url) => {
         await gate;
-        return { ok: false, status: "failed", url, code: "X", message: "x" };
+        return {
+          result: { ok: false, status: "failed", url, code: "X", message: "x" },
+        };
       },
     });
 

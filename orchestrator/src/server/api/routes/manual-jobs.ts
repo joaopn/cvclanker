@@ -26,14 +26,19 @@ import { getEffectiveSettings } from "@server/services/settings";
 import {
   cancelUrlImportBatch,
   getUrlImportBatch,
+  getUrlImportDraft,
+  resolveUrlImportItem,
   startUrlImportBatch,
   subscribeToUrlImportBatch,
+  type UrlImportOutcome,
 } from "@server/services/url-import/batch-store";
 import { canonicalizeJobUrl } from "@shared/job-url";
 import { tailoringFailureSummary } from "@shared/tailoring-failure";
 import {
   BATCH_URL_IMPORT_MAX_URLS,
   type BatchUrlImportItemResult,
+  type BatchUrlImportTokenUsage,
+  type ManualJobDraft,
   type UrlImportBatchStreamEvent,
 } from "@shared/types";
 import { type Request, type Response, Router } from "express";
@@ -239,7 +244,7 @@ async function scoreJobAsync(jobId: string): Promise<void> {
 async function importSingleUrl(
   url: string,
   options: { signal?: AbortSignal; scoringEnabled: boolean },
-): Promise<BatchUrlImportItemResult> {
+): Promise<UrlImportOutcome> {
   // Shared fetch+infer head: tier 1/2 programmatic extraction is a verbatim DOM
   // read (skips the tier-3 LLM); otherwise the page text goes to the LLM. Both
   // paths normalize to { job, usage, warning } — usage/warning must survive here
@@ -250,32 +255,68 @@ async function importSingleUrl(
   } catch (error) {
     const err = toAppError(error);
     return {
-      ok: false,
-      status: "failed",
-      url,
-      code: err.code,
-      message: err.message,
+      result: {
+        ok: false,
+        status: "failed",
+        url,
+        code: err.code,
+        message: err.message,
+      },
     };
   }
 
   const draft = inference.job;
+  const usage = inference.usage ?? null;
   const title = cleanOptional(draft.title);
   const employer = cleanOptional(draft.employer);
   const jobDescription = cleanOptional(draft.jobDescription);
-  const usage = inference.usage ?? null;
-
   if (!title || !employer || !jobDescription) {
     return {
-      ok: false,
-      status: "failed",
-      url,
-      code: "PARSE_FAILED",
-      message:
-        inference.warning ||
-        "Could not extract title, employer, or description from the page.",
-      usage,
+      result: {
+        ok: false,
+        status: "failed",
+        url,
+        code: "PARSE_FAILED",
+        message:
+          inference.warning ||
+          "Could not extract title, employer, or description from the page.",
+        usage,
+      },
+      // What WAS read pre-fills the manual form for this row.
+      draft,
     };
   }
+
+  return {
+    result: await saveImportedJob({
+      url,
+      draft: { ...draft, title, employer, jobDescription },
+      usage,
+      scoringEnabled: options.scoringEnabled,
+    }),
+  };
+}
+
+/** A draft whose three required fields are present and trimmed. */
+type CompleteJobDraft = ManualJobDraft & {
+  title: string;
+  employer: string;
+  jobDescription: string;
+};
+
+/**
+ * Create the job a URL import produced — fetched, or finished by hand — or
+ * report the one already saved under that URL. The one place both paths go
+ * through, so the duplicate lookup, field cleaning and scoring cannot drift.
+ */
+async function saveImportedJob(args: {
+  url: string;
+  draft: CompleteJobDraft;
+  usage: BatchUrlImportTokenUsage | null;
+  scoringEnabled: boolean;
+}): Promise<BatchUrlImportItemResult> {
+  const { url, draft, usage } = args;
+  const { title, employer, jobDescription } = draft;
 
   const requestedJobUrl =
     cleanOptional(draft.jobUrl) || cleanOptional(draft.applicationLink) || url;
@@ -323,7 +364,7 @@ async function importSingleUrl(
       starting: cleanOptional(draft.starting) ?? undefined,
     });
 
-    if (options.scoringEnabled) {
+    if (args.scoringEnabled) {
       void scoreJobAsync(created.id).catch((error) => {
         logger.warn("Batch URL import scoring failed", {
           jobId: created.id,
@@ -455,6 +496,115 @@ manualJobsRouter.get("/import-batch/stream", (req: Request, res: Response) => {
   });
   req.on("close", cleanup);
 });
+
+const urlImportDraftQuerySchema = z.object({
+  batchId: z.string().min(1),
+  url: z.string().min(1),
+});
+
+/**
+ * GET /api/manual-jobs/import-batch/draft?batchId=&url= - What the fetch read
+ * for a failed URL of the retained import, to pre-fill the manual form; null
+ * when nothing was read or the import has since been replaced.
+ */
+manualJobsRouter.get("/import-batch/draft", (req: Request, res: Response) => {
+  const parsed = urlImportDraftQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return fail(
+      res,
+      badRequest("Invalid draft request", parsed.error.flatten()),
+    );
+  }
+  ok(res, {
+    draft: getUrlImportDraft(parsed.data.batchId, parsed.data.url),
+  });
+});
+
+const optionalDraftField = z.string().optional();
+
+function isHttpUrl(value: string | undefined): value is string {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value.trim());
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+// The row's URL is checked like a URL handed to the batch import, and must
+// also be http(s), since the job is stored under it when no usable job URL is
+// given. The job's fields are not length-capped, unlike `/import`, because the
+// batch import stores fetched fields uncapped and the form is pre-filled from
+// them; only the three required ones must be non-empty.
+const manualUrlImportSchema = z.object({
+  batchId: z.string().min(1),
+  url: z
+    .string()
+    .trim()
+    .url()
+    .max(2000)
+    .refine(isHttpUrl, "Expected an http(s) URL"),
+  job: z.object({
+    title: z.string().trim().min(1),
+    employer: z.string().trim().min(1),
+    jobDescription: z.string().trim().min(1),
+    jobUrl: optionalDraftField,
+    applicationLink: optionalDraftField,
+    location: optionalDraftField,
+    salary: optionalDraftField,
+    deadline: optionalDraftField,
+    jobType: optionalDraftField,
+    jobLevel: optionalDraftField,
+    jobFunction: optionalDraftField,
+    disciplines: optionalDraftField,
+    degreeRequired: optionalDraftField,
+    starting: optionalDraftField,
+  }),
+});
+
+/**
+ * POST /api/manual-jobs/import-batch/manual - A failed row finished by hand.
+ * Saves the job the way a fetched one is saved, then marks the row saved in the
+ * import it came from — when that import is still the retained one and the row
+ * is still failed.
+ */
+manualJobsRouter.post(
+  "/import-batch/manual",
+  async (req: Request, res: Response) => {
+    try {
+      const parsed = manualUrlImportSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return fail(
+          res,
+          badRequest("Invalid manual import request", parsed.error.flatten()),
+        );
+      }
+      const { batchId, url, job } = parsed.data;
+      const result = await saveImportedJob({
+        url,
+        // A cleared or malformed job URL falls back to the row's own URL, so
+        // the job never lands under a made-up address.
+        draft: { ...job, jobUrl: isHttpUrl(job.jobUrl) ? job.jobUrl : url },
+        usage: null,
+        scoringEnabled: await isJobScoringEnabled(),
+      });
+      if (!result.ok) {
+        return fail(
+          res,
+          new AppError({
+            message: result.message,
+            details: { url, code: result.code },
+          }),
+        );
+      }
+      resolveUrlImportItem(batchId, url, result);
+      ok(res, result);
+    } catch (error) {
+      fail(res, toAppError(error));
+    }
+  },
+);
 
 /**
  * POST /api/manual-jobs/import-batch/cancel - Stop dispatching. URLs already
