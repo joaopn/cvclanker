@@ -1,54 +1,47 @@
-# CV Clanker
+<div align="center">
 
-CV Clanker is a self-hosted workspace for a job search. It scrapes job boards,
-optionally scores how well each posting matches you, and tailors a copy of your
-CV and a cover letter for each one. It runs locally in Docker, stores everything
-in a single SQLite file, and does not submit applications for you.
+<img src="orchestrator/public/favicon.svg" alt="CV Clanker" width="96">
 
-It's a fork of [JobOps](https://github.com/DaKheera47/job-ops), adapted to a
-LaTeX/Word/HTML CV workflow and with the parts that weren't needed for that removed
-(telemetry, hosted cloud, application tracking). It's a personal fork shared in
-case it's useful — there's no roadmap, hosted version, or support commitment.
+<h3>CV Clanker</h3>
+
+A self-hosted workspace for a job search.<br>
+It scrapes job boards, scores each posting against you, and tailors your own CV and a cover letter for each one.
+
+[![License: AGPL-3.0 + Commons Clause](https://img.shields.io/badge/license-AGPL--3.0%20%2B%20Commons%20Clause-blue)](LICENSE)
+[![Docker image](https://img.shields.io/badge/docker-ghcr.io%2Fjoaopn%2Fcvclanker-2496ED?logo=docker&logoColor=white)](https://github.com/joaopn/cvclanker/pkgs/container/cvclanker)
+![Self-hosted](https://img.shields.io/badge/self--hosted-yes-5E81AC)
+![Telemetry: none](https://img.shields.io/badge/telemetry-none-brightgreen)
+![CV formats](https://img.shields.io/badge/CV-LaTeX%20%7C%20Word%20%7C%20HTML-8A5A2B)
+
+[Getting started](docs/getting-started.md) · [CVs](docs/cvs.md) · [Job sources](docs/job-sources.md) · [Tailoring](docs/tailoring.md) · [LLM providers](docs/llm-providers.md) · [FAQ](docs/faq.md)
+
+</div>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.png">
+  <img src="docs/assets/hero.png" alt="The job list with fit scores and the selected job's fit assessment">
+</picture>
 
 ## What it does
 
-- **CVs in LaTeX, Word or HTML.** You upload your own `.tex`, `.docx` or
-  `.html` page. Tailoring edits the content of that document rather than
-  generating a new one from a fixed template. LaTeX renders to PDF; Word is
-  downloaded as a `.docx` and HTML as the page (or `.zip`), each with a PDF
-  preview.
-- **Job scraping.** Built-in sources are LinkedIn and Indeed (via
-  jobspy), Hiring Cafe, startup.jobs, and Working Nomads. [Apify](https://apify.com)
-  actors can also be used as sources, with ready-made templates for LinkedIn and
-  Indeed.
-- **Tailoring from a brief.** You write a free-text "personal brief" describing
-  things your CV leaves out. Per-job tailoring and an ATS keyword pass use the
-  brief and the job description; a chat panel proposes edits you accept or reject.
-- **LLM of your choice.** OpenAI, Gemini, OpenRouter, Codex, Claude Code, any
-  OpenAI-compatible endpoint, or a local model via LM Studio or Ollama.
-- **Local.** No accounts and no telemetry; the only outbound calls are to the LLM
-  and the job sources you configure.
+- **Your CV, your format.** Upload a `.tex`, `.docx` or `.html` CV; tailoring edits that document instead of filling a fixed template.
+- **Scrape.** LinkedIn, Indeed, Hiring Cafe, startup.jobs, Working Nomads and more, plus any [Apify](https://apify.com) actor.
+- **Score.** An LLM rates each posting against your CV and a free-text brief, so you triage the good fits first.
+- **Tailor.** Per-job CV and cover letter, with an ATS keyword pass and a chat that proposes edits you accept or reject.
+- **Local.** Runs in Docker on one SQLite file; no accounts, no telemetry. Bring OpenAI, Gemini, OpenRouter, Claude Code, Codex or a local model.
 
 ## Install
 
-You need [Docker](https://docs.docker.com/get-docker/). The image
-(`ghcr.io/joaopn/cvclanker`) bundles the rest (Tectonic for LaTeX, LibreOffice
-for Word, headless browsers).
-
-**Release** — run the published image; your data is kept in a Docker volume
-named `cvclanker-data`:
+You need [Docker](https://docs.docker.com/get-docker/).
 
 ```bash
 docker run -d --name cvclanker -p 3005:3001 -e HOST_PORT=3005 --cap-drop ALL --security-opt no-new-privileges -v cvclanker-data:/app/data --restart unless-stopped ghcr.io/joaopn/cvclanker:latest
 ```
 
-Then open http://localhost:3005. The onboarding wizard covers uploading a CV,
-writing a brief, choosing an LLM, and picking sources. Everything is set inside
-the app. No API key is needed to start it — you need one (or a local model) for
-the steps that call an LLM.
+Open http://localhost:3005; the onboarding wizard does the rest. Your data lives in the `cvclanker-data` volume.
 
-To update, paste these three lines (the last is the same command as above, so
-your data volume is reattached):
+<details>
+<summary>Update</summary>
 
 ```bash
 docker pull ghcr.io/joaopn/cvclanker:latest
@@ -56,7 +49,10 @@ docker rm -f cvclanker
 docker run -d --name cvclanker -p 3005:3001 -e HOST_PORT=3005 --cap-drop ALL --security-opt no-new-privileges -v cvclanker-data:/app/data --restart unless-stopped ghcr.io/joaopn/cvclanker:latest
 ```
 
-**Dev** — build from source with git and Docker Compose:
+</details>
+
+<details>
+<summary>Build from source</summary>
 
 ```bash
 git clone https://github.com/joaopn/cvclanker.git
@@ -64,38 +60,42 @@ cd cvclanker
 docker compose up -d --build
 ```
 
-Update with `git pull && docker compose down && docker compose up -d --build`
-(Linux or macOS shell).
+Update with `git pull && docker compose down && docker compose up -d --build`.
 
-Stopping, logs, backups and starting over are in
-[Getting started](docs/getting-started.md).
+</details>
+
+Logs, backups and starting over: [Getting started](docs/getting-started.md).
 
 ## How it works
 
-1. Upload a CV (LaTeX, Word or HTML). The upload is accepted only if the app can
-   reproduce your document exactly; see [docs/cvs.md](docs/cvs.md).
-2. Write a personal brief — context your CV doesn't include.
-3. Scrape jobs from the sources you enabled.
-4. Optionally score fit, then triage from the list or the swipe view.
-5. Tailor the CV and generate a cover letter per job, reviewing each change.
-6. Track jobs through Inbox → Live → Closed.
+**1\.** Upload your CV and write a personal brief: the projects and tools your CV leaves out. The upload is accepted only if the app can reproduce your document exactly ([details](docs/cvs.md)).
 
-## Documentation
+<img src="docs/assets/brief.png" alt="The personal brief on the CV page" width="720">
 
-See [`docs/`](docs/):
+**2\.** Set up a search profile: search terms, country, cities.
 
-- [Getting started](docs/getting-started.md) — install and first run
-- [CVs: LaTeX, Word & the brief](docs/cvs.md)
-- [Job sources](docs/job-sources.md) and [Apify integration](docs/apify.md)
-- [Tailoring & AI assist](docs/tailoring.md)
-- [Tracking your hunt](docs/job-lifecycle.md)
-- [LLM providers & prompts](docs/llm-providers.md)
-- [Configuration](docs/configuration.md) and [FAQ](docs/faq.md)
+<img src="docs/assets/profile.png" alt="A search profile with terms and location" width="720">
+
+**3\.** Run the pipeline. It scrapes the sources you picked and scores every new posting.
+
+<img src="docs/assets/run.png" alt="The run menu with its sources" width="720">
+
+**4\.** Triage, at the desk or by swiping on your phone.
+
+<img src="docs/assets/swipe.png" alt="The swipe deck on a phone" width="300">
+
+**5\.** Tailor. Review each edited field, ask the chat about the job, and download the CV and cover letter.
+
+<img src="docs/assets/tailor.png" alt="The tailoring panel with edited fields and the chat" width="720">
+
+Applied jobs move on through Live, Interviewing and Closed; the Stats page shows where they stop. More in the [docs](docs/).
 
 ## Relation to JobOps
 
-Fork of [JobOps](https://github.com/DaKheera47/job-ops), diverged at commit
-`01452b6`. The main differences:
+A fork of [JobOps](https://github.com/DaKheera47/job-ops), reworked around your own CV document, with application tracking, the hosted cloud and telemetry removed. It is a personal project shared in case it is useful: no roadmap, hosted version or support commitment.
+
+<details>
+<summary>Comparison</summary>
 
 | | CV Clanker | JobOps |
 |---|---|---|
@@ -105,10 +105,10 @@ Fork of [JobOps](https://github.com/DaKheera47/job-ops), diverged at commit
 | Hosting | Self-host only | Self-host and paid cloud |
 | Scope | CV documents | Full application tracking (Gmail, kanban, visa) |
 
-The application-tracking, hosted-cloud, and telemetry features from JobOps were
-removed. A fuller comparison is in [docs/comparison.md](docs/comparison.md).
+Diverged at commit `01452b6`. Fuller comparison: [docs/comparison.md](docs/comparison.md).
+
+</details>
 
 ## License
 
-AGPLv3 + Commons Clause — see [LICENSE](LICENSE). Contributions welcome:
-[CONTRIBUTING.md](CONTRIBUTING.md).
+AGPLv3 + Commons Clause, see [LICENSE](LICENSE). Contributions welcome: [CONTRIBUTING.md](CONTRIBUTING.md).
