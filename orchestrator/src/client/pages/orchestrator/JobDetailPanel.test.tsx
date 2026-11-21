@@ -1,5 +1,6 @@
 /**
- * Covers the two tailor entry points that live in this file and nothing else.
+ * Covers the two tailor entry points that live in this file, the download
+ * items and the Description tab's reader.
  * There was no test file here at all, so both gates the duplicate-application
  * guard added were wired-by-tsc but unverified — and one of them
  * (`handleProcess`'s non-`ready` arm, reachable from the All Jobs tab's
@@ -10,7 +11,13 @@
 
 import { createJob } from "@shared/testing/factories";
 import type { Job } from "@shared/types.js";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@client/api", () => ({
@@ -63,13 +70,15 @@ const { settingsState } = vi.hoisted(() => ({
   settingsState: {
     cvSourceFormat: "latex" as "latex" | "docx" | "html",
     candidateName: null as string | null,
+    renderMarkdownInJobDescriptions: false,
   },
 }));
 vi.mock("@client/hooks/useSettings", () => ({
   useSettings: () => ({
     cvSourceFormat: settingsState.cvSourceFormat,
     candidateName: settingsState.candidateName,
-    renderMarkdownInJobDescriptions: false,
+    renderMarkdownInJobDescriptions:
+      settingsState.renderMarkdownInJobDescriptions,
   }),
 }));
 vi.mock("./useUndoController", () => ({
@@ -138,6 +147,7 @@ const renderPanel = (job: Job, confirmTailor: ConfirmTailor = allow) =>
 beforeEach(() => {
   settingsState.cvSourceFormat = "latex";
   settingsState.candidateName = null;
+  settingsState.renderMarkdownInJobDescriptions = false;
   vi.mocked(api.processJob)
     .mockClear()
     .mockResolvedValue(createJob({ id: "resolved" }));
@@ -310,5 +320,43 @@ describe("the More-actions download items", () => {
     renderPanel({ ...tailoredJob(), tailoredSourceShape: "file" });
 
     expect(downloadName("Download CV")).toBe("resume_Acme_Corp_Ltd.html");
+  });
+});
+
+describe("the Description tab's reader", () => {
+  const openReader = (jobDescription: string) => {
+    renderPanel(
+      createJob({
+        id: "j5",
+        employer: "Acme",
+        title: "Staff Engineer",
+        status: "backlog",
+        jobDescription,
+      }),
+    );
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Description" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open in reader" }));
+    return screen.getByRole("dialog");
+  };
+
+  it("opens the description in the reader box", () => {
+    const dialog = openReader("Build reliable systems.");
+    expect(dialog).toHaveTextContent("Job description");
+    expect(dialog).toHaveTextContent("Staff Engineer · Acme");
+    expect(dialog).toHaveTextContent("Build reliable systems.");
+  });
+
+  it("shows the same cleaned-up text as the tab, not the raw field", () => {
+    const dialog = openReader("<p>Build <b>reliable</b> systems.</p>");
+    expect(dialog).toHaveTextContent("Build reliable systems.");
+    expect(dialog).not.toHaveTextContent("<b>");
+  });
+
+  it("renders markdown when the setting is on", () => {
+    settingsState.renderMarkdownInJobDescriptions = true;
+    const dialog = openReader("## Responsibilities\n\nBuild systems.");
+    expect(
+      within(dialog).getByRole("heading", { name: "Responsibilities" }),
+    ).toBeInTheDocument();
   });
 });

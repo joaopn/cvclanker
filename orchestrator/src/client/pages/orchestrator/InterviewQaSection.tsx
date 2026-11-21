@@ -7,6 +7,7 @@ import { useState } from "react";
 import { JobDescriptionMarkdown } from "@/client/components/JobDescriptionMarkdown";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { ReaderDialog, readerSubtitle } from "./ReaderDialog";
 
 interface InterviewQaSectionProps {
   job: Job;
@@ -15,6 +16,8 @@ interface InterviewQaSectionProps {
 
 const STEER_MAX = 2000;
 const PREP_MAX = 20000;
+const EMPTY_PREP_TEXT =
+  "No interview strategy yet. Generate one to get a narrative, the questions you're likely to be asked, and high-leverage questions to ask back — grounded in your CV and this job.";
 
 export const InterviewQaSection: React.FC<InterviewQaSectionProps> = ({
   job,
@@ -86,8 +89,17 @@ export const InterviewQaSection: React.FC<InterviewQaSectionProps> = ({
 
   return (
     <div className="space-y-3">
-      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Interview QA
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Interview QA
+        </div>
+        <ReaderDialog title="Interview QA" subtitle={readerSubtitle(job)}>
+          {prep.trim().length > 0 ? (
+            <JobDescriptionMarkdown description={prep} />
+          ) : (
+            <p className="text-muted-foreground">{EMPTY_PREP_TEXT}</p>
+          )}
+        </ReaderDialog>
       </div>
 
       <div className="space-y-2 rounded-lg border border-border/60 bg-muted/10 p-3">
@@ -176,11 +188,7 @@ export const InterviewQaSection: React.FC<InterviewQaSectionProps> = ({
           </div>
         </div>
       ) : (
-        <p className="text-xs text-muted-foreground/70">
-          No interview strategy yet. Generate one to get a narrative, the
-          questions you're likely to be asked, and high-leverage questions to
-          ask back — grounded in your CV and this job.
-        </p>
+        <p className="text-xs text-muted-foreground/70">{EMPTY_PREP_TEXT}</p>
       )}
     </div>
   );

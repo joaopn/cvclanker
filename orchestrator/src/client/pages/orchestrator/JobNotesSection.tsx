@@ -12,9 +12,11 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { ReaderDialog } from "./ReaderDialog";
 
 interface JobNotesSectionProps {
   jobId: string;
+  readerSubtitle: string;
 }
 
 const TITLE_MAX = 120;
@@ -29,7 +31,13 @@ function formatNoteTimestamp(value: string): string {
   });
 }
 
-export const JobNotesSection: React.FC<JobNotesSectionProps> = ({ jobId }) => {
+const EMPTY_NOTES_TEXT =
+  "No notes yet. Use this as a notepad for interviews, follow-ups, and contacts.";
+
+export const JobNotesSection: React.FC<JobNotesSectionProps> = ({
+  jobId,
+  readerSubtitle,
+}) => {
   const { data: notes = [], isLoading, error } = useJobNotesQuery(jobId);
   const createNote = useCreateJobNoteMutation();
   const updateNote = useUpdateJobNoteMutation();
@@ -154,17 +162,45 @@ export const JobNotesSection: React.FC<JobNotesSectionProps> = ({ jobId }) => {
         <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Notes
         </div>
-        {!isAdding && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-8 px-2 text-xs"
-            onClick={startAdding}
-          >
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            Add note
-          </Button>
-        )}
+        <div className="flex items-center gap-1">
+          {!isAdding && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 px-2 text-xs"
+              onClick={startAdding}
+            >
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              Add note
+            </Button>
+          )}
+          <ReaderDialog title="Notes" subtitle={readerSubtitle}>
+            {error ? (
+              <p className="text-destructive">Failed to load notes.</p>
+            ) : isLoading ? (
+              <p className="text-muted-foreground">Loading notes…</p>
+            ) : notes.length === 0 ? (
+              <p className="text-muted-foreground">{EMPTY_NOTES_TEXT}</p>
+            ) : (
+              <div className="space-y-6">
+                {notes.map((note) => (
+                  <article key={note.id}>
+                    <h3 className="text-base font-semibold text-foreground">
+                      {note.title}
+                    </h3>
+                    <div className="mt-1 whitespace-pre-wrap">
+                      {note.content}
+                    </div>
+                    <div className="mt-2 text-[10px] uppercase tracking-wide text-muted-foreground/60">
+                      {note.updatedAt !== note.createdAt ? "Edited " : "Added "}
+                      {formatNoteTimestamp(note.updatedAt)}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </ReaderDialog>
+        </div>
       </div>
 
       {isAdding && renderEditor(handleCreate)}
@@ -177,10 +213,7 @@ export const JobNotesSection: React.FC<JobNotesSectionProps> = ({ jobId }) => {
           Loading notes…
         </div>
       ) : notes.length === 0 && !isAdding ? (
-        <p className="text-xs text-muted-foreground/70">
-          No notes yet. Use this as a notepad for interviews, follow-ups, and
-          contacts.
-        </p>
+        <p className="text-xs text-muted-foreground/70">{EMPTY_NOTES_TEXT}</p>
       ) : (
         <div className="space-y-2">
           {notes.map((note) =>

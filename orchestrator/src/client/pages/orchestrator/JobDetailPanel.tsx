@@ -50,6 +50,7 @@ import { JobDocumentsPanel } from "./JobDocumentsPanel";
 import { JobNotesSection } from "./JobNotesSection";
 import { JobStageSwitcher } from "./JobStageSwitcher";
 import { MarkClosedPopover } from "./MarkClosedPopover";
+import { ReaderDialog, readerSubtitle } from "./ReaderDialog";
 import { type ConfirmTailor, tailorApproved } from "./tailorCompanyConflicts";
 import { useUndo } from "./useUndoController";
 import { appliedBadgeTitle } from "./utils";
@@ -871,6 +872,16 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
                   </Button>
                 </>
               )}
+              <ReaderDialog
+                title="Job description"
+                subtitle={readerSubtitle(selectedJob)}
+              >
+                {renderMarkdownInJobDescriptions ? (
+                  <JobDescriptionMarkdown description={description} />
+                ) : (
+                  <div className="whitespace-pre-wrap">{description}</div>
+                )}
+              </ReaderDialog>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -958,7 +969,10 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
 
         {isLive && (
           <TabsContent value="notes" className="space-y-3 pt-3">
-            <JobNotesSection jobId={selectedJob.id} />
+            <JobNotesSection
+              jobId={selectedJob.id}
+              readerSubtitle={readerSubtitle(selectedJob)}
+            />
           </TabsContent>
         )}
       </Tabs>
