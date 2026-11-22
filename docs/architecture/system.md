@@ -120,7 +120,7 @@ When `BASIC_AUTH_USER` and `BASIC_AUTH_PASSWORD` are both set (in Settings or th
 
 ### Independent of upstream JobOps
 
-CV Clanker started as a fork of JobOps. The fork removed telemetry, version polling, the original project's hosted images and CI, and keeps it that way: no analytics calls and no links back to the original project's services. The only workflow in the repository publishes this documentation site, and the only outbound calls the app makes are the ones you configure.
+CV Clanker started as a fork of JobOps, diverging at commit `01452b6`. The fork removed telemetry, version polling, the original project's hosted images and CI, and keeps it that way: no analytics calls and no links back to the original project's services. The only workflow in the repository publishes this documentation site, and the only outbound calls the app makes are the ones you configure.
 
 ### Two ways to run: release and dev
 

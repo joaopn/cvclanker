@@ -12,7 +12,7 @@ CV Clanker runs as a single Docker container on your own machine.
 - **[Docker](https://docs.docker.com/get-docker/)**. The dev path also needs git and Docker Compose (included with Docker Desktop).
 - An **LLM API key** (OpenAI, Gemini, or OpenRouter are easiest), a Claude subscription through the Claude Code provider, or a **local** model via LM Studio / Ollama, which needs no key. See [LLM providers](llm-providers.md).
 
-The image, `ghcr.io/joaopn/cvclanker`, bundles everything else it needs (Tectonic for LaTeX, LibreOffice for Word, headless browsers, the Claude Code CLI). The Codex CLI is not bundled: install it in-app when you pick the Codex provider; it is stored with your data and updates independently of the image.
+The image, `ghcr.io/joaopn/cvclanker`, bundles everything else it needs. The one exception is the Codex CLI: if you pick the Codex provider, install it in-app (it is kept with your data). See [Programs in the image](../architecture/system.md#programs-in-the-image).
 
 The published image is built for x86-64 (amd64) machines; on an Apple Silicon Mac or another ARM machine it may not start, or run slowly under emulation. The dev path builds the image for your own machine instead (not yet tested on ARM).
 
@@ -61,7 +61,7 @@ The build takes several minutes. Your data lives in `./data` inside the clone. T
 | Watch the logs | `docker compose logs -f --tail=200 cvclanker` |
 | Wipe everything (deletes all jobs, CVs, PDFs) | `docker compose down && sudo rm -rf data/ && docker compose up -d --build` |
 
-Don't run both paths on one machine: they use the same container name and port, and the dev build is tagged with the release image's name, so a later `docker run` would start your dev build instead of the release.
+Don't run both paths on one machine: they use the same container name and port, and a later `docker run` could start your dev build instead of the release.
 
 ## First run
 
@@ -78,16 +78,14 @@ Everything here can be changed later in the app, except the CV format. To work i
 
 ## Your first hunt
 
-1. **Run a search** — press **Run pipeline**, then **Run**. The banner shows each source's progress; new jobs land in the Inbox once every source has returned, and are then scored. See [Running a search](runs.md).
+1. **Run a search** — press **Run pipeline**, then **Run**. The banner shows each source's progress; new jobs land in the Inbox and are scored. See [Running a search](runs.md).
 2. **Triage** on the Manage list or the [swipe deck](reviewing-jobs.md).
 3. **Tailor** a job and review the result: the CV edits, the [keyword coverage](tailoring.md#ats-keyword-coverage), and a cover letter if you want one.
 4. **Download** the result (PDF for LaTeX, `.docx` for Word, the page or `.zip` for HTML), apply yourself, and mark the job applied to [track it](job-lifecycle.md).
 
 ## Where your data lives
 
-Everything is one SQLite database per user profile (Settings → User Profiles) — jobs, settings, CV/cover-letter archives, generated PDFs, prompts, and the session secret. It lives in the `cvclanker-data` volume (release) or under `./data` (dev).
-
-To back up, open **Settings → User Profiles** and click **Export** on a profile to download it (with several user profiles, export each one). Tick **Include API keys & secrets in exports** first if the backup should keep your API keys (the file then holds them in plain text). To restore, use **Import profile** on the same page, then **Activate** the imported profile; your current data is kept as another profile, not overwritten. On a fresh install, **Import database** in the onboarding wizard does both steps. Expect to sign in again after a restore. More in [Configuration](configuration.md#data-backups--restore).
+All your data (jobs, CVs, settings, generated documents) is one database per user profile, kept in the `cvclanker-data` volume (release) or under `./data` (dev). Back it up with **Export** in **Settings → User Profiles**, and restore it with **Import profile** there (or **Import database** in the onboarding wizard); see [Data, backups & restore](configuration.md#data-backups--restore).
 
 ## Running from source
 

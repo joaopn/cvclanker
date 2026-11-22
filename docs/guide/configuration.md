@@ -42,8 +42,6 @@ Settings are grouped in the left-hand list, with a search box at the top. Each s
 | Prompts | **LLM Prompts** | The prompt editor. |
 | Danger Zone | **Danger Zone** | Delete jobs, or clear the database (below). |
 
-Settings store only what you changed: a value equal to the default is not saved, so an improved default reaches you on upgrade.
-
 [Search profiles](search-profiles.md) (what to search for, where, and with which sources) and [schedules](runs.md#scheduling) have pages of their own.
 
 ## Environment variables
@@ -65,8 +63,8 @@ To pass one on the release path, add `-e NAME=value` to the `docker run` line be
 | `BASIC_AUTH_PASSWORD` | *(unset)* | Password for optional login. |
 | `JWT_SECRET` | *(DB-managed)* | Pin the session-signing secret externally (at least 32 characters). If unset, it's managed in the database. |
 | `JWT_EXPIRY_SECONDS` | `86400` | Baseline session lifetime (24h). |
-| `LLM_REQUEST_TIMEOUT_MS` | `300000` | Baseline ceiling on one LLM request (5 min), so a stalled provider can't freeze a pipeline run. |
-| `LATEX_COMPILE_TIMEOUT_MS` | `600000` | Baseline ceiling on one LaTeX (Tectonic) compile (10 min). The first compile on a fresh container also downloads the packages the document pulls in, so it is far slower than every one after it. |
+| `LLM_REQUEST_TIMEOUT_MS` | `300000` | Baseline ceiling on one LLM request (5 min). |
+| `LATEX_COMPILE_TIMEOUT_MS` | `600000` | Baseline ceiling on one LaTeX compile (10 min). |
 | `JOBSPY_IS_REMOTE` | `0` | Set `1` to ask JobSpy's Indeed and LinkedIn searches for remote postings only. A profile whose work arrangement is Remote alone does this anyway. |
 | `PENALIZE_MISSING_SALARY` | `0` | Set `1` to demote a job one fit rating when it lists no salary. There is no Settings control for this. |
 
@@ -74,7 +72,7 @@ To pass one on the release path, add `-e NAME=value` to the `docker run` line be
 
 By default the app is **unauthenticated** — fine on `localhost`. If you expose it on a network, turn on **Enable authentication** in Settings → Accounts & Access (or the wizard's last step) with a username and password, or set `BASIC_AUTH_USER` and `BASIC_AUTH_PASSWORD`. Authentication is on only when both are set.
 
-With it on, the app asks you to **Sign in** before it shows anything. The session lasts 24 hours by default (**Session expiry (seconds)**, or `JWT_EXPIRY_SECONDS`) and is kept per browser tab, so a new tab signs in again. Generated documents under `/pdfs/` stay readable without signing in, so previews and download links keep working. Sessions are signed with a secret stored in the database, or with `JWT_SECRET` when you set one.
+With it on, the app asks you to **Sign in** before it shows anything. The session lasts 24 hours by default (**Session expiry (seconds)**, or `JWT_EXPIRY_SECONDS`) and is kept per browser tab, so a new tab signs in again. Generated documents under `/pdfs/` stay readable without signing in, so previews and download links keep working. How sign-in works is in [Sign-in](../architecture/settings-and-onboarding.md#sign-in).
 
 ## User profiles
 
@@ -90,7 +88,7 @@ Manage them in **Settings → User Profiles**, or switch from the profile line i
 | **Export** | Downloads a copy of that database. API keys, tokens, the login password and the sign-in secret are removed unless **Include API keys & secrets in exports** is ticked. |
 | Rename, **Delete** | Rename any profile by editing its name; only stored (inactive) profiles can be deleted. |
 
-Switching is refused while a run, a bulk action or a URL import is in flight, because the switch swaps the database underneath them.
+Switching is refused while a run, a bulk action or a URL import is in flight. How the swap works is in [User Profiles: one database each](../architecture/settings-and-onboarding.md#user-profiles-one-database-each).
 
 ## Themes
 
@@ -103,24 +101,13 @@ Themes are chosen in **Settings → Display** or the wizard's last step: **Syste
 
 ## Data, backups & restore
 
-Each user profile is one SQLite database. They live in the `cvclanker-data` Docker volume (release) or under `./data` (dev; the active one is `./data/jobs.db`, stored ones under `./data/user-profiles/`).
+Each user profile is one SQLite database. They live in the `cvclanker-data` Docker volume (release) or under `./data` (dev).
 
 - **Back up** with **Export** on a profile's card in **Settings → User Profiles**; with several user profiles, export each one. Tick **Include API keys & secrets in exports** first if the backup should keep your API keys and login password; the file then holds them in plain text, so store it safely. On the dev path, copying `data/` while stopped works too.
 - **Restore** with **Import profile** on the same page, then **Activate** the imported profile; your current data is kept as another profile, not overwritten. On a fresh install, **Import database** in the onboarding wizard does both steps. Expect to sign in again after a restore. An export made without secrets also drops the login password, so login is off afterwards unless `BASIC_AUTH_USER`/`BASIC_AUTH_PASSWORD` are set as environment variables.
-- Codex auth, if used, lives in the data directory under `codex-home/`; a copy of the volume or of `data/` carries it along, the export does not.
+- An export does not carry Codex or its sign-in, so on a new machine install and sign in to Codex again; a copy of the whole volume or of `data/` does carry them.
 
-To wipe everything and start over on the release path, run these two lines, then the install command again:
-
-```bash
-docker rm -f cvclanker
-docker volume rm cvclanker-data
-```
-
-On the dev path (Linux or macOS shell):
-
-```bash
-docker compose down && sudo rm -rf data/ && docker compose up -d --build
-```
+To wipe everything and start over, use the **Wipe everything** line for your path in [Getting started](getting-started.md#release-run-the-published-image) (release) or [the dev path](getting-started.md#dev-build-from-source).
 
 ## Danger Zone
 

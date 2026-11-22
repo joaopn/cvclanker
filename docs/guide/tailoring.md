@@ -14,7 +14,7 @@ Tailoring uses your personal brief, the job description and your CV's fields, an
 - Edits are limited to what your brief or the job description supports; the model is instructed not to invent experience.
 - It always starts from your original text, not from what it wrote for an earlier job.
 - [Locked fields](cvs.md#locked-fields) are never rewritten.
-- The result is rendered like your CV: LaTeX recompiles with Tectonic, Word rebuilds the `.docx` (with a PDF preview), HTML rebuilds the page and prints it with Chromium.
+- The result comes out in your CV's own format: a PDF for LaTeX; a `.docx` for Word and the page for HTML, each with a PDF preview.
 
 ### Starting a tailor
 
@@ -25,7 +25,7 @@ Tailoring uses your personal brief, the job description and your CV's fields, an
 | The Swipe deck | swipe right, or **Tailor** |
 | After a run | Settings → Pipeline Behavior → **Auto-tailor selected jobs after each pipeline run** (off by default) tailors the run's best matches; see [Running a search](runs.md#the-run-menu) |
 
-The job moves to the Tailoring tab at once and the work runs in the background, three tailors at a time by default (**Tailoring concurrency** in Settings → Pipeline Behavior), so you can keep triaging or close the browser. With the [company in-flight check](reviewing-jobs.md#the-company-in-flight-check) on, you are asked first if you already have work at that company.
+The job moves to the Tailoring tab at once and the work runs in the background, so you can keep triaging or close the browser. **Tailoring concurrency** in Settings → Pipeline Behavior sets how many run at once; see [Pressing Tailor](../architecture/tailoring.md#pressing-tailor). With the [company in-flight check](reviewing-jobs.md#the-company-in-flight-check) on, you are asked first if you already have work at that company.
 
 ### When a tailor fails
 
@@ -42,7 +42,7 @@ A failed tailor stays on the Tailoring tab with a **Tailor failed** chip. Its pa
 
 ### Tailoring again
 
-**Generate** (on the Tailoring tab, for one job or as **Generate N jobs** in the bulk bar) tailors a job again from scratch against your current CV. Use it after re-extracting or changing your CV, since stored edits may no longer line up with the new fields. It asks for confirmation first.
+**Generate** (on the Tailoring tab, for one job or as **Generate N jobs** in the bulk bar) tailors a job again from scratch against your current CV. Use it after re-extracting or changing your CV, since stored edits may no longer line up with the new fields ([why](../architecture/tailoring.md#after-a-cv-change-re-tailor-rather-than-re-render)). It asks for confirmation first.
 
 ## The tailoring workspace
 
@@ -67,7 +67,7 @@ Alongside the tailored CV, tailoring lists the job's notable keywords in two gro
 - **Matched**: keywords worked into the CV, with evidence in your brief.
 - **Skipped**: keywords the job asks for that your brief gives no evidence of.
 
-The badge reads "X/Y JD keywords surfaced": green from 75%, amber from 50%. Hover it to see the skipped keywords. If one of them reflects real experience, add it to your brief and re-tailor. **Refresh** next to the badge re-sorts the keywords by a plain text search over the current field values, without calling the LLM, so a keyword worked in through a synonym can drop to skipped.
+The badge reads "X/Y JD keywords surfaced": green from 75%, amber from 50%. Hover it to see the skipped keywords. If one of them reflects real experience, add it to your brief and re-tailor. **Refresh** next to the badge re-checks the keywords against the current field values without calling the LLM; a keyword worked in through a synonym can drop to skipped.
 
 ## The ghostwriter
 
@@ -111,10 +111,10 @@ The download buttons (and `d` on the Tailoring tab) give you:
 
 Downloads are named from **Your name** in Settings → Display: "Jane Q. Doe" gives `Doe_JQ_resume_Acme.pdf` and `Doe_JQ_cover_Acme.pdf` (last name, initials, document, employer), or just `resume_Acme.pdf` when no name is set. A comma marks a last name of more than one word ("García Márquez, Gabriel" gives `Garcia_Marquez_G`). Saving from the browser's own PDF viewer instead gives a file named after the job's id.
 
-The documents are stored in your database with the job and removed when the job is deleted.
+Deleting a job deletes its documents too.
 
 ## Watching calls
 
-Every LLM call shows in the **LLM** call queue in the Manage header: the calls running now and the recent finished ones, with duration and token count. A tailor appears there as "tailor CV" with the job's title and employer. See [LLM providers](llm-providers.md).
+A tailor shows in the **LLM** call queue in the Manage header as "tailor CV" with the job's title and employer. See [Watching calls](llm-providers.md#watching-calls).
 
 How it works: [Tailoring and cover letters](../architecture/tailoring.md), [LLM providers and scoring](../architecture/llm-and-scoring.md)

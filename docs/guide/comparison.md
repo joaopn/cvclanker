@@ -5,7 +5,7 @@ nav_order: 14
 ---
 # CV Clanker vs. JobOps
 
-CV Clanker is a fork of **[JobOps](https://github.com/DaKheera47/job-ops)**, diverged at commit `01452b6` and intentionally independent since.
+CV Clanker is a fork of **[JobOps](https://github.com/DaKheera47/job-ops)**, intentionally independent of it since the fork ([why](../architecture/system.md#independent-of-upstream-jobops)).
 
 JobOps is a broad application-tracking suite (Gmail integration, visa checks, a kanban pipeline, an optional paid cloud). CV Clanker keeps the scraping and CV tailoring, uses your own LaTeX, Word or HTML document instead of a fixed schema, and drops the Gmail tracking, visa checks, kanban, cloud and telemetry features in favour of a simpler stage-based tracker of its own.
 

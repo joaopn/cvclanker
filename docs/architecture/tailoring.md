@@ -117,7 +117,7 @@ Replies stream in, can be cancelled, regenerated or edited (earlier versions sta
 
 ### Interview QA
 
-Jobs at **Applied** or **Interviewing** get an **Interview QA** tab in the job panel. **Generate strategy** asks the **Tailoring Model** for a markdown strategy (a core narrative, likely questions and how to play them, questions to ask) from the job description, your brief and this job's tailored CV, steered by the optional **Focus** box. It is saved on the job; **Regenerate** replaces it after a confirm. Nothing runs it automatically, and the server refuses it for jobs at other stages.
+Jobs on **Live** (applied) or **Interviewing** get an **Interview QA** tab in the job panel. **Generate strategy** asks the **Tailoring Model** for a markdown strategy (a core narrative, likely questions and how to play them, questions to ask) from the job description, your brief and this job's tailored CV, steered by the optional **Focus** box. It is saved on the job; **Regenerate** replaces it after a confirm. Nothing runs it automatically, and the server refuses it for jobs at other stages.
 
 ### Generated documents
 

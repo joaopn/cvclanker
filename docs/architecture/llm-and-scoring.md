@@ -60,7 +60,7 @@ The **Models** section (Settings → AI) has a **Default model** and two **Task-
 | **Pre-filter model** | Only the optional screen in front of scoring (see below); empty means off |
 | **Reasoning effort** | Claude Code only: the `--effort` level for every call (`low`, `medium`, `high`, `xhigh`, `max`, or **CLI default**) |
 
-Changing the provider clears the three model fields you did not also change, and the server ignores a saved model that cannot belong to the provider (a Gemini name under OpenAI, a non-Gemini name under Gemini, a non-Claude name under Claude Code), so a leftover never reaches the wrong API.
+When the **Default model** is empty, the server uses the `MODEL` environment variable if it is set and fits the provider, otherwise `gpt-5.4-mini` on OpenAI, the CLI's own default on Codex and Claude Code, and `google/gemini-3-flash-preview` on every other provider; the Settings form shows that fallback as the field's placeholder. Changing the provider clears the three model fields you did not also change, and the server ignores a saved model that cannot belong to the provider (a Gemini name under OpenAI, a non-Gemini name under Gemini, a non-Claude name under Claude Code), so a leftover never reaches the wrong API.
 
 ### Time limits, retries and the rate-limit stop
 
