@@ -5,58 +5,116 @@ nav_order: 8
 ---
 # Tailoring & AI assist
 
-Per job, CV Clanker can edit the CV, generate a cover letter, report which of the
-job's keywords the CV covers, and generate interview notes. Every change is
-proposed for you to accept or reject.
+Per job, CV Clanker can edit your CV, write a cover letter, report which of the job's keywords the CV covers, and prepare interview notes. You review everything before you use it: hand edits are yours, and every change the chat proposes waits for you to accept or reject it.
 
 ## CV tailoring
 
-Tailoring uses your personal brief, the job description, and the current CV
-content, and proposes edits at the field level (patches for LaTeX; span rewrites
-for Word).
+Tailoring uses your personal brief, the job description and your CV's fields, and rewrites some of those fields toward the job's keywords.
 
-- Edits are limited to information in the brief or the job description; the model
-  is instructed not to invent experience.
-- [Locked fields](cvs.md#locked-fields) are excluded from proposals.
-- Rendering: tailored LaTeX recompiles with Tectonic; tailored Word repackages a
-  `.docx`; tailored HTML rewrites the page and prints it with Chromium.
+- Edits are limited to what your brief or the job description supports; the model is instructed not to invent experience.
+- It always starts from your original text, not from what it wrote for an earlier job.
+- [Locked fields](cvs.md#locked-fields) are never rewritten.
+- The result is rendered like your CV: LaTeX recompiles with Tectonic, Word rebuilds the `.docx` (with a PDF preview), HTML rebuilds the page and prints it with Chromium.
 
-Tailoring is opt-in (enable it in Settings) and runs per job or in bulk. Failed
-tailors are kept so they can be retried.
+### Starting a tailor
+
+| Where | Button |
+|---|---|
+| One job on Inbox, Backlog or Stale | **Start Tailoring** in the detail panel, **Tailor**, or `r` |
+| Several jobs | **Tailor N jobs** in the bulk bar |
+| The Swipe deck | swipe right, or **Tailor** |
+| After a run | Settings → Pipeline Behavior → **Auto-tailor selected jobs after each pipeline run** (off by default) tailors the run's best matches; see [Running a search](runs.md#the-run-menu) |
+
+The job moves to the Tailoring tab at once and the work runs in the background, three tailors at a time by default (**Tailoring concurrency** in Settings → Pipeline Behavior), so you can keep triaging or close the browser. With the [company in-flight check](reviewing-jobs.md#the-company-in-flight-check) on, you are asked first if you already have work at that company.
+
+### When a tailor fails
+
+A failed tailor stays on the Tailoring tab with a **Tailor failed** chip. Its panel shows **Last tailoring attempt failed** with a one-line reason, **Show details** for the rest, and **Retry tailoring**. Common reasons:
+
+| The reason says | Usually means |
+|---|---|
+| LLM call failed | The provider refused or timed out. |
+| produced no usable changes | Every change the model proposed was unusable (for example aimed at a locked field). |
+| produced no actual change to the CV | The result would be identical to your untouched CV, so it is not passed off as tailored. |
+| exceeds the configured limit | The result is longer than **Tailored content (chars)** in Settings → Context limits. |
+| LaTeX compile failed / PDF conversion failed | The renderer failed; the details carry the end of its log. |
+| Tailoring interrupted (server restart) | The app restarted while the tailor ran. |
+
+### Tailoring again
+
+**Generate** (on the Tailoring tab, for one job or as **Generate N jobs** in the bulk bar) tailors a job again from scratch against your current CV. Use it after re-extracting or changing your CV, since stored edits may no longer line up with the new fields. It asks for confirmation first.
+
+## The tailoring workspace
+
+A tailored job on the Tailoring tab opens the workspace, with tabs **Tailor CV**, **Tailor Cover Letter**, **Personal Brief** and **Details**, and the ghostwriter chat beside the first three.
+
+![The tailoring panel with edited fields and the chat](../assets/tailor.png)
+
+| Control | What it does |
+|---|---|
+| **Edit** → **Fields** / **Raw** | Edit this job's field values by hand and **Save** them. The lock icon on a field locks it against tailoring and ghostwriter edits; **Clear locks** unlocks every field; **Reset all** puts every field back to your CV's original text (locks stay). |
+| **Render PDF** | Saves pending edits and renders the PDF. |
+| **PDF** | Preview of the rendered PDF. |
+| **Generate** (Tailor CV) | A full tailor again. |
+| **Re-tailor with brief** (Personal Brief) | Edit your brief (the same one as on My CV, so the change applies to every job), then tailor this job again with it. |
+| More actions → **Regenerate PDF** | Re-renders from the stored values. |
+| **Mark Applied** | Moves the job to Live. |
 
 ## ATS keyword coverage
 
-Alongside the tailored CV, an ATS pass extracts the notable terms from the job
-description and reports:
+Alongside the tailored CV, tailoring lists the job's notable keywords in two groups:
 
-- **Matched** — terms the CV and brief cover.
-- **Skipped** — terms in the job that weren't found in the brief.
+- **Matched**: keywords worked into the CV, with evidence in your brief.
+- **Skipped**: keywords the job asks for that your brief gives no evidence of.
 
-If a skipped term reflects real experience, add it to the brief and re-tailor.
-Coverage can be refreshed for a job at any time.
+The badge reads "X/Y JD keywords surfaced": green from 75%, amber from 50%. Hover it to see the skipped keywords. If one of them reflects real experience, add it to your brief and re-tailor. **Refresh** next to the badge re-sorts the keywords by a plain text search over the current field values, without calling the LLM, so a keyword worked in through a synonym can drop to skipped.
 
-## The ghostwriter chat panel
+## The ghostwriter
 
-The ghostwriter is a per-job chat for changes that don't fit a single tailoring
-pass. It responds with edit proposals you accept or reject, edits one document
-per turn (CV, cover letter, or brief), and leaves locked fields alone.
+The ghostwriter is the chat beside the workspace, for changes that do not fit a single tailoring pass ("shorten the summary", "mention the Kubernetes migration"). It knows the job, your brief, this job's CV fields and keywords, and the cover letter you are looking at.
+
+Each reply is a message plus at most one proposed edit, shown as a card with **Accept** and **Reject**:
+
+| Proposal | On Accept |
+|---|---|
+| CV edit | The new values are saved and the PDF re-rendered. Accept is refused if a field changed underneath it or is locked; if the render fails, the change is rolled back. |
+| Cover-letter rewrite | The new text becomes this job's letter. |
+| Brief edit | Added to (or replaces) your personal brief. |
+
+Replies stream in and can be cancelled, regenerated or edited (earlier versions stay reachable), and the conversation can be reset.
 
 ## Cover letters
 
-Cover letters use a LaTeX cover-letter template you upload once (checked on
-upload the same way as a LaTeX CV). Use **Generate** on a job, edit the draft in
-the ghostwriter, and switch between the **Edit** and **PDF** tabs.
+Cover letters use a LaTeX cover-letter template you upload once on the **Cover Letter** page. It is checked the same way as a LaTeX CV, and one of its fields must be the letter's body. Cover letters are always LaTeX, including on Word and HTML profiles.
 
-Cover letters are always LaTeX, including for Word and HTML CV profiles.
+Per job, **Tailor Cover Letter** has **Edit** and **PDF**:
 
-## Interview Q&A
+- A job's letter starts with an empty body; other fields of your template (a recipient line, say) keep their uploaded text.
+- **Generate** writes the letter from the job description, your brief, this job's tailored CV and your **Cover-letter policy**, then renders it. It never invents an address the job description does not give.
+- **Render PDF** renders your edits without the LLM; **Reset all** goes back to the empty body.
 
-For a job, CV Clanker can generate interview notes from the brief, tailored CV,
-and job description: a summary of how to frame yourself, likely questions with
-suggested angles, and questions to ask the interviewer. It's a manual step.
+The **Cover-letter policy** (Settings → Writing Style) is the letter's length, structure and voice in your own words; it falls back to the shipped text when empty.
+
+## Interview QA
+
+Jobs on Live or Interviewing get an **Interview QA** tab in the detail panel. **Generate strategy** writes interview notes from the job description, your brief and this job's tailored CV: a core narrative, likely questions and how to answer them, and questions to ask. The optional **Focus** box steers it. The notes are saved on the job; **Regenerate** replaces them after a confirmation. Nothing runs it automatically.
+
+## Downloading the documents
+
+The download buttons (and `d` on the Tailoring tab) give you:
+
+| Profile | CV download | Cover letter |
+|---|---|---|
+| LaTeX | PDF | PDF |
+| Word | `.docx` (the PDF is a preview) | PDF |
+| HTML | the `.html` page, or the `.zip` you uploaded with the page swapped in | PDF |
+
+Downloads are named from **Your name** in Settings → Display: "Jane Q. Doe" gives `Doe_JQ_resume_Acme.pdf` and `Doe_JQ_cover_Acme.pdf` (last name, initials, document, employer), or just `resume_Acme.pdf` when no name is set. A comma marks a last name of more than one word ("García Márquez, Gabriel" gives `Garcia_Marquez_G`). Saving from the browser's own PDF viewer instead gives a file named after the job's id.
+
+The documents are stored in your database with the job and removed when the job is deleted.
 
 ## Watching calls
 
-LLM activity is visible: a live call queue shows requests in flight, and per-call
-logs record model, provider, token counts, duration, and status. See
-[LLM providers](llm-providers.md).
+Every LLM call shows in the **LLM** call queue in the Manage header: the calls running now and the recent finished ones, with duration and token count. A tailor appears there as "tailor CV" with the job's title and employer. See [LLM providers](llm-providers.md).
+
+How it works: [Tailoring and cover letters](../architecture/tailoring.md), [LLM providers and scoring](../architecture/llm-and-scoring.md)

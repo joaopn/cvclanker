@@ -5,92 +5,61 @@ nav_order: 4
 ---
 # Job sources
 
-CV Clanker pulls postings from several job boards at once, de-duplicates them,
-and filters by your location and remote/hybrid/on-site preferences. This page
-covers the **built-in** sources; for the Apify marketplace, see
-[Apify integration](apify.md).
+CV Clanker pulls postings from several job boards at once, filters them by your search profile's location and blocked companies, and drops links it already has. This page covers the **built-in** sources; for the Apify marketplace, see [Apify integration](apify.md).
 
 ## Built-in sources
 
-| Source | Powered by | Notes |
-|---|---|---|
-| **Indeed** | jobspy | Country-aware |
-| **LinkedIn** | jobspy | |
-| **Hiring Cafe** | headless browser | Fetches full descriptions |
-| **startup.jobs** | startup.jobs scraper | Startup / remote-leaning |
-| **Working Nomads** | Working Nomads API | Remote-focused |
-| **Manual** | you + the LLM | Paste a URL or a list; see below |
+| Source | Powered by | Runs on | Notes |
+|---|---|---|---|
+| **Indeed** | JobSpy | any profile | Country-aware: Indeed also gets the profile's country. |
+| **LinkedIn** | JobSpy | any profile | |
+| **Hiring Cafe** | a headless browser | any profile | Fetches each job's full description. Its date filter is approximate (it knows when it indexed a posting, not when it was published). |
+| **startup.jobs** | startup.jobs scraper | a profile with a country or a city | Startup and remote-leaning. Ignores max job age. |
+| **Working Nomads** | Working Nomads API | any profile | Remote-focused. Ignores cities and max job age. |
+| **Himalayas** | Himalayas API | remote profiles only | |
+| **We Work Remotely** | category feeds | remote profiles only | |
+| **Jobicy** | Jobicy API | remote profiles only | |
+| **Manual** | you | | Jobs you add by URL; see below. |
 
-> Indeed and LinkedIn are both served by a single scraper (**jobspy**), so in
-> the pipeline view they're grouped under that one engine.
->
-> Glassdoor used to be a third jobspy source. It was retired: the upstream
-> library can no longer reach Glassdoor at all, and there is no fixed release to
-> move to. Jobs scraped before the retirement are still shown and still
-> filterable by source.
+Indeed and LinkedIn are both served by one scraper, **JobSpy**, so on the Sources page and in the run banner they appear under that one card.
 
-You enable or disable sources on the **Sources** page. Only enabled sources run
-when you scrape.
+Glassdoor used to be a third JobSpy source. It was retired: the library behind it can no longer reach Glassdoor, and there is no fixed release to move to. Jobs scraped before the retirement keep their label and can still be filtered by source.
+
+## Turning sources on
+
+The **Sources** page has two tabs: **Built-in** and **Apify (paid API)**. Each built-in board has a card with an enable tick; a disabled source never runs.
+
+Which enabled sources a run actually uses is decided per [search profile](search-profiles.md#sources-per-profile): a source runs only when it is enabled here and ticked on the profile being run. Under each card's title, **Enable in all profiles** and **Disable in all profiles** tick or untick that source on every search profile at once.
 
 ## Per-source settings
 
-Each source has its own configuration (on the Sources page), typically:
+Each card has two parts:
 
-- **Max jobs per term** — cap the results pulled for each search keyword.
-- **Max age (days)** — ignore postings older than N days. Leave unset to keep
-  each source's own default.
-- **Search cities** — override the location used for the search.
-- **Workplace types** — filter for `remote`, `hybrid`, and/or `on-site`.
+- **Source-specific defaults**: the card's own values, such as "Max jobs per term", JobSpy's "Country (Indeed)", startup.jobs' "Detail concurrency", We Work Remotely's "Category feeds" or Jobicy's "Geo filter".
+- **Global field mappings**: City, Country, Workplace types, Max jobs per term (budget) and Max job age (days). When a mapping is ticked, the run's value, which comes from the search profile, overrides the card's own value; unticked, the card's value is used.
 
-Location and remote preferences ultimately come from your active
-[profile](configuration.md#profiles), so a single run has one coherent location
-intent applied across every source.
+The budget mapping is on by default, so the per-term number on a card is normally replaced by the profile's **Max jobs discovered** divided over terms and boards. **Show raw** shows the settings the source would receive right now, worked out from the default search profile.
 
-## Location compatibility
+## Which sources can serve a run
 
-Not every board can serve every location. When you run a scrape, CV Clanker
-checks each source against your requested location and **skips the ones that
-can't honor it** (rather than returning unusable results). If *no* source is compatible with
-the location you asked for, the run tells you so instead of silently returning
-nothing. Jobs that come back but don't actually match your location intent are
-dropped, and the pipeline banner reconciles what was scraped vs. what was
-filtered out.
+Not every board can serve every profile. Before a run starts scraping, each built-in source is checked against the profile's location: the remote-only boards are skipped on a profile that is not remote, and startup.jobs is skipped when the profile has neither a country nor a city. The Run menu shows a skipped source greyed out with the reason. If none of the selected built-in sources can serve the profile, the run fails with a "No compatible sources" message instead of returning nothing.
 
-You can also **block companies** by keyword — any posting whose employer matches
-is dropped during discovery.
+What happens to the jobs that come back, and how the location filter decides which ones to keep, is on [Search profiles](search-profiles.md#location-filtering).
 
-### Remote-only shortcut
+### Remote-only JobSpy searches
 
-The `JOBSPY_IS_REMOTE` environment variable (default `0`) filters jobspy sources
-to remote-only postings. See [Configuration](configuration.md).
+The `JOBSPY_IS_REMOTE` environment variable (default `0`) asks JobSpy's LinkedIn and Indeed searches for remote postings only. A profile whose work arrangement is Remote alone already does this, so the variable matters only for profiles that also allow hybrid or on-site. See [Configuration](configuration.md#environment-variables).
 
-## Manual entry
+## Adding jobs by hand
 
-Some jobs you find yourself. Two ways to bring them in:
+Some jobs you find yourself. **Fetch URLs** in the Manage header opens the **Import URLs** sheet: paste up to 50 job links, one per line, and CV Clanker reads each page and fills in the title, employer and description. Added jobs land in the Inbox with the source "Manual" and are scored and tailored like scraped ones. See [Tracking your hunt](job-lifecycle.md#adding-jobs-by-url) for the details, including what to do when a page cannot be read.
 
-- **Single URL** — paste a job link and CV Clanker fetches the page (with a real
-  browser) and has the LLM extract the title, employer, and description.
-- **Batch import** — paste a list of URLs in the batch import sheet and it works
-  through them, streaming progress as it goes.
+## Links CV Clanker already has
 
-Manually added jobs land in the same Inbox and get the same scoring and
-tailoring as scraped ones.
-
-## Reposts and duplicates
-
-- **Reposts:** if a job URL shows up again with a newer posting date, CV Clanker
-  bumps its repost count and pulls it back into the Inbox so you don't miss a
-  re-listing.
-- **Duplicates:** a LinkedIn posting listed more than once — under a country
-  subdomain, a slug URL, or via a second scraper — is grouped for review so you
-  triage it once. Only LinkedIn ids are read today, and only that board's own
-  posting id counts as proof: the same role appearing on two *different* boards
-  is deliberately left alone, because closing a job that merely looks similar
-  loses an opening you wanted.
-
-More on all of this in [Tracking your hunt](job-lifecycle.md).
+Tracking parameters are stripped from every job link, so the same posting found again by the next run is recognised and counted as **Duplicated** in the run banner instead of being stored twice. If it comes back with a newer posting date it counts as a repost. Reposts, and the same LinkedIn posting listed under different links, are covered in [Tracking your hunt](job-lifecycle.md#reposts).
 
 ## Adding more sources
 
-In addition to the built-in sources, you can use [Apify](apify.md) actors as
-sources, including LinkedIn and Indeed scrapers.
+Besides the built-in boards you can run [Apify](apify.md) actors as sources, from three ready-made LinkedIn templates or any actor you configure yourself.
+
+How it works: [Job sources](../architecture/job-sources.md), [Location matching](../architecture/location-matching.md)
