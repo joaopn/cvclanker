@@ -7,6 +7,19 @@ has_children: true
 
 This section explains how CV Clanker works inside: what happens when you press something, what connects to what, and why it was built that way. Each page covers one area of the app. It describes the mechanism (diagrams, tables, the rules the code follows), then the design decisions behind it and the reasons for them, and ends with a table of where that area lives in the repository. To learn what to click, see the [User guide](../guide/index.md).
 
+```mermaid
+flowchart LR
+  SP["Search profiles"] --> RUN["Pipeline run"]
+  SRC["Job sources"] --> RUN
+  RUN --> LOC["Location and company filters"]
+  LOC --> DUP["Duplicate check"]
+  DUP --> SC["LLM scoring"]
+  SC --> VIEW["Manage list and Swipe deck"]
+  VIEW --> TAIL["Tailored CV and cover letter"]
+  CV["Uploaded CV and brief"] --> TAIL
+  TAIL --> LIFE["Applied, in progress, closed"]
+```
+
 | Page | What it covers |
 |---|---|
 | [System overview](system.md) | The container, the server, the SQLite file, the helper programs, and how the app boots. |

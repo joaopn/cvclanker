@@ -7,8 +7,6 @@ has_children: true
 
 This guide is for the person using CV Clanker: how to install it, set up a search, work through the jobs it finds, tailor your CV for the ones you want, and keep track of your applications. Start with Getting started; the rest can be read in any order.
 
-![The job list with fit scores and the selected job's fit assessment](../assets/hero.png)
-
 | Page | What it covers |
 |---|---|
 | [Getting started](getting-started.md) | Installing and updating the app, the first-run wizard, and your first search. |
