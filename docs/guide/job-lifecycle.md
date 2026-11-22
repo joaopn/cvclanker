@@ -83,7 +83,7 @@ The mark is what lets CV Clanker tell a closed application from a job you never 
 
 ## Fit scoring
 
-When scoring is on (Settings → Pipeline Behavior → **Score discovered jobs with the LLM**, on by default), each run rates every unscored Inbox job against your [personal brief](cvs.md#the-personal-brief) as **Great fit**, **Very good fit**, **Good fit** or **Bad fit**, with a one-line reason. The model sees the job's title, employer, location, salary, degree, disciplines and description, and the **Scoring policy** in Settings → Pipeline Behavior, which defines what each rating means; edit it to change how strict scoring is.
+When scoring is on (Settings → Pipeline Behavior → **Score discovered jobs with the LLM**, on by default), each run rates every unscored Inbox job against your [personal brief](cvs.md#the-personal-brief) as **Great fit**, **Very good fit**, **Good fit** or **Bad fit**, with a one-line reason. The **Scoring policy** in Settings → Pipeline Behavior defines what each rating means; edit it to change how strict scoring is. What the model is shown: [Job scoring](../architecture/llm-and-scoring.md#job-scoring).
 
 - A job whose description is under 100 characters is left unscored rather than guessed at, and so is a job whose scoring call fails.
 - **Recalculate match** rescores selected jobs. With a pre-filter model set (see [LLM providers](llm-providers.md#which-model-does-what)), **Screen first** lets the cheap model throw out bad fits before the main model sees the rest.
@@ -106,29 +106,29 @@ Nothing ages jobs automatically. Instead, the Stale tab has an **Older than** da
 
 ## Reposts
 
-When a run finds a link CV Clanker already has, nothing new is created, unless the posting date has moved forward. Then it counts as a repost: the posting date advances, the row's `Reposted N×` badge goes up, its LinkedIn live status is cleared (it described the old posting), and a job sitting in Backlog, or in Stale without the applied mark, returns to the Inbox. Every other stage keeps its place: a skip or a close is a decision a relisting should not undo.
+When a run finds a link CV Clanker already has, nothing new is created, unless the posting date has moved forward. Then it counts as a repost: the posting date advances, the row's `Reposted N×` badge goes up, its LinkedIn live status is cleared, and a job sitting in Backlog, or in Stale without the applied mark, returns to the Inbox. Every other stage keeps its place: a skip or a close is a decision a relisting should not undo.
 
 ## Reviewing duplicates
 
 The same LinkedIn posting often arrives more than once: under a country subdomain, a slugged link, or from a second scraper. When two or more jobs in the Inbox or Tailoring tabs share a LinkedIn posting id, Manage shows a banner ("N duplicate groups (one posting id, listed more than once)") with **Review duplicates** and **Dismiss**.
 
-The review walks the groups largest first. For each it lists the copies with their source, tab, fit and age, an **Open** link, and a pre-selected copy to **Keep**: the one furthest along (tailored, then being tailored, then Inbox), then the best fit, then the newest. Pick a different one if you like, then:
+The review walks the groups largest first. For each it lists the copies with their source, tab, fit and age, an **Open** link, and a pre-selected copy to **Keep**, normally the one furthest along, then the best fit ([the full rule](../architecture/duplicates.md#review-groups)). Pick a different one if you like, then:
 
 - **Close k as duplicates** closes the other copies as duplicated (undoable);
 - **Skip group** moves on without closing anything;
 - **Close all** closes this group and every following one in one press, stopping at the first group whose copies disagree about the job title, which the review flags for you to decide yourself.
 
-Only the board's own posting id counts as proof, and only LinkedIn ids are read today. The same role on two *different* boards, or two postings that merely look alike, are left alone on purpose: closing a job that only looks similar loses an opening you wanted. Jobs you applied to are never proposed. A schedule can also close title-agreeing duplicates after each run; see [Scheduling](runs.md#scheduling).
+Only LinkedIn's own posting id counts as proof. The same role on two *different* boards, or two postings that merely look alike, are left alone on purpose, because closing a job that only looks similar loses an opening you wanted ([why](../architecture/duplicates.md#extra-duplicates-beat-a-wrong-join)). Jobs you applied to are never proposed. A schedule can also close title-agreeing duplicates after each run; see [Scheduling](runs.md#scheduling).
 
 For the softer case (you already have work in flight at the same company), see [The company in-flight check](reviewing-jobs.md#the-company-in-flight-check).
 
 ## Live LinkedIn status and Easy Apply
 
-The **Live status** bulk action (LinkedIn jobs only), and the optional step at the end of a run, read each posting's public LinkedIn page and store whether it still accepts applications, the applicant-count caption, whether it is an Easy Apply posting, and when it was checked. The row then shows **No longer accepting applications** or an **Easy Apply** chip, and the sorter can order by applicant count. Requests are paced at about one a second and back off when LinkedIn starts refusing, because LinkedIn limits by IP address and hammering it would also block your own browsing.
+The **Live status** bulk action (LinkedIn jobs only), and the optional step at the end of a run, read each posting's public LinkedIn page and store whether it still accepts applications, the applicant-count caption, whether it is an Easy Apply posting, and when it was checked. The row then shows **No longer accepting applications** or an **Easy Apply** chip, and the sorter can order by applicant count. The checks run slowly on purpose (about one a second), because LinkedIn limits by IP address and too many requests would also block your own browsing.
 
 ## Adding jobs by URL
 
-**Fetch URLs** in the Manage header opens the **Import URLs** sheet. Paste up to 50 job links, one per line, and press **Fetch jobs**. The import runs on the server: you can close the sheet and reopen it from any tab to see per-link results, and only one import runs at a time. Each link is read with a plain fetch first, then a headless browser if the page needs one, and the LLM picks out the title, employer and description.
+**Fetch URLs** in the Manage header opens the **Import URLs** sheet. Paste up to 50 job links, one per line, and press **Fetch jobs**. The import runs on the server: you can close the sheet and reopen it from any tab to see per-link results, and only one import runs at a time. CV Clanker reads each page, using the LLM where needed to pick out the title, employer and description ([how a page is read](../architecture/job-lifecycle.md#adding-jobs-by-url)).
 
 - Each new job lands in the Inbox with source "Manual", and is scored in the background when scoring is on.
 - A link already in your jobs is reported as a duplicate instead.
@@ -136,7 +136,7 @@ The **Live status** bulk action (LinkedIn jobs only), and the optional step at t
 
 Links are imported as they are: the location filter and blocked-company list apply to runs only.
 
-**Rescrape** (bulk action) re-reads a job's own link the same way, replaces the description, fills in only fields that were empty, and rescores the job when scoring is on.
+**Rescrape** (bulk action) re-reads a job's own link, replaces the description, fills in only fields that were empty, and rescores the job when scoring is on.
 
 ## Bulk actions run in the background
 

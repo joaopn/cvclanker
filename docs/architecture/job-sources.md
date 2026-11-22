@@ -87,7 +87,7 @@ On the two templates with fixed windows, a profile **Max job age (days)** above 
 
 **Stopping a term early (curious_coder).** LinkedIn ranks a one-term search by relevance and then keeps padding it with loosely related postings. While a term's run is going, the app reads its results every 10 seconds. A city search has run dry when fewer than N of its 20 deepest-ranked results have a title naming the term, where N is the setting **Stop a LinkedIn search term early** (default 2; 0 switches it off). The run is aborted once every city search has run dry, reached its own cap, or gone quiet for a minute while another city kept growing, and at least one of them ran dry. A city search that has returned nothing never counts as finished, because it may simply not have started yet.
 
-**valig** takes the other route to the same problem: the app passes the term to the actor as a title filter, so the padding is dropped before it is billed.
+**valig** takes the other route to the same problem: the app passes the term to the actor as a title filter, which keeps only postings whose title contains every word of the term (any order, any case), so the padding is dropped before it is billed.
 
 ### Checking that a source works
 

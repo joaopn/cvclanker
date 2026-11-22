@@ -5,7 +5,7 @@ nav_order: 10
 ---
 # Stats
 
-The Stats screen turns the jobs you already have into numbers: how much came in, which boards, search profiles and search terms are earning their place, what happened to your applications, and which companies are worth your time. Open it with the **Stats** segment of the **Swipe | Manage | Schedule | Stats** switch at the top of the screen. Everything on it is read-only and worked out from your jobs when you open it; nothing is recorded specially for it.
+The Stats screen turns the jobs you already have into numbers: how much came in, which boards, search profiles and search terms are earning their place, what happened to your applications, and which companies are worth your time. Open it with the **Stats** segment of the **Swipe | Manage | Schedule | Stats** switch at the top of the screen. Everything on it is read-only and worked out from the jobs you have.
 
 Two rows of buttons set the filters:
 
@@ -39,15 +39,13 @@ Undoing a move on the Manage screen also undoes its tailored or applied mark, so
 
 - **Boards**: jobs, scored, Good+ and fit rate per board. LinkedIn and Indeed are separate lines even though one scraper fetches both, and each Apify actor appears under its own name.
 - **Search Profiles**: the same per profile. A job belongs to the profile whose run first found it. Jobs found by no profile (added by hand, or found before this was recorded) show as **Unattributed**; jobs of a deleted profile as **Deleted profile**.
-- **Yield per run** shows as not available, and says why: per-run counts are kept in memory during a run only.
+- **Yield per run** shows as not available: per-run counts are not stored with your jobs.
 
 ## Job profile: which search terms pay off
 
 The **By source** panel comes first: per board, how many jobs it returned, what share of them have a title naming one of the search terms of the profile that found them, and the fit rate of both halves. A board with a low share returns a lot of titles your terms do not name; comparing the two fit rates tells you whether those are worth scoring.
 
-Below it, each profile that found jobs in the range gets a table with one row per current search term and a final **No term in title** row; the Unattributed table comes last. A job is credited to a term by its **title**: every word of the term must appear in the title, in any order, ignoring capitals and accents (`+` and `#` count as part of a word, so "C++" and "C#" stay apart). A title naming two terms counts under both, so a profile's rows can add up to more than its total. Jobs added by hand are left out and counted in a note.
-
-This measures what titles say, not which search found the job. Several boards run all your terms as one combined search, so "which term found it" cannot be known for them, but a title can be read for every job. The cost: a search for "ML Engineer" that returns "Machine Learning Engineer" lands under **No term in title**.
+Below it, each profile that found jobs in the range gets a table with one row per current search term and a final **No term in title** row; the Unattributed table comes last. A job is credited to a term by its **title**, not by which search found it: every word of the term must appear in the title, in any order, ignoring capitals and accents ("C++" and "C#" stay apart). So a search for "ML Engineer" that returns "Machine Learning Engineer" lands under **No term in title**. A title naming two terms counts under both, so a profile's rows can add up to more than its total. Jobs added by hand are left out and counted in a note. Why titles: [Terms are credited by the job title](../architecture/stats.md#terms-are-credited-by-the-job-title-not-by-which-search-found-the-job).
 
 Every column of the term tables counts **scored** jobs only: **Scored jobs**, **Good+**, **Applied** (scored jobs you applied to at any point), **Applied rate** and **Fit rate**. Click a column heading to sort every table by it: ascending, then descending, then back to alphabetical (**Term** just flips between Z–A and A–Z); **No term in title** always stays last.
 
@@ -73,7 +71,7 @@ The range here applies to when you applied, not when the job was found.
 - **How long replies took**: a histogram in 0–3, 4–7, 8–14, 15–21 and 22+ days. A narrow date range keeps recent applications whose slow replies have not arrived yet, so it reads faster than reality.
 - **Waiting on**: the 20 oldest applications still at Applied with no outcome, with days waiting (red from 21 days) and whether the posting is still live, closed, or not checked.
 
-**Heard back** is a floor: there is no stage history, so a job that reached Interviewing and was later closed for another reason no longer shows that it had a reply.
+**Heard back** is a floor: a job that reached Interviewing and was later closed for another reason no longer shows that it had a reply.
 
 ## Companies
 

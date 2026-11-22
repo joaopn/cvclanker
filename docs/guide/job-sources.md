@@ -21,9 +21,7 @@ CV Clanker pulls postings from several job boards at once, filters them by your 
 | **Jobicy** | Jobicy API | remote profiles only | |
 | **Manual** | you | | Jobs you add by URL; see below. |
 
-Indeed and LinkedIn are both served by one scraper, **JobSpy**, so on the Sources page and in the run banner they appear under that one card.
-
-Glassdoor used to be a third JobSpy source. It was retired: the library behind it can no longer reach Glassdoor, and there is no fixed release to move to. Jobs scraped before the retirement keep their label and can still be filtered by source.
+Indeed and LinkedIn are both served by one scraper, **JobSpy**, so on the Sources page and in the run banner they appear under that one card. Glassdoor no longer runs ([why](../architecture/job-sources.md#retire-a-dead-source-never-delete-it)); jobs it found earlier keep their label and can still be filtered by source.
 
 ## Turning sources on
 
@@ -42,9 +40,7 @@ The budget mapping is on by default, so the per-term number on a card is normall
 
 ## Which sources can serve a run
 
-Not every board can serve every profile. Before a run starts scraping, each built-in source is checked against the profile's location: the remote-only boards are skipped on a profile that is not remote, and startup.jobs is skipped when the profile has neither a country nor a city. The Run menu shows a skipped source greyed out with the reason. If none of the selected built-in sources can serve the profile, the run fails with a "No compatible sources" message instead of returning nothing.
-
-What happens to the jobs that come back, and how the location filter decides which ones to keep, is on [Search profiles](search-profiles.md#location-filtering).
+The remote-only boards are skipped on a profile that is not remote, and startup.jobs is skipped when the profile has neither a country nor a city. The Run menu shows a skipped source greyed out with the reason. If none of the selected built-in sources can serve the profile, the run fails with a "No compatible sources" message instead of returning nothing. Which of the returned jobs are kept is on [Search profiles](search-profiles.md#location-filtering).
 
 ### Remote-only JobSpy searches
 
@@ -56,7 +52,7 @@ Some jobs you find yourself. **Fetch URLs** in the Manage header opens the **Imp
 
 ## Links CV Clanker already has
 
-Tracking parameters are stripped from every job link, so the same posting found again by the next run is recognised and counted as **Duplicated** in the run banner instead of being stored twice. If it comes back with a newer posting date it counts as a repost. Reposts, and the same LinkedIn posting listed under different links, are covered in [Tracking your hunt](job-lifecycle.md#reposts).
+A posting found again by a later run is counted as **Duplicated** in the run banner instead of being stored twice, even when its link carries different tracking parameters ([how links are compared](../architecture/duplicates.md#same-link-url-canonicalisation)). If it comes back with a newer posting date it counts as a repost. Reposts, and the same LinkedIn posting listed under different links, are covered in [Tracking your hunt](job-lifecycle.md#reposts).
 
 ## Adding more sources
 

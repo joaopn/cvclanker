@@ -24,42 +24,31 @@ The list is alphabetical, so saving a profile never moves it.
 
 ## What a profile holds
 
-The editor has five cards.
+The editor has six cards: **Profile** (its name), then the five below.
 
 ![A search profile with terms and location](../assets/profile.png)
 
 | Card | Field | What it does |
 |---|---|---|
-| Search terms | the terms | The keywords every source searches. Separate several with commas or Enter. Order matters for the LinkedIn Apify actors, which search the terms one after another in this order. |
+| Search terms | the terms | The keywords every source searches. Separate several with commas or Enter. The LinkedIn Apify actors search the terms one after another in this order. |
 | Location | **Remote profile** | Switches the profile to remote mode; see [Remote profiles](#remote-profiles). |
 | Location | **Country**, **Cities** | Where the boards search, and what the location filter keeps. No cities means one country-wide search per source; each city is a search of its own, so a long city list multiplies what a paid source costs. |
 | Location | **Work arrangement** | Remote, hybrid and on-site ticks, sent to the boards as their own search filter. |
 | Location | **Location scope**, **Match strictness** | How strictly a job must sit inside your country and cities; see [Location filtering](#location-filtering). |
-| Run settings | **Max jobs discovered** | The run's budget (50 to 1000), divided evenly over search terms and built-in boards to give each built-in source its "max jobs per term". Apify actors are not part of this division. |
+| Run settings | **Max jobs discovered** | The run's budget (50 to 1000), shared out over search terms and built-in boards. Apify actors are not part of it. |
 | Run settings | **Resumes tailored** | How many of the best matches auto-tailoring picks after a run (1 to 50). It has no effect while auto-tailoring is off. |
-| Run settings | **Max job age (days)** | The window a run scrapes by default, and a ceiling: the Run menu can ask for less, never more. Blank means no ceiling, and each source keeps its own default. |
+| Run settings | **Max job age (days)** | The window a run scrapes by default, and a ceiling: the Run menu can ask for less, never more. Blank means no ceiling. The help text under the field says how each source honours it; see [Job sources](job-sources.md). |
 | Run settings | **Only scrape since the last run** | See [below](#only-scrape-since-the-last-run). |
 | Run settings | **LinkedIn jobs per search term** | How many results each search term may buy from the LinkedIn Apify actors (default 100, from 10 to 5000), with an optional number of its own for each term. Other sources ignore it. |
 | Run settings | **Min suitability** | The lowest fit rating a job needs to be picked for auto-tailoring. |
 | Blocked companies | company names | Postings from these employers are dropped; see [Blocked companies](#blocked-companies). |
 | Sources | **Extractors**, **Apify actors** | Which built-in boards and which Apify actors this profile runs. |
 
-The editor's help text under **Max job age (days)** says how each source honours the window: some take it exactly, some round it up to 24 hours, 7 days or 30 days, and startup.jobs and Working Nomads ignore it. See [Job sources](job-sources.md).
-
 ## Sources per profile
 
-A source runs only when two switches agree: it is enabled on the **Sources** page, and it is ticked on the search profile being run.
+A source runs only when it is enabled on the **Sources** page and ticked on the search profile being run. A source disabled on the Sources page shows "disabled on the Sources page" in the editor; a remote-only board (Himalayas, We Work Remotely, Jobicy) on a profile that is not remote shows "runs only on a remote profile" and cannot be ticked.
 
-| Sources page | Ticked on the profile | Runs? |
-|---|---|---|
-| enabled | yes | yes |
-| enabled | no | no |
-| disabled | yes | no; the editor shows "disabled on the Sources page" |
-| disabled | no | no |
-
-A remote-only board (Himalayas, We Work Remotely, Jobicy) on a profile that is not remote shows "runs only on a remote profile" and cannot be ticked. **Save** stays disabled until at least one source is both ticked and enabled, and a run whose profile is left with no usable source is refused with a message naming the profile.
-
-A new profile starts with every source the Sources page has enabled, Apify actors included. On the Sources page, **Enable in all profiles** and **Disable in all profiles** under each card tick or untick that source on every profile in one step.
+**Save** stays disabled until at least one source is both ticked and enabled, and a run whose profile is left with no usable source is refused with a message naming the profile. A new profile starts with every source the Sources page has enabled, Apify actors included. On the Sources page, **Enable in all profiles** and **Disable in all profiles** under each card tick or untick that source on every profile in one step.
 
 ## The default profile
 
@@ -73,21 +62,17 @@ Exactly one profile is the default. **Set as default** on a card makes a profile
 - **Add a search term** adds a row.
 - The **Jobs** column sets a term's LinkedIn job budget on every profile the term is ticked on. Blank means each profile's own default; "mixed" means the profiles disagree.
 
-Nothing is written until **Save**, which saves only the profiles that changed; **Discard changes** drops your edits. Save is blocked when it would leave the default profile with no terms, push a profile past 200 terms, or set a budget outside 10 to 5000. If one profile fails to save, its edits stay on screen and the others are kept.
+Nothing is written until **Save**; **Discard changes** drops your edits. Save is blocked when it would leave the default profile with no terms, push a profile past 200 terms, or set a budget outside 10 to 5000. If one profile fails to save, its edits stay on screen and the others are kept.
 
 ## Only scrape since the last run
 
-On an install that runs every day, most of a 30-day window is postings the last run already fetched. With **Only scrape since the last run** ticked, each source's window shrinks to the days since that source last scraped successfully for this profile, rounded up to whole days and never wider than **Max job age (days)**. A source that failed, or has never run for this profile, still gets the full window.
+On an install that runs every day, most of a 30-day window is postings the last run already fetched. With **Only scrape since the last run** ticked, each source only looks back to when it last scraped successfully for this profile, never further than **Max job age (days)**. A source that failed, or has never run for this profile, still gets the full window. Switching the option on takes effect from the next run.
 
-The bookkeeping is kept on every run, ticked or not, so switching the option on takes effect from the next run. Changing what the profile searches for (its terms, country, cities, work arrangement, location scope, match strictness, the remote settings or the max job age) starts the bookkeeping over: the save message then says the next run scrapes the full window on every source.
-
-The Run menu can override this for one run; see [Running a search](runs.md#the-run-menu).
+Changing what the profile searches for (its terms or any location setting, or the max job age) starts over; when the option is on, the save message says the next run scrapes the full window on every source. The Run menu can override this for one run; see [Running a search](runs.md#the-run-menu). How the window is tracked: [Only scrape since the last run](../architecture/search-profiles.md#only-scrape-since-the-last-run).
 
 ## Blocked companies
 
-The **Blocked companies** card holds one company name per line (one per line because names contain commas, as in "Kforce, Inc."). During a run, any posting whose employer is exactly one of those names, ignoring capitals and surrounding spaces, is dropped and listed in the run banner's Rejected column as "blocked company".
-
-The match is exact on purpose: "Nova" does not block "Novartis". If a company appears under several spellings, add each spelling you see. A profile holds at most 200 names.
+The **Blocked companies** card holds one company name per line, at most 200. During a run, any posting whose employer is exactly one of those names, ignoring capitals and surrounding spaces, is dropped and listed in the run banner's Rejected column as "blocked company". The match is exact: "Nova" does not block "Novartis", so add each spelling of a company you see.
 
 Blocking affects future runs only. Jobs already found are unchanged, and jobs you add yourself through **Fetch URLs** are never checked against the list.
 
@@ -95,9 +80,9 @@ To block a company from the job list, click its name to open the company dialog 
 
 ## Location filtering
 
-Boards do not return only what you asked for: LinkedIn treats a city as a radius, aggregators list whole countries, and remote boards attach restrictions such as "US only" to their postings. So after every source has returned, each scraped job is checked against the profile's location, and jobs that do not fit are dropped before they are stored or scored. The run banner's **Rejected** count lists each dropped job with the reason.
+Boards return more than you asked for, so after every run each scraped job is checked against the profile's location, and jobs that do not fit are dropped before they are stored or scored. The run banner's **Rejected** count lists each dropped job with the reason.
 
-On a normal profile the check works on country and cities. If no country is selected, nothing is filtered at all. A job counts as in one of your cities when the city's words appear in its location ("London" matches "Greater London Area"); a named city is enough on its own, whatever country the posting gives. Accents are ignored, so "Malaga" matches "Málaga" and "Zurich" matches "Zürich". Translations are not: "Munich" does not match "München", so list both spellings if a board uses both (as with "Vienna" and "Wien").
+On a normal profile the check works on country and cities; with no country selected, nothing is filtered. A job counts as in one of your cities when the city's name appears in its location ("London" matches "Greater London Area"), whatever country it gives. Accents are ignored ("Zurich" matches "Zürich") but translations are not: list both "Vienna" and "Wien" if a board uses both. The full rules: [Location matching](../architecture/location-matching.md#what-the-filter-reads).
 
 ### Match strictness
 
@@ -110,7 +95,7 @@ On a normal profile the check works on country and cities. If no country is sele
 | Names no country at all ("Greater Reading Area") | kept | dropped |
 | Another country | dropped | dropped |
 
-A job dropped by these rules can still be kept as remote worldwide, below. Keep in mind that the filter runs after the scrape, so stricter matching saves no scraping cost; what it saves is scoring, at one LLM call per job kept.
+A job dropped by these rules can still be kept as remote worldwide, below. Stricter matching saves no scraping cost, since the filter runs after the scrape; what it saves is scoring, at one LLM call per job kept.
 
 ### Location scope
 
@@ -122,7 +107,7 @@ A job dropped by these rules can still be kept as remote worldwide, below. Keep 
 | **Selected locations + remote worldwide** | kept |
 | **Remote worldwide** | kept; when auto-tailoring picks its top jobs, a job in your own area goes ahead of a remote-worldwide one of the same fit |
 
-Only some sources say whether a job is remote: JobSpy (LinkedIn and Indeed), startup.jobs and Working Nomads do, and a custom Apify actor can if its output mapping maps `isRemote`. The three LinkedIn actor templates and Hiring Cafe do not, so for those only your own area is kept, whatever the scope.
+Only JobSpy (LinkedIn and Indeed), startup.jobs, Working Nomads and custom Apify actors that map `isRemote` say whether a job is remote. For the three LinkedIn actor templates and Hiring Cafe, only your own area is kept, whatever the scope.
 
 ### Remote profiles
 
@@ -131,14 +116,9 @@ Tick **Remote profile** to search remote jobs instead of jobs near a place. A re
 - sends no country or cities to the boards, and always searches Remote,
 - unlocks the remote-only boards (Himalayas, We Work Remotely, Jobicy),
 - never runs Apify actors,
-- filters with a blocklist instead of the country and city match.
+- keeps every job except postings the source marks as not remote and postings whose location, or a restriction in the title such as "(US Only)", names an entry of **Exclude locations**.
 
-The blocklist is the **Exclude locations** field. Everything is kept except:
-
-- postings the source itself marks as not remote (JobSpy's LinkedIn and Indeed return on-site postings even with their remote filter on), and
-- postings whose location, or a restriction in the title such as "(US Only)" or the part after " - ", names one of your entries. The description is never read.
-
-Entries ignore capitals and punctuation, and common country spellings are unified, so "US-only" also catches "USA Only" and "United States only". Leave the field empty to keep everything. The country, cities and other location settings are kept while the profile is remote, and come back if you untick the box.
+Entries ignore capitals and punctuation, and common country spellings are unified, so "US-only" also catches "USA Only" and "United States only". Leave the field empty to keep everything. The country, cities and other location settings are kept while the profile is remote, and come back if you untick the box. The details: [Remote profiles: a blocklist](../architecture/location-matching.md#remote-profiles-a-blocklist).
 
 ### What the Rejected list says
 

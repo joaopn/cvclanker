@@ -60,7 +60,7 @@ The banner shows the current step (Crawling, Importing, Scoring, Live status, Pr
 | **Duplicated** | Links CV Clanker already had. |
 | **Rejected** | Postings dropped by the location filter or the blocked-company list. |
 
-Click a count to list the jobs behind it; the Rejected list gives the reason for each (see [What the Rejected list says](search-profiles.md#what-the-rejected-list-says)). These lists are kept in memory for the latest run only, because duplicated and rejected postings are never stored. For a LinkedIn Apify actor, the banner also says which terms reached their budget, so you know which one to raise.
+Click a count to list the jobs behind it; the Rejected list gives the reason for each (see [What the Rejected list says](search-profiles.md#what-the-rejected-list-says)). These lists exist for the latest run only, and are gone after a restart. For a LinkedIn Apify actor, the banner also says which terms reached their budget, so you know which one to raise.
 
 **Dismiss** hides the banner for every open tab, for that run only.
 
@@ -87,15 +87,15 @@ The dialog warns when a schedule will run paid Apify actors, which bill per resu
 
 Each card shows the cadence, the next and last run, the profiles and, when the duplicate box is ticked, how many duplicates it has closed. The switch turns a schedule on or off; **Run now** starts an extra run without moving the next scheduled one.
 
-- Schedules are checked every minute. If the pipeline is busy, a due schedule waits and fires once it is free.
+- If the pipeline is busy, a due schedule waits and fires once it is free.
 - If the app was down when a schedule came due, it makes one catch-up run when it starts again, never one per missed slot.
-- If a scheduled run fails, cannot start, or stops on an LLM rate limit, **all** scheduling pauses and every page shows "Automatic runs are paused." until you press **Resume scheduling** on the Schedule screen. This keeps a broken setup from failing, or spending money, night after night unnoticed.
+- If a scheduled run fails, cannot start, or stops on an LLM rate limit, **all** scheduling pauses and every page shows "Automatic runs are paused." until you press **Resume scheduling** on the Schedule screen, so a broken setup cannot keep failing, or spending, unnoticed.
 
 Scheduled runs are shown on the Schedule screen only, not in the Manage banner. While one is running, Manage's run control is replaced by a **Scheduled run in progress** link.
 
 ## Cancelling
 
-While a run is going, the **Run pipeline** button becomes **Cancel run**. The run stops at its next checkpoint: between steps, or between sources, jobs being scored or jobs being tailored. A cancel during scraping throws away what was scraped, so nothing from that run is imported; jobs already imported stay. Cancelling a chain stops the current profile and starts no more.
+While a run is going, the **Run pipeline** button becomes **Cancel run**. The run stops at its next checkpoint, once the source, job or step in hand is done. A cancel during scraping throws away what was scraped, so nothing from that run is imported; jobs already imported stay. Cancelling a chain stops the current profile and starts no more.
 
 ## One run at a time
 

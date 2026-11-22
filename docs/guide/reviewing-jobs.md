@@ -9,7 +9,6 @@ These are the two screens where you work through the jobs a run found. **Manage*
 
 The **Swipe | Manage | Schedule | Stats** switch at the top of these screens moves between them (the side menu reaches them too, as **Jobs** and **Swipe**). How a job moves between stages is on [Tracking your hunt](job-lifecycle.md); this page is about the screens.
 
-
 ## The tabs
 
 The address bar always carries the tab (`/jobs/inbox`, `/jobs/live`, …) and the selected job, so a view can be bookmarked or reloaded.
@@ -25,7 +24,7 @@ The address bar always carries the tab (`/jobs/inbox`, `/jobs/live`, …) and th
 | Closed | Skipped and closed jobs | `6` | Chips: All, Skipped, Rejected, Withdrawn, Ghosted, Duplicated, Other |
 | All Jobs | Everything except Closed, Skipped and Stale | `7` | Filter facets |
 
-The counts on the tabs are true totals, even though only the open tab's rows are loaded. The list checks for changes every 30 seconds and when the window regains focus, and only redraws when something changed.
+The counts on the tabs are totals for every job in that tab. The list picks up changes by itself (see [Loading the list](../architecture/manage-and-swipe.md#loading-the-list)).
 
 ## The detail panel
 
@@ -61,7 +60,7 @@ Filters stack: each layer narrows what the one before it left.
 | **Profile** badges (one per search profile, plus Unattributed) and **Job title** badges (every profile's search terms), each behind its tickbox | the filter bar | until you leave the page | tabs with a filter bar |
 | **+ Filter** facets: Company, Title, Location, Description, Degree required, Job level, Remote | the filter bar | until you leave the page | Inbox, Backlog, Stale, All Jobs |
 
-Within one family, picks combine with "or"; across families, with "and". A Job title badge matches when the term appears as text inside the title. Facets accept `a|b` for "either", ignore accents, and apply when you press Enter. Description, Degree required, Job level and Remote need the full job details, so adding one of them makes the tab reload. **Reset** in the Filters panel clears everything, badges and facets included.
+Within one family, picks combine with "or"; across families, with "and". A Job title badge matches when the term appears as text inside the title. Facets accept `a|b` for "either", ignore accents, and apply when you press Enter. Adding a Description, Degree required, Job level or Remote facet reloads the tab. **Reset** in the Filters panel clears everything, badges and facets included.
 
 ## Sorting
 
@@ -71,16 +70,16 @@ The sorter icon at the right end of the filter bar offers four orders:
 |---|---|
 | **None** | The Filters panel's Sort (newest posted first by default). |
 | **Posted / found** | Newest posting date first, discovery date when the board gave none. |
-| **Fewer applicants** | Jobs with an applicant count, fewest first; then LinkedIn jobs not checked yet; then postings reported closed; then everything not on LinkedIn. |
+| **Fewer applicants** | Jobs with a LinkedIn applicant count, fewest first; jobs without a count come after them ([the full order](../architecture/manage-and-swipe.md#sorting)). |
 | **Easy Apply, Fewer applicants** | The same, but every Easy Apply job comes before every job that is not. |
 
 Applicant counts come from the live-status check (the **Live status** bulk action, or the Run menu option).
 
 ## Searching every job
 
-**Ctrl/Cmd+K** or **/** opens a search over every job in every status. Type words from the title, company or location and press **Enter** (or the **Search** button); typing alone does not search. It shows the 200 newest matches and says when there are more ("Search with more words to narrow"). With an empty box it lists the 200 newest jobs.
+**Ctrl/Cmd+K** or **/** opens a search over every job in every status. Type words from the title, company or location and press **Enter** (or the **Search** button); typing alone does not search. It shows up to 200 matches and says when there are more ("Search with more words to narrow"). With an empty box it lists the 200 newest jobs.
 
-Matching ignores accents ("malaga" finds "Málaga") and treats the last word as the start of a word ("eng" finds "Engineer"), but does not find letters inside a word or across a space. Results are grouped under Ready, Discovered, Applied and Other. Choosing a result jumps to that job's tab and clears the filters that could hide it.
+Matching ignores accents ("malaga" finds "Málaga") and treats the last word as the start of a word ("eng" finds "Engineer"), but does not find letters inside a word or across a space; the full rules are in [The ctrl+K search](../architecture/manage-and-swipe.md#the-ctrlk-search). Results are grouped under Ready, Discovered, Applied and Other. Choosing a result jumps to that job's tab and clears the filters that could hide it.
 
 Type `@` to narrow the search to one status; finish the word and press Tab or Enter, then search. Backspace on an empty box, or Esc, removes it.
 
@@ -147,6 +146,6 @@ The card leaves as soon as you let go and the action runs in the background; if 
 
 Settings → Display → **Warn before tailoring a company you have work in flight at** (off by default) puts a check in front of every tailor: the Manage buttons, `r`, the bulk Tailor and a right swipe. If you already have jobs at the same company in Tailoring, Live or Interviewing, a dialog lists them ("You already have work in flight at …") and you choose **Cancel**, **Tailor the other N** (only the jobs with no clash) or **Tailor anyway**. On the deck, Cancel puts the card back.
 
-It exists because the same opening often arrives under two different links, which duplicate review deliberately does not join. The match is the exact company name, ignoring capitals and surrounding spaces. If the check cannot reach the server, it warns and tailors anyway.
+The match is the exact company name, ignoring capitals and surrounding spaces. If the check cannot reach the server, it warns and tailors anyway. Why it exists: [The company check](../architecture/manage-and-swipe.md#the-company-check-is-employer-only-opt-in-and-on-the-client).
 
 How it works: [Manage and Swipe views](../architecture/manage-and-swipe.md)
