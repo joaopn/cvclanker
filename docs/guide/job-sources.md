@@ -1,3 +1,8 @@
+---
+title: Job sources
+parent: User guide
+nav_order: 4
+---
 # Job sources
 
 CV Clanker pulls postings from several job boards at once, de-duplicates them,

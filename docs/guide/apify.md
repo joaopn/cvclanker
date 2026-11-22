@@ -1,3 +1,8 @@
+---
+title: Apify
+parent: User guide
+nav_order: 5
+---
 # Apify integration
 
 [Apify](https://apify.com) is a marketplace of ready-made web scrapers (called

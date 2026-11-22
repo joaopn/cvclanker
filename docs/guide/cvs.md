@@ -1,3 +1,8 @@
+---
+title: CVs and the brief
+parent: User guide
+nav_order: 2
+---
 # CVs: LaTeX, Word, HTML & the personal brief
 
 CV Clanker tailors a copy of a CV you upload; it edits the content of that

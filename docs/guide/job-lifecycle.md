@@ -1,3 +1,8 @@
+---
+title: Tracking your hunt
+parent: User guide
+nav_order: 9
+---
 # Tracking your hunt
 
 Jobs move through a simple lifecycle, with a few tools for managing the list.

@@ -1,3 +1,8 @@
+---
+title: Configuration
+parent: User guide
+nav_order: 12
+---
 # Configuration
 
 Everything is set in the app, on the **Settings** page, and stored in your

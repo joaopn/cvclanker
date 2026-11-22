@@ -1,3 +1,8 @@
+---
+title: Tailoring and AI assist
+parent: User guide
+nav_order: 8
+---
 # Tailoring & AI assist
 
 Per job, CV Clanker can edit the CV, generate a cover letter, report which of the

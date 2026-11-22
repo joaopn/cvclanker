@@ -12,11 +12,11 @@
 
 | Path | Main folders | Start command(s) |
 | --- | --- | --- |
-| Docs/content | `docs-site/docs` | `npm run docs:dev` |
+| Docs/content | `docs/guide`, `docs/architecture` | Edit the Markdown pages |
 | App/UI/API | `orchestrator`, `shared` | `npm --workspace orchestrator run dev` |
 | Extractors | `extractors/*`, sometimes `shared` | Relevant type checks + tests |
 
-Self-hosting / OAuth / env-var docs live in [`docs-site/docs/getting-started/`](docs-site/docs/getting-started/).
+Self-hosting, sign-in and environment-variable docs live in [`docs/guide/getting-started.md`](docs/guide/getting-started.md) and [`docs/guide/configuration.md`](docs/guide/configuration.md). How the app works inside is in [`docs/architecture/`](docs/architecture/index.md).
 
 ## Local Setup (Minimal)
 
@@ -37,17 +37,12 @@ extractors/jobspy/.venv/bin/pip install -r extractors/jobspy/requirements.txt
 
 The runner auto-detects the venv — no need to set `PYTHON_PATH`.
 
-If you are editing docs:
-
-```bash
-npm run docs:dev
-```
+If you are editing docs: `docs/` is a just-the-docs site that GitHub Pages builds and publishes whenever `docs/` changes on `main`. The user guide is `docs/guide/`, how it works is `docs/architecture/`. Every page starts with front matter giving its `title`, `parent` (`User guide` or `How it works`) and `nav_order`, which place it in the sidebar. Link pages with relative `.md` links, draw diagrams as Mermaid blocks, and wrap any `{{`…`}}` text in `{% raw %}` … `{% endraw %}`.
 
 Local URLs:
 
 - Orchestrator UI: `http://localhost:5173`
 - Orchestrator API: `http://localhost:3001`
-- Docs site: `http://localhost:3006`
 
 ## How to Make a Change
 

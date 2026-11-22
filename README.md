@@ -12,7 +12,7 @@ It scrapes job boards, scores each posting against you, and tailors your own CV 
 ![Telemetry: none](https://img.shields.io/badge/telemetry-none-brightgreen)
 ![CV formats](https://img.shields.io/badge/CV-LaTeX%20%7C%20Word%20%7C%20HTML-8A5A2B)
 
-[Getting started](docs/getting-started.md) · [CVs](docs/cvs.md) · [Job sources](docs/job-sources.md) · [Tailoring](docs/tailoring.md) · [LLM providers](docs/llm-providers.md) · [FAQ](docs/faq.md)
+[Getting started](docs/guide/getting-started.md) · [CVs](docs/guide/cvs.md) · [Job sources](docs/guide/job-sources.md) · [Tailoring](docs/guide/tailoring.md) · [LLM providers](docs/guide/llm-providers.md) · [FAQ](docs/guide/faq.md)
 
 </div>
 
@@ -63,11 +63,11 @@ Update with `git pull && docker compose down && docker compose up -d --build`.
 
 </details>
 
-Logs, backups and starting over: [Getting started](docs/getting-started.md).
+Logs, backups and starting over: [Getting started](docs/guide/getting-started.md).
 
 ## How it works
 
-**1\.** Upload your CV and write a personal brief: the projects and tools your CV leaves out. The upload is accepted only if the app can reproduce your document exactly ([details](docs/cvs.md)).
+**1\.** Upload your CV and write a personal brief: the projects and tools your CV leaves out. The upload is accepted only if the app can reproduce your document exactly ([details](docs/guide/cvs.md)).
 
 <img src="docs/assets/brief.png" alt="The personal brief on the CV page" width="720">
 
@@ -75,7 +75,7 @@ Logs, backups and starting over: [Getting started](docs/getting-started.md).
 
 <img src="docs/assets/profile.png" alt="A search profile with terms and location" width="720">
 
-**3\.** Optionally, add [Apify](https://apify.com) actors as paid extra sources, starting from a ready-made template or any actor you name ([details](docs/apify.md)).
+**3\.** Optionally, add [Apify](https://apify.com) actors as paid extra sources, starting from a ready-made template or any actor you name ([details](docs/guide/apify.md)).
 
 <img src="docs/assets/apify.png" alt="An Apify actor configured from a template" width="720">
 
@@ -108,7 +108,7 @@ A fork of [JobOps](https://github.com/DaKheera47/job-ops), reworked around your 
 | Hosting | Self-host only | Self-host and paid cloud |
 | Scope | CV documents | Full application tracking (Gmail, kanban, visa) |
 
-Diverged at commit `01452b6`. Fuller comparison: [docs/comparison.md](docs/comparison.md).
+Diverged at commit `01452b6`. Fuller comparison: [CV Clanker vs. JobOps](docs/guide/comparison.md).
 
 </details>
 

@@ -1,3 +1,8 @@
+---
+title: LLM providers and prompts
+parent: User guide
+nav_order: 11
+---
 # LLM providers & prompts
 
 Each step that uses a model — extracting CV fields, scoring, tailoring,

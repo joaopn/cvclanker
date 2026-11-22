@@ -1,3 +1,8 @@
+---
+title: CV Clanker vs. JobOps
+parent: User guide
+nav_order: 14
+---
 # CV Clanker vs. JobOps
 
 CV Clanker is a fork of **[JobOps](https://github.com/DaKheera47/job-ops)**,

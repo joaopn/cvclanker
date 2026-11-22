@@ -1,3 +1,8 @@
+---
+title: Getting started
+parent: User guide
+nav_order: 1
+---
 # Getting started
 
 CV Clanker runs as a single Docker container on your own machine.
@@ -125,4 +130,4 @@ the onboarding wizard does both steps. Expect to sign in again after a restore.
 ## Running from source
 
 To run from source rather than the Docker image, see
-**[CONTRIBUTING.md](../CONTRIBUTING.md)** for the dev setup and commands.
+**[CONTRIBUTING.md](https://github.com/joaopn/cvclanker/blob/main/CONTRIBUTING.md)** for the dev setup and commands.

@@ -1,3 +1,8 @@
+---
+title: FAQ
+parent: User guide
+nav_order: 13
+---
 # FAQ
 
 ### Does CV Clanker apply to jobs for me?
