@@ -488,6 +488,15 @@ export const useOrchestratorData = (
     };
   }, [checkForJobChanges, isRefreshPaused]);
 
+  useEffect(() => {
+    const onJobsChanged = () => {
+      void loadJobs();
+    };
+    window.addEventListener("cvclanker:jobs-changed", onJobsChanged);
+    return () =>
+      window.removeEventListener("cvclanker:jobs-changed", onJobsChanged);
+  }, [loadJobs]);
+
   // Lives here rather than on the Manage page because SwipePage calls this
   // hook too — a watcher mounted on one page would leave the other's batches
   // unwatched, and a swipe waiting on one would hang.

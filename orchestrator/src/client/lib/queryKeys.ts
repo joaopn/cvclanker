@@ -51,6 +51,10 @@ export const queryKeys = {
     tasks: (id: string) => [...queryKeys.jobs.all, "tasks", id] as const,
     notes: (id: string) => [...queryKeys.jobs.all, "notes", id] as const,
   },
+  chat: {
+    all: ["chat"] as const,
+    threads: () => [...queryKeys.chat.all, "threads"] as const,
+  },
   pipeline: {
     all: ["pipeline"] as const,
     status: () => [...queryKeys.pipeline.all, "status"] as const,

@@ -42,7 +42,7 @@ export const KeyboardShortcutBar: React.FC<KeyboardShortcutBarProps> = ({
   const grouped = groupShortcuts(all);
 
   return (
-    <div className="hidden lg:flex fixed bottom-0 inset-x-0 z-40 items-center justify-center border-t border-border/40 bg-background/90 backdrop-blur-md px-4 py-4 animate-in fade-in slide-in-from-bottom-4 duration-200">
+    <div className="hidden lg:flex fixed bottom-0 left-0 right-0 md:right-[var(--chat-panel-width,0px)] z-40 items-center justify-center border-t border-border/40 bg-background/90 backdrop-blur-md px-4 py-4 animate-in fade-in slide-in-from-bottom-4 duration-200">
       <div className="flex flex-col gap-3 text-[12px] text-muted-foreground max-w-4xl w-full">
         {groupOrder.map((group) => {
           const defs = grouped[group];

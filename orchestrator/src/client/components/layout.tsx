@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { getAppVersion } from "../lib/version";
+import { ChatButton } from "./chat/ChatButton";
 import { isNavActive, NAV_LINKS } from "./navigation";
 import { ProfileSwitchOverlay } from "./ProfileSwitchOverlay";
 import { StatusBadgeIndicator } from "./StatusIndicator";
@@ -324,6 +325,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
           )}
         >
           {actions}
+          <ChatButton />
         </div>
       </div>
       {!isTopBarVisible && (

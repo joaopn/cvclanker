@@ -1,0 +1,395 @@
+import * as api from "@client/api";
+import { useUpdateSettingsMutation } from "@client/hooks/queries/useSettingsMutation";
+import { useResizablePanel } from "@client/hooks/useResizableListPanel";
+import { useSettings } from "@client/hooks/useSettings";
+import { queryKeys } from "@client/lib/queryKeys";
+import { toast } from "@client/lib/toast";
+import type { ChatMessage, ChatStreamEvent } from "@shared/types";
+import { useQueryClient } from "@tanstack/react-query";
+import { X } from "lucide-react";
+import type React from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
+import { Composer } from "../ghostwriter/Composer";
+import { TailorColumnSplitter } from "../ghostwriter/TailorColumnSplitter";
+import { useChat } from "./ChatContext";
+
+export const CHAT_PANEL_WIDTH_KEY = "cvclanker:chat:width";
+const JOBS_CHANGED_EVENT = "cvclanker:jobs-changed";
+const CHAT_PANEL_MIN_WIDTH = 320;
+const CHAT_PANEL_DEFAULT_WIDTH = 420;
+const CHAT_PANEL_MAX_WIDTH_SHARE = 0.7;
+
+const TOOL_STATUS: Record<string, string> = {
+  search_jobs: "Searching jobs…",
+  get_job: "Reading a job…",
+  get_job_documents: "Reading job documents…",
+  get_tailored_cv: "Reading the tailored CV…",
+  get_personal_brief: "Reading your personal brief…",
+  mark_applied: "Marking a job applied…",
+  add_job_note: "Adding a note…",
+};
+
+interface LiveLine {
+  label: string;
+  ok: boolean;
+}
+
+let localMessageCount = 0;
+
+function localMessage(
+  threadId: string,
+  role: ChatMessage["role"],
+  content: string,
+  status: ChatMessage["status"],
+): ChatMessage {
+  return {
+    id: `local-${++localMessageCount}`,
+    threadId,
+    role,
+    content,
+    status,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+const MARKDOWN_CLASS =
+  "text-sm leading-relaxed text-foreground [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l [&_blockquote]:border-border [&_blockquote]:pl-3 [&_code]:rounded [&_code]:bg-muted/40 [&_code]:px-1 [&_h1]:mt-4 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:mt-4 [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:mt-3 [&_h3]:text-sm [&_h3]:font-semibold [&_li]:my-1 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_pre]:my-3 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-muted/40 [&_pre]:p-3 [&_table]:my-2 [&_td]:border [&_td]:border-border/60 [&_td]:px-2 [&_th]:border [&_th]:border-border/60 [&_th]:px-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5";
+
+const ChatMessageView: React.FC<{ message: ChatMessage }> = ({ message }) => {
+  if (message.role === "user") {
+    return (
+      <div className="ml-8 self-end whitespace-pre-wrap rounded-lg bg-muted/50 px-3 py-2 text-sm">
+        {message.content}
+      </div>
+    );
+  }
+  if (message.status === "failed") {
+    return (
+      <div className="whitespace-pre-wrap text-sm text-destructive">
+        {message.content || "The answer failed."}
+      </div>
+    );
+  }
+  if (message.status === "cancelled") {
+    return (
+      <div className="text-sm italic text-muted-foreground">
+        Stopped before answering.
+      </div>
+    );
+  }
+  return (
+    <div className={MARKDOWN_CLASS}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        {message.content}
+      </ReactMarkdown>
+    </div>
+  );
+};
+
+const ChatModeSwitch: React.FC<{ disabled: boolean }> = ({ disabled }) => {
+  const { chatCanChangeJobs, isLoading } = useSettings();
+  const mutation = useUpdateSettingsMutation();
+  const checked = mutation.isPending
+    ? (mutation.variables?.chatCanChangeJobs ?? chatCanChangeJobs)
+    : chatCanChangeJobs;
+
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      <Switch
+        id="chat-can-change-jobs"
+        checked={checked}
+        disabled={disabled || isLoading || mutation.isPending}
+        onCheckedChange={(value) =>
+          mutation.mutate(
+            { chatCanChangeJobs: value },
+            {
+              onError: (error) =>
+                toast.error(
+                  error instanceof Error
+                    ? error.message
+                    : "Failed to save the setting",
+                ),
+            },
+          )
+        }
+      />
+      <Label htmlFor="chat-can-change-jobs" className="text-xs">
+        Can change jobs
+      </Label>
+    </div>
+  );
+};
+
+export const ChatPanel: React.FC = () => {
+  const { isOpen, threadId, close, setThreadId } = useChat();
+  const queryClient = useQueryClient();
+  const { width, maxWidth, isDragging, startDrag } = useResizablePanel({
+    storageKey: CHAT_PANEL_WIDTH_KEY,
+    defaultWidth: CHAT_PANEL_DEFAULT_WIDTH,
+    minWidth: CHAT_PANEL_MIN_WIDTH,
+    maxWidth: Number.POSITIVE_INFINITY,
+    maxWidthShare: CHAT_PANEL_MAX_WIDTH_SHARE,
+    invertDelta: true,
+  });
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [runThreadId, setRunThreadId] = useState<string | null>(null);
+  const [liveLines, setLiveLines] = useState<LiveLine[]>([]);
+  const viewedThreadRef = useRef(threadId);
+  const skipLoadRef = useRef<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const isRunning = runThreadId !== null;
+
+  useEffect(() => {
+    viewedThreadRef.current = threadId;
+  }, [threadId]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const root = document.documentElement;
+    root.style.setProperty("--chat-panel-width", `${width}px`);
+    return () => {
+      root.style.removeProperty("--chat-panel-width");
+    };
+  }, [isOpen, width]);
+
+  useEffect(() => {
+    if (!threadId) {
+      setMessages([]);
+      return;
+    }
+    if (!isOpen) return;
+    if (skipLoadRef.current === threadId) {
+      skipLoadRef.current = null;
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingMessages(true);
+    api
+      .getChatMessages(threadId)
+      .then((result) => {
+        if (!cancelled) setMessages(result.messages);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setMessages([]);
+        toast.error(
+          error instanceof Error ? error.message : "Failed to load the chat",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingMessages(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, threadId]);
+
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    element.scrollTop = element.scrollHeight;
+  });
+
+  const appendIfViewing = useCallback((runId: string, message: ChatMessage) => {
+    if (viewedThreadRef.current !== runId) return;
+    setMessages((previous) => [...previous, message]);
+  }, []);
+
+  const handleEvent = useCallback(
+    (runId: string, event: ChatStreamEvent) => {
+      switch (event.type) {
+        case "tool":
+          setLiveLines((previous) => [
+            ...previous,
+            {
+              label: TOOL_STATUS[event.name] ?? `Running ${event.name}…`,
+              ok: event.ok,
+            },
+          ]);
+          if (event.write && event.ok) {
+            void queryClient.invalidateQueries({
+              queryKey: queryKeys.jobs.all,
+            });
+            window.dispatchEvent(new Event(JOBS_CHANGED_EVENT));
+          }
+          return;
+        case "completed":
+        case "cancelled":
+          setLiveLines([]);
+          appendIfViewing(runId, event.message);
+          return;
+        case "error":
+          setLiveLines([]);
+          appendIfViewing(
+            runId,
+            localMessage(runId, "assistant", event.message, "failed"),
+          );
+          return;
+        default:
+          return;
+      }
+    },
+    [appendIfViewing, queryClient],
+  );
+
+  const send = async (content: string) => {
+    if (isRunning) return;
+    let runId = threadId;
+    if (!runId) {
+      try {
+        runId = (await api.createChatThread()).thread.id;
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Failed to start a chat",
+        );
+        return;
+      }
+      skipLoadRef.current = runId;
+      viewedThreadRef.current = runId;
+      setThreadId(runId);
+    }
+    const id = runId;
+    setMessages((previous) => [
+      ...previous,
+      localMessage(id, "user", content, "complete"),
+    ]);
+    setLiveLines([]);
+    setRunThreadId(id);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      await api.streamChatMessage(
+        id,
+        content,
+        (event) => handleEvent(id, event),
+        controller.signal,
+      );
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        appendIfViewing(
+          id,
+          localMessage(
+            id,
+            "assistant",
+            error instanceof Error ? error.message : "The answer failed.",
+            "failed",
+          ),
+        );
+      }
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      setLiveLines([]);
+      setRunThreadId(null);
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.chat.threads(),
+      });
+    }
+  };
+
+  const stop = async () => {
+    if (!runThreadId) return;
+    try {
+      await api.cancelChatTurn(runThreadId);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to stop the answer",
+      );
+    }
+  };
+
+  if (!isOpen) return null;
+
+  const title =
+    messages
+      .find((message) => message.role === "user")
+      ?.content.split("\n")[0] || "New chat";
+  const showLive = isRunning && runThreadId === threadId;
+
+  return (
+    <aside
+      aria-label="Chat"
+      onKeyDown={(event) => event.stopPropagation()}
+      style={{ "--chat-width": `${width}px` } as React.CSSProperties}
+      className="flex bg-background max-md:fixed max-md:inset-0 max-md:z-50 md:sticky md:top-0 md:h-[100dvh] md:w-[var(--chat-width)] md:shrink-0"
+    >
+      <div className="hidden md:flex">
+        <TailorColumnSplitter
+          onDrag={startDrag}
+          isDragging={isDragging}
+          width={width}
+          minWidth={CHAT_PANEL_MIN_WIDTH}
+          maxWidth={maxWidth}
+        />
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex items-center gap-3 border-b border-border/60 px-4 py-3">
+          <div className="min-w-0 flex-1 truncate text-sm font-semibold">
+            {title}
+          </div>
+          <ChatModeSwitch disabled={isRunning} />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={close}
+            aria-label="Close chat"
+            title="Close chat"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        <div
+          ref={scrollRef}
+          className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4"
+        >
+          {isLoadingMessages && messages.length === 0 ? (
+            <div className="text-sm text-muted-foreground">Loading chat…</div>
+          ) : messages.length === 0 && !showLive ? (
+            <div className="text-sm text-muted-foreground">
+              Ask about your jobs: which Ready jobs are at a company, what a
+              posting says about remote work, or how many jobs you have applied
+              to.
+            </div>
+          ) : (
+            messages.map((message) => (
+              <ChatMessageView key={message.id} message={message} />
+            ))
+          )}
+          {showLive && (
+            <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+              {liveLines.length === 0 && <div>Thinking…</div>}
+              {liveLines.map((line, index) => (
+                <div
+                  // biome-ignore lint/suspicious/noArrayIndexKey: lines are only ever appended
+                  key={index}
+                  className={cn(!line.ok && "text-destructive")}
+                >
+                  {line.ok ? line.label : `${line.label} (failed)`}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="border-t border-border/60 px-4 py-3">
+          <Composer
+            disabled={isRunning}
+            isStreaming={isRunning}
+            onStop={stop}
+            onSend={send}
+            placeholder="Ask about your jobs..."
+          />
+        </div>
+      </div>
+    </aside>
+  );
+};

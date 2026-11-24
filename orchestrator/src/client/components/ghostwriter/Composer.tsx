@@ -8,10 +8,11 @@ import { Textarea } from "@/components/ui/textarea";
 type ComposerProps = {
   disabled?: boolean;
   isStreaming: boolean;
-  canReset: boolean;
+  canReset?: boolean;
   onStop: () => Promise<void>;
   onSend: (content: string) => Promise<void>;
-  onReset: () => void;
+  onReset?: () => void;
+  placeholder?: string;
 };
 
 export const Composer: React.FC<ComposerProps> = ({
@@ -21,6 +22,7 @@ export const Composer: React.FC<ComposerProps> = ({
   onStop,
   onSend,
   onReset,
+  placeholder = "Ask anything about this job...",
 }) => {
   const [value, setValue] = useState("");
 
@@ -34,7 +36,7 @@ export const Composer: React.FC<ComposerProps> = ({
   return (
     <div className="space-y-2">
       <Textarea
-        placeholder="Ask anything about this job..."
+        placeholder={placeholder}
         value={value}
         onChange={(event) => setValue(event.target.value)}
         disabled={disabled}
@@ -51,18 +53,20 @@ export const Composer: React.FC<ComposerProps> = ({
           {getMetaShortcutLabel("Enter")} to send
         </div>
         <div className="flex items-center gap-1">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onReset}
-            disabled={disabled || !canReset}
-            aria-label="Clear conversation"
-            title="Clear conversation"
-            className="h-9 gap-1.5 text-xs text-destructive hover:text-destructive"
-          >
-            <Eraser className="h-3.5 w-3.5" />
-            Clear
-          </Button>
+          {onReset && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onReset}
+              disabled={disabled || !canReset}
+              aria-label="Clear conversation"
+              title="Clear conversation"
+              className="h-9 gap-1.5 text-xs text-destructive hover:text-destructive"
+            >
+              <Eraser className="h-3.5 w-3.5" />
+              Clear
+            </Button>
+          )}
 
           {isStreaming && (
             <Button

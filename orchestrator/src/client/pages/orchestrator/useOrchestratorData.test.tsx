@@ -370,3 +370,23 @@ describe("useOrchestratorData scoped fetching", () => {
     expect(result.current.jobs).toEqual(closedJobs);
   });
 });
+
+describe("useOrchestratorData jobs-changed event", () => {
+  it("reloads the job list when the chat changes a job, until unmount", async () => {
+    const { unmount } = renderHook(() => useOrchestratorData(null), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(api.getJobs).toHaveBeenCalled());
+    await act(async () => {});
+    const before = api.getJobs.mock.calls.length;
+
+    act(() => {
+      window.dispatchEvent(new Event("cvclanker:jobs-changed"));
+    });
+    await waitFor(() => expect(api.getJobs).toHaveBeenCalledTimes(before + 1));
+
+    unmount();
+    window.dispatchEvent(new Event("cvclanker:jobs-changed"));
+    expect(api.getJobs).toHaveBeenCalledTimes(before + 1);
+  });
+});

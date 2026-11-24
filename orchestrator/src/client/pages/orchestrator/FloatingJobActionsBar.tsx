@@ -451,7 +451,7 @@ export const FloatingJobActionsBar: React.FC<FloatingJobActionsBarProps> = ({
     <AnimatePresence initial={false}>
       {selectedCount > 0 ? (
         <motion.div
-          className="pointer-events-none fixed inset-x-0 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-50 flex justify-center px-3 sm:px-4"
+          className="pointer-events-none fixed left-0 right-0 md:right-[var(--chat-panel-width,0px)] bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-50 flex justify-center px-3 sm:px-4"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 16 }}

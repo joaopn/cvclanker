@@ -20,10 +20,16 @@ interface UseResizablePanelOptions {
    * width and the divider sits to the left of it.
    */
   invertDelta?: boolean;
+  /**
+   * Caps the width at this share of the window as well as at `maxWidth`,
+   * recomputed when the window resizes.
+   */
+  maxWidthShare?: number;
 }
 
 interface UseResizablePanelResult {
   width: number;
+  maxWidth: number;
   isDragging: boolean;
   startDrag: (event: React.PointerEvent<HTMLElement>) => void;
 }
@@ -40,21 +46,42 @@ function readInitialWidth(
   maxWidth: number,
 ): number {
   if (typeof window === "undefined") return defaultWidth;
-  const raw = window.localStorage.getItem(storageKey);
+  let raw: string | null = null;
+  try {
+    raw = window.localStorage.getItem(storageKey);
+  } catch {
+    return defaultWidth;
+  }
   if (!raw) return defaultWidth;
   return clamp(Number.parseInt(raw, 10), minWidth, maxWidth, defaultWidth);
+}
+
+function readWindowWidth(): number | null {
+  return typeof window === "undefined" ? null : window.innerWidth;
 }
 
 export function useResizablePanel({
   storageKey,
   defaultWidth,
   minWidth,
-  maxWidth,
+  maxWidth: fixedMaxWidth,
   invertDelta = false,
+  maxWidthShare,
 }: UseResizablePanelOptions): UseResizablePanelResult {
-  const [width, setWidth] = useState<number>(() =>
-    readInitialWidth(storageKey, defaultWidth, minWidth, maxWidth),
+  const [windowWidth, setWindowWidth] = useState<number | null>(
+    readWindowWidth,
   );
+  const maxWidth =
+    maxWidthShare === undefined || windowWidth === null
+      ? fixedMaxWidth
+      : Math.max(
+          minWidth,
+          Math.min(fixedMaxWidth, Math.floor(windowWidth * maxWidthShare)),
+        );
+  const [storedWidth, setWidth] = useState<number>(() =>
+    readInitialWidth(storageKey, defaultWidth, minWidth, fixedMaxWidth),
+  );
+  const width = Math.min(storedWidth, maxWidth);
   const [isDragging, setIsDragging] = useState(false);
   const widthRef = useRef(width);
 
@@ -63,9 +90,20 @@ export function useResizablePanel({
   }, [width]);
 
   useEffect(() => {
+    if (maxWidthShare === undefined || typeof window === "undefined") return;
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [maxWidthShare]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(storageKey, String(width));
-  }, [storageKey, width]);
+    try {
+      window.localStorage.setItem(storageKey, String(storedWidth));
+    } catch {
+      // Storage unavailable: the width lasts until the next mount.
+    }
+  }, [storageKey, storedWidth]);
 
   const startDrag = useCallback(
     (event: React.PointerEvent<HTMLElement>) => {
@@ -108,7 +146,7 @@ export function useResizablePanel({
     [defaultWidth, invertDelta, maxWidth, minWidth],
   );
 
-  return { width, isDragging, startDrag };
+  return { width, maxWidth, isDragging, startDrag };
 }
 
 interface UseResizableListPanelResult extends UseResizablePanelResult {

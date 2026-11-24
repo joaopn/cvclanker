@@ -13,6 +13,9 @@ import {
 import { CSSTransition, SwitchTransition } from "react-transition-group";
 
 import { Toaster } from "@/components/ui/sonner";
+import { cn } from "@/lib/utils";
+import { ChatProvider, isChatHiddenPath } from "./components/chat/ChatContext";
+import { ChatPanel } from "./components/chat/ChatPanel";
 import { OnboardingGate } from "./components/OnboardingGate";
 import { SchedulingPausedBanner } from "./components/SchedulingPausedBanner";
 import { setAuthNavigator } from "./lib/auth-navigation";
@@ -76,57 +79,62 @@ export const App: React.FC = () => {
     };
   }, [navigate]);
 
-  return (
-    <>
-      <OnboardingGate />
-      {/* Above the routed page, so a paused scheduler is visible from
-          everywhere rather than only from the tab nobody opens. */}
-      <SchedulingPausedBanner />
-      <div>
-        <SwitchTransition mode="out-in">
-          <CSSTransition
-            key={pageKey}
-            nodeRef={nodeRef}
-            timeout={100}
-            classNames="page"
-            unmountOnExit
-          >
-            <div ref={nodeRef}>
-              <Routes location={location}>
-                {/* Backwards-compatibility redirects */}
-                {REDIRECTS.map(({ from, to }) => (
-                  <Route
-                    key={from}
-                    path={from}
-                    element={<Navigate to={to} replace />}
-                  />
-                ))}
+  const showChat = !isChatHiddenPath(location.pathname);
 
-                {/* Application routes */}
-                <Route path="/onboarding" element={<OnboardingPage />} />
-                <Route path="/sign-in" element={<SignInPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="/cv" element={<CvPage />} />
-                <Route path="/cover-letter" element={<CoverLetterPage />} />
-                <Route path="/sources" element={<SourcesPage />} />
-                <Route path="/profiles" element={<ProfilesPage />} />
-                <Route path="/profiles/new" element={<ProfileEditorPage />} />
-                <Route path="/profiles/:id" element={<ProfileEditorPage />} />
-                <Route path="/swipe" element={<SwipePage />} />
-                <Route path="/schedule" element={<SchedulePage />} />
-                <Route path="/stats" element={<StatsPage />} />
-                <Route path="/jobs/:tab" element={<OrchestratorPage />} />
-                <Route
-                  path="/jobs/:tab/:jobId"
-                  element={<OrchestratorPage />}
-                />
-              </Routes>
-            </div>
-          </CSSTransition>
-        </SwitchTransition>
+  return (
+    <ChatProvider>
+      <OnboardingGate />
+      <div className={cn(showChat && "md:flex md:items-start")}>
+        <div className="min-w-0 md:flex-1">
+          {/* Above the routed page, so a paused scheduler is visible from
+              everywhere rather than only from the tab nobody opens. */}
+          <SchedulingPausedBanner />
+          <SwitchTransition mode="out-in">
+            <CSSTransition
+              key={pageKey}
+              nodeRef={nodeRef}
+              timeout={100}
+              classNames="page"
+              unmountOnExit
+            >
+              <div ref={nodeRef}>
+                <Routes location={location}>
+                  {/* Backwards-compatibility redirects */}
+                  {REDIRECTS.map(({ from, to }) => (
+                    <Route
+                      key={from}
+                      path={from}
+                      element={<Navigate to={to} replace />}
+                    />
+                  ))}
+
+                  {/* Application routes */}
+                  <Route path="/onboarding" element={<OnboardingPage />} />
+                  <Route path="/sign-in" element={<SignInPage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/cv" element={<CvPage />} />
+                  <Route path="/cover-letter" element={<CoverLetterPage />} />
+                  <Route path="/sources" element={<SourcesPage />} />
+                  <Route path="/profiles" element={<ProfilesPage />} />
+                  <Route path="/profiles/new" element={<ProfileEditorPage />} />
+                  <Route path="/profiles/:id" element={<ProfileEditorPage />} />
+                  <Route path="/swipe" element={<SwipePage />} />
+                  <Route path="/schedule" element={<SchedulePage />} />
+                  <Route path="/stats" element={<StatsPage />} />
+                  <Route path="/jobs/:tab" element={<OrchestratorPage />} />
+                  <Route
+                    path="/jobs/:tab/:jobId"
+                    element={<OrchestratorPage />}
+                  />
+                </Routes>
+              </div>
+            </CSSTransition>
+          </SwitchTransition>
+        </div>
+        {showChat && <ChatPanel />}
       </div>
 
       <Toaster position="bottom-right" richColors closeButton />
-    </>
+    </ChatProvider>
   );
 };

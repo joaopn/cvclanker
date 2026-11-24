@@ -33,6 +33,7 @@ export function useSettings() {
     // gate a tailor behind a check the user never enabled.
     companyInFlightCheckEnabled:
       settings?.companyInFlightCheckEnabled?.value ?? false,
+    chatCanChangeJobs: settings?.chatCanChangeJobs?.value ?? false,
     inboxStaleThresholdDays:
       settings?.inboxStaleThresholdDays?.value ?? 7,
     maxBulkActionJobs: settings?.maxBulkActionJobs?.value ?? 1000,

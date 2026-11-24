@@ -10,6 +10,9 @@ import type {
   BatchUrlImportItemResult,
   BenchRun,
   BranchInfo,
+  ChatMessage,
+  ChatStreamEvent,
+  ChatThread,
   ClaudeCodeCliStatus,
   CoverLetterDocument,
   CoverLetterDocumentSummary,
@@ -108,6 +111,7 @@ type LegacyApiResponse<T> =
 
 type StreamSseInput =
   | JobActionRequest
+  | { content: string }
   | { content: string; stream: true }
   | { stream: true }
   | { urls: string[] };
@@ -556,6 +560,50 @@ async function streamSseEvents<TEvent>(
       // Ignore cancellation errors when stream is already closed
     }
   }
+}
+
+export async function listChatThreads(): Promise<{ threads: ChatThread[] }> {
+  return fetchApi<{ threads: ChatThread[] }>("/chat/threads");
+}
+
+export async function createChatThread(): Promise<{ thread: ChatThread }> {
+  return fetchApi<{ thread: ChatThread }>("/chat/threads", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function getChatMessages(
+  threadId: string,
+): Promise<{ messages: ChatMessage[] }> {
+  return fetchApi<{ messages: ChatMessage[] }>(
+    `/chat/threads/${encodeURIComponent(threadId)}/messages`,
+  );
+}
+
+export async function cancelChatTurn(
+  threadId: string,
+): Promise<{ cancelled: boolean }> {
+  return fetchApi<{ cancelled: boolean }>(
+    `/chat/threads/${encodeURIComponent(threadId)}/cancel`,
+    {
+      method: "POST",
+      body: JSON.stringify({}),
+    },
+  );
+}
+
+export async function streamChatMessage(
+  threadId: string,
+  content: string,
+  onEvent: (event: ChatStreamEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  return streamSseEvents(
+    `/chat/threads/${encodeURIComponent(threadId)}/messages`,
+    { content },
+    { onEvent, signal },
+  );
 }
 
 export async function listJobChatThreads(jobId: string): Promise<{
