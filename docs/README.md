@@ -27,6 +27,7 @@ Then follow each application through to an outcome in [Tracking your hunt](guide
 | Page | What it covers |
 |---|---|
 | [LLM providers and prompts](guide/llm-providers.md) | Which AI model to use, cloud or local, and editing the prompts. |
+| [Agent access](guide/agent-access.md) | Letting your own AI agent (Claude Code or another MCP client) read your jobs. |
 | [Configuration](guide/configuration.md) | Settings, sign-in, user profiles, backups and starting over. |
 | [FAQ](guide/faq.md) | Privacy, cost, auto-apply, which CV format. |
 | [CV Clanker vs. JobOps](guide/comparison.md) | How CV Clanker differs from the project it was forked from. |

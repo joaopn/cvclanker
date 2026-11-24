@@ -20,6 +20,7 @@ This guide is for the person using CV Clanker: how to install it, set up a searc
 | [Tracking your hunt](job-lifecycle.md) | Stages, the Stage dropdown, the applied mark, fit scoring, the Stale tab, reposts, duplicates and adding jobs by URL. |
 | [Stats](stats.md) | What each Stats tab and figure means, and how jobs are credited to search terms. |
 | [LLM providers and prompts](llm-providers.md) | Choosing a provider and models, the pre-filter, model benchmarking, writing style and prompts. |
+| [Agent access](agent-access.md) | Letting an AI agent you run read your jobs over MCP, and optionally mark jobs applied or add notes. |
 | [Configuration](configuration.md) | The onboarding wizard, the Settings page, environment variables, sign-in, user profiles, backups and the Danger Zone. |
 | [FAQ](faq.md) | Short answers to common questions. |
 | [CV Clanker vs. JobOps](comparison.md) | How CV Clanker differs from the project it was forked from. |

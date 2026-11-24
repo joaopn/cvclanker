@@ -7,7 +7,7 @@ nav_order: 1
 
 CV Clanker is one Docker container. Inside it a Node/Express server serves the React client and a JSON API, keeps everything in a single SQLite file under the data directory, and shells out to helper programs (the job-board extractors, Tectonic, LibreOffice, Chromium, `pdftotext`, Camoufox, the Codex and Claude Code CLIs) when a piece of work needs them. Nothing runs outside the container, and the only outbound traffic is to the LLM provider and the job sources you configure.
 
-Using it: [Getting started](../guide/getting-started.md), [Configuration](../guide/configuration.md)
+Using it: [Getting started](../guide/getting-started.md), [Configuration](../guide/configuration.md), [Agent access](../guide/agent-access.md)
 
 ## How it works
 
@@ -15,6 +15,7 @@ Using it: [Getting started](../guide/getting-started.md), [Configuration](../gui
 flowchart LR
   B["Browser: React client"] -->|"/api JSON + SSE"| S["Express server"]
   B -->|"/pdfs"| S
+  AG["Your agent: MCP client"] -->|"/mcp"| S
   S --> DB[("data/jobs.db SQLite")]
   S --> X["Built-in extractors: Python and TS"]
   S --> AP["Apify actors"]
@@ -37,8 +38,32 @@ The server is the only long-lived process. A pipeline run, a tailor, a cover let
 | `/api/*` | The JSON API. Every answer has the same envelope: `{ ok: true, data }` or `{ ok: false, error: { code, message } }`, plus a request id (also sent as the `x-request-id` header) that appears in the logs. |
 | `/api/...` streams | Long work reports progress as Server-Sent Events: pipeline run progress, bulk job-action batches, the ghostwriter chat, batch import of jobs by URL, the LLM call queue and the scoring benchmark. |
 | `/pdfs/*` | Generated CV and cover-letter documents, read out of the database (see [Tailoring and cover letters](tailoring.md)). |
+| `/mcp` | The agent endpoint: MCP over JSON-RPC for an agent you run, behind its own token (below). |
 | `/health` | A liveness probe; the image's and the compose file's healthchecks call it every 30 s. |
 | anything else | The client app (`index.html`), so every client route is a deep link. |
+
+### The agent endpoint
+
+`POST /mcp` lets an agent the user runs (Claude Code, Codex, any MCP client) read jobs and, when allowed, mark a job applied or add a note. It answers only after a token has been generated in Settings → Agent access (`/api/mcp-access`); before that, or after a revoke, it answers 404. It is mounted before the sign-in guard, so the web login never sees it: the request carries `Authorization: Bearer <token>`, and the endpoint checks that token itself. The token is shown once and never stored; `runtime_secrets` holds only its SHA-256 digest, with the access level and the brief switch beside it.
+
+```mermaid
+sequenceDiagram
+  participant A as Agent
+  participant E as /mcp endpoint
+  participant P as JSON-RPC handler
+  participant T as Tool
+  participant R as Repositories
+  A->>E: POST, Authorization: Bearer token
+  E->>E: hash the token, compare with the stored digest
+  E->>P: initialize, tools/list or tools/call
+  P->>P: tool access check: write tools need read and change, the brief needs its switch
+  P->>P: validate the arguments
+  P->>T: run the tool
+  T->>R: the same job, CV and brief reads and writes the app uses
+  R-->>A: JSON result, or a refusal as a tool error
+```
+
+A missing or wrong token gets 401, a method other than POST 405. Seven tools are offered: `search_jobs` (the ctrl+K search), `get_job`, `get_job_documents`, `get_tailored_cv`, `get_personal_brief`, `mark_applied` (only from Ready, through the ordinary status update, so the first applied date is kept) and `add_job_note` (the note route's own validation). A refused tool call comes back as a tool error naming the setting in Settings → Agent access that would allow it. Batch requests are not supported.
 
 ### Boot
 
@@ -81,7 +106,7 @@ The data directory is `/app/data` inside the container: `./data` on the dev path
 | `pipeline_runs`, `run_schedules` | Run history with per-run detail, and the schedules that start runs. |
 | `job_chat_threads`, `job_chat_messages`, `job_chat_runs` | The ghostwriter chat per job. |
 | `settings`, `prompts` | Settings values and the live prompt YAML (with its shipped default for Reset). |
-| `runtime_secrets`, `llm_provider_credentials`, `auth_sessions` | The sign-in signing secret, keys for providers other than the configured one, and sign-in sessions. |
+| `runtime_secrets`, `llm_provider_credentials`, `auth_sessions` | The sign-in signing secret and the agent token's digest and access switches, keys for providers other than the configured one, and sign-in sessions. |
 
 ### Programs in the image
 
@@ -116,7 +141,23 @@ The app runs an agentic CLI over text scraped from the internet and feeds untrus
 
 ### Sign-in is optional, and off by default
 
-When `BASIC_AUTH_USER` and `BASIC_AUTH_PASSWORD` are both set (in Settings or the environment), every `/api` request except sign-in and sign-out, and every request outside `/api` other than a GET or HEAD, needs a session token from the sign-in page. With neither set, anyone who can reach the port can use the app: it is built to be bound to localhost or a trusted network. See [Settings and onboarding](settings-and-onboarding.md).
+When `BASIC_AUTH_USER` and `BASIC_AUTH_PASSWORD` are both set (in Settings or the environment), every `/api` request except sign-in and sign-out, and every request outside `/api` other than a GET or HEAD, needs a session token from the sign-in page; `/mcp` checks its own token instead. With neither set, anyone who can reach the port can use the app: it is built to be bound to localhost or a trusted network. See [Settings and onboarding](settings-and-onboarding.md).
+
+### The agent endpoint is a hand-written JSON-RPC handler
+
+The endpoint implements the few MCP methods it needs (`initialize`, `ping`, `tools/list`, `tools/call`) as a small JSON-RPC handler instead of using the MCP SDK, so the feature added no packages. Each tool's input is declared once, and both the schema `tools/list` shows and the validator `tools/call` runs are built from that declaration.
+
+### Agent access is read only by default
+
+A new token, and every regenerated one, starts at read only with the brief not shared; changing anything needs the user to switch to read and change. Even then the agent can only mark a Ready job applied and add notes: it has no tool to tailor, score, delete, change settings or read keys. The app's undo is kept by the browser that made the move, so an applied mark the agent sets has no undo: the job can be moved back, but its applied date stays.
+
+### The brief sits behind its own switch
+
+The personal brief is the most personal text in the app, so reading it needs a separate switch that is off by default, independent of the access level.
+
+### One token per user profile
+
+The token's digest lives in the database like every other secret, so it belongs to the active user profile: an agent connected to one profile is refused by another until a token is generated there, never quietly handed that profile's jobs. A with-secrets export carries the token; a secrets-stripped export drops it, so a restored copy has agent access off.
 
 ### Independent of upstream JobOps
 
@@ -146,6 +187,8 @@ Word CVs convert through `unoserver`, a long-lived LibreOffice process, rather t
 | `orchestrator/src/server/api/routes/` | One router per API area. |
 | `orchestrator/src/server/db/` | Schema, boot migrations, user-profile database files. |
 | `orchestrator/src/server/services/`, `orchestrator/src/server/pipeline/` | The domain logic and the run pipeline. |
+| `orchestrator/src/server/mcp/` | The agent endpoint: token and access (`access.ts`), the HTTP layer (`endpoint.ts`), the JSON-RPC handler (`protocol.ts`), the tools (`tools.ts`). |
+| `orchestrator/src/server/api/routes/mcp-access.ts`, `orchestrator/src/client/pages/settings/components/AgentAccessSection.tsx` | The Settings → Agent access routes and section. |
 | `orchestrator/src/client/` | The React app; `App.tsx` holds the routes. |
 | `shared/src/` | Logic and types used by both server and client (location matching, duplicates, settings registry). |
 | `extractors/` | The built-in job-board scrapers, discovered at boot. |

@@ -1,7 +1,7 @@
 ---
 title: Configuration
 parent: User guide
-nav_order: 12
+nav_order: 13
 ---
 # Configuration
 
@@ -72,7 +72,7 @@ To pass one on the release path, add `-e NAME=value` to the `docker run` line be
 
 By default the app is **unauthenticated** — fine on `localhost`. If you expose it on a network, turn on **Enable authentication** in Settings → Accounts & Access (or the wizard's last step) with a username and password, or set `BASIC_AUTH_USER` and `BASIC_AUTH_PASSWORD`. Authentication is on only when both are set.
 
-With it on, the app asks you to **Sign in** before it shows anything. The session lasts 24 hours by default (**Session expiry (seconds)**, or `JWT_EXPIRY_SECONDS`) and is kept per browser tab, so a new tab signs in again. Generated documents under `/pdfs/` stay readable without signing in, so previews and download links keep working. How sign-in works is in [Sign-in](../architecture/settings-and-onboarding.md#sign-in).
+With it on, the app asks you to **Sign in** before it shows anything. The session lasts 24 hours by default (**Session expiry (seconds)**, or `JWT_EXPIRY_SECONDS`) and is kept per browser tab, so a new tab signs in again. Generated documents under `/pdfs/` stay readable without signing in, so previews and download links keep working. An agent connected through [Agent access](agent-access.md) does not sign in: it uses its own token. How sign-in works is in [Sign-in](../architecture/settings-and-onboarding.md#sign-in).
 
 ## User profiles
 
