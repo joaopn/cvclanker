@@ -8,6 +8,7 @@ export * from "./extractors";
 export * from "./jobs";
 export * from "./llm-credentials";
 export * from "./location";
+export * from "./mcp-access";
 export * from "./pipeline";
 export * from "./profile";
 export * from "./provider-instances";

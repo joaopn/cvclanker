@@ -14,24 +14,16 @@ import {
 } from "@infra/http";
 import { logger } from "@infra/logger";
 import { verifyToken } from "@server/auth/jwt";
+import { getWebLoginConfig } from "@server/auth/web-login";
 import cors from "cors";
 import express from "express";
 import { apiRouter } from "./api/index";
 import { pdfFilesRouter } from "./api/routes/pdf-files";
+import { mcpBodyErrorHandler, mcpEndpoint } from "./mcp/endpoint";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export function createAuthGuard() {
-  function getAuthConfig() {
-    const user = process.env.BASIC_AUTH_USER || "";
-    const pass = process.env.BASIC_AUTH_PASSWORD || "";
-    return {
-      user,
-      pass,
-      enabled: user.length > 0 && pass.length > 0,
-    };
-  }
-
   async function isAuthorized(req: express.Request): Promise<boolean> {
     const authHeader = req.headers.authorization || "";
     if (!authHeader.startsWith("Bearer ")) return false;
@@ -73,7 +65,7 @@ export function createAuthGuard() {
     next: express.NextFunction,
   ) => {
     void (async () => {
-      const { enabled } = getAuthConfig();
+      const { enabled } = getWebLoginConfig();
       if (!enabled || !requiresAuth(req.method, req.path)) {
         next();
         return;
@@ -89,7 +81,7 @@ export function createAuthGuard() {
   return {
     middleware,
     isAuthorized,
-    authEnabled: getAuthConfig().enabled,
+    authEnabled: getWebLoginConfig().enabled,
   };
 }
 
@@ -120,6 +112,10 @@ export function createApp() {
     });
     next();
   });
+
+  // The agent endpoint checks its own token, so the web login never sees it.
+  app.all("/mcp", mcpEndpoint);
+  app.use("/mcp", mcpBodyErrorHandler);
 
   // Optional authentication for protected routes
   app.use(authGuard.middleware);

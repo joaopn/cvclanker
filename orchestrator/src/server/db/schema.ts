@@ -218,9 +218,10 @@ export const jobPdfs = sqliteTable(
   }),
 );
 
-// Server-internal secrets (currently just the JWT signing secret). Not a
-// settings-registry row: registry values echo through GET /api/settings, and
-// a signing secret must have no read surface.
+// Server-internal state: the JWT signing secret, the agent (MCP) token's
+// digest, and that token's access switches. Not settings-registry rows:
+// registry values echo through GET /api/settings, and the two secrets must
+// have no read surface (the switches are shown by GET /api/mcp-access).
 export const runtimeSecrets = sqliteTable("runtime_secrets", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),

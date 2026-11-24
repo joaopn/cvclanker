@@ -3,12 +3,14 @@
  *
  * The DB is the installation: every CV / cover-letter archive AND every
  * generated job PDF lives as a BLOB inside `jobs.db` (`job_pdfs`), alongside
- * all jobs, settings, provider config, and the JWT signing secret
- * (`runtime_secrets`). A single consistent snapshot of `jobs.db` is therefore
- * a complete, portable backup. Secrets-stripped exports clear both the
- * credential settings AND `runtime_secrets` — restoring one regenerates the
- * signing secret at first login (sessions from before the export won't
- * carry over); with-secrets exports keep sessions working after restore.
+ * all jobs, settings, provider config, the JWT signing secret and the agent
+ * (MCP) token's digest and access switches (`runtime_secrets`). A single
+ * consistent snapshot of `jobs.db` is therefore a complete, portable backup.
+ * Secrets-stripped exports clear both the credential settings AND
+ * `runtime_secrets` — restoring one regenerates the signing secret at first
+ * login (sessions from before the export won't carry over) and leaves no
+ * agent access until a new token is generated; with-secrets exports keep
+ * sessions and the agent token working after restore.
  *
  * This module is deliberately import-free of `./index` (the DB singleton opens
  * SQLite at module load). The pure export/validate helpers open their own

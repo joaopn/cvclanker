@@ -647,9 +647,11 @@ const postRebuildMigrations: string[] = [
      PRIMARY KEY (profile_id, source_key)
    )`,
 
-  // Server-internal secrets (currently just the JWT signing secret).
-  // Deliberately NOT settings-registry rows: registry values echo through
-  // GET /api/settings, and a signing secret must have no read surface.
+  // Server-internal state: the JWT signing secret, the agent (MCP) token's
+  // digest, and that token's access switches. Deliberately NOT
+  // settings-registry rows: registry values echo through GET /api/settings,
+  // and the two secrets must have no read surface (the switches are shown by
+  // GET /api/mcp-access).
   // Legacy DATA_DIR/jwt-secret file import lives in a guarded JS block
   // near the bottom of this file.
   `CREATE TABLE IF NOT EXISTS runtime_secrets (
