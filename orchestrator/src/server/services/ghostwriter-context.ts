@@ -112,7 +112,7 @@ function buildCvSnapshot(job: Job, cv: CvDocument | null): string {
  * `coverLetterDraft`. If this drifts from the pane, the model tailors against
  * text the user isn't looking at.
  */
-function buildCoverLetterSnapshot(
+export function buildCoverLetterSnapshot(
   job: Job,
   coverLetter: CoverLetterDocument | null,
 ): string {

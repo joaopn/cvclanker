@@ -75,7 +75,7 @@ import { z } from "zod";
 
 export const jobsRouter = Router();
 
-const jobNoteSchema = z.object({
+export const jobNoteSchema = z.object({
   title: z.string().trim().min(1).max(120),
   content: z.string().trim().min(1).max(20000),
 });
