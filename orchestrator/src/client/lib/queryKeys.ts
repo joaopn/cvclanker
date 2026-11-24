@@ -84,6 +84,9 @@ export const queryKeys = {
   llmProviderCredentials: {
     all: ["llm-provider-credentials"] as const,
   },
+  mcpAccess: {
+    all: ["mcp-access"] as const,
+  },
   codexAuth: {
     status: () => ["codex-auth", "status"] as const,
   },

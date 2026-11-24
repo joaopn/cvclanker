@@ -41,6 +41,8 @@ import type {
   ManualJobDraft,
   ManualJobFetchResponse,
   ManualJobInferenceResponse,
+  McpAccessSummary,
+  McpTokenIssued,
   PipelineStatusResponse,
   RunJobBucket,
   RunJobsResponse,
@@ -57,6 +59,7 @@ import type {
   StoredUserProfile,
   SuitabilityCategory,
   UpdateJobNoteInput,
+  UpdateMcpAccessInput,
   UrlImportBatchSnapshot,
   UserProfilesListResponse,
   ValidationResult,
@@ -1593,6 +1596,28 @@ export async function deleteLlmProviderCredential(
     { method: "DELETE" },
   );
   return data.credentials;
+}
+
+export function getMcpAccess(): Promise<McpAccessSummary> {
+  return fetchApi<McpAccessSummary>("/mcp-access");
+}
+
+/** The only call that ever returns the token; it replaces any existing one. */
+export function generateMcpToken(): Promise<McpTokenIssued> {
+  return fetchApi<McpTokenIssued>("/mcp-access", { method: "POST" });
+}
+
+export function updateMcpAccess(
+  input: UpdateMcpAccessInput,
+): Promise<McpAccessSummary> {
+  return fetchApi<McpAccessSummary>("/mcp-access", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function revokeMcpToken(): Promise<McpAccessSummary> {
+  return fetchApi<McpAccessSummary>("/mcp-access", { method: "DELETE" });
 }
 
 export async function getLlmModels(input?: {

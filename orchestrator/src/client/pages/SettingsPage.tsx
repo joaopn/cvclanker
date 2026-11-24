@@ -4,6 +4,7 @@ import { LlmStatusButton } from "@client/components/LlmStatusButton";
 import { PageHeader } from "@client/components/layout";
 import { useUpdateSettingsMutation } from "@client/hooks/queries/useSettingsMutation";
 import { toast } from "@client/lib/toast";
+import { AgentAccessSection } from "@client/pages/settings/components/AgentAccessSection";
 import { ChatSettingsSection } from "@client/pages/settings/components/ChatSettingsSection";
 import { ContextLimitsSection } from "@client/pages/settings/components/ContextLimitsSection";
 import { DangerZoneSection } from "@client/pages/settings/components/DangerZoneSection";
@@ -132,6 +133,7 @@ type SettingsSectionId =
   | "context-limits"
   | "environment"
   | "user-profiles"
+  | "agent-access"
   | "display"
   | "pipeline"
   | "prompts"
@@ -261,6 +263,13 @@ const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
           "import",
           "switch",
         ],
+      },
+      {
+        id: "agent-access",
+        label: "Agent access",
+        description:
+          "Lets an agent you run (Claude Code, Codex, any MCP client) read your jobs and, if you allow it, mark a job applied or add a note.",
+        searchTerms: ["mcp", "agent", "token", "claude code", "codex", "api"],
       },
     ],
   },
@@ -413,6 +422,7 @@ export const SECTION_FIELD_MAP: Record<
   "provider-credentials": [],
   "model-benchmarking": [],
   "user-profiles": [],
+  "agent-access": [],
   prompts: [],
   "danger-zone": [],
 };
@@ -882,6 +892,11 @@ export const SettingsPage: React.FC = () => {
     queryKey: queryKeys.settings.current(),
     queryFn: api.getSettings,
   });
+  const mcpAccessQuery = useQuery({
+    queryKey: queryKeys.mcpAccess.all,
+    queryFn: api.getMcpAccess,
+    enabled: activeSection === "agent-access",
+  });
   const updateSettingsMutation = useUpdateSettingsMutation();
   const isLoading = settingsQuery.isLoading;
 
@@ -1325,6 +1340,11 @@ export const SettingsPage: React.FC = () => {
           : null;
       case "display":
         return { label: "Active", variant: "secondary" as const };
+      case "agent-access":
+        if (!mcpAccessQuery.data) return null;
+        return mcpAccessQuery.data.enabled
+          ? { label: "On", variant: "outline" as const }
+          : { label: "Off", variant: "secondary" as const };
       default:
         return { label: "Ready", variant: "outline" as const };
     }
@@ -1417,6 +1437,9 @@ export const SettingsPage: React.FC = () => {
       break;
     case "user-profiles":
       activeSectionContent = <UserProfilesPanel layoutMode="panel" />;
+      break;
+    case "agent-access":
+      activeSectionContent = <AgentAccessSection layoutMode="panel" />;
       break;
     case "prompts":
       activeSectionContent = <PromptsPanel layoutMode="panel" />;

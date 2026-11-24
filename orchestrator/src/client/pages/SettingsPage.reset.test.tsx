@@ -42,6 +42,7 @@ describe("buildSectionResetPayload", () => {
       "context-limits",
       "environment",
       "user-profiles",
+      "agent-access",
       "display",
       "pipeline",
       "prompts",
@@ -61,6 +62,7 @@ describe("buildSectionResetPayload", () => {
     expect(buildSectionResetPayload("provider-credentials")).toEqual({});
     expect(buildSectionResetPayload("prompts")).toEqual({});
     expect(buildSectionResetPayload("user-profiles")).toEqual({});
+    expect(buildSectionResetPayload("agent-access")).toEqual({});
     expect(buildSectionResetPayload("danger-zone")).toEqual({});
   });
 
