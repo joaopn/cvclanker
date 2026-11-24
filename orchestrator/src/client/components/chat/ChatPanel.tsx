@@ -1,4 +1,5 @@
 import * as api from "@client/api";
+import { ApiClientError } from "@client/api";
 import { useUpdateSettingsMutation } from "@client/hooks/queries/useSettingsMutation";
 import { useResizablePanel } from "@client/hooks/useResizableListPanel";
 import { useSettings } from "@client/hooks/useSettings";
@@ -34,6 +35,28 @@ const TOOL_STATUS: Record<string, string> = {
   mark_applied: "Marking a job applied…",
   add_job_note: "Adding a note…",
 };
+
+const JOB_TOOL_STATUS: Record<string, [string, string]> = {
+  get_job: ["Reading job", "…"],
+  get_job_documents: ["Reading documents", "…"],
+  get_tailored_cv: ["Reading tailored CV", "…"],
+  mark_applied: ["Marking applied", ""],
+  add_job_note: ["Adding a note", ""],
+};
+
+function toolStatus(event: Extract<ChatStreamEvent, { type: "tool" }>) {
+  if (event.name === "search_jobs") {
+    const query = (event.arguments as { query?: unknown } | null)?.query;
+    return typeof query === "string" && query.trim()
+      ? `Searching jobs: ${query.trim()}…`
+      : "Searching jobs…";
+  }
+  const withJob = JOB_TOOL_STATUS[event.name];
+  if (withJob && event.job) {
+    return `${withJob[0]}: ${event.job.title} @ ${event.job.employer}${withJob[1]}`;
+  }
+  return TOOL_STATUS[event.name] ?? `Running ${event.name}…`;
+}
 
 interface LiveLine {
   label: string;
@@ -165,6 +188,7 @@ export const ChatPanel: React.FC = () => {
   useEffect(() => {
     if (!threadId) {
       setMessages([]);
+      setIsLoadingMessages(false);
       return;
     }
     if (!isOpen) return;
@@ -182,6 +206,10 @@ export const ChatPanel: React.FC = () => {
       .catch((error) => {
         if (cancelled) return;
         setMessages([]);
+        if (error instanceof ApiClientError && error.status === 404) {
+          setThreadId(null);
+          return;
+        }
         toast.error(
           error instanceof Error ? error.message : "Failed to load the chat",
         );
@@ -192,7 +220,7 @@ export const ChatPanel: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [isOpen, threadId]);
+  }, [isOpen, threadId, setThreadId]);
 
   useEffect(() => {
     const element = scrollRef.current;
@@ -212,7 +240,7 @@ export const ChatPanel: React.FC = () => {
           setLiveLines((previous) => [
             ...previous,
             {
-              label: TOOL_STATUS[event.name] ?? `Running ${event.name}…`,
+              label: toolStatus(event),
               ok: event.ok,
             },
           ]);
@@ -320,7 +348,7 @@ export const ChatPanel: React.FC = () => {
       aria-label="Chat"
       onKeyDown={(event) => event.stopPropagation()}
       style={{ "--chat-width": `${width}px` } as React.CSSProperties}
-      className="flex bg-background max-md:fixed max-md:inset-0 max-md:z-50 md:sticky md:top-0 md:h-[100dvh] md:w-[var(--chat-width)] md:shrink-0"
+      className="flex bg-background max-md:fixed max-md:inset-0 max-md:z-[60] md:sticky md:top-0 md:h-[100dvh] md:w-[var(--chat-width)] md:shrink-0"
     >
       <div className="hidden md:flex">
         <TailorColumnSplitter
@@ -383,7 +411,7 @@ export const ChatPanel: React.FC = () => {
         <div className="border-t border-border/60 px-4 py-3">
           <Composer
             disabled={isRunning}
-            isStreaming={isRunning}
+            isStreaming={showLive}
             onStop={stop}
             onSend={send}
             placeholder="Ask about your jobs..."

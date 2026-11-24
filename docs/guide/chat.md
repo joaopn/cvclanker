@@ -23,9 +23,9 @@ The **Chat** button sits at the right end of the top bar on every page except si
 
 On a wide screen the panel sits beside the page, which narrows to make room. Drag the panel's left edge to make it wider or narrower, up to 70% of the window. On a phone the panel covers the page; close it with the **X** in its header.
 
-Type a question in the box at the bottom and send it with Ctrl+Enter (Cmd+Enter on a Mac). While it works, a status line shows each lookup ("Searching jobs…", "Reading a job…"); a lookup that failed is marked **(failed)**. **Stop** cancels the answer. Earlier questions and answers in the same chat go along with each new question, so you can ask follow-ups; what the lookups returned is not kept, so the chat looks things up again when it needs the details.
+Type a question in the box at the bottom and send it with Ctrl+Enter (Cmd+Enter on a Mac). While it works, a status line shows each lookup and what it looked at ("Searching jobs: Acme…", "Reading job: Data Engineer @ Acme…", "Marking applied: Data Engineer @ Acme"); a lookup that failed is marked **(failed)**. **Stop** cancels the answer, and so does closing or reloading the page while it runs. Stop shows only on the chat that is answering; while any answer runs, you cannot send another question. Earlier questions and answers in the same chat go along with each new question, so you can ask follow-ups; what the lookups returned is not kept, so the chat looks things up again when it needs the details.
 
-The browser remembers the panel's width, whether it was open, and which chat was showing. The chats themselves are saved in the database, so they are there in any browser. Each chat is named after the first line of its first question. Each [user profile](configuration.md#user-profiles) has its own chats. A chat cannot be renamed or deleted.
+The browser remembers the panel's width, whether it was open, and which chat was showing. The chats themselves are saved in the database, so they are there in any browser. Each chat is named after the first line of its first question. Each [user profile](configuration.md#user-profiles) has its own chats; when the remembered chat is not in the current one, the panel starts a new chat. A chat cannot be renamed or deleted.
 
 ## What it can look up
 
@@ -56,7 +56,7 @@ The job list refreshes after a change. **A change the chat makes has no Undo.** 
 
 ## What it costs
 
-Every lookup step is one call to your **Tailoring Model**, the same model as tailoring and the ghostwriter (see [Which model does what](llm-providers.md#which-model-does-what)). A question takes at least one call and at most 8; a question that needs more stops with a message saying so. Each call shows in the **LLM** call queue as "chat" with the chat's name (see [Watching calls](llm-providers.md#watching-calls)). A long chat makes each call bigger, because the earlier questions and answers go along with it.
+Every lookup step is a call to your **Tailoring Model**, the same model as tailoring and the ghostwriter (see [Which model does what](llm-providers.md#which-model-does-what)). A question takes at least one step and at most 8; a question that needs more stops with a message saying so. A call that fails on a passing error, such as a timeout, is tried once more, so a step can cost more than one call. Each call shows in the **LLM** call queue as "chat" with the chat's name (see [Watching calls](llm-providers.md#watching-calls)). A long chat makes each call bigger, because the earlier questions and answers go along with it.
 
 The chat's instructions are a prompt like any other: edit **chat-assistant** in **Settings → LLM Prompts** (see [Editing the prompts](llm-providers.md#editing-the-prompts)).
 

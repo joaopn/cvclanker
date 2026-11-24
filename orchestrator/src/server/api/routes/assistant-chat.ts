@@ -56,6 +56,10 @@ assistantChatRouter.post(
           flushHeaders: true,
         });
         streaming = true;
+        res.on("close", () => {
+          if (!res.writableFinished) chatService.cancelChatTurn(req.params.id);
+        });
+        if (res.destroyed) chatService.cancelChatTurn(req.params.id);
       }
       writeSseData(res, event);
     };

@@ -26,6 +26,7 @@ export type ChatStreamEvent =
       arguments: unknown;
       write: boolean;
       ok: boolean;
+      job?: { title: string; employer: string } | null;
     }
   | { type: "completed"; message: ChatMessage }
   | { type: "cancelled"; message: ChatMessage }

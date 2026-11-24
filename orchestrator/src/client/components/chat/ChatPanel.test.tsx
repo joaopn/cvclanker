@@ -1,4 +1,5 @@
 import * as api from "@client/api";
+import { toast } from "@client/lib/toast";
 import { createAppSettings } from "@shared/testing/factories";
 import type { ChatMessage, ChatStreamEvent, ChatThread } from "@shared/types";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -16,7 +17,9 @@ import { ChatButton } from "./ChatButton";
 import { ChatProvider } from "./ChatContext";
 import { ChatPanel } from "./ChatPanel";
 
-vi.mock("@client/api", () => ({
+vi.mock("@client/api", async (importOriginal) => ({
+  ApiClientError: (await importOriginal<typeof import("@client/api")>())
+    .ApiClientError,
   listChatThreads: vi.fn(),
   createChatThread: vi.fn(),
   getChatMessages: vi.fn(),
@@ -156,6 +159,7 @@ async function startTurn(question: string) {
 describe("chat button and panel", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    vi.mocked(toast.error).mockClear();
     vi.mocked(api.listChatThreads).mockReset().mockResolvedValue({
       threads: [],
     });
@@ -267,8 +271,30 @@ describe("chat button and panel", () => {
       write: false,
       ok: true,
     });
-    expect(screen.getByText("Searching jobs…")).toBeInTheDocument();
+    expect(screen.getByText("Searching jobs: Acme…")).toBeInTheDocument();
     expect(screen.queryByText("Thinking…")).not.toBeInTheDocument();
+
+    turn.emit({
+      type: "tool",
+      name: "mark_applied",
+      arguments: { id: "job-1" },
+      write: true,
+      ok: true,
+      job: { title: "Data Engineer", employer: "Acme" },
+    });
+    expect(
+      screen.getByText("Marking applied: Data Engineer @ Acme"),
+    ).toBeInTheDocument();
+
+    turn.emit({
+      type: "tool",
+      name: "get_job",
+      arguments: { id: "gone" },
+      write: false,
+      ok: false,
+      job: null,
+    });
+    expect(screen.getByText("Reading a job… (failed)")).toBeInTheDocument();
 
     turn.emit({
       type: "completed",
@@ -278,7 +304,7 @@ describe("chat button and panel", () => {
         content: "There are **two** jobs at Acme.",
       }),
     });
-    expect(screen.queryByText("Searching jobs…")).not.toBeInTheDocument();
+    expect(screen.queryByText("Searching jobs: Acme…")).not.toBeInTheDocument();
     expect(screen.getByText("two").tagName).toBe("STRONG");
     await turn.finish();
   });
@@ -345,6 +371,84 @@ describe("chat button and panel", () => {
     const turn = await startTurn("How many jobs have I applied to?");
     expect(toggle).toBeDisabled();
     await turn.finish();
+  });
+
+  it("falls back to a new chat when the remembered chat is not found", async () => {
+    window.localStorage.setItem("cvclanker:chat:open", "true");
+    window.localStorage.setItem("cvclanker:chat:threadId", "stale");
+    vi.mocked(api.getChatMessages).mockRejectedValue(
+      new api.ApiClientError("Chat not found", {
+        status: 404,
+        code: "NOT_FOUND",
+      }),
+    );
+    renderChat();
+    await waitFor(() =>
+      expect(api.getChatMessages).toHaveBeenCalledWith("stale"),
+    );
+    expect(
+      await screen.findByText(/Ask about your jobs: which Ready jobs/),
+    ).toBeInTheDocument();
+
+    const turn = await startTurn("Hi");
+    expect(api.createChatThread).toHaveBeenCalledTimes(1);
+    expect(api.streamChatMessage).toHaveBeenCalledWith(
+      "new-thread",
+      "Hi",
+      expect.any(Function),
+      expect.any(AbortSignal),
+    );
+    expect(toast.error).not.toHaveBeenCalled();
+    await turn.finish();
+  });
+
+  it("shows Stop only on the chat that is answering", async () => {
+    vi.mocked(api.listChatThreads).mockResolvedValue({
+      threads: [thread({ id: "other", title: "Other chat" })],
+    });
+    renderChat();
+    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
+    const turn = await startTurn("Which jobs are at Acme?");
+    expect(
+      screen.getByRole("button", { name: "Stop generating" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Saved chats" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /Other chat/ }),
+    );
+    await waitFor(() =>
+      expect(api.getChatMessages).toHaveBeenCalledWith("other"),
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Stop generating" }),
+    ).not.toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText("Ask about your jobs..."), {
+      target: { value: "Another question" },
+    });
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    await turn.finish();
+  });
+
+  it("drops the loading state when New chat is picked during a load", async () => {
+    vi.mocked(api.listChatThreads).mockResolvedValue({
+      threads: [thread({ id: "slow", title: "Slow chat" })],
+    });
+    vi.mocked(api.getChatMessages).mockReturnValue(new Promise(() => {}));
+    renderChat();
+
+    fireEvent.click(screen.getByRole("button", { name: "Saved chats" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Slow chat/ }));
+    expect(await screen.findByText("Loading chat…")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Saved chats" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /New chat/ }));
+
+    expect(
+      await screen.findByText(/Ask about your jobs: which Ready jobs/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Loading chat…")).not.toBeInTheDocument();
   });
 
   it("keeps a key pressed in the panel away from window shortcuts", () => {

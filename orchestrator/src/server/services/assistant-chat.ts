@@ -5,6 +5,7 @@ import { handleMcpMessage } from "@server/mcp/protocol";
 import { getMcpTool, listMcpTools, type McpTool } from "@server/mcp/tools";
 import type { ChatMessage, ChatStreamEvent, ChatThread } from "@shared/types";
 import * as chatRepo from "../repositories/assistant-chat";
+import * as jobsRepo from "../repositories/jobs";
 import { LlmService } from "./llm/service";
 import type { JsonSchemaDefinition } from "./llm/types";
 import { resolveLlmRuntimeSettings } from "./modelSelection";
@@ -100,6 +101,22 @@ function validateReply(raw: unknown): ReplyValidation {
       };
     }
     calls.push({ name, argumentsJson });
+  }
+  let nested: unknown;
+  try {
+    nested = JSON.parse(message.trim());
+  } catch {}
+  if (
+    nested &&
+    typeof nested === "object" &&
+    !Array.isArray(nested) &&
+    Array.isArray((nested as { toolCalls?: unknown }).toolCalls)
+  ) {
+    return {
+      ok: false,
+      error:
+        'you put your reply JSON inside the "message" field. Tool calls go in the top-level "toolCalls" array, and "message" holds only the plain-text answer',
+    };
   }
   if (calls.length === 0 && !message.trim()) {
     return {
@@ -323,6 +340,7 @@ async function answerQuestion(input: {
 
     const results: string[] = [];
     for (const [index, call] of reply.toolCalls.entries()) {
+      input.signal.throwIfAborted();
       const write = getMcpTool(call.name)?.access === "write";
       let args: unknown = call.argumentsJson;
       let parsed = false;
@@ -359,12 +377,26 @@ async function answerQuestion(input: {
           ok = toolResult.isError !== true;
         }
       }
+      const jobId =
+        parsed && args && typeof args === "object"
+          ? (args as { id?: unknown }).id
+          : undefined;
+      let job: { title: string; employer: string } | null | undefined;
+      if (typeof jobId === "string") {
+        try {
+          const found = await jobsRepo.getJobById(jobId);
+          job = found ? { title: found.title, employer: found.employer } : null;
+        } catch {
+          job = null;
+        }
+      }
       input.onToolEvent({
         type: "tool",
         name: call.name,
         arguments: args,
         write,
         ok,
+        ...(job !== undefined && { job }),
       });
       results.push(
         `${index + 1}. ${call.name} ${call.argumentsJson}\n${ok ? "Result" : "Error"}: ${text}`,

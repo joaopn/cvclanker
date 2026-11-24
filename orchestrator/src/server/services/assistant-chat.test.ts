@@ -166,6 +166,7 @@ describe.sequential("assistant chat turn", () => {
       arguments: { id: jobId },
       write: true,
       ok: false,
+      job: { title: "Data Engineer", employer: "Acme" },
     });
     expect(seen[1].messages.at(-1)?.content).toContain("switched off");
     expect((await jobsRepo.getJobById(jobId))?.status).toBe("ready");
@@ -198,6 +199,60 @@ describe.sequential("assistant chat turn", () => {
     expect(notes.map((note) => [note.title, note.content])).toEqual([
       ["Call", "Recruiter called"],
     ]);
+  });
+
+  it("names the job a tool call looked at, and none for a search", async () => {
+    const jobId = await seedReadyJob();
+    const thread = await chat.createChatThread();
+    script(
+      reply("", [
+        toolCall("search_jobs", { query: "Acme" }),
+        toolCall("get_job", { id: jobId }),
+      ]),
+      reply("Found it."),
+    );
+
+    const { events } = await send(thread.id, "Read the Acme job");
+
+    const tools = events.filter((event) => event.type === "tool");
+    expect(tools.map((event) => event.name)).toEqual([
+      "search_jobs",
+      "get_job",
+    ]);
+    expect(tools[0]).not.toHaveProperty("job");
+    expect(tools[1]).toMatchObject({
+      ok: true,
+      job: { title: "Data Engineer", employer: "Acme" },
+    });
+  });
+
+  it("runs no further tool call once the turn is cancelled mid-list", async () => {
+    await settingsRepo.setSetting("chatCanChangeJobs", "1");
+    const first = await seedReadyJob("Data Engineer");
+    const second = await seedReadyJob("ML Engineer");
+    const thread = await chat.createChatThread();
+    script(
+      reply("", [
+        toolCall("mark_applied", { id: first }),
+        toolCall("mark_applied", { id: second }),
+      ]),
+      reply("Done."),
+    );
+
+    const events: ChatStreamEvent[] = [];
+    const message = await chat.sendChatMessage({
+      threadId: thread.id,
+      content: "Mark both applied",
+      stream: (event) => {
+        events.push(event);
+        if (event.type === "tool") chat.cancelChatTurn(thread.id);
+      },
+    });
+
+    expect(message.status).toBe("cancelled");
+    expect(events.filter((event) => event.type === "tool")).toHaveLength(1);
+    expect((await jobsRepo.getJobById(first))?.status).toBe("applied");
+    expect((await jobsRepo.getJobById(second))?.status).toBe("ready");
   });
 
   it("is read-only when the switch was never saved", async () => {
@@ -236,6 +291,7 @@ describe.sequential("assistant chat turn", () => {
       arguments: { id: "x" },
       write: false,
       ok: false,
+      job: null,
     });
     expect(message).toMatchObject({
       status: "complete",
@@ -273,6 +329,34 @@ describe.sequential("assistant chat turn", () => {
     );
     expect(message.status).toBe("failed");
     expect(message.content).toContain("schema validation after 2 attempts");
+  });
+
+  it("rejects a reply nested inside 'message' and retries with the error", async () => {
+    const thread = await chat.createChatThread();
+    const nested = JSON.stringify({
+      message: "",
+      toolCalls: [toolCall("add_job_note", { jobId: "job-1", note: "x" })],
+    });
+    script(reply(nested), reply("Noted."));
+
+    const { message } = await send(thread.id, "Add a note");
+
+    expect(seen).toHaveLength(2);
+    expect(seen[1].messages.at(-1)?.content).toContain(
+      'you put your reply JSON inside the "message" field',
+    );
+    expect(message).toMatchObject({ status: "complete", content: "Noted." });
+  });
+
+  it("accepts an answer that contains a fenced JSON block", async () => {
+    const thread = await chat.createChatThread();
+    const answer = 'Here it is:\n\n```json\n{"a":1}\n```';
+    script(reply(answer));
+
+    const { message } = await send(thread.id, "Show JSON");
+
+    expect(seen).toHaveLength(1);
+    expect(message).toMatchObject({ status: "complete", content: answer });
   });
 
   it("saves a cancelled answer when the turn is cancelled mid-call", async () => {
