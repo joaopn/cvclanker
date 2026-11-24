@@ -399,6 +399,35 @@ export const jobChatRuns = sqliteTable(
   }),
 );
 
+export const chatThreads = sqliteTable("chat_threads", {
+  id: text("id").primaryKey(),
+  title: text("title"),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export const chatMessages = sqliteTable(
+  "chat_messages",
+  {
+    id: text("id").primaryKey(),
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => chatThreads.id, { onDelete: "cascade" }),
+    role: text("role", { enum: ["user", "assistant"] }).notNull(),
+    content: text("content").notNull().default(""),
+    status: text("status", {
+      enum: ["complete", "failed", "cancelled"],
+    }).notNull(),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => ({
+    threadCreatedIndex: index("idx_chat_messages_thread_created").on(
+      table.threadId,
+      table.createdAt,
+    ),
+  }),
+);
+
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),

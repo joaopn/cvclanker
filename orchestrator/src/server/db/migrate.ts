@@ -214,6 +214,22 @@ const migrations: string[] = [
     FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
   )`,
 
+  `CREATE TABLE IF NOT EXISTS chat_threads (
+    id TEXT PRIMARY KEY,
+    title TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS chat_messages (
+    id TEXT PRIMARY KEY,
+    thread_id TEXT NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`,
+
   `CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
     application_id TEXT NOT NULL,
@@ -516,6 +532,7 @@ const postRebuildMigrations: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_job_chat_messages_thread_created ON job_chat_messages(thread_id, created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_job_chat_messages_parent ON job_chat_messages(parent_message_id)`,
   `CREATE INDEX IF NOT EXISTS idx_job_chat_runs_thread_status ON job_chat_runs(thread_id, status)`,
+  `CREATE INDEX IF NOT EXISTS idx_chat_messages_thread_created ON chat_messages(thread_id, created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires_at ON auth_sessions(expires_at)`,
   `CREATE INDEX IF NOT EXISTS idx_auth_sessions_revoked_at ON auth_sessions(revoked_at)`,
   // The ctrl+K search's @ever-applied lock walks this instead of every row.

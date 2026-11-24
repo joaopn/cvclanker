@@ -390,6 +390,13 @@ export const settingsRegistry = {
     parse: parseBitBoolOrNull,
     serialize: serializeBitBool,
   },
+  chatCanChangeJobs: {
+    kind: "typed" as const,
+    schema: z.boolean(),
+    default: (): boolean => false,
+    parse: parseBitBoolOrNull,
+    serialize: serializeBitBool,
+  },
   candidateName: {
     kind: "typed" as const,
     schema: z.string().trim().max(CANDIDATE_NAME_MAX_CHARS),

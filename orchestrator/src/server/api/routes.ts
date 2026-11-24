@@ -3,6 +3,7 @@
  */
 
 import { Router } from "express";
+import { assistantChatRouter } from "./routes/assistant-chat";
 import { authRouter } from "./routes/auth";
 import { coverLetterRouter } from "./routes/coverletter";
 import { cvRouter } from "./routes/cv";
@@ -47,4 +48,5 @@ apiRouter.use("/user-profiles", userProfilesRouter);
 apiRouter.use("/scoring-bench", scoringBenchRouter);
 apiRouter.use("/mcp-access", mcpAccessRouter);
 apiRouter.use("/stats", statsRouter);
+apiRouter.use("/chat", assistantChatRouter);
 apiRouter.use("/", extractorHealthRouter);

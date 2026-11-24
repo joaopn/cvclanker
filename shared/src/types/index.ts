@@ -1,4 +1,5 @@
 export * from "./api";
+export * from "./assistant-chat";
 export * from "./chat";
 export * from "./claude-code-cli";
 export * from "./cover-letter-document";

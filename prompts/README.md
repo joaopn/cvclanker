@@ -22,6 +22,7 @@ Seeding rules per prompt, per boot:
 ```
 prompts/
   README.md                       # this file
+  chat-assistant.yaml             # chat panel that answers questions about the jobs
   cover-letter-generate.yaml      # draft cover-letter field values for a JD
   coverletter-template-extract.yaml  # extract template+fields from an uploaded cover letter
   cv-adjust.yaml                  # tailor CV field values to a JD (ATS pass)
