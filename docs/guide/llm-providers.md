@@ -33,7 +33,7 @@ The provider is set in the onboarding wizard's first step, and changed any time 
 | Setting | Used for |
 |---|---|
 | **Scoring Model** | Fit scoring. |
-| **Tailoring Model** | Tailoring, cover letters, the ghostwriter, interview notes, CV and cover-letter extraction, drafting the brief, and suggesting search terms in onboarding. |
+| **Tailoring Model** | Tailoring, cover letters, the ghostwriter, the [chat](chat.md), interview notes, CV and cover-letter extraction, drafting the brief, and suggesting search terms in onboarding. |
 | **Default model** | Reading a job off a pasted URL, and the fallback for both overrides. |
 | **Pre-filter model** | An optional cheap model that screens jobs before the scoring model; empty means off (see below). |
 | **Reasoning effort** | Claude Code only: the effort level for every call (`low` to `max`, or the CLI's default). |

@@ -55,7 +55,7 @@ The **Models** section (Settings → AI) has a **Default model** and two **Task-
 | Setting | Used for |
 |---|---|
 | **Scoring Model** | Job scoring; also what a benchmark column on the configured provider runs when its model is left blank |
-| **Tailoring Model** | Tailoring, cover letters, the ghostwriter, interview notes, CV and cover-letter extraction, drafting the personal brief, suggesting search terms in onboarding |
+| **Tailoring Model** | Tailoring, cover letters, the ghostwriter, the chat panel, interview notes, CV and cover-letter extraction, drafting the personal brief, suggesting search terms in onboarding |
 | **Default model** | Reading a job off a pasted URL; the fallback for both overrides |
 | **Pre-filter model** | Only the optional screen in front of scoring (see below); empty means off |
 | **Reasoning effort** | Claude Code only: the `--effort` level for every call (`low`, `medium`, `high`, `xhigh`, `max`, or **CLI default**) |

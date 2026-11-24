@@ -7,7 +7,7 @@ nav_order: 1
 
 CV Clanker is one Docker container. Inside it a Node/Express server serves the React client and a JSON API, keeps everything in a single SQLite file under the data directory, and shells out to helper programs (the job-board extractors, Tectonic, LibreOffice, Chromium, `pdftotext`, Camoufox, the Codex and Claude Code CLIs) when a piece of work needs them. Nothing runs outside the container, and the only outbound traffic is to the LLM provider and the job sources you configure.
 
-Using it: [Getting started](../guide/getting-started.md), [Configuration](../guide/configuration.md), [Agent access](../guide/agent-access.md)
+Using it: [Getting started](../guide/getting-started.md), [Configuration](../guide/configuration.md), [Agent access](../guide/agent-access.md), [Chat](../guide/chat.md)
 
 ## How it works
 
@@ -36,7 +36,7 @@ The server is the only long-lived process. A pipeline run, a tailor, a cover let
 | Path | What it serves |
 |---|---|
 | `/api/*` | The JSON API. Every answer has the same envelope: `{ ok: true, data }` or `{ ok: false, error: { code, message } }`, plus a request id (also sent as the `x-request-id` header) that appears in the logs. |
-| `/api/...` streams | Long work reports progress as Server-Sent Events: pipeline run progress, bulk job-action batches, the ghostwriter chat, batch import of jobs by URL, the LLM call queue and the scoring benchmark. |
+| `/api/...` streams | Long work reports progress as Server-Sent Events: pipeline run progress, bulk job-action batches, the ghostwriter chat, the chat panel's answers, batch import of jobs by URL, the LLM call queue and the scoring benchmark. |
 | `/pdfs/*` | Generated CV and cover-letter documents, read out of the database (see [Tailoring and cover letters](tailoring.md)). |
 | `/mcp` | The agent endpoint: MCP over JSON-RPC for an agent you run, behind its own token (below). |
 | `/health` | A liveness probe; the image's and the compose file's healthchecks call it every 30 s. |
@@ -64,6 +64,10 @@ sequenceDiagram
 ```
 
 A missing or wrong token gets 401, a method other than POST 405. Seven tools are offered: `search_jobs` (the ctrl+K search), `get_job`, `get_job_documents`, `get_tailored_cv`, `get_personal_brief`, `mark_applied` (only from Ready, through the ordinary status update, so the first applied date is kept) and `add_job_note` (the note route's own validation). A refused tool call comes back as a tool error naming the setting in Settings → Agent access that would allow it. Batch requests are not supported.
+
+### The chat
+
+The chat panel (`/api/chat`) answers questions with the same tools. Each question is a loop on the Tailoring Model: the model replies with a JSON object holding an answer and a list of tool calls; each call goes through the same JSON-RPC handler as `/mcp`, called in-process, so there is no HTTP request and no token; the results go back to the model until it answers with no tool calls, at most 8 LLM calls per question. The read tools are always offered, the brief included, since the Agent access switches govern outside agents only; the two write tools are offered, and allowed by the handler's access check, only while the `chatCanChangeJobs` setting (the panel's **Can change jobs** switch) is on. Sending a question returns a Server-Sent Events stream with one event per tool call and a final event with the saved answer; cancel aborts the LLM call in flight. Each answer is saved with its outcome (complete, failed or cancelled), and only complete messages are sent back to the model as history.
 
 ### Boot
 
@@ -105,6 +109,7 @@ The data directory is `/app/data` inside the container: `./data` on the dev path
 | `source_configs`, `provider_instances` | Configured sources: built-in extractors and Apify actors. |
 | `pipeline_runs`, `run_schedules` | Run history with per-run detail, and the schedules that start runs. |
 | `job_chat_threads`, `job_chat_messages`, `job_chat_runs` | The ghostwriter chat per job. |
+| `chat_threads`, `chat_messages` | The chat panel's saved chats and their questions and answers. |
 | `settings`, `prompts` | Settings values and the live prompt YAML (with its shipped default for Reset). |
 | `runtime_secrets`, `llm_provider_credentials`, `auth_sessions` | The sign-in signing secret and the agent token's digest and access switches, keys for providers other than the configured one, and sign-in sessions. |
 
