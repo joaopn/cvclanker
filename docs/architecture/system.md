@@ -157,7 +157,7 @@ The personal brief is the most personal text in the app, so reading it needs a s
 
 ### One token per user profile
 
-The token's digest lives in the database like every other secret, so it belongs to the active user profile: an agent connected to one profile is refused by another until a token is generated there, never quietly handed that profile's jobs. A with-secrets export carries the token; a secrets-stripped export drops it, so a restored copy has agent access off.
+The token's digest lives in the database like every other secret, so it belongs to the active user profile: each profile has its own token, so an agent connected to one profile is refused by another until it is given that profile's token, never quietly handed that profile's jobs. A with-secrets export carries the token; a secrets-stripped export drops it, so a restored copy has agent access off.
 
 ### Independent of upstream JobOps
 

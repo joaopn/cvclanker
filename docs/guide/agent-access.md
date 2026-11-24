@@ -50,7 +50,7 @@ Other MCP clients take the same address and the header `Authorization: Bearer <t
 |---|---|
 | **Read only** (the default) | Search and read jobs, their documents and tailored CVs. Any change is refused. |
 | **Read and change** | Also mark a **Ready** job applied and add notes. It refuses to mark a job in any other stage. |
-| **Share the personal brief** (off by default) | Read the personal brief. While it is off the agent cannot read it, at either access level. |
+| **Share the personal brief** (off by default) | Read the personal brief. While it is off the agent cannot read the brief itself, at either access level; text written with it, such as the fit reason, the tailored CV and the cover letter, stays readable. |
 
 Through agent access an agent cannot tailor, score or delete jobs, change settings, or read your API keys.
 
@@ -58,7 +58,7 @@ Through agent access an agent cannot tailor, score or delete jobs, change settin
 
 - **Search is the in-app search.** It matches one phrase at word starts in the title, the employer or the location, the same way as [Searching every job](reviewing-jobs.md#searching-every-job); it does not search descriptions. Its status filters are the in-app `@` ones: ready, discovered, applied, in-progress, skipped and ever-applied.
 - **Files.** `get_job_documents` returns paths such as `/pdfs/resume_<id>.pdf`; the agent fetches them from the app's own address, for example `http://localhost:3005/pdfs/resume_<id>.pdf`. Only the PDFs are listed.
-- **One token per user profile.** The token belongs to the current [user profile](configuration.md#user-profiles), since each profile is its own database. After you switch profile the agent is refused until you generate a token in that profile.
+- **One token per user profile.** The token belongs to the current [user profile](configuration.md#user-profiles), since each profile is its own database. After you switch profile the agent's token is refused: each profile has its own token, so give the agent the one generated in that profile.
 - **Exports.** An export made without **Include API keys & secrets in exports** drops the token, so agent access is off after restoring it. An export with secrets carries the token and its settings.
 - **An applied mark the agent sets cannot be undone from the app.** You can move the job back with the **Stage** dropdown, but its applied date stays.
 

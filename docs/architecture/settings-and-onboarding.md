@@ -150,7 +150,7 @@ The keys that hot paths read (the LLM timeout on every call, the Claude Code tok
 
 ### Credentials are write-only; the sign-in secret has no read path at all
 
-API keys and tokens come back to the browser only as a short hint, enough to tell "saved" from "missing". The session-signing secret is not a setting at all: it lives in a separate secrets table that no route returns, because anything in the registry is echoed through `GET /api/settings` in some form. A secrets-stripped export clears that table too, so a restored copy simply mints a new secret at first sign-in.
+API keys and tokens come back to the browser only as a short hint, enough to tell "saved" from "missing". The session-signing secret is not a setting at all: it lives in a separate secrets table whose secrets no route returns (the agent token's switches there are shown by Settings → Agent access, its digest never), because anything in the registry is echoed through `GET /api/settings` in some form. A secrets-stripped export clears that table too, so a restored copy simply mints a new secret at first sign-in.
 
 ### Reset never touches credentials
 
