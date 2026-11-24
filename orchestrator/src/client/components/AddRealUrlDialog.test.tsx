@@ -59,6 +59,23 @@ describe("AddRealUrlDialog", () => {
     );
   });
 
+  it("saves when Enter is pressed in the field", async () => {
+    const onJobUpdated = vi.fn();
+    render(<AddRealUrlDialog jobId="job-7" onJobUpdated={onJobUpdated} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add real URL" }));
+    const field = screen.getByLabelText("Application address");
+    fireEvent.change(field, {
+      target: { value: "https://careers.example.com/apply/42" },
+    });
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    await waitFor(() => expect(onJobUpdated).toHaveBeenCalledTimes(1));
+    expect(updateJob).toHaveBeenCalledTimes(1);
+    expect(updateJob).toHaveBeenCalledWith("job-7", {
+      applicationLink: "https://careers.example.com/apply/42",
+    });
+  });
+
   it.each([
     ["text that is not an address", "not a url"],
     ["an ftp address", "ftp://files.example.com/apply"],

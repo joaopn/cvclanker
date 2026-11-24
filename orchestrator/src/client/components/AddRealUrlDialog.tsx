@@ -94,6 +94,11 @@ export const AddRealUrlDialog: React.FC<AddRealUrlDialogProps> = ({
             value={value}
             placeholder="https://"
             onChange={(event) => setValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || isSaving) return;
+              event.preventDefault();
+              void handleSave();
+            }}
           />
           {error && <p className="text-xs text-destructive">{error}</p>}
         </div>
