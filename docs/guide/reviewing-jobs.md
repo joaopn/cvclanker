@@ -34,6 +34,8 @@ Selecting a job opens its detail panel beside the list (on a narrow screen, as a
 - **Tailoring**: a job being tailored shows its progress; a failed one shows the reason and **Retry tailoring**; a tailored one opens the tailoring workspace with the PDF and the editing chat (see [Tailoring](tailoring.md)).
 - **Everywhere else**: the job card with **View**, the **Stage** dropdown, the buttons that fit the status (**Applied**, **Move to Interviewing**, **Mark Closed**, **Tailor**, **Skip**, **Reopen**) and a **More actions** menu (edit the description or details, copy the job's info, downloads).
 
+On a tailored LinkedIn job that is not Easy Apply, the panel shows **Add real URL**. Paste the employer's application address and save; **Open Job Listing** then opens that address instead of LinkedIn. To change it later, use **Edit details** in the **More actions** menu.
+
 The panel's tabs are **Overview** and **Description**, plus **Documents**, **Interview QA** and **Notes** on Live and Interviewing jobs. The Description, Interview QA and Notes tabs have an expand icon at the top right that opens the text in a wide reader box; click outside it or press Esc to close it.
 
 ## A row in the list

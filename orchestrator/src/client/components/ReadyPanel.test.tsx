@@ -1,6 +1,6 @@
 /**
- * Covers the two Download buttons' file names and nothing else; every child
- * with its own data or layout concerns is stubbed.
+ * Covers the two Download buttons' file names and when the Add real URL button
+ * shows; every child with its own data or layout concerns is stubbed.
  */
 
 import { createJob } from "@shared/testing/factories";
@@ -138,5 +138,52 @@ describe("ReadyPanel download names", () => {
     const link = screen.getByText("Download CV").closest("a");
     expect(link?.getAttribute("download")).toBe("resume_Acme_Corp_Ltd.zip");
     expect(link?.getAttribute("href")).toMatch(/^\/pdfs\/resume_j1\.zip\?v=/);
+  });
+});
+
+describe("ReadyPanel Add real URL button", () => {
+  const linkedInJob = (overrides: Parameters<typeof createJob>[0] = {}) =>
+    createJob({
+      ...readyJob(),
+      jobUrl: "https://www.linkedin.com/jobs/view/2000012345",
+      applicationLink: null,
+      ...overrides,
+    });
+  const checkedAt = "2026-11-20T10:00:00.000Z";
+  const addButton = () =>
+    screen.queryByRole("button", { name: "Add real URL" });
+
+  it("shows on a LinkedIn job that was never live-checked", () => {
+    renderPanel(linkedInJob());
+    expect(addButton()).toBeInTheDocument();
+  });
+
+  it("shows on a LinkedIn job checked as not Easy Apply", () => {
+    renderPanel(
+      linkedInJob({
+        liveStatusCheckedAt: checkedAt,
+        liveEasyApply: false,
+        liveClosed: false,
+      }),
+    );
+    expect(addButton()).toBeInTheDocument();
+  });
+
+  it("is absent on an Easy Apply job", () => {
+    renderPanel(
+      linkedInJob({
+        liveStatusCheckedAt: checkedAt,
+        liveEasyApply: true,
+        liveClosed: false,
+      }),
+    );
+    expect(addButton()).not.toBeInTheDocument();
+  });
+
+  it("is absent once the job has an application address off LinkedIn", () => {
+    renderPanel(
+      linkedInJob({ applicationLink: "https://careers.example.com/apply/42" }),
+    );
+    expect(addButton()).not.toBeInTheDocument();
   });
 });

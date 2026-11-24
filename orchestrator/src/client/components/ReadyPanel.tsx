@@ -1,3 +1,4 @@
+import { extractBoard } from "@shared/duplicate-identity";
 import type { Job } from "@shared/types.js";
 import {
   CheckCircle2,
@@ -40,8 +41,10 @@ import { useRescoreJob } from "../hooks/useRescoreJob";
 import { useResizablePanel } from "../hooks/useResizableListPanel";
 import { useSettings } from "../hooks/useSettings";
 import { CompanyNameButton } from "../pages/orchestrator/CompanyNameButton";
+import { showsEasyApplyChip } from "../pages/orchestrator/constants";
 import { JobStageSwitcher } from "../pages/orchestrator/JobStageSwitcher";
 import { FitAssessment } from ".";
+import { AddRealUrlDialog } from "./AddRealUrlDialog";
 import { CollapsibleSection } from "./discovered-panel/CollapsibleSection";
 import { AtsCoverageBadge } from "./ghostwriter/AtsCoverageBadge";
 import { BriefPane } from "./ghostwriter/BriefPane";
@@ -440,6 +443,15 @@ export const ReadyPanel: React.FC<ReadyPanelProps> = ({
               className="h-9 px-2 text-xs"
               shortcut="o"
             />
+
+            {extractBoard(jobLink) === "linkedin" &&
+              !showsEasyApplyChip(job) && (
+                <AddRealUrlDialog
+                  jobId={job.id}
+                  onJobUpdated={onJobUpdated}
+                  className="h-9 gap-1 px-2 text-xs"
+                />
+              )}
 
             <JobStageSwitcher
               job={job}
