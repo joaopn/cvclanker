@@ -23,12 +23,19 @@ describe("Composer", () => {
     ).toBeEnabled();
   });
 
-  it("renders leading content in the bottom row, before the hint", () => {
+  it("renders leading content in the bottom row, beside the buttons", () => {
     render(<Composer {...baseProps} leading={<span>Sample menus</span>} />);
     const leading = screen.getByText("Sample menus");
-    const hint = screen.getByText("Enter to send, Shift+Enter for a new line");
-    expect(leading.parentElement).toBe(hint.parentElement);
-    expect(leading.nextElementSibling).toBe(hint);
+    const send = screen.getByRole("button", { name: "Send message" });
+    expect(leading.parentElement?.parentElement).toBe(
+      send.parentElement?.parentElement,
+    );
+    expect(leading.parentElement).not.toBe(send.parentElement);
+  });
+
+  it("shows no keyboard hint", () => {
+    render(<Composer {...baseProps} />);
+    expect(screen.queryByText(/Enter/)).not.toBeInTheDocument();
   });
 
   function typeAndPress(init: KeyboardEventInit) {

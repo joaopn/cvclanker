@@ -57,9 +57,6 @@ export const Composer: React.FC<ComposerProps> = ({
       <div className="flex items-center justify-between">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pr-2">
           {leading}
-          <div className="text-[10px] text-muted-foreground">
-            Enter to send, Shift+Enter for a new line
-          </div>
         </div>
         <div className="flex items-center gap-1">
           {onReset && (
