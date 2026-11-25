@@ -1,6 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
-import { invalidateJobData } from "./invalidate";
+import { invalidateJobData, invalidateSettingsData } from "./invalidate";
 
 describe("invalidateJobData", () => {
   // A job write changes what the ctrl+K search would answer as much as what a
@@ -15,5 +15,18 @@ describe("invalidateJobData", () => {
     const keys = invalidate.mock.calls.map(([filters]) => filters?.queryKey);
     expect(keys).toContainEqual(["jobs", "list"]);
     expect(keys).toContainEqual(["jobs", "search"]);
+  });
+});
+
+describe("invalidateSettingsData", () => {
+  it("invalidates the chat's model list alongside the settings", async () => {
+    const client = new QueryClient();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+
+    await invalidateSettingsData(client);
+
+    const keys = invalidate.mock.calls.map(([filters]) => filters?.queryKey);
+    expect(keys).toContainEqual(["settings"]);
+    expect(keys).toContainEqual(["chat", "models"]);
   });
 });

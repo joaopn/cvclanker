@@ -54,6 +54,7 @@ export const queryKeys = {
   chat: {
     all: ["chat"] as const,
     threads: () => [...queryKeys.chat.all, "threads"] as const,
+    models: () => [...queryKeys.chat.all, "models"] as const,
   },
   pipeline: {
     all: ["pipeline"] as const,

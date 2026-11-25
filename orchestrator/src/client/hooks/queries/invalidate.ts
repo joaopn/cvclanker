@@ -30,5 +30,8 @@ export async function invalidateJobData(
 export async function invalidateSettingsData(
   queryClient: QueryClient,
 ): Promise<void> {
-  await queryClient.invalidateQueries({ queryKey: queryKeys.settings.all });
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: queryKeys.settings.all }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.chat.models() }),
+  ]);
 }

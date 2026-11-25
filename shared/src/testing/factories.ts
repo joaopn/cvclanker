@@ -208,6 +208,9 @@ export const createAppSettings = (
     default: false,
     override: null,
   },
+  chatProvider: { value: null, default: null, override: null },
+  chatModel: { value: null, default: null, override: null },
+  chatEffort: { value: null, default: null, override: null },
   candidateName: { value: null, default: null, override: null },
   chatStyleTone: {
     value: "professional",

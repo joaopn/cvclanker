@@ -2,6 +2,7 @@ import { badRequest, toAppError } from "@infra/errors";
 import { asyncRoute, fail, ok } from "@infra/http";
 import { setupSse, writeSseData } from "@infra/sse";
 import * as chatService from "@server/services/assistant-chat";
+import { listChatModels } from "@server/services/assistant-chat-models";
 import type { ChatStreamEvent } from "@shared/types";
 import { Router } from "express";
 import { z } from "zod";
@@ -13,6 +14,13 @@ const sendMessageSchema = z
     content: z.string().trim().min(1),
   })
   .strict();
+
+assistantChatRouter.get(
+  "/models",
+  asyncRoute(async (_req, res) => {
+    ok(res, await listChatModels());
+  }),
+);
 
 assistantChatRouter.get(
   "/threads",

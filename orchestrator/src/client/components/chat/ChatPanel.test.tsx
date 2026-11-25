@@ -29,6 +29,12 @@ vi.mock("@client/api", async (importOriginal) => ({
   updateSettings: vi.fn(),
 }));
 
+vi.mock("./ChatModelMenus", () => ({
+  ChatModelMenus: ({ disabled }: { disabled: boolean }) => (
+    <span data-testid="chat-model-menus" data-disabled={String(disabled)} />
+  ),
+}));
+
 vi.mock("@client/lib/toast", () => ({
   toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() },
 }));
@@ -371,6 +377,24 @@ describe("chat button and panel", () => {
     const turn = await startTurn("How many jobs have I applied to?");
     expect(toggle).toBeDisabled();
     await turn.finish();
+  });
+
+  it("locks the model menus while an answer runs", async () => {
+    renderChat();
+    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
+    const menus = screen.getByTestId("chat-model-menus");
+    expect(menus).toHaveAttribute("data-disabled", "false");
+
+    const turn = await startTurn("Which jobs at Acme?");
+    expect(screen.getByTestId("chat-model-menus")).toHaveAttribute(
+      "data-disabled",
+      "true",
+    );
+    await turn.finish();
+    expect(screen.getByTestId("chat-model-menus")).toHaveAttribute(
+      "data-disabled",
+      "false",
+    );
   });
 
   it("falls back to a new chat when the remembered chat is not found", async () => {

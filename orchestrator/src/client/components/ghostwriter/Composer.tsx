@@ -1,4 +1,3 @@
-import { getMetaShortcutLabel, isMetaKeyPressed } from "@client/lib/meta-key";
 import { Eraser, Send, Square } from "lucide-react";
 import type React from "react";
 import { useState } from "react";
@@ -13,6 +12,7 @@ type ComposerProps = {
   onSend: (content: string) => Promise<void>;
   onReset?: () => void;
   placeholder?: string;
+  leading?: React.ReactNode;
 };
 
 export const Composer: React.FC<ComposerProps> = ({
@@ -23,6 +23,7 @@ export const Composer: React.FC<ComposerProps> = ({
   onSend,
   onReset,
   placeholder = "Ask anything about this job...",
+  leading,
 }) => {
   const [value, setValue] = useState("");
 
@@ -41,7 +42,12 @@ export const Composer: React.FC<ComposerProps> = ({
         onChange={(event) => setValue(event.target.value)}
         disabled={disabled}
         onKeyDown={(event) => {
-          if (isMetaKeyPressed(event) && event.key === "Enter") {
+          if (
+            event.key === "Enter" &&
+            !event.shiftKey &&
+            !event.nativeEvent.isComposing &&
+            event.nativeEvent.keyCode !== 229
+          ) {
             event.preventDefault();
             void submit();
           }
@@ -49,8 +55,11 @@ export const Composer: React.FC<ComposerProps> = ({
         className="min-h-[84px]"
       />
       <div className="flex items-center justify-between">
-        <div className="text-[10px] text-muted-foreground">
-          {getMetaShortcutLabel("Enter")} to send
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pr-2">
+          {leading}
+          <div className="text-[10px] text-muted-foreground">
+            Enter to send, Shift+Enter for a new line
+          </div>
         </div>
         <div className="flex items-center gap-1">
           {onReset && (

@@ -6,6 +6,8 @@ import { getMcpTool, listMcpTools, type McpTool } from "@server/mcp/tools";
 import type { ChatMessage, ChatStreamEvent, ChatThread } from "@shared/types";
 import * as chatRepo from "../repositories/assistant-chat";
 import * as jobsRepo from "../repositories/jobs";
+import { resolveChatModels } from "./assistant-chat-models";
+import { resolveProviderCall } from "./llm/provider-credentials";
 import { LlmService } from "./llm/service";
 import type { JsonSchemaDefinition } from "./llm/types";
 import { resolveLlmRuntimeSettings } from "./modelSelection";
@@ -268,15 +270,26 @@ async function answerQuestion(input: {
       ? 'Changing jobs is switched off in the chat window\'s "Can change jobs" switch.'
       : null;
 
-  const [llmConfig, prompt] = await Promise.all([
-    resolveLlmRuntimeSettings("tailoring"),
+  const [choice, prompt] = await Promise.all([
+    resolveChatModels(),
     loadPrompt("chat-assistant", { changeJobs: canChangeJobs ? "on" : "off" }),
   ]);
-  const llm = new LlmService({
-    provider: llmConfig.provider,
-    baseUrl: llmConfig.baseUrl,
-    apiKey: llmConfig.apiKey,
-  });
+  let llm: LlmService;
+  let model: string;
+  const effort = choice.response.current.effort;
+  if (choice.stored) {
+    const { current } = choice.response;
+    llm = new LlmService((await resolveProviderCall(current.provider)).options);
+    model = current.model;
+  } else {
+    const llmConfig = await resolveLlmRuntimeSettings("tailoring");
+    llm = new LlmService({
+      provider: llmConfig.provider,
+      baseUrl: llmConfig.baseUrl,
+      apiKey: llmConfig.apiKey,
+    });
+    model = llmConfig.model;
+  }
   const jsonSchema = responseSchema(tools.map((tool) => tool.name));
 
   const conversation: ConversationMessage[] = [
@@ -299,7 +312,7 @@ async function answerQuestion(input: {
     steps += 1;
 
     const result = await llm.callJson<unknown>({
-      model: llmConfig.model,
+      model,
       messages: conversation,
       jsonSchema,
       maxRetries: 1,
@@ -307,6 +320,7 @@ async function answerQuestion(input: {
       signal: input.signal,
       label: "chat",
       subject: input.title,
+      ...(effort ? { effort } : {}),
     });
     input.signal.throwIfAborted();
     if (!result.success) {

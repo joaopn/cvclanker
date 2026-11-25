@@ -167,3 +167,38 @@ describe("hosting and Enter", () => {
     expect(api.saveLlmProviderCredential).not.toHaveBeenCalled();
   });
 });
+
+describe("the chat's model list", () => {
+  it("is refreshed after a credential is saved or cleared", async () => {
+    const spy = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+    const chatModelsInvalidations = () =>
+      spy.mock.calls.filter(
+        ([filters]) =>
+          JSON.stringify(filters?.queryKey) ===
+          JSON.stringify(["chat", "models"]),
+      ).length;
+    const credentials = [
+      { provider: "gemini", apiKeyHint: "AIza", baseUrl: null },
+    ];
+    vi.mocked(api.getLlmProviderCredentials).mockResolvedValue(credentials);
+    vi.mocked(api.saveLlmProviderCredential).mockResolvedValue(credentials);
+    try {
+      renderSection();
+      const key = await screen.findByLabelText<HTMLInputElement>("API key", {
+        selector: "#credential-key-openai",
+      });
+      fireEvent.change(key, { target: { value: "sk-example" } });
+      const openaiRow = key.closest("div.rounded-lg") as HTMLElement;
+      fireEvent.click(within(openaiRow).getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(chatModelsInvalidations()).toBe(1));
+
+      const geminiRow = screen
+        .getByText("AIza********")
+        .closest("div.rounded-lg") as HTMLElement;
+      fireEvent.click(within(geminiRow).getByRole("button", { name: "Clear" }));
+      await waitFor(() => expect(chatModelsInvalidations()).toBe(2));
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});

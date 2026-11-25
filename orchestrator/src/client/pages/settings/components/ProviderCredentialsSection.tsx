@@ -51,6 +51,7 @@ export const ProviderCredentialsSection: React.FC<
     }) => api.saveLlmProviderCredential(args.provider, args.input),
     onSuccess: (next, args) => {
       queryClient.setQueryData(CREDENTIALS_QUERY_KEY, next);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.chat.models() });
       // Only the key box is cleared: it was never showing the stored value, so
       // leaving what was typed would look like it had not saved.
       setDrafts((prev) => ({
@@ -69,6 +70,7 @@ export const ProviderCredentialsSection: React.FC<
     mutationFn: api.deleteLlmProviderCredential,
     onSuccess: (next, provider) => {
       queryClient.setQueryData(CREDENTIALS_QUERY_KEY, next);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.chat.models() });
       setDrafts((prev) => ({
         ...prev,
         [provider]: { apiKey: "", baseUrl: "" },

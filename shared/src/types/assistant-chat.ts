@@ -1,3 +1,32 @@
+import type {
+  ClaudeCodeEffortLevel,
+  LlmProviderIdValue,
+} from "../settings-registry";
+
+export type ChatModelTask = "default" | "scoring" | "tailoring" | "prefilter";
+
+export interface ChatModelOption {
+  model: string;
+  tasks: ChatModelTask[];
+}
+
+export interface ChatProviderOption {
+  provider: LlmProviderIdValue;
+  models: ChatModelOption[];
+}
+
+export interface ChatModelChoice {
+  provider: string;
+  model: string;
+  effort: ClaudeCodeEffortLevel | null;
+}
+
+export interface ChatModelsResponse {
+  providers: ChatProviderOption[];
+  current: ChatModelChoice;
+  supportsEffort: string[];
+}
+
 export interface ChatThread {
   id: string;
   title: string | null;

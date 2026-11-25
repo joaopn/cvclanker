@@ -27,8 +27,3 @@ export const getMetaShortcutLabel = (
   const meta = getMetaKeyLabel(nav);
   return meta === "⌘" ? `${meta}${normalizedKey}` : `${meta}+${normalizedKey}`;
 };
-
-export const isMetaKeyPressed = (event: {
-  metaKey: boolean;
-  ctrlKey: boolean;
-}) => event.metaKey || event.ctrlKey;

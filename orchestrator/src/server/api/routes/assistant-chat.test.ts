@@ -50,6 +50,30 @@ describe.sequential("/api/chat", () => {
     return { status: res.status, body: await res.json() };
   }
 
+  it("lists the models the chat can use", async () => {
+    const { setSetting } = await import("@server/repositories/settings");
+    await setSetting("llmProvider", "openrouter");
+    await setSetting("model", "acme/base");
+    await setSetting("modelTailoring", "acme/tailor");
+
+    const { status, body } = await call("GET", "/models");
+
+    expect(status).toBe(200);
+    expect(body.data).toEqual({
+      providers: [
+        {
+          provider: "openrouter",
+          models: [
+            { model: "acme/base", tasks: ["default", "scoring"] },
+            { model: "acme/tailor", tasks: ["tailoring"] },
+          ],
+        },
+      ],
+      current: { provider: "openrouter", model: "acme/tailor", effort: null },
+      supportsEffort: ["claude_code"],
+    });
+  });
+
   it("lists chats by their last update, newest first", async () => {
     const first = await call("POST", "/threads");
     const second = await call("POST", "/threads");

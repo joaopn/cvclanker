@@ -7,11 +7,15 @@ import type { ChatStreamEvent } from "@shared/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const callJsonMock = vi.hoisted(() => vi.fn());
+const constructedMock = vi.hoisted(() => vi.fn());
 const loadPromptMock = vi.hoisted(() => vi.fn());
 
 vi.mock("./llm/service", () => ({
   LlmService: class {
     callJson = callJsonMock;
+    constructor(options: unknown) {
+      constructedMock(options);
+    }
   },
 }));
 
@@ -89,6 +93,7 @@ describe.sequential("assistant chat turn", () => {
   beforeEach(async () => {
     vi.resetModules();
     callJsonMock.mockReset();
+    constructedMock.mockReset();
     loadPromptMock.mockReset();
     loadPromptMock.mockResolvedValue({
       name: "chat-assistant",
@@ -400,6 +405,110 @@ describe.sequential("assistant chat turn", () => {
 
     release(reply("First answer."));
     expect((await first).message.content).toBe("First answer.");
+  });
+
+  it("calls the stored model choice with that provider's own credential", async () => {
+    await settingsRepo.setSetting("llmProvider", "openrouter");
+    await settingsRepo.setSetting("llmApiKey", "sk-acme-main");
+    await settingsRepo.setSetting("model", "acme/base");
+    await settingsRepo.setSetting("scorerPrefilterProvider", "openai");
+    await settingsRepo.setSetting("scorerPrefilterModel", "acme-screen");
+    await settingsRepo.setSetting("chatProvider", "openai");
+    await settingsRepo.setSetting("chatModel", "acme-screen");
+    await settingsRepo.setSetting("chatEffort", "high");
+    const { upsertProviderCredential } = await import(
+      "../repositories/llm-provider-credentials"
+    );
+    await upsertProviderCredential({
+      provider: "openai",
+      apiKey: "sk-acme-other",
+    });
+    const thread = await chat.createChatThread();
+    script(reply("Hello."));
+
+    await send(thread.id, "Hi");
+
+    expect(constructedMock).toHaveBeenCalledTimes(1);
+    expect(constructedMock).toHaveBeenCalledWith({
+      provider: "openai",
+      apiKey: "sk-acme-other",
+      baseUrl: null,
+    });
+    const options = callJsonMock.mock.calls[0][0];
+    expect(options.model).toBe("acme-screen");
+    expect(Object.keys(options)).not.toContain("effort");
+  });
+
+  it("passes the stored effort on a claude_code choice", async () => {
+    await settingsRepo.setSetting("llmProvider", "openrouter");
+    await settingsRepo.setSetting("model", "acme/base");
+    await settingsRepo.setSetting("scorerPrefilterProvider", "claude_code");
+    await settingsRepo.setSetting("scorerPrefilterModel", "claude-acme");
+    await settingsRepo.setSetting("chatProvider", "claude_code");
+    await settingsRepo.setSetting("chatModel", "claude-acme");
+    await settingsRepo.setSetting("chatEffort", "high");
+    const thread = await chat.createChatThread();
+    script(reply("Hello."));
+
+    await send(thread.id, "Hi");
+
+    expect(constructedMock).toHaveBeenCalledWith({ provider: "claude_code" });
+    expect(callJsonMock.mock.calls[0][0]).toMatchObject({
+      model: "claude-acme",
+      effort: "high",
+    });
+  });
+
+  it("falls back to the Tailoring model on the configured provider for a stale choice", async () => {
+    await settingsRepo.setSetting("llmProvider", "openrouter");
+    await settingsRepo.setSetting("llmApiKey", "sk-acme-main");
+    await settingsRepo.setSetting("model", "acme/base");
+    await settingsRepo.setSetting("modelTailoring", "acme/tailor");
+    await settingsRepo.setSetting("chatProvider", "openrouter");
+    await settingsRepo.setSetting("chatModel", "acme/gone");
+    await settingsRepo.setSetting("chatEffort", "high");
+    const thread = await chat.createChatThread();
+    script(reply("Hello."));
+
+    await send(thread.id, "Hi");
+
+    expect(constructedMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "openrouter",
+        apiKey: "sk-acme-main",
+      }),
+    );
+    const options = callJsonMock.mock.calls[0][0];
+    expect(options.model).toBe("acme/tailor");
+    expect(Object.keys(options)).not.toContain("effort");
+  });
+
+  it("calls the CLI default model for a stored provider with no model", async () => {
+    await settingsRepo.setSetting("llmProvider", "claude_code");
+    await settingsRepo.setSetting("modelTailoring", "claude-acme");
+    await settingsRepo.setSetting("chatProvider", "claude_code");
+    const thread = await chat.createChatThread();
+    script(reply("Hello."));
+
+    await send(thread.id, "Hi");
+
+    expect(constructedMock).toHaveBeenCalledWith({ provider: "claude_code" });
+    expect(callJsonMock.mock.calls[0][0].model).toBe("");
+  });
+
+  it("passes the stored effort with no stored model on a claude_code main provider", async () => {
+    await settingsRepo.setSetting("llmProvider", "claude_code");
+    await settingsRepo.setSetting("model", "claude-acme");
+    await settingsRepo.setSetting("chatEffort", "high");
+    const thread = await chat.createChatThread();
+    script(reply("Hello."));
+
+    await send(thread.id, "Hi");
+
+    expect(callJsonMock.mock.calls[0][0]).toMatchObject({
+      model: "claude-acme",
+      effort: "high",
+    });
   });
 
   it("names the chat after the first line of its first message only", async () => {

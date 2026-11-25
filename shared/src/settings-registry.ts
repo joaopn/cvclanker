@@ -397,6 +397,34 @@ export const settingsRegistry = {
     parse: parseBitBoolOrNull,
     serialize: serializeBitBool,
   },
+  chatProvider: {
+    kind: "typed" as const,
+    schema: z.enum(LLM_PROVIDER_IDS),
+    default: (): string | null => null,
+    parse: normalizeLlmProviderOrNull,
+    serialize: (value: string | null | undefined): string | null =>
+      value ?? null,
+  },
+  chatModel: {
+    kind: "typed" as const,
+    schema: z.string().trim().max(200),
+    default: (): string | null => null,
+    parse: parseNonEmptyStringOrNull,
+    serialize: (value: string | null | undefined): string | null =>
+      value ?? null,
+  },
+  chatEffort: {
+    kind: "typed" as const,
+    schema: z.enum(CLAUDE_CODE_EFFORT_LEVELS),
+    default: (): ClaudeCodeEffortLevel | null => null,
+    parse: (raw: string | undefined): ClaudeCodeEffortLevel | null =>
+      raw && (CLAUDE_CODE_EFFORT_LEVELS as readonly string[]).includes(raw)
+        ? (raw as ClaudeCodeEffortLevel)
+        : null,
+    serialize: (
+      value: ClaudeCodeEffortLevel | null | undefined,
+    ): string | null => value ?? null,
+  },
   candidateName: {
     kind: "typed" as const,
     schema: z.string().trim().max(CANDIDATE_NAME_MAX_CHARS),

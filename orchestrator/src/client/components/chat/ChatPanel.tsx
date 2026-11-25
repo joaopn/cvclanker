@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { Composer } from "../ghostwriter/Composer";
 import { TailorColumnSplitter } from "../ghostwriter/TailorColumnSplitter";
 import { useChat } from "./ChatContext";
+import { ChatModelMenus } from "./ChatModelMenus";
 
 export const CHAT_PANEL_WIDTH_KEY = "cvclanker:chat:width";
 const JOBS_CHANGED_EVENT = "cvclanker:jobs-changed";
@@ -415,6 +416,7 @@ export const ChatPanel: React.FC = () => {
             onStop={stop}
             onSend={send}
             placeholder="Ask about your jobs..."
+            leading={<ChatModelMenus disabled={isRunning} />}
           />
         </div>
       </div>

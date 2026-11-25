@@ -70,6 +70,9 @@ export interface AppSettings {
   renderMarkdownInJobDescriptions: Resolved<boolean>;
   companyInFlightCheckEnabled: Resolved<boolean>;
   chatCanChangeJobs: Resolved<boolean>;
+  chatProvider: Resolved<string | null>;
+  chatModel: Resolved<string | null>;
+  chatEffort: Resolved<string | null>;
   candidateName: Resolved<string | null>;
   chatStyleTone: Resolved<string>;
   chatStyleFormality: Resolved<string>;

@@ -11,6 +11,7 @@ import type {
   BenchRun,
   BranchInfo,
   ChatMessage,
+  ChatModelsResponse,
   ChatStreamEvent,
   ChatThread,
   ClaudeCodeCliStatus,
@@ -560,6 +561,10 @@ async function streamSseEvents<TEvent>(
       // Ignore cancellation errors when stream is already closed
     }
   }
+}
+
+export async function getChatModels(): Promise<ChatModelsResponse> {
+  return fetchApi<ChatModelsResponse>("/chat/models");
 }
 
 export async function listChatThreads(): Promise<{ threads: ChatThread[] }> {
