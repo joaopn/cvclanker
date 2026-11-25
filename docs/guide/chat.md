@@ -11,6 +11,7 @@ The chat answers questions about the jobs in your tracker, in plain language, fr
 - "What does the Example Corp posting say about remote work?"
 - "How many jobs have I applied to?"
 - "What did my tailored CV for the Example Corp role say about Python?"
+- "What is the best-fitting job in Tailoring?"
 
 If you allow it, it can also mark a job applied or add a note to a job when you ask it to.
 
@@ -39,13 +40,17 @@ The chat uses the same tools as [Agent access](agent-access.md), but it does not
 
 | Lookup | What it gives the chat |
 |---|---|
-| Search jobs | A list of jobs matching a search, with a count, optionally narrowed to one status or to every job you ever applied to. |
-| Read a job | One job: the posting and description, salary, deadline, fit verdict, applied date and LinkedIn live status. |
+| Search jobs | A list of jobs matching a search, with a count and each job's fit verdict, optionally narrowed to one status or to every job you ever applied to, and to jobs rated at least a given fit. |
+| Read a job | One job: the posting and description, salary, deadline, fit verdict and its reason, applied date and LinkedIn live status. |
 | A job's documents | Whether the job has a CV and cover letter PDF, and the cover letter text. |
 | A job's tailored CV | Your CV as tailored for the job: each field with its tailored value, or the CV's own value where the job has none. |
 | Your personal brief | Your [personal brief](cvs.md). The chat can always read it; the **Share the personal brief** switch in Agent access does not apply to it. |
 
-The search is the in-app search: it matches one phrase at the start of words in the title, the employer or the location, the same way as [Searching every job](reviewing-jobs.md#searching-every-job), and does not search descriptions. So questions the tools cannot answer, such as counting or grouping jobs by source, by date or by location, get a plain answer that it cannot, or an approximation that says it is one.
+The search is the in-app search: it matches one phrase at the start of words in the title, the employer or the location, the same way as [Searching every job](reviewing-jobs.md#searching-every-job), and does not search descriptions. The chat knows the app's tab names (Inbox, Tailoring, Live, Interviewing, Backlog, Stale, Closed) and the fit verdicts, so you can ask about "my Tailoring jobs" or "jobs rated Very good fit". For a question that needs several lookups it chains them: for example, to find the best-fitting job in Tailoring it lists the Ready jobs with the better verdicts, lists the better-rated jobs in processing (being tailored, or waiting to retry a failed tailor), reads the most promising of them, and ranks them. A search returns at most 200 jobs; when a search matches more than the chat got back, it is told to search again for more, or more narrowly, or to say that its list is incomplete. It says it cannot answer only when no series of lookups can, and says so when an answer is an approximation.
+
+## When it asks before going on
+
+Reading a job puts its whole text into the conversation, which makes every later step bigger, slower and more expensive. So the chat is told to stop and ask before reading more than 10 jobs for one question, saying how many jobs it would read and why, with **Continue** and **Cancel** buttons. This is an instruction to the model, not a hard limit, so a model may still read more without asking. **Continue** lets it go ahead. **Cancel** leaves it there; you can then ask a narrower question, such as one about fewer jobs or a single employer.
 
 ## Letting it change jobs
 

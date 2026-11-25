@@ -36,13 +36,15 @@ Other MCP clients take the same address and the header `Authorization: Bearer <t
 
 | Tool | What it gives the agent | Access needed |
 |---|---|---|
-| `search_jobs` | A list of jobs matching a search, optionally narrowed to one status or to every job you ever applied to. | Read only |
-| `get_job` | One job: the posting and description, salary, deadline, fit verdict, applied date and LinkedIn live status. | Read only |
+| `search_jobs` | A list of jobs matching a search, each with its fit verdict, optionally narrowed to one status or to every job you ever applied to, and to jobs rated at least a given fit (for example Very good fit or better). | Read only |
+| `get_job` | One job: the posting and description, salary, deadline, fit verdict and its reason, applied date and LinkedIn live status. | Read only |
 | `get_job_documents` | The addresses of the job's CV and cover letter PDFs, when they exist, and the cover letter text. | Read only |
 | `get_tailored_cv` | Your CV as tailored for the job: each field with its tailored value, or the CV's own value where the job has none. | Read only |
 | `get_personal_brief` | Your [personal brief](cvs.md). | Read only, and **Share the personal brief** on |
 | `mark_applied` | Moves a Ready job to Applied (the Live tab) and sets its [applied mark](job-lifecycle.md#the-permanent-applied-mark). | Read and change |
 | `add_job_note` | Adds a note, with a title and text, to a job. | Read and change |
+
+The built-in [chat](chat.md) has one more tool of its own, `ask_to_continue`, which it uses to ask you before it opens many jobs. It is not offered to agents.
 
 ## What each setting allows
 
