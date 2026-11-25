@@ -55,10 +55,10 @@ The **Models** section (Settings → AI) has a **Default model** and two **Task-
 | Setting | Used for |
 |---|---|
 | **Scoring Model** | Job scoring; also what a benchmark column on the configured provider runs when its model is left blank |
-| **Tailoring Model** | Tailoring, cover letters, the ghostwriter, the chat panel, interview notes, CV and cover-letter extraction, drafting the personal brief, suggesting search terms in onboarding |
+| **Tailoring Model** | Tailoring, cover letters, the ghostwriter, the chat panel until another model is picked in it, interview notes, CV and cover-letter extraction, drafting the personal brief, suggesting search terms in onboarding |
 | **Default model** | Reading a job off a pasted URL; the fallback for both overrides |
 | **Pre-filter model** | Only the optional screen in front of scoring (see below); empty means off |
-| **Reasoning effort** | Claude Code only: the `--effort` level for every call (`low`, `medium`, `high`, `xhigh`, `max`, or **CLI default**) |
+| **Reasoning effort** | Claude Code only: the `--effort` level for every call (`low`, `medium`, `high`, `xhigh`, `max`, or **CLI default**); the chat's own **Effort** pick overrides it for the chat |
 
 When the **Default model** is empty, the server uses the `MODEL` environment variable if it is set and fits the provider, otherwise `gpt-5.4-mini` on OpenAI, the CLI's own default on Codex and Claude Code, and `google/gemini-3-flash-preview` on every other provider; the Settings form shows that fallback as the field's placeholder. Changing the provider clears the three model fields you did not also change, and the server ignores a saved model that cannot belong to the provider (a Gemini name under OpenAI, a non-Gemini name under Gemini, a non-Claude name under Claude Code), so a leftover never reaches the wrong API.
 

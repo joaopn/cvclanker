@@ -33,10 +33,10 @@ The provider is set in the onboarding wizard's first step, and changed any time 
 | Setting | Used for |
 |---|---|
 | **Scoring Model** | Fit scoring. |
-| **Tailoring Model** | Tailoring, cover letters, the ghostwriter, the [chat](chat.md), interview notes, CV and cover-letter extraction, drafting the brief, and suggesting search terms in onboarding. |
+| **Tailoring Model** | Tailoring, cover letters, the ghostwriter, the [chat](chat.md) until another model is picked in it, interview notes, CV and cover-letter extraction, drafting the brief, and suggesting search terms in onboarding. |
 | **Default model** | Reading a job off a pasted URL, and the fallback for both overrides. |
 | **Pre-filter model** | An optional cheap model that screens jobs before the scoring model; empty means off (see below). |
-| **Reasoning effort** | Claude Code only: the effort level for every call (`low` to `max`, or the CLI's default). |
+| **Reasoning effort** | Claude Code only: the effort level for every call (`low` to `max`, or the CLI's default). The chat's own **Effort** pick overrides it for the chat. |
 
 Write the model name the way the provider does, for example `google/gemini-3-flash-preview` on OpenRouter; an empty field shows the default it falls back to ([defaults](../architecture/llm-and-scoring.md#which-model-runs-which-task)). Changing the provider in Settings empties the three model fields, so a model name from one provider is not sent to another. Provider, model and keys change with no restart.
 
