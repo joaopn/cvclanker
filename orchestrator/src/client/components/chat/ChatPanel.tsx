@@ -5,7 +5,6 @@ import { queryKeys } from "@client/lib/queryKeys";
 import { toast } from "@client/lib/toast";
 import type { ChatMessage, ChatStreamEvent } from "@shared/types";
 import { useQueryClient } from "@tanstack/react-query";
-import { X } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -148,7 +147,7 @@ const ChatMessageView: React.FC<{
 };
 
 export const ChatPanel: React.FC = () => {
-  const { isOpen, threadId, close, setThreadId, setAnswering } = useChat();
+  const { isOpen, threadId, setThreadId, setAnswering } = useChat();
   const queryClient = useQueryClient();
   const { width, maxWidth, isDragging, startDrag } = useResizablePanel({
     storageKey: CHAT_PANEL_WIDTH_KEY,
@@ -367,20 +366,10 @@ export const ChatPanel: React.FC = () => {
         />
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-3 border-b border-border/60 px-4 py-3">
-          <div className="min-w-0 flex-1 truncate text-sm font-semibold">
+        <div className="flex items-center gap-3 border-b border-border/60 py-4 pl-4 pr-36">
+          <div className="min-w-0 flex-1 truncate text-sm font-semibold leading-9">
             {title}
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={close}
-            aria-label="Close chat"
-            title="Close chat"
-          >
-            <X className="h-4 w-4" />
-          </Button>
         </div>
         <div
           ref={scrollRef}

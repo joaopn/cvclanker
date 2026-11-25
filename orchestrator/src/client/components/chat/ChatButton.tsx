@@ -7,7 +7,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, MessageSquare, Plus } from "lucide-react";
 import type React from "react";
 import { useState } from "react";
-import { useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -18,10 +17,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { isChatHiddenPath, useChat } from "./ChatContext";
+import { useChat } from "./ChatContext";
 
 // Saving errors are handled on the mutation itself, so the toast still shows
-// when the button unmounts mid-save (the top bar toggling, a page change).
+// when the button unmounts mid-save (a move to sign-in or onboarding).
 function useChatModeMutation() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -72,10 +71,7 @@ const ChatModeItem: React.FC<{
   );
 };
 
-export const ChatButton: React.FC<{ compact?: boolean }> = ({
-  compact = false,
-}) => {
-  const location = useLocation();
+export const ChatButton: React.FC = () => {
   const { isOpen, toggle, openThread, newChat, isAnswering } = useChat();
   const [menuOpen, setMenuOpen] = useState(false);
   const modeMutation = useChatModeMutation();
@@ -87,23 +83,26 @@ export const ChatButton: React.FC<{ compact?: boolean }> = ({
     staleTime: 0,
   });
 
-  if (isChatHiddenPath(location.pathname)) return null;
-
   const threads = [...(threadsQuery.data?.threads ?? [])].sort((a, b) =>
     b.updatedAt.localeCompare(a.updatedAt),
   );
 
   return (
-    <div className="flex items-center">
+    <div
+      className={cn(
+        "width-before-scroll-bar fixed right-4 top-[18px] z-[45] flex items-center",
+        isOpen && "max-md:z-[65]",
+      )}
+    >
       <Button
         type="button"
         variant="outline"
         size="sm"
         onClick={toggle}
         aria-pressed={isOpen}
-        className={cn("gap-1.5 rounded-r-none", compact && "h-6 px-2 text-xs")}
+        className="gap-1.5 rounded-r-none"
       >
-        <MessageSquare className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+        <MessageSquare className="h-4 w-4" />
         Chat
       </Button>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
@@ -113,15 +112,12 @@ export const ChatButton: React.FC<{ compact?: boolean }> = ({
             variant="outline"
             size="sm"
             aria-label="Saved chats"
-            className={cn(
-              "rounded-l-none border-l-0 px-2",
-              compact && "h-6 px-1.5",
-            )}
+            className="rounded-l-none border-l-0 px-2"
           >
-            <ChevronDown className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+            <ChevronDown className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-72">
+        <DropdownMenuContent align="end" className="z-[70] w-72">
           <ChatModeItem mutation={modeMutation} locked={isAnswering} />
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={newChat}>

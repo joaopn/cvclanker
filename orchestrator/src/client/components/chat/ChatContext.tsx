@@ -23,7 +23,6 @@ interface ChatContextValue {
   isOpen: boolean;
   threadId: string | null;
   toggle: () => void;
-  close: () => void;
   openThread: (threadId: string) => void;
   newChat: () => void;
   setThreadId: (threadId: string | null) => void;
@@ -37,7 +36,6 @@ const ChatContext = createContext<ChatContextValue>({
   isOpen: false,
   threadId: null,
   toggle: noop,
-  close: noop,
   openThread: noop,
   newChat: noop,
   setThreadId: noop,
@@ -82,7 +80,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [threadId]);
 
   const toggle = useCallback(() => setIsOpen((open) => !open), []);
-  const close = useCallback(() => setIsOpen(false), []);
   const openThread = useCallback((id: string) => {
     setThreadId(id);
     setIsOpen(true);
@@ -97,14 +94,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       isOpen,
       threadId,
       toggle,
-      close,
       openThread,
       newChat,
       setThreadId,
       isAnswering,
       setAnswering,
     }),
-    [isOpen, threadId, toggle, close, openThread, newChat, isAnswering],
+    [isOpen, threadId, toggle, openThread, newChat, isAnswering],
   );
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

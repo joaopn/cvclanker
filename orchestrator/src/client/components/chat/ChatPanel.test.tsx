@@ -212,18 +212,17 @@ describe("chat button and panel", () => {
     document.documentElement.style.removeProperty("--chat-panel-width");
   });
 
-  it("toggles the panel from the button and closes it from the panel", () => {
+  it("opens and closes the panel from the Chat button, its only close control", () => {
     renderChat();
     expect(panel()).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Chat" }));
     expect(panel()).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Close chat" }),
+    ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Chat" }));
-    expect(panel()).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
-    fireEvent.click(screen.getByRole("button", { name: "Close chat" }));
     expect(panel()).not.toBeInTheDocument();
   });
 
@@ -649,10 +648,14 @@ describe("chat button and panel", () => {
   it("keeps a key pressed in the panel away from window shortcuts", () => {
     renderChat();
     fireEvent.click(screen.getByRole("button", { name: "Chat" }));
+    fireEvent.change(screen.getByPlaceholderText("Ask about your jobs..."), {
+      target: { value: "How many jobs?" },
+    });
+    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
     const onKeyDown = vi.fn();
     window.addEventListener("keydown", onKeyDown);
     try {
-      fireEvent.keyDown(screen.getByRole("button", { name: "Close chat" }), {
+      fireEvent.keyDown(screen.getByRole("button", { name: "Send message" }), {
         key: "j",
       });
       expect(onKeyDown).not.toHaveBeenCalled();

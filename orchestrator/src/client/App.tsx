@@ -14,6 +14,7 @@ import { CSSTransition, SwitchTransition } from "react-transition-group";
 
 import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
+import { ChatButton } from "./components/chat/ChatButton";
 import { ChatProvider, isChatHiddenPath } from "./components/chat/ChatContext";
 import { ChatPanel } from "./components/chat/ChatPanel";
 import { OnboardingGate } from "./components/OnboardingGate";
@@ -131,6 +132,7 @@ export const App: React.FC = () => {
             </CSSTransition>
           </SwitchTransition>
         </div>
+        {showChat && <ChatButton />}
         {showChat && <ChatPanel />}
       </div>
 

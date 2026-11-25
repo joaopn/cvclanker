@@ -22,8 +22,6 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { getAppVersion } from "../lib/version";
-import { ChatButton } from "./chat/ChatButton";
-import { isChatHiddenPath } from "./chat/ChatContext";
 import { isNavActive, NAV_LINKS } from "./navigation";
 import { ProfileSwitchOverlay } from "./ProfileSwitchOverlay";
 import { StatusBadgeIndicator } from "./StatusIndicator";
@@ -136,19 +134,18 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   const barRef = useRef<HTMLDivElement>(null);
   const navButtonRef = useRef<HTMLButtonElement>(null);
   const showHandleRef = useRef<HTMLButtonElement>(null);
-  const stripRef = useRef<HTMLDivElement>(null);
   const moveFocusRef = useRef(false);
   const popupOpenAtPointerDownRef = useRef(false);
 
   // Hiding the focused control drops focus to <body>, so hand it to the handle
   // on hide and to the nav button on reveal — only when focus was in the bar or
-  // on the strip that replaces it.
+  // on the handle.
   const changeTopBarVisible = (visible: boolean) => {
     const active = document.activeElement;
     moveFocusRef.current =
       active !== null &&
       (barRef.current?.contains(active) === true ||
-        stripRef.current?.contains(active) === true);
+        active === showHandleRef.current);
     setTopBarVisible(visible);
   };
 
@@ -228,14 +225,19 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
         onPointerDownCapture={handleBarPointerDownCapture}
         onClick={handleBarClick}
         className={cn(
-          "flex px-4 py-4",
+          "flex py-4 pl-4 pr-36",
           inlineActions
             ? "flex-row items-center justify-between gap-2"
             : "flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4",
           fullWidth ? "w-full" : "container mx-auto",
         )}
       >
-        <div className="flex min-w-0 items-center gap-3">
+        <div
+          className={cn(
+            "flex min-w-0 items-center gap-3",
+            titleSlot && "max-md:flex-wrap",
+          )}
+        >
           <Sheet open={navOpen} onOpenChange={setNavOpen}>
             <SheetTrigger asChild>
               <Button ref={navButtonRef} variant="ghost" size="icon">
@@ -327,34 +329,19 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
           )}
         >
           {actions}
-          {isTopBarVisible && <ChatButton />}
         </div>
       </div>
       {!isTopBarVisible && (
-        <div ref={stripRef} className="relative h-6 w-full">
-          <button
-            ref={showHandleRef}
-            type="button"
-            onClick={() => changeTopBarVisible(true)}
-            className="absolute inset-0 flex items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            aria-label="Show top bar"
-            title={`Show top bar (${topBarShortcut})`}
-          >
-            <ChevronDown className="h-3.5 w-3.5" />
-          </button>
-          {!isChatHiddenPath(location.pathname) && (
-            <div
-              className={cn(
-                "pointer-events-none absolute inset-0 flex items-center justify-end px-4",
-                fullWidth ? "w-full" : "container mx-auto",
-              )}
-            >
-              <div className="pointer-events-auto">
-                <ChatButton compact />
-              </div>
-            </div>
-          )}
-        </div>
+        <button
+          ref={showHandleRef}
+          type="button"
+          onClick={() => changeTopBarVisible(true)}
+          className="flex h-6 w-full items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          aria-label="Show top bar"
+          title={`Show top bar (${topBarShortcut})`}
+        >
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
       )}
       <ProfileSwitchOverlay state={switchState} />
     </header>

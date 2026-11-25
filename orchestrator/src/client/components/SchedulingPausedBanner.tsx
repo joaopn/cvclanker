@@ -55,7 +55,7 @@ export const SchedulingPausedBanner: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-sm">
+    <div className="flex flex-wrap items-center gap-3 border-b border-destructive/30 bg-destructive/10 py-2 pl-4 pr-36 text-sm">
       <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
       <span className="min-w-0 flex-1 text-destructive">
         Automatic runs are paused. {reason}
