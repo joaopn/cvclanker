@@ -253,6 +253,36 @@ describe("PageHeader top bar visibility", () => {
     );
   });
 
+  it("keeps the chat buttons on the strip while the bar is hidden", () => {
+    window.localStorage.setItem(TOP_BAR_STORAGE_VISIBLE_KEY, "false");
+    renderHeader();
+    const chat = screen.getByRole("button", { name: "Chat" });
+    expect(chat).toBeVisible();
+    expect(screen.getByRole("button", { name: "Saved chats" })).toBeVisible();
+    expect(
+      screen.getAllByRole("button", { name: "Chat", hidden: true }),
+    ).toHaveLength(1);
+
+    fireEvent.click(chat);
+    expect(runButton()).not.toBeVisible();
+    expect(showHandle()).toBeVisible();
+
+    const handle = showHandle();
+    if (!handle) throw new Error("show handle missing");
+    fireEvent.click(handle);
+    expect(runButton()).toBeVisible();
+  });
+
+  it("moves focus from the strip's chat button to the nav button", () => {
+    window.localStorage.setItem(TOP_BAR_STORAGE_VISIBLE_KEY, "false");
+    renderHeader();
+    const chat = screen.getByRole("button", { name: "Chat" });
+    chat.focus();
+    fireEvent.keyDown(chat, TOGGLE_KEY);
+    expect(runButton()).toBeVisible();
+    expect(document.activeElement).toBe(navButton());
+  });
+
   it("starts hidden when this browser last hid it", () => {
     window.localStorage.setItem(TOP_BAR_STORAGE_VISIBLE_KEY, "false");
     renderHeader();

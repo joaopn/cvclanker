@@ -27,6 +27,8 @@ interface ChatContextValue {
   openThread: (threadId: string) => void;
   newChat: () => void;
   setThreadId: (threadId: string | null) => void;
+  isAnswering: boolean;
+  setAnswering: (answering: boolean) => void;
 }
 
 const noop = () => {};
@@ -39,6 +41,8 @@ const ChatContext = createContext<ChatContextValue>({
   openThread: noop,
   newChat: noop,
   setThreadId: noop,
+  isAnswering: false,
+  setAnswering: noop,
 });
 
 function readStored(key: string): string | null {
@@ -67,6 +71,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
   const [threadId, setThreadId] = useState<string | null>(() =>
     readStored(CHAT_THREAD_STORAGE_KEY),
   );
+  const [isAnswering, setAnswering] = useState(false);
 
   useEffect(() => {
     writeStored(CHAT_OPEN_STORAGE_KEY, String(isOpen));
@@ -96,8 +101,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({
       openThread,
       newChat,
       setThreadId,
+      isAnswering,
+      setAnswering,
     }),
-    [isOpen, threadId, toggle, close, openThread, newChat],
+    [isOpen, threadId, toggle, close, openThread, newChat, isAnswering],
   );
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

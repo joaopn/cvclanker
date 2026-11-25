@@ -340,7 +340,7 @@ async function answerQuestion(input: {
   );
   const authorizeTool = (tool: McpTool): string | null =>
     tool.access === "write" && !canChangeJobs
-      ? 'Changing jobs is switched off in the chat window\'s "Can change jobs" switch.'
+      ? 'Changing jobs is switched off with the "Can change jobs" switch, the first entry in the menu under the arrow beside the Chat button.'
       : null;
 
   const [choice, prompt] = await Promise.all([

@@ -1,8 +1,6 @@
 import * as api from "@client/api";
 import { ApiClientError } from "@client/api";
-import { useUpdateSettingsMutation } from "@client/hooks/queries/useSettingsMutation";
 import { useResizablePanel } from "@client/hooks/useResizableListPanel";
-import { useSettings } from "@client/hooks/useSettings";
 import { queryKeys } from "@client/lib/queryKeys";
 import { toast } from "@client/lib/toast";
 import type { ChatMessage, ChatStreamEvent } from "@shared/types";
@@ -13,8 +11,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { Composer } from "../ghostwriter/Composer";
 import { TailorColumnSplitter } from "../ghostwriter/TailorColumnSplitter";
@@ -151,42 +147,8 @@ const ChatMessageView: React.FC<{
   );
 };
 
-const ChatModeSwitch: React.FC<{ disabled: boolean }> = ({ disabled }) => {
-  const { chatCanChangeJobs, isLoading } = useSettings();
-  const mutation = useUpdateSettingsMutation();
-  const checked = mutation.isPending
-    ? (mutation.variables?.chatCanChangeJobs ?? chatCanChangeJobs)
-    : chatCanChangeJobs;
-
-  return (
-    <div className="flex shrink-0 items-center gap-2">
-      <Switch
-        id="chat-can-change-jobs"
-        checked={checked}
-        disabled={disabled || isLoading || mutation.isPending}
-        onCheckedChange={(value) =>
-          mutation.mutate(
-            { chatCanChangeJobs: value },
-            {
-              onError: (error) =>
-                toast.error(
-                  error instanceof Error
-                    ? error.message
-                    : "Failed to save the setting",
-                ),
-            },
-          )
-        }
-      />
-      <Label htmlFor="chat-can-change-jobs" className="text-xs">
-        Can change jobs
-      </Label>
-    </div>
-  );
-};
-
 export const ChatPanel: React.FC = () => {
-  const { isOpen, threadId, close, setThreadId } = useChat();
+  const { isOpen, threadId, close, setThreadId, setAnswering } = useChat();
   const queryClient = useQueryClient();
   const { width, maxWidth, isDragging, startDrag } = useResizablePanel({
     storageKey: CHAT_PANEL_WIDTH_KEY,
@@ -208,6 +170,12 @@ export const ChatPanel: React.FC = () => {
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const isRunning = runThreadId !== null;
+
+  useEffect(() => {
+    if (!isRunning) return;
+    setAnswering(true);
+    return () => setAnswering(false);
+  }, [isRunning, setAnswering]);
 
   useEffect(() => {
     viewedThreadRef.current = threadId;
@@ -403,7 +371,6 @@ export const ChatPanel: React.FC = () => {
           <div className="min-w-0 flex-1 truncate text-sm font-semibold">
             {title}
           </div>
-          <ChatModeSwitch disabled={isRunning} />
           <Button
             type="button"
             variant="ghost"

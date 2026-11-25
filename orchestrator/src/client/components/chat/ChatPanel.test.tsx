@@ -9,6 +9,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import type React from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -51,7 +52,10 @@ vi.mock("@/components/ui/dropdown-menu", async () => {
     children?: React.ReactNode;
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
-    onSelect?: () => void;
+    onSelect?: (event: { preventDefault: () => void }) => void;
+    disabled?: boolean;
+    role?: string;
+    "aria-checked"?: boolean;
   };
   return {
     DropdownMenu: ({ children, open, onOpenChange }: ShellProps) => (
@@ -75,19 +79,33 @@ vi.mock("@/components/ui/dropdown-menu", async () => {
       react.useContext(MenuContext).open ? (
         <div role="menu">{children}</div>
       ) : null,
-    DropdownMenuItem: ({ children, onSelect }: ShellProps) => {
+    DropdownMenuItem: ({
+      children,
+      onSelect,
+      disabled,
+      ...itemProps
+    }: ShellProps) => {
       const menu = react.useContext(MenuContext);
       return (
-        <button
-          type="button"
+        <div
           role="menuitem"
+          {...itemProps}
+          aria-disabled={disabled}
+          tabIndex={-1}
           onClick={() => {
-            onSelect?.();
-            menu.setOpen(false);
+            if (disabled) return;
+            let prevented = false;
+            onSelect?.({
+              preventDefault: () => {
+                prevented = true;
+              },
+            });
+            if (!prevented) menu.setOpen(false);
           }}
+          onKeyDown={() => {}}
         >
           {children}
-        </button>
+        </div>
       );
     },
     DropdownMenuSeparator: () => <hr />,
@@ -355,29 +373,30 @@ describe("chat button and panel", () => {
     }
   });
 
-  it("shows the saved Can change jobs setting, saves a change and locks while answering", async () => {
-    vi.mocked(api.getSettings).mockResolvedValue(
-      createAppSettings({
-        chatCanChangeJobs: { value: true, default: false, override: true },
-      }),
-    );
+  it("keeps Can change jobs out of the panel and locks the menu's switch while answering", async () => {
     renderChat();
     fireEvent.click(screen.getByRole("button", { name: "Chat" }));
-    const toggle = screen.getByRole("switch", { name: "Can change jobs" });
-    await waitFor(() => expect(toggle).toBeChecked());
-    await waitFor(() => expect(toggle).toBeEnabled());
+    const chatPanel = panel();
+    if (!chatPanel) throw new Error("chat panel missing");
+    expect(
+      within(chatPanel).queryByText("Can change jobs"),
+    ).not.toBeInTheDocument();
 
-    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: "Saved chats" }));
+    const toggle = screen.getByRole("menuitemcheckbox", {
+      name: "Can change jobs",
+    });
     await waitFor(() =>
-      expect(api.updateSettings).toHaveBeenCalledWith({
-        chatCanChangeJobs: false,
-      }),
+      expect(toggle).not.toHaveAttribute("aria-disabled", "true"),
     );
-    await waitFor(() => expect(toggle).toBeEnabled());
 
     const turn = await startTurn("How many jobs have I applied to?");
-    expect(toggle).toBeDisabled();
+    expect(toggle).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(toggle);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(api.updateSettings).not.toHaveBeenCalled();
     await turn.finish();
+    expect(toggle).not.toHaveAttribute("aria-disabled", "true");
   });
 
   it("locks the model menus while an answer runs", async () => {

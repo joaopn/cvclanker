@@ -23,6 +23,7 @@ import {
 import { cn } from "@/lib/utils";
 import { getAppVersion } from "../lib/version";
 import { ChatButton } from "./chat/ChatButton";
+import { isChatHiddenPath } from "./chat/ChatContext";
 import { isNavActive, NAV_LINKS } from "./navigation";
 import { ProfileSwitchOverlay } from "./ProfileSwitchOverlay";
 import { StatusBadgeIndicator } from "./StatusIndicator";
@@ -135,18 +136,19 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   const barRef = useRef<HTMLDivElement>(null);
   const navButtonRef = useRef<HTMLButtonElement>(null);
   const showHandleRef = useRef<HTMLButtonElement>(null);
+  const stripRef = useRef<HTMLDivElement>(null);
   const moveFocusRef = useRef(false);
   const popupOpenAtPointerDownRef = useRef(false);
 
   // Hiding the focused control drops focus to <body>, so hand it to the handle
   // on hide and to the nav button on reveal — only when focus was in the bar or
-  // on the handle.
+  // on the strip that replaces it.
   const changeTopBarVisible = (visible: boolean) => {
     const active = document.activeElement;
     moveFocusRef.current =
       active !== null &&
       (barRef.current?.contains(active) === true ||
-        active === showHandleRef.current);
+        stripRef.current?.contains(active) === true);
     setTopBarVisible(visible);
   };
 
@@ -325,20 +327,34 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
           )}
         >
           {actions}
-          <ChatButton />
+          {isTopBarVisible && <ChatButton />}
         </div>
       </div>
       {!isTopBarVisible && (
-        <button
-          ref={showHandleRef}
-          type="button"
-          onClick={() => changeTopBarVisible(true)}
-          className="flex h-6 w-full items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-          aria-label="Show top bar"
-          title={`Show top bar (${topBarShortcut})`}
-        >
-          <ChevronDown className="h-3.5 w-3.5" />
-        </button>
+        <div ref={stripRef} className="relative h-6 w-full">
+          <button
+            ref={showHandleRef}
+            type="button"
+            onClick={() => changeTopBarVisible(true)}
+            className="absolute inset-0 flex items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            aria-label="Show top bar"
+            title={`Show top bar (${topBarShortcut})`}
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+          {!isChatHiddenPath(location.pathname) && (
+            <div
+              className={cn(
+                "pointer-events-none absolute inset-0 flex items-center justify-end px-4",
+                fullWidth ? "w-full" : "container mx-auto",
+              )}
+            >
+              <div className="pointer-events-auto">
+                <ChatButton compact />
+              </div>
+            </div>
+          )}
+        </div>
       )}
       <ProfileSwitchOverlay state={switchState} />
     </header>

@@ -8,8 +8,8 @@ description: |
 variables:
   - name: changeJobs
     description: |
-      "on" when the chat window's "Can change jobs" switch is on, so the
-      write tools are offered; "off" otherwise.
+      "on" when the "Can change jobs" switch in the Chat button's menu is on,
+      so the write tools are offered; "off" otherwise.
   - name: maxJobsWithoutAsking
     description: |
       How many jobs the chat may open for one question before it must ask the
@@ -83,7 +83,8 @@ system: |
     - When it is off, you cannot change anything. If the user asks you to
       change a job (for example to mark it applied or add a note), tell them
       that changes are switched off and can be turned on with the
-      "Can change jobs" switch in the chat window.
+      "Can change jobs" switch, the first entry in the menu under the arrow
+      beside the Chat button.
     - When it is on, you may mark a Ready job applied or add a note to a job,
       but only when the user clearly asks for that change. Never change a job
       on your own initiative. After a change, say what you changed.
