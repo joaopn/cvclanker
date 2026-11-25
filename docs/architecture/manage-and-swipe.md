@@ -124,7 +124,7 @@ Holding Ctrl shows the key hints and, on a desktop, a strip at the bottom with e
 
 ### The top bar and themes
 
-Clicking empty space in the top bar, or Shift+H, folds it away to a thin **Show top bar** strip, which keeps the Chat button at its right end; the choice is remembered by the browser on every page. The bar is hidden, not removed, so an open menu or the profile picker keeps its state; only the Chat button is re-created on the strip, so its saved-chats menu does not stay open across the switch. Themes are picked in Settings → Display: System, Light or Dark, with five palettes for each. Status and fit badges keep the same hues on every palette so a colour always means the same thing ([Settings and onboarding](settings-and-onboarding.md)).
+Clicking empty space in the top bar, or Shift+H, folds it away to a thin **Show top bar** strip; the choice is remembered by the browser on every page. The bar is hidden, not removed, so an open menu or the profile picker keeps its state. The Chat button is not part of the bar: it is fixed in the window's top right corner on every page except sign-in and onboarding, above the bar and above the chat panel, and the bar keeps room for it on its right; with the bar hidden it floats over the page's corner. Themes are picked in Settings → Display: System, Light or Dark, with five palettes for each. Status and fit badges keep the same hues on every palette so a colour always means the same thing ([Settings and onboarding](settings-and-onboarding.md)).
 
 ### The Swipe deck
 

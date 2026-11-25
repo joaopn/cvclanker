@@ -126,7 +126,7 @@ Holding Ctrl shows the key hints on the tabs and buttons and, on a desktop, a st
 
 ## The top bar and themes
 
-Clicking empty space in the top bar, or Shift+H, folds it away to a thin **Show top bar** strip, which keeps the [Chat](chat.md) button at its right end; the browser remembers the choice.
+Clicking empty space in the top bar, or Shift+H, folds it away to a thin **Show top bar** strip; the browser remembers the choice. The [Chat](chat.md) button stays in the top right corner of the window either way.
 
 Themes are chosen in Settings → Display (and on the last step of onboarding): **System**, **Light** or **Dark**, with a palette for each mode. The light palettes are Sandstone (the default), Ice, Newsprint, VS Code Light and Grape Light; the dark ones are Graphite Mono (the default), Slate Blue, Forest Amber, Nord and Crimson Noir. **System** follows your OS setting, using your light or dark pick. The choice is stored in this browser, not in your data. Status and fit badges keep the same colours on every palette.
 

@@ -17,12 +17,12 @@ If you allow it, it can also mark a job applied or add a note to a job when you 
 
 ## Opening the chat
 
-The **Chat** button sits at the right end of the top bar on every page except sign-in and onboarding. When you hide the top bar, the button stays at the right end of the thin **Show top bar** strip. It has two parts:
+The **Chat** button stays in the top right corner of the window on every page except sign-in and onboarding. It does not move when the chat panel opens or when you hide the top bar, so clicking it again in the same place closes the chat. It has two parts:
 
 - **Chat** opens the chat panel, and closes it again.
 - The arrow beside it opens a menu: first the **Can change jobs** switch (see [Letting it change jobs](#letting-it-change-jobs)), then **New chat** and your saved chats, the most recently used first, each with its date. Pick one to reopen it.
 
-On a wide screen the panel sits beside the page, which narrows to make room. Drag the panel's left edge to make it wider or narrower, up to 70% of the window. On a phone the panel covers the page; close it with the **X** in its header.
+On a wide screen the panel sits beside the page, which narrows to make room. Drag the panel's left edge to make it wider or narrower, up to 70% of the window. On a phone the panel covers the page, and the same **Chat** button, still in the top right corner, closes it.
 
 Type a question in the box at the bottom and press Enter to send it; Shift+Enter starts a new line. While it works, a status line shows each lookup and what it looked at ("Searching jobs: Acme…", "Reading job: Data Engineer @ Acme…", "Marking applied: Data Engineer @ Acme"); a lookup that failed is marked **(failed)**. **Stop** cancels the answer, and so does closing or reloading the page while it runs. Stop shows only on the chat that is answering; while any answer runs, you cannot send another question. Earlier questions and answers in the same chat go along with each new question, so you can ask follow-ups; what the lookups returned is not kept, so the chat looks things up again when it needs the details.
 
