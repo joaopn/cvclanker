@@ -17,10 +17,10 @@ If you allow it, it can also mark a job applied or add a note to a job when you 
 
 ## Opening the chat
 
-The **Chat** button sits at the right end of the top bar on every page except sign-in and onboarding. It has two parts:
+The **Chat** button sits at the right end of the top bar on every page except sign-in and onboarding. When you hide the top bar, the button stays at the right end of the thin **Show top bar** strip. It has two parts:
 
 - **Chat** opens the chat panel, and closes it again.
-- The arrow beside it lists **New chat** and your saved chats, the most recently used first, each with its date. Pick one to reopen it.
+- The arrow beside it opens a menu: first the **Can change jobs** switch (see [Letting it change jobs](#letting-it-change-jobs)), then **New chat** and your saved chats, the most recently used first, each with its date. Pick one to reopen it.
 
 On a wide screen the panel sits beside the page, which narrows to make room. Drag the panel's left edge to make it wider or narrower, up to 70% of the window. On a phone the panel covers the page; close it with the **X** in its header.
 
@@ -54,7 +54,7 @@ Reading a job puts its whole text into the conversation, which makes every later
 
 ## Letting it change jobs
 
-The **Can change jobs** switch in the chat panel's header is off by default. It is one setting for all chats, and it cannot be flipped while an answer is running. With it off, the chat cannot change anything, and tells you so when you ask.
+The **Can change jobs** switch, the first entry in the menu under the arrow beside the **Chat** button, is off by default. Flipping it leaves the menu open. It is one setting for all chats, and it cannot be flipped while an answer is running. With it off, the chat cannot change anything, and tells you so when you ask.
 
 With it on, the chat can do two things, and only when you clearly ask:
 
