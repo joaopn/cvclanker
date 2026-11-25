@@ -227,8 +227,11 @@ const migrations: string[] = [
     role TEXT NOT NULL,
     content TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'answer',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`,
+  // Additive: existing DBs predate it (skipped on dup-column).
+  `ALTER TABLE chat_messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'answer'`,
 
   `CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,

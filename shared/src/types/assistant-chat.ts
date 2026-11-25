@@ -38,12 +38,18 @@ export type ChatMessageRole = "user" | "assistant";
 
 export type ChatMessageStatus = "complete" | "failed" | "cancelled";
 
+export const CHAT_MESSAGE_KINDS = ["answer", "confirm"] as const;
+
+/** `confirm`: the chat stopped to ask before opening many jobs. */
+export type ChatMessageKind = (typeof CHAT_MESSAGE_KINDS)[number];
+
 export interface ChatMessage {
   id: string;
   threadId: string;
   role: ChatMessageRole;
   content: string;
   status: ChatMessageStatus;
+  kind: ChatMessageKind;
   createdAt: string;
 }
 

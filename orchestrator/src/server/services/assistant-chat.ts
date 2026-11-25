@@ -2,8 +2,18 @@ import { conflict, notFound, toAppError, upstreamError } from "@infra/errors";
 import { logger } from "@infra/logger";
 import { getRequestId } from "@infra/request-context";
 import { handleMcpMessage } from "@server/mcp/protocol";
-import { getMcpTool, listMcpTools, type McpTool } from "@server/mcp/tools";
-import type { ChatMessage, ChatStreamEvent, ChatThread } from "@shared/types";
+import {
+  compileInputDeclaration,
+  getMcpTool,
+  listMcpTools,
+  type McpTool,
+} from "@server/mcp/tools";
+import type {
+  ChatMessage,
+  ChatMessageKind,
+  ChatStreamEvent,
+  ChatThread,
+} from "@shared/types";
 import * as chatRepo from "../repositories/assistant-chat";
 import * as jobsRepo from "../repositories/jobs";
 import { resolveChatModels } from "./assistant-chat-models";
@@ -18,6 +28,30 @@ import { getEffectiveSettings } from "./settings";
 // a paid LLM call, so an unbounded lookup loop is a cost risk.
 export const CHAT_MAX_LOOKUP_STEPS = 8;
 
+// Opening a job puts its whole text in the conversation, and every later step
+// sends it again. A description averaged about 1,500 tokens on a measured
+// database, so ten jobs is about 15,000 tokens.
+export const CHAT_OPEN_JOBS_WITHOUT_ASKING = 10;
+
+const ASK_TO_CONTINUE = "ask_to_continue";
+
+const askToContinueInput = compileInputDeclaration({
+  message: {
+    type: "string",
+    required: true,
+    minLength: 1,
+    description:
+      "The sentence shown to the user: how many jobs you would open and why.",
+  },
+});
+
+const askToContinueTool = {
+  name: ASK_TO_CONTINUE,
+  description:
+    'Stop and ask the user whether to go on, before opening more jobs than you may open without asking. Your turn ends here: no other call in the same reply runs, and the user sees message. When they reply "Continue.", go ahead.',
+  inputSchema: askToContinueInput.jsonSchema,
+};
+
 const MAX_VALIDATION_ATTEMPTS = 2;
 
 const runningTurns = new Map<string, AbortController>();
@@ -30,7 +64,12 @@ type ConversationMessage = {
 type ToolCall = { name: string; argumentsJson: string };
 
 type ReplyValidation =
-  | { ok: true; message: string; toolCalls: ToolCall[] }
+  | {
+      ok: true;
+      message: string;
+      toolCalls: ToolCall[];
+      confirmation: string | null;
+    }
   | { ok: false; error: string };
 
 function responseSchema(toolNames: string[]): JsonSchemaDefinition {
@@ -104,6 +143,28 @@ function validateReply(raw: unknown): ReplyValidation {
     }
     calls.push({ name, argumentsJson });
   }
+  const ask = calls.find((call) => call.name === ASK_TO_CONTINUE);
+  if (ask) {
+    let args: unknown;
+    try {
+      args = JSON.parse(ask.argumentsJson);
+    } catch {}
+    const checked = askToContinueInput.validate(args);
+    const confirmation = checked.ok ? String(checked.value.message).trim() : "";
+    if (!confirmation) {
+      const detail = checked.ok ? "" : ` (${checked.error})`;
+      return {
+        ok: false,
+        error: `${ASK_TO_CONTINUE} needs an argumentsJson object with a non-empty "message" string${detail}`,
+      };
+    }
+    return {
+      ok: true,
+      message: message.trim(),
+      toolCalls: calls,
+      confirmation,
+    };
+  }
   let nested: unknown;
   try {
     nested = JSON.parse(message.trim());
@@ -126,15 +187,23 @@ function validateReply(raw: unknown): ReplyValidation {
       error: "'message' must not be empty when 'toolCalls' is empty",
     };
   }
-  return { ok: true, message: message.trim(), toolCalls: calls };
+  return {
+    ok: true,
+    message: message.trim(),
+    toolCalls: calls,
+    confirmation: null,
+  };
 }
 
 function toolListMessage(tools: readonly McpTool[]): string {
-  const listed = tools.map((tool) => ({
-    name: tool.name,
-    description: tool.description,
-    inputSchema: tool.input.jsonSchema,
-  }));
+  const listed = [
+    ...tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.input.jsonSchema,
+    })),
+    askToContinueTool,
+  ];
   return `Tools you can call:\n${JSON.stringify(listed, null, 2)}`;
 }
 
@@ -211,7 +280,10 @@ async function runTurn(
   await chatRepo.touchThread(thread.id);
   stream({ type: "ready", threadId: thread.id, requestId });
 
-  let answer = "";
+  let answer: { content: string; kind: ChatMessageKind } = {
+    content: "",
+    kind: "answer",
+  };
   let failure: { code: string; message: string } | null = null;
   try {
     answer = await answerQuestion({
@@ -233,8 +305,9 @@ async function runTurn(
   const message = await chatRepo.addMessage({
     threadId: thread.id,
     role: "assistant",
-    content: cancelled ? "" : (failure?.message ?? answer),
+    content: cancelled ? "" : (failure?.message ?? answer.content),
     status: cancelled ? "cancelled" : failure ? "failed" : "complete",
+    kind: cancelled || failure ? "answer" : answer.kind,
   });
   await chatRepo.touchThread(thread.id);
   logger.info("Chat turn finished", {
@@ -260,7 +333,7 @@ async function answerQuestion(input: {
   requestId: string;
   signal: AbortSignal;
   onToolEvent: (event: ChatStreamEvent) => void;
-}): Promise<string> {
+}): Promise<{ content: string; kind: ChatMessageKind }> {
   const canChangeJobs = (await getEffectiveSettings()).chatCanChangeJobs.value;
   const tools = listMcpTools().filter(
     (tool) => tool.access === "read" || canChangeJobs,
@@ -272,7 +345,10 @@ async function answerQuestion(input: {
 
   const [choice, prompt] = await Promise.all([
     resolveChatModels(),
-    loadPrompt("chat-assistant", { changeJobs: canChangeJobs ? "on" : "off" }),
+    loadPrompt("chat-assistant", {
+      changeJobs: canChangeJobs ? "on" : "off",
+      maxJobsWithoutAsking: CHAT_OPEN_JOBS_WITHOUT_ASKING,
+    }),
   ]);
   let llm: LlmService;
   let model: string;
@@ -290,7 +366,10 @@ async function answerQuestion(input: {
     });
     model = llmConfig.model;
   }
-  const jsonSchema = responseSchema(tools.map((tool) => tool.name));
+  const jsonSchema = responseSchema([
+    ...tools.map((tool) => tool.name),
+    ASK_TO_CONTINUE,
+  ]);
 
   const conversation: ConversationMessage[] = [
     { role: "system", content: prompt.system },
@@ -350,7 +429,12 @@ async function answerQuestion(input: {
     }
     invalidAttempts = 0;
 
-    if (reply.toolCalls.length === 0) return reply.message;
+    if (reply.confirmation !== null) {
+      return { content: reply.confirmation, kind: "confirm" };
+    }
+    if (reply.toolCalls.length === 0) {
+      return { content: reply.message, kind: "answer" };
+    }
 
     const results: string[] = [];
     for (const [index, call] of reply.toolCalls.entries()) {

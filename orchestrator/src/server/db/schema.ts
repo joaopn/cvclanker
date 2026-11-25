@@ -5,6 +5,7 @@
 import {
   APPLICATION_OUTCOMES,
   APPLICATION_TASK_TYPES,
+  CHAT_MESSAGE_KINDS,
   INTERVIEW_OUTCOMES,
   INTERVIEW_TYPES,
   JOB_CHAT_EDIT_STATUSES,
@@ -418,6 +419,9 @@ export const chatMessages = sqliteTable(
     status: text("status", {
       enum: ["complete", "failed", "cancelled"],
     }).notNull(),
+    kind: text("kind", { enum: CHAT_MESSAGE_KINDS })
+      .notNull()
+      .default("answer"),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   },
   (table) => ({

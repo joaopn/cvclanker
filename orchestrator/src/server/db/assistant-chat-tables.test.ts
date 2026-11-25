@@ -38,6 +38,44 @@ describe.sequential("assistant chat tables", () => {
     ]);
   });
 
+  it("adds the kind column to an older database and reads its rows as answers", async () => {
+    db.close();
+    (await import("./index")).closeDb();
+    await rm(tempDir, { recursive: true, force: true });
+    tempDir = await mkdtemp(join(tmpdir(), "cvclanker-chat-tables-"));
+    process.env.DATA_DIR = tempDir;
+    const older = new Database(join(tempDir, "jobs.db"));
+    older.exec(`
+      CREATE TABLE chat_threads (
+        id TEXT PRIMARY KEY,
+        title TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE chat_messages (
+        id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO chat_threads (id) VALUES ('t1');
+      INSERT INTO chat_messages (id, thread_id, role, content, status)
+        VALUES ('m1', 't1', 'assistant', 'An older answer', 'complete');
+    `);
+    older.close();
+
+    vi.resetModules();
+    await import("./migrate");
+    db = new Database(join(tempDir, "jobs.db"));
+    const chatRepo = await import("../repositories/assistant-chat");
+
+    expect(
+      (await chatRepo.listMessages("t1")).map((m) => [m.content, m.kind]),
+    ).toEqual([["An older answer", "answer"]]);
+  });
+
   it("deletes a chat's messages with the chat", () => {
     db.prepare("INSERT INTO chat_threads (id) VALUES ('t1'), ('t2')").run();
     db.prepare(

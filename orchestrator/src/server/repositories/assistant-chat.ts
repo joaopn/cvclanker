@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type {
   ChatMessage,
+  ChatMessageKind,
   ChatMessageRole,
   ChatMessageStatus,
   ChatThread,
@@ -26,6 +27,7 @@ function mapMessage(row: typeof chatMessages.$inferSelect): ChatMessage {
     role: row.role,
     content: row.content,
     status: row.status,
+    kind: row.kind,
     createdAt: row.createdAt,
   };
 }
@@ -93,6 +95,7 @@ export async function addMessage(input: {
   role: ChatMessageRole;
   content: string;
   status: ChatMessageStatus;
+  kind?: ChatMessageKind;
 }): Promise<ChatMessage> {
   const id = randomUUID();
   await db.insert(chatMessages).values({
@@ -101,6 +104,7 @@ export async function addMessage(input: {
     role: input.role,
     content: input.content,
     status: input.status,
+    kind: input.kind ?? "answer",
     createdAt: new Date().toISOString(),
   });
   const [row] = await db

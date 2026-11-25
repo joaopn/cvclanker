@@ -108,6 +108,7 @@ const message = (overrides: Partial<ChatMessage>): ChatMessage => ({
   role: "assistant",
   content: "",
   status: "complete",
+  kind: "answer",
   createdAt: "2026-11-01T10:00:00.000Z",
   ...overrides,
 });
@@ -473,6 +474,157 @@ describe("chat button and panel", () => {
       await screen.findByText(/Ask about your jobs: which Ready jobs/),
     ).toBeInTheDocument();
     expect(screen.queryByText("Loading chat…")).not.toBeInTheDocument();
+  });
+
+  describe("confirmations", () => {
+    const question = message({
+      id: "q",
+      role: "user",
+      content: "Summarise every Ready job",
+    });
+    const confirmation = message({
+      id: "confirm",
+      kind: "confirm",
+      content: "This would read **24** jobs. Go on?",
+    });
+    const continueButton = () =>
+      screen.getByRole("button", { name: "Continue" });
+    const cancelButton = () => screen.getByRole("button", { name: "Cancel" });
+
+    function openSavedChat(messages: ChatMessage[]) {
+      window.localStorage.setItem("cvclanker:chat:open", "true");
+      window.localStorage.setItem("cvclanker:chat:threadId", "thread-1");
+      vi.mocked(api.getChatMessages).mockResolvedValue({ messages });
+      renderChat();
+    }
+
+    it("shows a confirmation's text with Continue and Cancel", async () => {
+      openSavedChat([question, confirmation]);
+      expect((await screen.findByText("24")).tagName).toBe("STRONG");
+      expect(screen.getByText(/This would read/)).toBeInTheDocument();
+      expect(continueButton()).toBeEnabled();
+      expect(cancelButton()).toBeEnabled();
+    });
+
+    it("sends Continue. as the next question and locks the buttons while it runs", async () => {
+      openSavedChat([question, confirmation]);
+      let finish: () => void = () => {};
+      vi.mocked(api.streamChatMessage).mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      fireEvent.click(await screen.findByRole("button", { name: "Continue" }));
+
+      await waitFor(() =>
+        expect(api.streamChatMessage).toHaveBeenCalledWith(
+          "thread-1",
+          "Continue.",
+          expect.any(Function),
+          expect.any(AbortSignal),
+        ),
+      );
+      expect(screen.getByText("Continue.")).toBeInTheDocument();
+      expect(continueButton()).toBeDisabled();
+      expect(cancelButton()).toBeDisabled();
+      await act(async () => {
+        finish();
+      });
+    });
+
+    it("sends nothing on Cancel and greys both buttons out", async () => {
+      openSavedChat([question, confirmation]);
+      fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+
+      expect(continueButton()).toBeDisabled();
+      expect(cancelButton()).toBeDisabled();
+      expect(api.streamChatMessage).not.toHaveBeenCalled();
+      expect(api.createChatThread).not.toHaveBeenCalled();
+    });
+
+    it("disables an older confirmation that later messages follow", async () => {
+      openSavedChat([
+        question,
+        confirmation,
+        message({ id: "q2", role: "user", content: "Continue." }),
+        message({ id: "a2", content: "Here are the 24 jobs." }),
+      ]);
+      expect(
+        await screen.findByText("Here are the 24 jobs."),
+      ).toBeInTheDocument();
+      expect(continueButton()).toBeDisabled();
+      expect(cancelButton()).toBeDisabled();
+    });
+
+    it("disables the buttons while another chat is answering", async () => {
+      vi.mocked(api.listChatThreads).mockResolvedValue({
+        threads: [thread({ id: "thread-1", title: "Summarise" })],
+      });
+      vi.mocked(api.getChatMessages).mockResolvedValue({
+        messages: [question, confirmation],
+      });
+      renderChat();
+      fireEvent.click(screen.getByRole("button", { name: "Chat" }));
+      const turn = await startTurn("Which jobs are at Acme?");
+
+      fireEvent.click(screen.getByRole("button", { name: "Saved chats" }));
+      fireEvent.click(
+        await screen.findByRole("menuitem", { name: /Summarise/ }),
+      );
+      expect(
+        await screen.findByRole("button", { name: "Continue" }),
+      ).toBeDisabled();
+      expect(cancelButton()).toBeDisabled();
+
+      await turn.finish();
+      expect(continueButton()).toBeEnabled();
+      expect(cancelButton()).toBeEnabled();
+    });
+
+    it("disables the buttons while another chat's messages load", async () => {
+      vi.mocked(api.listChatThreads).mockResolvedValue({
+        threads: [thread({ id: "other", title: "Other chat" })],
+      });
+      openSavedChat([question, confirmation]);
+      vi.mocked(api.getChatMessages).mockImplementation((id) =>
+        id === "other"
+          ? new Promise(() => {})
+          : Promise.resolve({ messages: [question, confirmation] }),
+      );
+      expect(
+        await screen.findByRole("button", { name: "Continue" }),
+      ).toBeEnabled();
+
+      fireEvent.click(screen.getByRole("button", { name: "Saved chats" }));
+      fireEvent.click(
+        await screen.findByRole("menuitem", { name: /Other chat/ }),
+      );
+      await waitFor(() =>
+        expect(api.getChatMessages).toHaveBeenCalledWith("other"),
+      );
+
+      expect(continueButton()).toBeDisabled();
+      expect(cancelButton()).toBeDisabled();
+      fireEvent.click(continueButton());
+      expect(api.streamChatMessage).not.toHaveBeenCalled();
+    });
+
+    it("shows no buttons under a normal answer", async () => {
+      openSavedChat([
+        question,
+        message({ id: "a", content: "There are 24 Ready jobs." }),
+      ]);
+      expect(
+        await screen.findByText("There are 24 Ready jobs."),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Continue" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Cancel" }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("keeps a key pressed in the panel away from window shortcuts", () => {

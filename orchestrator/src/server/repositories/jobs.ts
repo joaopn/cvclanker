@@ -16,22 +16,24 @@ import {
 import { employerKey, IN_FLIGHT_STATUSES } from "@shared/company-in-flight";
 import { canonicalizeJobUrl } from "@shared/job-url";
 import { buildLocationEvidence } from "@shared/location-domain.js";
-import type {
-  CreateJobInput,
-  CreateJobNoteInput,
-  CvFieldOverrides,
-  DuplicateJobGroup,
-  Job,
-  JobListItem,
-  JobLocationEvidence,
-  JobNote,
-  JobSearchLock,
-  JobSearchResponse,
-  JobStatus,
-  JobsRevisionResponse,
-  SuitabilityCategory,
-  UpdateJobInput,
-  UpdateJobNoteInput,
+import {
+  type CreateJobInput,
+  type CreateJobNoteInput,
+  type CvFieldOverrides,
+  type DuplicateJobGroup,
+  type Job,
+  type JobListItem,
+  type JobLocationEvidence,
+  type JobNote,
+  type JobSearchLock,
+  type JobSearchResponse,
+  type JobStatus,
+  type JobsRevisionResponse,
+  SUITABILITY_CATEGORIES,
+  SUITABILITY_CATEGORY_RANK,
+  type SuitabilityCategory,
+  type UpdateJobInput,
+  type UpdateJobNoteInput,
 } from "@shared/types";
 import type {
   LocationEvidence,
@@ -231,23 +233,37 @@ export const JOB_SEARCH_RESULT_LIMIT = 200;
 // Each scope walks a date index newest first and probes the match set,
 // stopping at the limit. Left to itself the planner looks up every match
 // before sorting, which for a one-letter prefix is most of the table.
-function jobSearchScope(lock: JobSearchLock | null): {
+function jobSearchScope(
+  lock: JobSearchLock | null,
+  minFit: SuitabilityCategory | null,
+): {
   index: string;
   condition: SQL | undefined;
 } {
+  const fit =
+    minFit === null
+      ? undefined
+      : inArray(
+          jobs.suitabilityCategory,
+          SUITABILITY_CATEGORIES.filter(
+            (category) =>
+              SUITABILITY_CATEGORY_RANK[category] >=
+              SUITABILITY_CATEGORY_RANK[minFit],
+          ),
+        );
   if (lock === null) {
-    return { index: "idx_jobs_discovered_at", condition: undefined };
+    return { index: "idx_jobs_discovered_at", condition: fit };
   }
   if (lock === "ever_applied") {
     // INDEXED BY a partial index needs a WHERE that implies its predicate.
     return {
       index: "idx_jobs_applied_discovered_at",
-      condition: sql`${jobs.appliedAt} IS NOT NULL`,
+      condition: and(sql`${jobs.appliedAt} IS NOT NULL`, fit),
     };
   }
   return {
     index: "idx_jobs_status_discovered_at",
-    condition: sql`${jobs.status} = ${lock}`,
+    condition: and(sql`${jobs.status} = ${lock}`, fit),
   };
 }
 
@@ -295,12 +311,14 @@ async function countJobSearchMatches(
  * the rest, up to JOB_SEARCH_RESULT_LIMIT; `total` counts every match. Without
  * the exact pass, a short word ("sap") could lose its own rows to the newest
  * of the longer words it prefixes. An empty query lists the newest jobs.
+ * `minFit` keeps only jobs scored at or above that verdict, before the limit.
  */
 export async function searchJobListItems(args: {
   query: string;
   lock: JobSearchLock | null;
+  minFit?: SuitabilityCategory | null;
 }): Promise<JobSearchResponse> {
-  const scope = jobSearchScope(args.lock);
+  const scope = jobSearchScope(args.lock, args.minFit ?? null);
   let ids: string[];
   let total: number;
 

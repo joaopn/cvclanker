@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { jobMatchesLock } from "@client/pages/orchestrator/JobCommandBar.utils";
 import { STANDALONE_LETTER_FOLDS } from "@shared/location-support";
-import { JOB_SEARCH_LOCKS, type JobStatus } from "@shared/types";
+import {
+  JOB_SEARCH_LOCKS,
+  type JobStatus,
+  type SuitabilityCategory,
+} from "@shared/types";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { JOBS_SEARCH_LETTER_FOLDS } from "../db/jobs-search-folds";
@@ -17,6 +21,7 @@ type SeedJob = {
   status?: JobStatus;
   appliedAt?: string | null;
   discoveredAt?: string;
+  suitabilityCategory?: SuitabilityCategory | null;
 };
 
 describe.sequential("jobs repository search", () => {
@@ -47,6 +52,7 @@ describe.sequential("jobs repository search", () => {
         status: row.status ?? "discovered",
         appliedAt: row.appliedAt ?? null,
         discoveredAt: row.discoveredAt ?? "2026-01-01T00:00:00.000Z",
+        suitabilityCategory: row.suitabilityCategory ?? null,
       });
     }
   }
@@ -253,6 +259,73 @@ describe.sequential("jobs repository search", () => {
       expect(result.jobs[0]?.id).toBe("old-exact");
       expect(result.jobs[1]?.id).toBe(`prefix-${limit + 4}`);
       expect(result.jobs.map((job) => job.id)).not.toContain("prefix-0");
+    });
+
+    it("applies minFit before the limit, and counts only the fitting matches", async () => {
+      const limit = jobsRepo.JOB_SEARCH_RESULT_LIMIT;
+      const day = (n: number) =>
+        new Date(Date.UTC(2026, 0, 1) + n * 60_000).toISOString();
+      await seed([
+        {
+          id: "old-fit",
+          title: "Sapient Analyst",
+          discoveredAt: day(0),
+          suitabilityCategory: "very_good_fit",
+        },
+        ...Array.from({ length: limit + 5 }, (_, n) => ({
+          id: `newer-${n}`,
+          title: "Sapient Consultant",
+          discoveredAt: day(n + 1),
+          suitabilityCategory: n % 2 === 0 ? ("good_fit" as const) : null,
+        })),
+      ]);
+
+      for (const query of ["", "sap"]) {
+        const result = await jobsRepo.searchJobListItems({
+          query,
+          lock: null,
+          minFit: "very_good_fit",
+        });
+        expect(result, query).toEqual({
+          jobs: [expect.objectContaining({ id: "old-fit" })],
+          total: 1,
+        });
+      }
+    });
+
+    it("applies minFit together with a status lock and with ever_applied", async () => {
+      await seed([
+        { id: "ready-fit", status: "ready", suitabilityCategory: "great_fit" },
+        { id: "ready-poor", status: "ready", suitabilityCategory: "bad_fit" },
+        { id: "inbox-fit", suitabilityCategory: "great_fit" },
+        {
+          id: "applied-fit",
+          status: "applied",
+          appliedAt: "2026-01-02T00:00:00.000Z",
+          suitabilityCategory: "very_good_fit",
+        },
+        {
+          id: "applied-poor",
+          status: "applied",
+          appliedAt: "2026-01-02T00:00:00.000Z",
+          suitabilityCategory: "good_fit",
+        },
+      ]);
+
+      for (const [lock, expected] of [
+        ["ready", "ready-fit"],
+        ["ever_applied", "applied-fit"],
+      ] as const) {
+        const result = await jobsRepo.searchJobListItems({
+          query: "",
+          lock,
+          minFit: "very_good_fit",
+        });
+        expect(result, lock).toEqual({
+          jobs: [expect.objectContaining({ id: expected })],
+          total: 1,
+        });
+      }
     });
 
     it("lists the newest jobs for an empty query", async () => {

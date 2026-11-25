@@ -144,6 +144,7 @@ describe.sequential("assistant chat turn", () => {
       role: "assistant",
       status: "complete",
       content: "You have one job at Acme.",
+      kind: "answer",
     });
     expect(events.at(-1)).toEqual({ type: "completed", message });
     const saved = await chat.listChatMessages(thread.id);
@@ -272,10 +273,130 @@ describe.sequential("assistant chat turn", () => {
       "get_job_documents",
       "get_tailored_cv",
       "get_personal_brief",
+      "ask_to_continue",
     ]);
     expect(loadPromptMock).toHaveBeenCalledWith("chat-assistant", {
       changeJobs: "off",
+      maxJobsWithoutAsking: chat.CHAT_OPEN_JOBS_WITHOUT_ASKING,
     });
+  });
+
+  it("offers ask_to_continue in the tool list with its message argument", async () => {
+    const thread = await chat.createChatThread();
+    script(reply("Hello."));
+
+    await send(thread.id, "Hi");
+
+    const listed = JSON.parse(
+      seen[0].messages[1].content.replace(/^Tools you can call:\n/, ""),
+    ) as { name: string; inputSchema: { required: string[] } }[];
+    expect(
+      listed.find((tool) => tool.name === "ask_to_continue")?.inputSchema
+        .required,
+    ).toEqual(["message"]);
+  });
+
+  it("ends the turn on ask_to_continue and saves its message as a confirmation", async () => {
+    const thread = await chat.createChatThread();
+    script(
+      reply("", [
+        toolCall("ask_to_continue", { message: "Open 24 Acme jobs to rank?" }),
+      ]),
+      reply("Not reached."),
+    );
+
+    const { message, events } = await send(thread.id, "Rank every Acme job");
+
+    expect(seen).toHaveLength(1);
+    expect(message).toMatchObject({
+      role: "assistant",
+      status: "complete",
+      content: "Open 24 Acme jobs to rank?",
+      kind: "confirm",
+    });
+    expect(events.filter((event) => event.type === "tool")).toEqual([]);
+    expect(events.at(-1)).toEqual({ type: "completed", message });
+    const saved = await chat.listChatMessages(thread.id);
+    expect(saved.map((m) => [m.role, m.kind, m.content])).toEqual([
+      ["user", "answer", "Rank every Acme job"],
+      ["assistant", "confirm", "Open 24 Acme jobs to rank?"],
+    ]);
+  });
+
+  it("runs no other call in a reply that asks to continue", async () => {
+    await settingsRepo.setSetting("chatCanChangeJobs", "1");
+    const jobId = await seedReadyJob();
+    const thread = await chat.createChatThread();
+    script(
+      reply("", [
+        toolCall("mark_applied", { id: jobId }),
+        toolCall("ask_to_continue", { message: "Open 30 jobs?" }),
+      ]),
+      reply("Not reached."),
+    );
+
+    const { message, events } = await send(thread.id, "Mark and rank");
+
+    expect(seen).toHaveLength(1);
+    expect(message).toMatchObject({
+      kind: "confirm",
+      content: "Open 30 jobs?",
+    });
+    expect(events.filter((event) => event.type === "tool")).toEqual([]);
+    expect((await jobsRepo.getJobById(jobId))?.status).toBe("ready");
+  });
+
+  it("retries an ask_to_continue without a message like any invalid reply", async () => {
+    const thread = await chat.createChatThread();
+    script(
+      reply("", [toolCall("ask_to_continue", { message: "   " })]),
+      reply("Here is the answer."),
+    );
+
+    const { message } = await send(thread.id, "Rank them");
+
+    expect(seen).toHaveLength(2);
+    expect(seen[1].messages.at(-1)?.content).toContain(
+      'ask_to_continue needs an argumentsJson object with a non-empty "message" string',
+    );
+    expect(message).toMatchObject({
+      status: "complete",
+      content: "Here is the answer.",
+      kind: "answer",
+    });
+  });
+
+  it("names the validator's error when ask_to_continue has an extra argument", async () => {
+    const thread = await chat.createChatThread();
+    script(
+      reply("", [
+        toolCall("ask_to_continue", { message: "Open 24?", count: 24 }),
+      ]),
+      reply("Here is the answer."),
+    );
+
+    await send(thread.id, "Rank them");
+
+    expect(seen).toHaveLength(2);
+    expect(seen[1].messages.at(-1)?.content).toContain(
+      'ask_to_continue needs an argumentsJson object with a non-empty "message" string (Unknown property "count")',
+    );
+  });
+
+  it("sends a confirmation back as the assistant's turn when the user continues", async () => {
+    const thread = await chat.createChatThread();
+    script(reply("", [toolCall("ask_to_continue", { message: "Open 24?" })]));
+    await send(thread.id, "Rank every Acme job");
+    seen = [];
+    script(reply("Ranked."));
+
+    await send(thread.id, "Continue.");
+
+    expect(seen[0].messages.slice(-3)).toEqual([
+      { role: "user", content: "Rank every Acme job" },
+      { role: "assistant", content: "Open 24?" },
+      { role: "user", content: "Continue." },
+    ]);
   });
 
   it("tells the model about an unknown tool instead of failing the turn", async () => {

@@ -15,6 +15,7 @@ import {
   type CvDocument,
   JOB_SEARCH_LOCKS,
   type Job,
+  SUITABILITY_CATEGORIES,
 } from "@shared/types";
 
 type StringProperty = {
@@ -233,6 +234,7 @@ type CompactJobSource = Pick<
   | "employer"
   | "location"
   | "status"
+  | "suitabilityCategory"
   | "source"
   | "datePosted"
   | "jobUrl"
@@ -246,6 +248,7 @@ function compactJob(job: CompactJobSource) {
     employer: job.employer,
     location: job.location,
     status: job.status,
+    fit: job.suitabilityCategory,
     source: job.source,
     datePosted: job.datePosted,
     jobUrl: job.jobUrl,
@@ -267,7 +270,7 @@ const MCP_TOOLS: McpTool[] = [
   defineTool({
     name: "search_jobs",
     description:
-      'Search jobs with one phrase matched at word starts inside a single field (title, employer or location): its words must sit next to each other, in order, and every word but the last must be typed in full, so "senior eng" finds "Senior Engineer" but "sen eng" finds nothing, and neither finds a Senior role at an Engineering firm. Search one term at a time, such as the employer alone. Rows where the last word was typed in full come first, then the most recently found. An empty query lists the most recently found jobs; lock narrows to one status, or to every job ever applied to.',
+      'Search jobs with one phrase matched at word starts inside a single field (title, employer or location): its words must sit next to each other, in order, and every word but the last must be typed in full, so "senior eng" finds "Senior Engineer" but "sen eng" finds nothing, and neither finds a Senior role at an Engineering firm. Search one term at a time, such as the employer alone. Rows where the last word was typed in full come first, then the most recently found; total counts every match. An empty query lists the most recently found jobs; lock narrows to one status, or to every job ever applied to. Each row carries fit, the verdict on how well the job fits, best first: great_fit, very_good_fit, good_fit, bad_fit, or null when the job is not scored yet. minFit keeps only jobs scored at that verdict or better, before any limit applies, and total then counts only those; it does not sort the rows by fit.',
     access: "read",
     input: {
       query: {
@@ -280,6 +283,12 @@ const MCP_TOOLS: McpTool[] = [
         values: JOB_SEARCH_LOCKS,
         description: "Narrow to one status, or ever_applied.",
       },
+      minFit: {
+        type: "enum",
+        values: SUITABILITY_CATEGORIES,
+        description:
+          "Keep only jobs whose fit verdict is this one or better (great_fit, very_good_fit, good_fit, bad_fit, best first); jobs not scored yet are left out.",
+      },
       limit: {
         type: "integer",
         minimum: 1,
@@ -291,6 +300,7 @@ const MCP_TOOLS: McpTool[] = [
       const result = await jobsRepo.searchJobListItems({
         query: input.query ?? "",
         lock: input.lock ?? null,
+        minFit: input.minFit ?? null,
       });
       return {
         total: result.total,
@@ -303,7 +313,7 @@ const MCP_TOOLS: McpTool[] = [
   defineTool({
     name: "get_job",
     description:
-      "Read one job: its posting, description, salary, deadline, fit verdict, applied date and live posting status.",
+      "Read one job: its posting, description, salary, deadline, fit verdict and its reason, applied date and live posting status.",
     access: "read",
     input: jobIdInput,
     handler: async (input) => {
@@ -313,8 +323,7 @@ const MCP_TOOLS: McpTool[] = [
         jobDescription: job.jobDescription,
         salary: job.salary,
         deadline: job.deadline,
-        suitabilityCategory: job.suitabilityCategory,
-        suitabilityReason: job.suitabilityReason,
+        fitReason: job.suitabilityReason,
         appliedAt: job.appliedAt,
         liveClosed: job.liveClosed,
         liveApplicants: job.liveApplicants,

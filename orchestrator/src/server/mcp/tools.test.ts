@@ -164,6 +164,7 @@ describe.sequential("MCP tools", () => {
     "employer",
     "location",
     "status",
+    "fit",
     "source",
     "datePosted",
     "jobUrl",
@@ -202,6 +203,45 @@ describe.sequential("MCP tools", () => {
     expect(Object.keys(result.jobs[0]).sort()).toEqual(COMPACT_KEYS);
   });
 
+  it("search_jobs gives each row its fit verdict, null when unscored", async () => {
+    const scored = await seedJob();
+    await jobsRepo.updateJob(scored, { suitabilityCategory: "very_good_fit" });
+    const unscored = await seedJob();
+
+    const result = (await call("search_jobs", {})) as {
+      jobs: { id: string; fit: string | null }[];
+    };
+
+    expect(result.jobs.find((job) => job.id === scored)?.fit).toBe(
+      "very_good_fit",
+    );
+    expect(result.jobs.find((job) => job.id === unscored)?.fit).toBeNull();
+  });
+
+  it("search_jobs with minFit keeps that verdict and better, and counts only those", async () => {
+    const ids: Record<string, string> = {};
+    for (const fit of [
+      "great_fit",
+      "very_good_fit",
+      "good_fit",
+      "bad_fit",
+    ] as const) {
+      ids[fit] = await seedJob();
+      await jobsRepo.updateJob(ids[fit], { suitabilityCategory: fit });
+    }
+    await seedJob();
+
+    const result = (await call("search_jobs", { minFit: "very_good_fit" })) as {
+      total: number;
+      jobs: { id: string; fit: string | null }[];
+    };
+
+    expect(result.total).toBe(2);
+    expect(result.jobs.map((job) => job.id).sort()).toEqual(
+      [ids.great_fit, ids.very_good_fit].sort(),
+    );
+  });
+
   it("search_jobs returns 50 jobs when no limit is given", async () => {
     for (let i = 0; i < 51; i += 1) await seedJob();
 
@@ -220,6 +260,8 @@ describe.sequential("MCP tools", () => {
       salary: "EUR 70,000",
       deadline: "2026-12-31",
       appliedAt: "2026-02-03T04:05:06.000Z",
+      suitabilityCategory: "good_fit",
+      suitabilityReason: "Matches the Acme stack.",
     });
 
     const result = (await call("get_job", { id })) as Record<string, unknown>;
@@ -231,6 +273,7 @@ describe.sequential("MCP tools", () => {
         "employer",
         "location",
         "status",
+        "fit",
         "source",
         "datePosted",
         "jobUrl",
@@ -238,8 +281,7 @@ describe.sequential("MCP tools", () => {
         "jobDescription",
         "salary",
         "deadline",
-        "suitabilityCategory",
-        "suitabilityReason",
+        "fitReason",
         "appliedAt",
         "liveClosed",
         "liveApplicants",
@@ -252,6 +294,8 @@ describe.sequential("MCP tools", () => {
       salary: "EUR 70,000",
       deadline: "2026-12-31",
       appliedAt: "2026-02-03T04:05:06.000Z",
+      fit: "good_fit",
+      fitReason: "Matches the Acme stack.",
     });
   });
 

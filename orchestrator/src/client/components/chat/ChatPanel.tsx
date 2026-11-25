@@ -78,6 +78,7 @@ function localMessage(
     role,
     content,
     status,
+    kind: "answer",
     createdAt: new Date().toISOString(),
   };
 }
@@ -85,7 +86,16 @@ function localMessage(
 const MARKDOWN_CLASS =
   "text-sm leading-relaxed text-foreground [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l [&_blockquote]:border-border [&_blockquote]:pl-3 [&_code]:rounded [&_code]:bg-muted/40 [&_code]:px-1 [&_h1]:mt-4 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:mt-4 [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:mt-3 [&_h3]:text-sm [&_h3]:font-semibold [&_li]:my-1 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_pre]:my-3 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-muted/40 [&_pre]:p-3 [&_table]:my-2 [&_td]:border [&_td]:border-border/60 [&_td]:px-2 [&_th]:border [&_th]:border-border/60 [&_th]:px-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5";
 
-const ChatMessageView: React.FC<{ message: ChatMessage }> = ({ message }) => {
+interface ConfirmActions {
+  enabled: boolean;
+  onContinue: () => void;
+  onCancel: () => void;
+}
+
+const ChatMessageView: React.FC<{
+  message: ChatMessage;
+  confirm: ConfirmActions;
+}> = ({ message, confirm }) => {
   if (message.role === "user") {
     return (
       <div className="ml-8 self-end whitespace-pre-wrap rounded-lg bg-muted/50 px-3 py-2 text-sm">
@@ -107,11 +117,36 @@ const ChatMessageView: React.FC<{ message: ChatMessage }> = ({ message }) => {
       </div>
     );
   }
-  return (
+  const markdown = (
     <div className={MARKDOWN_CLASS}>
       <ReactMarkdown remarkPlugins={[remarkGfm]}>
         {message.content}
       </ReactMarkdown>
+    </div>
+  );
+  if (message.kind !== "confirm") return markdown;
+  return (
+    <div className="flex flex-col gap-2">
+      {markdown}
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          size="sm"
+          disabled={!confirm.enabled}
+          onClick={confirm.onContinue}
+        >
+          Continue
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={!confirm.enabled}
+          onClick={confirm.onCancel}
+        >
+          Cancel
+        </Button>
+      </div>
     </div>
   );
 };
@@ -165,6 +200,9 @@ export const ChatPanel: React.FC = () => {
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [runThreadId, setRunThreadId] = useState<string | null>(null);
   const [liveLines, setLiveLines] = useState<LiveLine[]>([]);
+  const [cancelledConfirmId, setCancelledConfirmId] = useState<string | null>(
+    null,
+  );
   const viewedThreadRef = useRef(threadId);
   const skipLoadRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -390,8 +428,20 @@ export const ChatPanel: React.FC = () => {
               to.
             </div>
           ) : (
-            messages.map((message) => (
-              <ChatMessageView key={message.id} message={message} />
+            messages.map((message, index) => (
+              <ChatMessageView
+                key={message.id}
+                message={message}
+                confirm={{
+                  enabled:
+                    index === messages.length - 1 &&
+                    !isRunning &&
+                    !isLoadingMessages &&
+                    message.id !== cancelledConfirmId,
+                  onContinue: () => void send("Continue."),
+                  onCancel: () => setCancelledConfirmId(message.id),
+                }}
+              />
             ))
           )}
           {showLive && (
