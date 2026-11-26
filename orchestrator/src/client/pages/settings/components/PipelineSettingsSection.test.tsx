@@ -102,6 +102,7 @@ const PipelineSettingsHarness = ({
             autoTailoringEnabled: { effective: false, default: false },
             enableJobScoring: { effective: true, default: true },
             liveStatusRefreshEnabled: { effective: false, default: false },
+            rescrapeUnscoreableJobs: { effective: false, default: false },
             liveStatusRefreshLimit: { effective: 100, default: 100 },
             liveStatusRefreshMinAgeHours: { effective: 24, default: 24 },
             linkedinTermStopMinMatches: { effective: 2, default: 2 },
@@ -140,6 +141,9 @@ const PipelineSettingsHarness = ({
       </Accordion>
       <output data-testid="form-auto-skip">
         {String(methods.watch("autoSkipCategory"))}
+      </output>
+      <output data-testid="form-rescrape">
+        {String(methods.watch("rescrapeUnscoreableJobs"))}
       </output>
     </FormProvider>
   );
@@ -195,6 +199,21 @@ describe("PipelineSettingsSection", () => {
       screen.getByText("Off — every scored job lands in the Inbox"),
     );
     expect(screen.getByTestId("form-auto-skip")).toHaveTextContent("null");
+  });
+
+  it("binds the re-fetch tickbox to rescrapeUnscoreableJobs", () => {
+    render(<PipelineSettingsHarness />);
+
+    const checkbox = screen.getByLabelText(
+      "Re-fetch jobs with a missing description",
+    );
+    expect(checkbox).not.toBeChecked();
+
+    fireEvent.click(checkbox);
+    expect(screen.getByTestId("form-rescrape")).toHaveTextContent("true");
+
+    fireEvent.click(checkbox);
+    expect(screen.getByTestId("form-rescrape")).toHaveTextContent("false");
   });
 
   it("never offers to auto-skip the top tier", () => {

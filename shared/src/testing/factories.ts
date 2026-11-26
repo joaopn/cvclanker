@@ -248,6 +248,7 @@ export const createAppSettings = (
   autoTailoringEnabled: { value: false, default: false, override: null },
   enableJobScoring: { value: true, default: true, override: null },
   liveStatusRefreshEnabled: { value: false, default: false, override: null },
+  rescrapeUnscoreableJobs: { value: false, default: false, override: null },
   liveStatusRefreshLimit: { value: 100, default: 100, override: null },
   liveStatusRefreshMinAgeHours: { value: 24, default: 24, override: null },
   linkedinTermStopMinMatches: { value: 2, default: 2, override: null },

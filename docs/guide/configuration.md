@@ -42,6 +42,8 @@ Settings are grouped in the left-hand list, with a search box at the top. Each s
 | Prompts | **LLM Prompts** | The prompt editor. |
 | Danger Zone | **Danger Zone** | Delete jobs, or clear the database (below). |
 
+Under **Pipeline Behavior**, **Re-fetch jobs with a missing description** (off by default) makes every run open the posting page of each job it just found but could not score because the source gave too little description, and score it from that page. It costs a page fetch and a few LLM calls per job; see [Running a search](runs.md).
+
 [Search profiles](search-profiles.md) (what to search for, where, and with which sources) and [schedules](runs.md#scheduling) have pages of their own.
 
 ## Environment variables

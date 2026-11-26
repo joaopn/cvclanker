@@ -94,6 +94,7 @@ const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
   autoTailoringEnabled: null,
   enableJobScoring: null,
   liveStatusRefreshEnabled: null,
+  rescrapeUnscoreableJobs: null,
   liveStatusRefreshLimit: null,
   liveStatusRefreshMinAgeHours: null,
   linkedinTermStopMinMatches: null,
@@ -312,6 +313,8 @@ const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
           "linkedin",
           "live status",
           "applicants",
+          "re-fetch",
+          "missing description",
         ],
       },
     ],
@@ -393,6 +396,7 @@ export const SECTION_FIELD_MAP: Record<
     "autoTailoringEnabled",
     "enableJobScoring",
     "liveStatusRefreshEnabled",
+    "rescrapeUnscoreableJobs",
     "liveStatusRefreshLimit",
     "liveStatusRefreshMinAgeHours",
     "linkedinTermStopMinMatches",
@@ -478,6 +482,7 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   autoTailoringEnabled: null,
   enableJobScoring: null,
   liveStatusRefreshEnabled: null,
+  rescrapeUnscoreableJobs: null,
   liveStatusRefreshLimit: null,
   liveStatusRefreshMinAgeHours: null,
   linkedinTermStopMinMatches: null,
@@ -585,6 +590,7 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   autoTailoringEnabled: data.autoTailoringEnabled.override,
   enableJobScoring: data.enableJobScoring.override,
   liveStatusRefreshEnabled: data.liveStatusRefreshEnabled.override,
+  rescrapeUnscoreableJobs: data.rescrapeUnscoreableJobs.override,
   liveStatusRefreshLimit: data.liveStatusRefreshLimit.override,
   liveStatusRefreshMinAgeHours: data.liveStatusRefreshMinAgeHours.override,
   linkedinTermStopMinMatches: data.linkedinTermStopMinMatches.override,
@@ -717,6 +723,10 @@ const getDerivedSettings = (settings: AppSettings | null) => {
       liveStatusRefreshEnabled: {
         effective: settings?.liveStatusRefreshEnabled?.value ?? false,
         default: settings?.liveStatusRefreshEnabled?.default ?? false,
+      },
+      rescrapeUnscoreableJobs: {
+        effective: settings?.rescrapeUnscoreableJobs?.value ?? false,
+        default: settings?.rescrapeUnscoreableJobs?.default ?? false,
       },
       liveStatusRefreshLimit: {
         effective: settings?.liveStatusRefreshLimit?.value ?? 100,
@@ -1039,6 +1049,10 @@ export const SettingsPage: React.FC = () => {
         liveStatusRefreshEnabled: nullIfSame(
           data.liveStatusRefreshEnabled,
           pipeline.liveStatusRefreshEnabled.default,
+        ),
+        rescrapeUnscoreableJobs: nullIfSame(
+          data.rescrapeUnscoreableJobs,
+          pipeline.rescrapeUnscoreableJobs.default,
         ),
         liveStatusRefreshLimit: nullIfSame(
           data.liveStatusRefreshLimit,

@@ -569,6 +569,16 @@ export const settingsRegistry = {
     parse: parseBitBoolOrNull,
     serialize: serializeBitBool,
   },
+  // After scoring, open the posting page of each job this run found but could
+  // not score because its description was too short, read the description and
+  // score it. Off by default: each job costs a page fetch and a few LLM calls.
+  rescrapeUnscoreableJobs: {
+    kind: "typed" as const,
+    schema: z.boolean(),
+    default: (): boolean => false,
+    parse: parseBitBoolOrNull,
+    serialize: serializeBitBool,
+  },
   // How many rows one run may check. A TIME budget, not a quality knob, and a
   // WIDE one: a row costs ~1-2s when LinkedIn answers normally (the guest
   // endpoint alternates two renders and only one of them decides an offsite

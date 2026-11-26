@@ -52,6 +52,7 @@ export type PipelineSettingsValues = {
   autoTailoringEnabled: EffectiveDefault<boolean>;
   enableJobScoring: EffectiveDefault<boolean>;
   liveStatusRefreshEnabled: EffectiveDefault<boolean>;
+  rescrapeUnscoreableJobs: EffectiveDefault<boolean>;
   liveStatusRefreshLimit: EffectiveDefault<number>;
   liveStatusRefreshMinAgeHours: EffectiveDefault<number>;
   linkedinTermStopMinMatches: EffectiveDefault<number>;

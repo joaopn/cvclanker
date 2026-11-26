@@ -155,6 +155,7 @@ export const PipelineSettingsSection: React.FC<
     autoTailoringEnabled,
     enableJobScoring,
     liveStatusRefreshEnabled,
+    rescrapeUnscoreableJobs,
     liveStatusRefreshLimit,
     liveStatusRefreshMinAgeHours,
     linkedinTermStopMinMatches,
@@ -599,6 +600,58 @@ export const PipelineSettingsSection: React.FC<
             <span className="font-mono">
               {liveStatusRefreshMinAgeHours.effective}
             </span>
+          </div>
+        </div>
+
+        <div className="flex items-start space-x-3">
+          <Controller
+            name="rescrapeUnscoreableJobs"
+            control={control}
+            render={({ field }) => (
+              <Checkbox
+                id="rescrapeUnscoreableJobs"
+                checked={field.value ?? rescrapeUnscoreableJobs.default}
+                onCheckedChange={(checked) => {
+                  field.onChange(
+                    checked === "indeterminate" ? null : checked === true,
+                  );
+                }}
+                disabled={isLoading || isSaving}
+              />
+            )}
+          />
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="rescrapeUnscoreableJobs"
+              className="text-sm font-medium leading-none cursor-pointer"
+            >
+              Re-fetch jobs with a missing description
+            </label>
+            <p className="text-xs text-muted-foreground">
+              After scoring, each run opens the posting page of the jobs it just
+              found but could not score because the source gave too little
+              description, and scores them from the page. Costs a page fetch and
+              a few LLM calls per job.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-3 text-sm sm:grid-cols-2">
+          <div>
+            <div className="text-xs text-muted-foreground">
+              Re-fetch effective
+            </div>
+            <div className="break-words font-mono text-xs">
+              {rescrapeUnscoreableJobs.effective ? "Enabled" : "Disabled"}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">
+              Re-fetch default
+            </div>
+            <div className="break-words font-mono text-xs font-semibold">
+              {rescrapeUnscoreableJobs.default ? "Enabled" : "Disabled"}
+            </div>
           </div>
         </div>
 

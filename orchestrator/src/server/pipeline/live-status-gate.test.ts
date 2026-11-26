@@ -30,7 +30,12 @@ vi.mock("./steps", () => ({
     reposted: 0,
     rejected: 0,
   })),
-  scoreJobsStep: vi.fn(async () => ({ unprocessedJobs: [], scoredJobs: [] })),
+  scoreJobsStep: vi.fn(async () => ({
+    unprocessedJobs: [],
+    scoredJobs: [],
+    unscoreableJobs: [],
+  })),
+  rescrapeUnscoreableStep: vi.fn(async () => []),
   selectJobsStep: vi.fn(async () => []),
   processJobsStep: vi.fn(async () => ({ processedCount: 0 })),
   refreshLiveStatusStep: vi.fn(async () => ({
@@ -126,7 +131,7 @@ describe.sequential("pipeline live-status refresh gate", () => {
     const steps = await import("./steps");
     vi.mocked(steps.scoreJobsStep).mockImplementation(async () => {
       order.push("score");
-      return { unprocessedJobs: [], scoredJobs: [] };
+      return { unprocessedJobs: [], scoredJobs: [], unscoreableJobs: [] };
     });
     vi.mocked(steps.refreshLiveStatusStep).mockImplementation(async () => {
       order.push("live_status");

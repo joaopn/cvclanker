@@ -86,6 +86,7 @@ export interface AppSettings {
   autoTailoringEnabled: Resolved<boolean>;
   enableJobScoring: Resolved<boolean>;
   liveStatusRefreshEnabled: Resolved<boolean>;
+  rescrapeUnscoreableJobs: Resolved<boolean>;
   liveStatusRefreshLimit: Resolved<number>;
   liveStatusRefreshMinAgeHours: Resolved<number>;
   linkedinTermStopMinMatches: Resolved<number>;

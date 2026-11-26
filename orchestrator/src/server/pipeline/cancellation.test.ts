@@ -53,7 +53,12 @@ vi.mock("./steps", () => ({
     reposted: 0,
     rejected: 0,
   })),
-  scoreJobsStep: vi.fn(async () => ({ unprocessedJobs: [], scoredJobs: [] })),
+  scoreJobsStep: vi.fn(async () => ({
+    unprocessedJobs: [],
+    scoredJobs: [],
+    unscoreableJobs: [],
+  })),
+  rescrapeUnscoreableStep: vi.fn(async () => []),
   selectJobsStep: vi.fn(() => []),
   processJobsStep: vi.fn(async () => ({ processedCount: 0 })),
   refreshLiveStatusStep: vi.fn(async () => ({

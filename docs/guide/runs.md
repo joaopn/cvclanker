@@ -19,6 +19,8 @@ flowchart LR
   F --> G["Optional: tailor the top matches"]
 ```
 
+A job whose source gave too little description to judge cannot be scored and stays unscored in the Inbox. With Settings → **Re-fetch jobs with a missing description** on (off by default), the run then opens the posting page of each such job it just found, reads the description there and scores it like any other job of the run, so auto-skip and auto-tailoring apply to it too. The banner shows this within Scoring as "Re-fetching" and the job's title. Each job gets at most one try, and only jobs found in this run are re-fetched; jobs that were already unscored are left alone. A page that cannot be read leaves the job unscored and the run carries on. Each job costs a page fetch and a few LLM calls.
+
 ## Starting a run
 
 1. In the header of the Manage screen, pick one or more search profiles in the **Profile** dropdown. It starts with the default profile ticked. Whenever the selection comes down to a single profile, that profile becomes the new default; ticking several leaves the default as it was, and the extra ticks last until you reload the page.

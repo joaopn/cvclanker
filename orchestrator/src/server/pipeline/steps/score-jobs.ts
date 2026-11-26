@@ -5,7 +5,6 @@ import {
   JobNotScoreableError,
   JobScoringFailedError,
   LlmRateLimitStopError,
-  type SuitabilityResult,
   scoreJobSuitability,
 } from "@server/services/scorer";
 import { getEffectiveSettings } from "@server/services/settings";
@@ -18,12 +17,74 @@ import {
 import { progressHelpers, updateProgress } from "../progress";
 import type { ScoredJob } from "./types";
 
+/**
+ * Score one job with the pre-filter, apply the run's auto-skip tier and save
+ * the verdict. Throws whatever the scorer throws (`JobNotScoreableError`,
+ * `JobScoringFailedError`, `LlmRateLimitStopError`); the caller decides what
+ * each means. Returns null when the run was cancelled while the job was being
+ * scored, in which case nothing is saved.
+ */
+export async function scoreAndSaveJob(args: {
+  job: Job;
+  brief: string;
+  autoSkipCategory: SuitabilityCategory | null;
+  shouldCancel?: () => boolean;
+}): Promise<ScoredJob | null> {
+  const { job, autoSkipCategory } = args;
+  // The one path that opts into the cheap pre-filter: it classifies
+  // everything discovery finds, which is the only place the saving is
+  // worth the risk of a screen removing a job.
+  const scored = await scoreJobSuitability(job, args.brief, {
+    prefilter: true,
+  });
+  if (args.shouldCancel?.()) return null;
+
+  const { category, reason } = scored;
+  // The permanent applied mark, not the status: every row here is
+  // `discovered`, and a reopened job you applied for keeps the mark.
+  const shouldAutoSkip =
+    job.appliedAt === null &&
+    autoSkipCategory !== null &&
+    SUITABILITY_CATEGORY_RANK[category] <=
+      SUITABILITY_CATEGORY_RANK[autoSkipCategory];
+
+  await jobsRepo.updateJob(job.id, {
+    suitabilityCategory: category,
+    suitabilityReason: reason,
+    suitabilityModel: scored.model,
+    suitabilityEffort: scored.effort,
+    ...(shouldAutoSkip ? { status: "skipped" } : {}),
+  });
+
+  if (shouldAutoSkip) {
+    logger.info("Auto-skipped job due to low category", {
+      jobId: job.id,
+      title: job.title,
+      category,
+      autoSkipCategory,
+    });
+  }
+
+  return {
+    ...job,
+    suitabilityCategory: category,
+    suitabilityReason: reason,
+    suitabilityModel: scored.model,
+    suitabilityEffort: scored.effort,
+  };
+}
+
 export async function scoreJobsStep(args: {
   brief: string;
   /** The run's resolved auto-skip tier; null skips nothing. */
   autoSkipCategory: SuitabilityCategory | null;
   shouldCancel?: () => boolean;
-}): Promise<{ unprocessedJobs: Job[]; scoredJobs: ScoredJob[] }> {
+}): Promise<{
+  unprocessedJobs: Job[];
+  scoredJobs: ScoredJob[];
+  /** Jobs left unscored because their description was too short. */
+  unscoreableJobs: Job[];
+}> {
   const enableJobScoringRaw = await settingsRepo.getSetting("enableJobScoring");
   const scoringEnabled =
     enableJobScoringRaw === null
@@ -32,7 +93,7 @@ export async function scoreJobsStep(args: {
 
   if (!scoringEnabled) {
     logger.info("Scoring step disabled by setting");
-    return { unprocessedJobs: [], scoredJobs: [] };
+    return { unprocessedJobs: [], scoredJobs: [], unscoreableJobs: [] };
   }
 
   logger.info("Running scoring step");
@@ -52,6 +113,7 @@ export async function scoreJobsStep(args: {
   });
 
   const scoredJobs: ScoredJob[] = [];
+  const unscoreableJobs: Job[] = [];
   let completed = 0;
 
   await asyncPool({
@@ -76,13 +138,13 @@ export async function scoreJobsStep(args: {
         return;
       }
 
-      let scored: SuitabilityResult;
+      let scored: ScoredJob | null;
       try {
-        // The one path that opts into the cheap pre-filter: it classifies
-        // everything discovery finds, which is the only place the saving is
-        // worth the risk of a screen removing a job.
-        scored = await scoreJobSuitability(job, args.brief, {
-          prefilter: true,
+        scored = await scoreAndSaveJob({
+          job,
+          brief: args.brief,
+          autoSkipCategory,
+          shouldCancel: args.shouldCancel,
         });
       } catch (error) {
         if (error instanceof LlmRateLimitStopError) {
@@ -119,6 +181,7 @@ export async function scoreJobsStep(args: {
             jobId: job.id,
             title: job.title,
           });
+          unscoreableJobs.push(job);
           completed += 1;
           progressHelpers.scoringJob(
             completed,
@@ -129,43 +192,11 @@ export async function scoreJobsStep(args: {
         }
         throw error;
       }
-      if (args.shouldCancel?.()) return;
-
-      const { category, reason } = scored;
-      // The permanent applied mark, not the status: every row here is
-      // `discovered`, and a reopened job you applied for keeps the mark.
-      const shouldAutoSkip =
-        job.appliedAt === null &&
-        autoSkipCategory !== null &&
-        SUITABILITY_CATEGORY_RANK[category] <=
-          SUITABILITY_CATEGORY_RANK[autoSkipCategory];
-
-      await jobsRepo.updateJob(job.id, {
-        suitabilityCategory: category,
-        suitabilityReason: reason,
-        suitabilityModel: scored.model,
-        suitabilityEffort: scored.effort,
-        ...(shouldAutoSkip ? { status: "skipped" } : {}),
-      });
-
-      if (shouldAutoSkip) {
-        logger.info("Auto-skipped job due to low category", {
-          jobId: job.id,
-          title: job.title,
-          category,
-          autoSkipCategory,
-        });
-      }
+      if (scored === null) return;
 
       completed += 1;
       progressHelpers.scoringJob(completed, unprocessedJobs.length, job.title);
-      scoredJobs.push({
-        ...job,
-        suitabilityCategory: category,
-        suitabilityReason: reason,
-        suitabilityModel: scored.model,
-        suitabilityEffort: scored.effort,
-      });
+      scoredJobs.push(scored);
     },
   });
 
@@ -175,5 +206,5 @@ export async function scoreJobsStep(args: {
     concurrency: scoringConcurrency,
   });
 
-  return { unprocessedJobs, scoredJobs };
+  return { unprocessedJobs, scoredJobs, unscoreableJobs };
 }

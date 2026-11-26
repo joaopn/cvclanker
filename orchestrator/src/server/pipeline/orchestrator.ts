@@ -54,6 +54,7 @@ import {
   loadBriefStep,
   processJobsStep,
   refreshLiveStatusStep,
+  rescrapeUnscoreableStep,
   scoreJobsStep,
   selectJobsStep,
 } from "./steps";
@@ -290,6 +291,16 @@ export async function runPipeline(
         sourceErrors,
       });
 
+      // Jobs already unscored before this run are not re-fetched: only what
+      // this run itself found gets one try.
+      const rescrapeUnscoreable = (await getEffectiveSettings())
+        .rescrapeUnscoreableJobs.value;
+      const unscoredBeforeImport = rescrapeUnscoreable
+        ? new Set(
+            (await jobsRepo.getUnscoredDiscoveredJobs()).map((job) => job.id),
+          )
+        : null;
+
       ensureNotCancelled();
       const { created, reposted, rejected } = await importJobsStep({
         discoveredJobs,
@@ -319,7 +330,7 @@ export async function runPipeline(
 
       ensureNotCancelled();
       await persistResultSummary({ stage: "scoring" });
-      const { scoredJobs } = await scoreJobsStep({
+      const { scoredJobs, unscoreableJobs } = await scoreJobsStep({
         brief,
         autoSkipCategory: mergedConfig.autoSkipCategory,
         shouldCancel: () => cancelRequestedAt !== null,
@@ -328,6 +339,23 @@ export async function runPipeline(
         stage: "scoring",
         jobsScored: scoredJobs.length,
       });
+      if (unscoredBeforeImport) {
+        ensureNotCancelled();
+        const rescraped = await rescrapeUnscoreableStep({
+          jobs: unscoreableJobs.filter(
+            (job) => !unscoredBeforeImport.has(job.id),
+          ),
+          brief,
+          autoSkipCategory: mergedConfig.autoSkipCategory,
+          shouldCancel: () => cancelRequestedAt !== null,
+        });
+        scoredJobs.push(...rescraped);
+        progressHelpers.scoringComplete(scoredJobs.length);
+        await persistResultSummary({
+          stage: "scoring",
+          jobsScored: scoredJobs.length,
+        });
+      }
 
       // Between scoring and selection: the run's expensive, failure-prone LLM
       // work is already done and persisted, so a LinkedIn stall costs it
